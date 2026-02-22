@@ -19,6 +19,9 @@
     <ul class="sentence-list">
         {% for s in sentences %}
         <li>
+            <button type="button" class="play-btn"
+                    data-src="/mining/jobs/{{ job_id }}/sentences/{{ s.id }}/audio"
+                    aria-label="Play audio">&#9654;</button>
             <label>
                 <input type="checkbox" name="sentence_ids" value="{{ s.id }}">
                 <span class="timestamp">{{ s.timestamp }}</span>
@@ -29,5 +32,44 @@
     </ul>
     <button type="submit">Export to Anki</button>
 </form>
+<audio id="sentence-player" preload="none"></audio>
+<script>
+(function() {
+    const player = document.getElementById('sentence-player');
+    let activeBtn = null;
+
+    document.querySelectorAll('.play-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            var src = btn.dataset.src;
+
+            if (activeBtn === btn && !player.paused) {
+                player.pause();
+                btn.textContent = '\u25B6';
+                activeBtn = null;
+                return;
+            }
+
+            if (activeBtn && activeBtn !== btn) {
+                activeBtn.textContent = '\u25B6';
+            }
+
+            if (player.src !== location.origin + src) {
+                player.src = src;
+            }
+            player.play();
+            btn.textContent = '\u23F8';
+            activeBtn = btn;
+        });
+    });
+
+    player.addEventListener('ended', function() {
+        if (activeBtn) {
+            activeBtn.textContent = '\u25B6';
+            activeBtn = null;
+        }
+    });
+})();
+</script>
 {% endif %}
 {% endblock %}

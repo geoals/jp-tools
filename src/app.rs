@@ -27,6 +27,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/mining/youtube", post(mining::submit_youtube))
         .route("/mining/jobs/{id}", get(mining::job_page))
         .route("/mining/jobs/{id}/status", get(mining::job_status_fragment))
+        .route(
+            "/mining/jobs/{job_id}/sentences/{sentence_id}/audio",
+            get(mining::sentence_audio),
+        )
         .route("/mining/export", post(mining::export_sentences))
         .with_state(state)
 }

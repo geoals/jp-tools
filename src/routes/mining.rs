@@ -271,6 +271,49 @@ pub async fn export_sentences(
     Ok(ExportSuccessTemplate { count }.into_response())
 }
 
+pub async fn sentence_audio(
+    State(state): State<AppState>,
+    Path((job_id, sentence_id)): Path<(i64, i64)>,
+) -> Result<Response, AppError> {
+    let sentences = db::get_sentences_by_ids(&state.db, &[sentence_id]).await?;
+    let sentence = sentences.into_iter().next().ok_or(AppError::NotFound)?;
+    if sentence.job_id != job_id {
+        return Err(AppError::NotFound);
+    }
+
+    let job = db::get_job(&state.db, job_id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let audio_path = job
+        .audio_path
+        .ok_or(AppError::BadRequest("no audio available".into()))?;
+
+    let (_, audio_filename) = media_filenames(job_id, sentence_id);
+    let clip_path = format!("{}/{audio_filename}", state.media_dir);
+
+    if !tokio::fs::try_exists(&clip_path).await.unwrap_or(false) {
+        tokio::fs::create_dir_all(&state.media_dir)
+            .await
+            .map_err(|e| AppError::Media(format!("failed to create media dir: {e}")))?;
+
+        state
+            .media_extractor
+            .extract_audio_clip(&audio_path, sentence.start_time, sentence.end_time, &clip_path)
+            .await
+            .map_err(|e| AppError::Media(e.to_string()))?;
+    }
+
+    let bytes = tokio::fs::read(&clip_path)
+        .await
+        .map_err(|e| AppError::Media(format!("failed to read audio clip: {e}")))?;
+
+    Ok((
+        [(axum::http::header::CONTENT_TYPE, "audio/mpeg")],
+        bytes,
+    )
+        .into_response())
+}
+
 fn format_seconds(secs: f64) -> String {
     let total = secs as u64;
     let minutes = total / 60;
@@ -492,6 +535,203 @@ mod tests {
             .get(&format!("/mining/jobs/{job_id}/status"))
             .await;
         response.assert_status(axum::http::StatusCode::SEE_OTHER);
+    }
+
+    async fn test_app_with_media_dir(
+        downloader: MockAudioDownloader,
+        transcriber: MockTranscriber,
+        exporter: MockAnkiExporter,
+        media_extractor: MockMediaExtractor,
+        media_dir: String,
+    ) -> (axum_test::TestServer, sqlx::SqlitePool) {
+        let pool = db::create_pool("sqlite::memory:").await.unwrap();
+        let state = AppState {
+            db: pool.clone(),
+            downloader: Arc::new(downloader),
+            transcriber: Arc::new(transcriber),
+            exporter: Arc::new(exporter),
+            media_extractor: Arc::new(media_extractor),
+            audio_dir: "/tmp".into(),
+            media_dir,
+        };
+        let router = build_router(state);
+        let server = axum_test::TestServer::new(router).unwrap();
+        (server, pool)
+    }
+
+    #[tokio::test]
+    async fn sentence_audio_missing_sentence_returns_404() {
+        let (server, pool) = test_app(
+            MockAudioDownloader::new(),
+            MockTranscriber::new(),
+            MockAnkiExporter::new(),
+        )
+        .await;
+
+        let job_id = db::create_job(&pool, "https://youtube.com/watch?v=abc")
+            .await
+            .unwrap();
+
+        let response = server
+            .get(&format!("/mining/jobs/{job_id}/sentences/999/audio"))
+            .await;
+        response.assert_status(axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn sentence_audio_wrong_job_returns_404() {
+        let (server, pool) = test_app(
+            MockAudioDownloader::new(),
+            MockTranscriber::new(),
+            MockAnkiExporter::new(),
+        )
+        .await;
+
+        let job_id = db::create_job(&pool, "https://youtube.com/watch?v=abc")
+            .await
+            .unwrap();
+        db::insert_sentences(
+            &pool,
+            job_id,
+            &[TranscriptSegment {
+                start: 0.0,
+                end: 1.0,
+                text: "test".into(),
+            }],
+        )
+        .await
+        .unwrap();
+
+        let sentences = db::get_sentences_for_job(&pool, job_id).await.unwrap();
+
+        // Use a different job_id in the URL
+        let response = server
+            .get(&format!(
+                "/mining/jobs/{}/sentences/{}/audio",
+                job_id + 100,
+                sentences[0].id
+            ))
+            .await;
+        response.assert_status(axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn sentence_audio_extracts_and_returns_mp3() {
+        let tmp = tempfile::tempdir().unwrap();
+        let media_dir = tmp.path().to_str().unwrap().to_string();
+
+        let mut media_extractor = MockMediaExtractor::new();
+        media_extractor
+            .expect_extract_audio_clip()
+            .returning(move |_, _, _, output_path: &str| {
+                let path = output_path.to_owned();
+                Box::pin(async move {
+                    tokio::fs::write(&path, b"fake-mp3-data").await.unwrap();
+                    Ok(())
+                })
+            });
+
+        let (server, pool) = test_app_with_media_dir(
+            MockAudioDownloader::new(),
+            MockTranscriber::new(),
+            MockAnkiExporter::new(),
+            media_extractor,
+            media_dir,
+        )
+        .await;
+
+        let job_id = db::create_job(&pool, "https://youtube.com/watch?v=abc")
+            .await
+            .unwrap();
+        db::update_job_status(&pool, job_id, &JobStatus::Done, None)
+            .await
+            .unwrap();
+        db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test", "/tmp/video.mp4")
+            .await
+            .unwrap();
+        db::insert_sentences(
+            &pool,
+            job_id,
+            &[TranscriptSegment {
+                start: 1.0,
+                end: 3.0,
+                text: "audio test".into(),
+            }],
+        )
+        .await
+        .unwrap();
+
+        let sentences = db::get_sentences_for_job(&pool, job_id).await.unwrap();
+        let sentence_id = sentences[0].id;
+
+        let response = server
+            .get(&format!(
+                "/mining/jobs/{job_id}/sentences/{sentence_id}/audio"
+            ))
+            .await;
+
+        response.assert_status_ok();
+        assert_eq!(
+            response.header("content-type").to_str().unwrap(),
+            "audio/mpeg"
+        );
+        assert_eq!(&response.as_bytes()[..], b"fake-mp3-data");
+    }
+
+    #[tokio::test]
+    async fn sentence_audio_serves_cached_clip_without_re_extracting() {
+        let tmp = tempfile::tempdir().unwrap();
+        let media_dir = tmp.path().to_str().unwrap().to_string();
+
+        // Media extractor should NOT be called — the file already exists
+        let media_extractor = MockMediaExtractor::new();
+
+        let (server, pool) = test_app_with_media_dir(
+            MockAudioDownloader::new(),
+            MockTranscriber::new(),
+            MockAnkiExporter::new(),
+            media_extractor,
+            media_dir.clone(),
+        )
+        .await;
+
+        let job_id = db::create_job(&pool, "https://youtube.com/watch?v=abc")
+            .await
+            .unwrap();
+        db::update_job_status(&pool, job_id, &JobStatus::Done, None)
+            .await
+            .unwrap();
+        db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test", "/tmp/video.mp4")
+            .await
+            .unwrap();
+        db::insert_sentences(
+            &pool,
+            job_id,
+            &[TranscriptSegment {
+                start: 0.0,
+                end: 1.0,
+                text: "cached".into(),
+            }],
+        )
+        .await
+        .unwrap();
+
+        let sentences = db::get_sentences_for_job(&pool, job_id).await.unwrap();
+        let sentence_id = sentences[0].id;
+
+        // Pre-create the cached clip file
+        let (_, audio_filename) = media_filenames(job_id, sentence_id);
+        let clip_path = format!("{media_dir}/{audio_filename}");
+        std::fs::write(&clip_path, b"cached-audio").unwrap();
+
+        let response = server
+            .get(&format!(
+                "/mining/jobs/{job_id}/sentences/{sentence_id}/audio"
+            ))
+            .await;
+
+        response.assert_status_ok();
+        assert_eq!(&response.as_bytes()[..], b"cached-audio");
     }
 
     #[tokio::test]

@@ -15,6 +15,9 @@ pub enum AppError {
 
     #[error("export error: {0}")]
     Export(String),
+
+    #[error("media error: {0}")]
+    Media(String),
 }
 
 impl IntoResponse for AppError {
@@ -29,6 +32,10 @@ impl IntoResponse for AppError {
             AppError::Export(e) => {
                 error!(error = %e, "export error");
                 (StatusCode::INTERNAL_SERVER_ERROR, "export failed".to_string())
+            }
+            AppError::Media(e) => {
+                error!(error = %e, "media error");
+                (StatusCode::INTERNAL_SERVER_ERROR, "media extraction failed".to_string())
             }
         };
 
