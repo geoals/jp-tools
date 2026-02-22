@@ -31,7 +31,7 @@ pub async fn create_job(pool: &SqlitePool, youtube_url: &str) -> Result<i64, sql
 
 pub async fn get_job(pool: &SqlitePool, id: i64) -> Result<Option<Job>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, youtube_url, video_title, audio_path, status, error_message, created_at FROM mining_jobs WHERE id = ?",
+        "SELECT id, youtube_url, video_title, audio_path, video_path, status, error_message, created_at FROM mining_jobs WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -44,6 +44,7 @@ pub async fn get_job(pool: &SqlitePool, id: i64) -> Result<Option<Job>, sqlx::Er
             youtube_url: r.get("youtube_url"),
             video_title: r.get("video_title"),
             audio_path: r.get("audio_path"),
+            video_path: r.get("video_path"),
             status: JobStatus::from_str(&status_str).unwrap_or(JobStatus::Error),
             error_message: r.get("error_message"),
             created_at: r.get("created_at"),
@@ -71,13 +72,17 @@ pub async fn update_job_download(
     id: i64,
     audio_path: &str,
     video_title: &str,
+    video_path: &str,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query("UPDATE mining_jobs SET audio_path = ?, video_title = ? WHERE id = ?")
-        .bind(audio_path)
-        .bind(video_title)
-        .bind(id)
-        .execute(pool)
-        .await?;
+    sqlx::query(
+        "UPDATE mining_jobs SET audio_path = ?, video_title = ?, video_path = ? WHERE id = ?",
+    )
+    .bind(audio_path)
+    .bind(video_title)
+    .bind(video_path)
+    .bind(id)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -248,7 +253,7 @@ mod tests {
         let pool = test_pool().await;
         let id = create_job(&pool, "https://youtube.com/watch?v=abc").await.unwrap();
 
-        update_job_download(&pool, id, "/tmp/audio.wav", "Test Video")
+        update_job_download(&pool, id, "/tmp/audio.wav", "Test Video", "/tmp/video.mp4")
             .await
             .unwrap();
         let job = get_job(&pool, id).await.unwrap().unwrap();

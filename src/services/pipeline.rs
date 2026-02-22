@@ -38,9 +38,15 @@ pub async fn process_job(
         }
     };
 
-    db::update_job_download(&pool, job_id, &download_result.audio_path, &download_result.video_title)
-        .await
-        .ok();
+    db::update_job_download(
+        &pool,
+        job_id,
+        &download_result.audio_path,
+        &download_result.video_title,
+        &download_result.video_path,
+    )
+    .await
+    .ok();
 
     // Step 2: Transcribe
     info!(job_id, "starting transcription");
@@ -100,6 +106,7 @@ mod tests {
             Box::pin(async {
                 Ok(DownloadResult {
                     audio_path: "/tmp/audio.wav".into(),
+                    video_path: "/tmp/video.mp4".into(),
                     video_title: "Test Video".into(),
                 })
             })
@@ -181,6 +188,7 @@ mod tests {
             Box::pin(async {
                 Ok(DownloadResult {
                     audio_path: "/tmp/audio.wav".into(),
+                    video_path: "/tmp/video.mp4".into(),
                     video_title: "Test Video".into(),
                 })
             })

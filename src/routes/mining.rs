@@ -4,10 +4,14 @@ use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::Form;
 
+use tracing::warn;
+
 use crate::app::AppState;
 use crate::db;
 use crate::error::AppError;
 use crate::models::JobStatus;
+use crate::services::export::ExportSentence;
+use crate::services::media::media_filenames;
 use crate::services::pipeline;
 
 /// Form extractor that uses `serde_html_form` to handle repeated keys
@@ -204,9 +208,63 @@ pub async fn export_sentences(
         .video_title
         .unwrap_or_else(|| job.youtube_url.clone());
 
+    // Extract media for each sentence (graceful degradation on failure)
+    let mut export_sentences = Vec::with_capacity(sentences.len());
+    for sentence in sentences {
+        let (screenshot_filename, audio_filename) =
+            media_filenames(sentence.job_id, sentence.id);
+        let screenshot_path = format!("{}/{screenshot_filename}", state.media_dir);
+        let audio_clip_path = format!("{}/{audio_filename}", state.media_dir);
+
+        let mut screenshot_result = None;
+        if let Some(video_path) = &job.video_path {
+            // Use midpoint of the sentence for the screenshot
+            let midpoint = (sentence.start_time + sentence.end_time) / 2.0;
+            match state
+                .media_extractor
+                .extract_screenshot(video_path, midpoint, &screenshot_path)
+                .await
+            {
+                Ok(()) => screenshot_result = Some(screenshot_path),
+                Err(e) => warn!(
+                    sentence_id = sentence.id,
+                    error = %e,
+                    "screenshot extraction failed, exporting without image"
+                ),
+            }
+        }
+
+        let mut audio_result = None;
+        if let Some(audio_path) = &job.audio_path {
+            match state
+                .media_extractor
+                .extract_audio_clip(
+                    audio_path,
+                    sentence.start_time,
+                    sentence.end_time,
+                    &audio_clip_path,
+                )
+                .await
+            {
+                Ok(()) => audio_result = Some(audio_clip_path),
+                Err(e) => warn!(
+                    sentence_id = sentence.id,
+                    error = %e,
+                    "audio clip extraction failed, exporting without audio"
+                ),
+            }
+        }
+
+        export_sentences.push(ExportSentence {
+            sentence,
+            screenshot_path: screenshot_result,
+            audio_clip_path: audio_result,
+        });
+    }
+
     let count = state
         .exporter
-        .export_sentences(sentences, source)
+        .export_sentences(export_sentences, source)
         .await
         .map_err(|e| AppError::Export(e.to_string()))?;
 
@@ -227,6 +285,7 @@ mod tests {
     use crate::models::TranscriptSegment;
     use crate::services::download::MockAudioDownloader;
     use crate::services::export::MockAnkiExporter;
+    use crate::services::media::MockMediaExtractor;
     use crate::services::transcribe::MockTranscriber;
 
     async fn test_app(
@@ -234,13 +293,24 @@ mod tests {
         transcriber: MockTranscriber,
         exporter: MockAnkiExporter,
     ) -> (axum_test::TestServer, sqlx::SqlitePool) {
+        test_app_with_media(downloader, transcriber, exporter, MockMediaExtractor::new()).await
+    }
+
+    async fn test_app_with_media(
+        downloader: MockAudioDownloader,
+        transcriber: MockTranscriber,
+        exporter: MockAnkiExporter,
+        media_extractor: MockMediaExtractor,
+    ) -> (axum_test::TestServer, sqlx::SqlitePool) {
         let pool = db::create_pool("sqlite::memory:").await.unwrap();
         let state = AppState {
             db: pool.clone(),
             downloader: Arc::new(downloader),
             transcriber: Arc::new(transcriber),
             exporter: Arc::new(exporter),
+            media_extractor: Arc::new(media_extractor),
             audio_dir: "/tmp".into(),
+            media_dir: "/tmp/media".into(),
         };
         let router = build_router(state);
         let server = axum_test::TestServer::new(router).unwrap();
@@ -280,6 +350,7 @@ mod tests {
             Box::pin(async {
                 Ok(crate::services::download::DownloadResult {
                     audio_path: "/tmp/audio.wav".into(),
+                    video_path: "/tmp/video.mp4".into(),
                     video_title: "Test".into(),
                 })
             })
@@ -425,19 +496,27 @@ mod tests {
 
     #[tokio::test]
     async fn export_calls_exporter_and_shows_success() {
-        let (server, pool) = test_app(
+        let mut media_extractor = MockMediaExtractor::new();
+        media_extractor
+            .expect_extract_screenshot()
+            .returning(|_, _, _| Box::pin(async { Ok(()) }));
+        media_extractor
+            .expect_extract_audio_clip()
+            .returning(|_, _, _, _| Box::pin(async { Ok(()) }));
+
+        let mut exporter = MockAnkiExporter::new();
+        exporter
+            .expect_export_sentences()
+            .returning(|sentences, _source| {
+                let count = sentences.len();
+                Box::pin(async move { Ok(count) })
+            });
+
+        let (server, pool) = test_app_with_media(
             MockAudioDownloader::new(),
             MockTranscriber::new(),
-            {
-                let mut exporter = MockAnkiExporter::new();
-                exporter
-                    .expect_export_sentences()
-                    .returning(|sentences, _source| {
-                        let count = sentences.len();
-                        Box::pin(async move { Ok(count) })
-                    });
-                exporter
-            },
+            exporter,
+            media_extractor,
         )
         .await;
 
@@ -447,7 +526,7 @@ mod tests {
         db::update_job_status(&pool, job_id, &JobStatus::Done, None)
             .await
             .unwrap();
-        db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test Video")
+        db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test Video", "/tmp/video.mp4")
             .await
             .unwrap();
         db::insert_sentences(

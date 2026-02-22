@@ -1071,6 +1071,7 @@ dependencies = [
  "askama_web",
  "axum",
  "axum-test",
+ "base64",
  "mockall",
  "reqwest",
  "serde",

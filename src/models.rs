@@ -42,6 +42,7 @@ pub struct Job {
     pub youtube_url: String,
     pub video_title: Option<String>,
     pub audio_path: Option<String>,
+    pub video_path: Option<String>,
     pub status: JobStatus,
     pub error_message: Option<String>,
     pub created_at: String,

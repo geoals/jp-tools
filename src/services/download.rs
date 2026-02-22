@@ -13,6 +13,7 @@ pub trait AudioDownloader: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct DownloadResult {
     pub audio_path: String,
+    pub video_path: String,
     pub video_title: String,
 }
 
@@ -56,12 +57,9 @@ impl AudioDownloader for YtDlpDownloader {
 
             let output_template = format!("{output_dir}/%(id)s.%(ext)s");
 
-            // Inherit stderr so yt-dlp progress is visible in server logs
+            // Download video (no -x: keep the video file for screenshots)
             let child = tokio::process::Command::new("yt-dlp")
                 .args([
-                    "-x",
-                    "--audio-format",
-                    "wav",
                     "--print",
                     "after_move:filepath",
                     "--print",
@@ -96,13 +94,50 @@ impl AudioDownloader for YtDlpDownloader {
                 .ok_or_else(|| DownloadError::Failed("no title in yt-dlp output".into()))?
                 .to_string();
 
-            let audio_path = lines
+            let video_path = lines
                 .next()
                 .ok_or_else(|| DownloadError::Failed("no filepath in yt-dlp output".into()))?
                 .to_string();
 
+            // Extract audio from video via ffmpeg (16kHz mono WAV for whisper)
+            let audio_path = {
+                let p = std::path::Path::new(&video_path);
+                p.with_extension("wav").to_string_lossy().into_owned()
+            };
+
+            let ffmpeg = tokio::process::Command::new("ffmpeg")
+                .args([
+                    "-i",
+                    &video_path,
+                    "-vn",
+                    "-acodec",
+                    "pcm_s16le",
+                    "-ar",
+                    "16000",
+                    "-ac",
+                    "1",
+                    &audio_path,
+                    "-y",
+                ])
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::inherit())
+                .spawn()
+                .map_err(|e| DownloadError::Failed(format!("failed to run ffmpeg: {e}")))?;
+
+            let ffmpeg_output = ffmpeg
+                .wait_with_output()
+                .await
+                .map_err(|e| DownloadError::Failed(format!("ffmpeg failed: {e}")))?;
+
+            if !ffmpeg_output.status.success() {
+                return Err(DownloadError::Failed(
+                    "ffmpeg audio extraction exited with non-zero status".into(),
+                ));
+            }
+
             Ok(DownloadResult {
                 audio_path,
+                video_path,
                 video_title,
             })
         })

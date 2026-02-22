@@ -10,6 +10,8 @@ pub struct Config {
     pub whisper_cpu_threads: u32,
     /// Device for whisper transcription: "auto", "cpu", or "cuda".
     pub whisper_device: String,
+    /// Directory for temporary media files (screenshots, audio clips).
+    pub media_dir: String,
 }
 
 impl Config {
@@ -32,6 +34,8 @@ impl Config {
                 .unwrap_or(0),
             whisper_device: env::var("JP_TOOLS_WHISPER_DEVICE")
                 .unwrap_or_else(|_| "auto".into()),
+            media_dir: env::var("JP_TOOLS_MEDIA_DIR")
+                .unwrap_or_else(|_| "media".into()),
         }
     }
 

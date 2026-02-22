@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS mining_jobs (
     youtube_url TEXT NOT NULL,
     video_title TEXT,
     audio_path TEXT,
+    video_path TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
     error_message TEXT,
     created_at TEXT NOT NULL
