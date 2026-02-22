@@ -1,23 +1,16 @@
-mod app;
-mod config;
-mod db;
-mod error;
-mod models;
-mod routes;
-mod services;
-
 use std::sync::Arc;
 
 use tracing::info;
 
-use crate::app::{AppState, build_router};
-use crate::config::Config;
-use crate::services::download::YtDlpDownloader;
-use crate::services::export::AnkiConnectExporter;
-use crate::services::media::FfmpegMediaExtractor;
-use crate::services::dictionary::Dictionary;
-use crate::services::tokenize::LinderaTokenizer;
-use crate::services::transcribe::WhisperWorker;
+use jp_tools::app::{AppState, build_router};
+use jp_tools::config::Config;
+use jp_tools::db;
+use jp_tools::services::download::YtDlpDownloader;
+use jp_tools::services::export::AnkiConnectExporter;
+use jp_tools::services::media::FfmpegMediaExtractor;
+use jp_tools::services::dictionary::Dictionary;
+use jp_tools::services::tokenize::LinderaTokenizer;
+use jp_tools::services::transcribe::WhisperWorker;
 
 #[tokio::main]
 async fn main() {
