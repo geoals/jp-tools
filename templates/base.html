@@ -15,11 +15,15 @@
         .status.done { background: #d4edda; }
         .status.error { background: #f8d7da; }
         .sentence-list { list-style: none; padding: 0; }
-        .sentence-list li { padding: 0.5rem; margin: 0.25rem 0; border: 1px solid #ddd; border-radius: 4px; display: flex; align-items: center; gap: 0.5rem; }
-        .sentence-list label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; flex: 1; }
+        .sentence-list li { padding: 0.5rem; margin: 0.25rem 0; border: 1px solid #ddd; border-radius: 4px; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+        .sentence-list label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
         .timestamp { color: #666; font-size: 0.85rem; }
         .play-btn { background: none; border: 1px solid #ccc; border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85rem; cursor: pointer; line-height: 1; min-width: 1.8em; }
         .play-btn:hover { background: #e8e8e8; }
+        .sentence-tokens { font-size: 1.1rem; }
+        .token.content-word { cursor: pointer; border-radius: 2px; padding: 0 1px; }
+        .token.content-word:hover { background: #e8d5f5; }
+        .token.content-word.selected { background: #9b59b6; color: #fff; }
     </style>
 </head>
 <body>

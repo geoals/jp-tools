@@ -15,6 +15,10 @@ pub struct ExportSentence {
     pub screenshot_path: Option<String>,
     /// Absolute path to the audio clip mp3 on disk (if extraction succeeded).
     pub audio_clip_path: Option<String>,
+    /// The target vocabulary word selected by the user (base/dictionary form).
+    pub target_word: Option<String>,
+    /// Dictionary definition of the target word, if found.
+    pub definition: Option<String>,
 }
 
 #[cfg_attr(test, mockall::automock)]
@@ -38,6 +42,8 @@ const DECK_NAME: &str = "Sentence Mining";
 /// Data for a single Anki note, ready to be serialized.
 pub struct NoteData {
     pub sentence_text: String,
+    pub vocab_kanji: String,
+    pub vocab_def: String,
     pub source: String,
     pub screenshot_filename: Option<String>,
     pub audio_clip_filename: Option<String>,
@@ -64,8 +70,8 @@ pub fn build_add_notes_request(notes: &[NoteData]) -> Value {
                 "deckName": DECK_NAME,
                 "modelName": MODEL_NAME,
                 "fields": {
-                    "VocabKanji": n.sentence_text,
-                    "VocabDef": "",
+                    "VocabKanji": n.vocab_kanji,
+                    "VocabDef": n.vocab_def,
                     "SentKanji": n.sentence_text,
                     "Image": image_field,
                     "SentAudio": audio_field,
@@ -249,8 +255,15 @@ impl AnkiExporter for AnkiConnectExporter {
                 .iter()
                 .map(|es| {
                     let timestamp = format_timestamp(es.sentence.start_time);
+                    let vocab_kanji = es
+                        .target_word
+                        .clone()
+                        .unwrap_or_else(|| es.sentence.text.clone());
+                    let vocab_def = es.definition.clone().unwrap_or_default();
                     NoteData {
                         sentence_text: es.sentence.text.clone(),
+                        vocab_kanji,
+                        vocab_def,
                         source: format!("{source} ({timestamp})"),
                         screenshot_filename: es.screenshot_path.as_ref().and_then(|p| {
                             std::path::Path::new(p)
@@ -287,12 +300,16 @@ mod tests {
         let notes = vec![
             NoteData {
                 sentence_text: "テスト文".into(),
+                vocab_kanji: "テスト".into(),
+                vocab_def: "test".into(),
                 source: "Test Video (0:05)".into(),
                 screenshot_filename: Some("jp-tools_1_1.jpg".into()),
                 audio_clip_filename: Some("jp-tools_1_1.mp3".into()),
             },
             NoteData {
                 sentence_text: "もう一つ".into(),
+                vocab_kanji: "もう一つ".into(),
+                vocab_def: "".into(),
                 source: "Test Video (1:05)".into(),
                 screenshot_filename: None,
                 audio_clip_filename: None,
@@ -319,12 +336,14 @@ mod tests {
             "[sound:jp-tools_1_1.mp3]"
         );
         assert_eq!(result_notes[0]["fields"]["Document"], "Test Video (0:05)");
-        assert_eq!(result_notes[0]["fields"]["VocabKanji"], "テスト文");
-        assert_eq!(result_notes[0]["fields"]["VocabDef"], "");
+        assert_eq!(result_notes[0]["fields"]["VocabKanji"], "テスト");
+        assert_eq!(result_notes[0]["fields"]["VocabDef"], "test");
 
-        // Second note: no media
+        // Second note: no media, no target word
         assert_eq!(result_notes[1]["fields"]["Image"], "");
         assert_eq!(result_notes[1]["fields"]["SentAudio"], "");
+        assert_eq!(result_notes[1]["fields"]["VocabKanji"], "もう一つ");
+        assert_eq!(result_notes[1]["fields"]["VocabDef"], "");
     }
 
     #[test]
@@ -352,6 +371,8 @@ mod tests {
             },
             screenshot_path: None,
             audio_clip_path: None,
+            target_word: None,
+            definition: None,
         }];
 
         let count = exporter

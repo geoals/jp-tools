@@ -25,8 +25,17 @@
             <label>
                 <input type="checkbox" name="sentence_ids" value="{{ s.id }}">
                 <span class="timestamp">{{ s.timestamp }}</span>
-                <span>{{ s.text }}</span>
             </label>
+            <span class="sentence-tokens">
+                {% for t in s.tokens %}
+                    {% if t.is_content_word %}
+                    <span class="token content-word" data-base-form="{{ t.base_form }}" data-sid="{{ s.id }}">{{ t.surface }}</span>
+                    {% else %}
+                    <span class="token">{{ t.surface }}</span>
+                    {% endif %}
+                {% endfor %}
+            </span>
+            <input type="hidden" name="target_words" class="target-word-input" data-sid="{{ s.id }}" value="" disabled>
         </li>
         {% endfor %}
     </ul>
@@ -68,6 +77,34 @@
             activeBtn.textContent = '\u25B6';
             activeBtn = null;
         }
+    });
+})();
+</script>
+<script>
+(function() {
+    document.querySelectorAll('.token.content-word').forEach(function(span) {
+        span.addEventListener('click', function() {
+            var sid = span.dataset.sid;
+            var hiddenInput = document.querySelector('.target-word-input[data-sid="' + sid + '"]');
+
+            // Deselect if clicking the already-selected word
+            if (span.classList.contains('selected')) {
+                span.classList.remove('selected');
+                hiddenInput.value = '';
+                hiddenInput.disabled = true;
+                return;
+            }
+
+            // Deselect any previously selected word in same sentence
+            document.querySelectorAll('.token.content-word.selected[data-sid="' + sid + '"]').forEach(function(el) {
+                el.classList.remove('selected');
+            });
+
+            // Select this word
+            span.classList.add('selected');
+            hiddenInput.value = sid + ':' + span.dataset.baseForm;
+            hiddenInput.disabled = false;
+        });
     });
 })();
 </script>

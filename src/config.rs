@@ -12,6 +12,9 @@ pub struct Config {
     pub whisper_device: String,
     /// Directory for temporary media files (screenshots, audio clips).
     pub media_dir: String,
+    /// Path to a Yomitan dictionary zip file. Optional — if not set,
+    /// VocabDef will be left empty on exported Anki cards.
+    pub dictionary_path: Option<String>,
 }
 
 impl Config {
@@ -36,6 +39,7 @@ impl Config {
                 .unwrap_or_else(|_| "auto".into()),
             media_dir: env::var("JP_TOOLS_MEDIA_DIR")
                 .unwrap_or_else(|_| "media".into()),
+            dictionary_path: env::var("JP_TOOLS_DICTIONARY_PATH").ok(),
         }
     }
 

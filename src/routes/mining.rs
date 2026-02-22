@@ -13,6 +13,7 @@ use crate::models::JobStatus;
 use crate::services::export::ExportSentence;
 use crate::services::media::media_filenames;
 use crate::services::pipeline;
+use crate::services::tokenize::is_content_word;
 
 /// Form extractor that uses `serde_html_form` to handle repeated keys
 /// (e.g. checkboxes: `sentence_ids=1&sentence_ids=2` -> `Vec<i64>`).
@@ -76,8 +77,14 @@ struct ExportSuccessTemplate {
 
 struct SentenceView {
     id: i64,
-    text: String,
     timestamp: String,
+    tokens: Vec<TokenView>,
+}
+
+struct TokenView {
+    surface: String,
+    base_form: String,
+    is_content_word: bool,
 }
 
 // --- Form structs ---
@@ -92,6 +99,27 @@ pub struct ExportForm {
     job_id: i64,
     #[serde(default)]
     sentence_ids: Vec<i64>,
+    /// Repeated field of "sentence_id:base_form" pairs from hidden inputs.
+    #[serde(default)]
+    target_words: Vec<String>,
+}
+
+impl ExportForm {
+    /// Parse target_words entries ("id:word") into a lookup map.
+    fn target_word_map(&self) -> std::collections::HashMap<i64, String> {
+        self.target_words
+            .iter()
+            .filter_map(|entry| {
+                let (id, word) = entry.split_once(':')?;
+                let id: i64 = id.parse().ok()?;
+                if word.is_empty() {
+                    None
+                } else {
+                    Some((id, word.to_string()))
+                }
+            })
+            .collect()
+    }
 }
 
 // --- Handlers ---
@@ -142,6 +170,30 @@ pub async fn job_page(
         vec![]
     };
 
+    let sentence_views: Vec<SentenceView> = sentences
+        .into_iter()
+        .map(|s| {
+            let tokens = state
+                .tokenizer
+                .tokenize(&s.text)
+                .map(|toks| {
+                    toks.into_iter()
+                        .map(|t| TokenView {
+                            is_content_word: is_content_word(&t.pos),
+                            base_form: t.base_form,
+                            surface: t.surface,
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            SentenceView {
+                id: s.id,
+                timestamp: format_seconds(s.start_time),
+                tokens,
+            }
+        })
+        .collect();
+
     let template = JobPageTemplate {
         job_id: job.id,
         video_title: job.video_title,
@@ -149,14 +201,7 @@ pub async fn job_page(
         is_done: job.status == JobStatus::Done,
         is_terminal: job.status.is_terminal(),
         error_message: job.error_message,
-        sentences: sentences
-            .into_iter()
-            .map(|s| SentenceView {
-                id: s.id,
-                text: s.text,
-                timestamp: format_seconds(s.start_time),
-            })
-            .collect(),
+        sentences: sentence_views,
     };
 
     Ok(template.into_response())
@@ -195,6 +240,7 @@ pub async fn export_sentences(
         return Err(AppError::BadRequest("no sentences selected".into()));
     }
 
+    let target_word_map = form.target_word_map();
     let sentences = db::get_sentences_by_ids(&state.db, &form.sentence_ids).await?;
     if sentences.is_empty() {
         return Err(AppError::NotFound);
@@ -255,10 +301,21 @@ pub async fn export_sentences(
             }
         }
 
+        let target_word = target_word_map.get(&sentence.id).cloned();
+
+        let definition = target_word.as_ref().and_then(|word| {
+            let dict = state.dictionary.as_ref()?;
+            let entries = dict.lookup(word);
+            let entry = entries.first()?;
+            Some(entry.definitions.join("; "))
+        });
+
         export_sentences.push(ExportSentence {
             sentence,
             screenshot_path: screenshot_result,
             audio_clip_path: audio_result,
+            target_word,
+            definition,
         });
     }
 
@@ -329,7 +386,27 @@ mod tests {
     use crate::services::download::MockAudioDownloader;
     use crate::services::export::MockAnkiExporter;
     use crate::services::media::MockMediaExtractor;
+    use crate::services::tokenize::MockTokenizer;
     use crate::services::transcribe::MockTranscriber;
+
+    use crate::services::tokenize::Token;
+
+    /// Returns a mock tokenizer that echoes each char as a single noun token.
+    fn mock_tokenizer() -> MockTokenizer {
+        let mut t = MockTokenizer::new();
+        t.expect_tokenize().returning(|text| {
+            Ok(text
+                .chars()
+                .map(|c| Token {
+                    surface: c.to_string(),
+                    base_form: c.to_string(),
+                    reading: "*".into(),
+                    pos: "名詞".into(),
+                })
+                .collect())
+        });
+        t
+    }
 
     async fn test_app(
         downloader: MockAudioDownloader,
@@ -352,6 +429,8 @@ mod tests {
             transcriber: Arc::new(transcriber),
             exporter: Arc::new(exporter),
             media_extractor: Arc::new(media_extractor),
+            tokenizer: Arc::new(mock_tokenizer()),
+            dictionary: None,
             audio_dir: "/tmp".into(),
             media_dir: "/tmp/media".into(),
         };
@@ -474,7 +553,9 @@ mod tests {
         let response = server.get(&format!("/mining/jobs/{job_id}")).await;
         response.assert_status_ok();
         let body = response.text();
-        assert!(body.contains("テスト文"), "should show sentence text");
+        // Sentence text is rendered as individual token spans
+        assert!(body.contains("content-word"), "should show content-word token spans");
+        assert!(body.contains("テ"), "should show tokenized characters");
         assert!(body.contains("Export to Anki"), "should show export button");
     }
 
@@ -551,6 +632,8 @@ mod tests {
             transcriber: Arc::new(transcriber),
             exporter: Arc::new(exporter),
             media_extractor: Arc::new(media_extractor),
+            tokenizer: Arc::new(mock_tokenizer()),
+            dictionary: None,
             audio_dir: "/tmp".into(),
             media_dir,
         };
@@ -785,6 +868,113 @@ mod tests {
         let form_body = format!(
             "job_id={}&sentence_ids={}",
             job_id, all[0].id
+        );
+        let response = server
+            .post("/mining/export")
+            .content_type("application/x-www-form-urlencoded")
+            .bytes(form_body.into_bytes().into())
+            .await;
+
+        response.assert_status_ok();
+        let body = response.text();
+        assert!(body.contains("1 sentence(s) exported"));
+    }
+
+    #[test]
+    fn export_form_parses_target_words() {
+        let input = "job_id=1&sentence_ids=1&target_words=1%3Ahello";
+        let form: ExportForm = serde_html_form::from_str(input).unwrap();
+        let map = form.target_word_map();
+        assert_eq!(map.get(&1), Some(&"hello".to_string()));
+    }
+
+    #[test]
+    fn target_word_map_skips_empty_words() {
+        let form = ExportForm {
+            job_id: 1,
+            sentence_ids: vec![1],
+            target_words: vec!["1:".into(), "2:word".into()],
+        };
+        let map = form.target_word_map();
+        assert_eq!(map.get(&1), None);
+        assert_eq!(map.get(&2), Some(&"word".to_string()));
+    }
+
+    #[tokio::test]
+    async fn export_with_target_word_and_dictionary_populates_vocab() {
+        use crate::services::dictionary::{Dictionary, DictionaryEntry};
+        use crate::services::export::ExportSentence;
+
+        let mut media_extractor = MockMediaExtractor::new();
+        media_extractor
+            .expect_extract_screenshot()
+            .returning(|_, _, _| Box::pin(async { Ok(()) }));
+        media_extractor
+            .expect_extract_audio_clip()
+            .returning(|_, _, _, _| Box::pin(async { Ok(()) }));
+
+        let mut exporter = MockAnkiExporter::new();
+        exporter
+            .expect_export_sentences()
+            .withf(|sentences: &Vec<ExportSentence>, _source: &String| {
+                let s = &sentences[0];
+                s.target_word.as_deref() == Some("食べる")
+                    && s.definition.as_deref() == Some("to eat; to consume")
+            })
+            .returning(|sentences, _source| {
+                let count = sentences.len();
+                Box::pin(async move { Ok(count) })
+            });
+
+        let dict = Dictionary::from_entries(vec![DictionaryEntry {
+            term: "食べる".into(),
+            reading: "たべる".into(),
+            definitions: vec!["to eat".into(), "to consume".into()],
+            score: 100,
+        }]);
+
+        let pool = db::create_pool("sqlite::memory:").await.unwrap();
+        let state = AppState {
+            db: pool.clone(),
+            downloader: Arc::new(MockAudioDownloader::new()),
+            transcriber: Arc::new(MockTranscriber::new()),
+            exporter: Arc::new(exporter),
+            media_extractor: Arc::new(media_extractor),
+            tokenizer: Arc::new(mock_tokenizer()),
+            dictionary: Some(Arc::new(dict)),
+            audio_dir: "/tmp".into(),
+            media_dir: "/tmp/media".into(),
+        };
+        let router = build_router(state);
+        let server = axum_test::TestServer::new(router).unwrap();
+
+        let job_id = db::create_job(&pool, "https://youtube.com/watch?v=abc")
+            .await
+            .unwrap();
+        db::update_job_status(&pool, job_id, &JobStatus::Done, None)
+            .await
+            .unwrap();
+        db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test Video", "/tmp/video.mp4")
+            .await
+            .unwrap();
+        db::insert_sentences(
+            &pool,
+            job_id,
+            &[TranscriptSegment {
+                start: 0.0,
+                end: 1.0,
+                text: "食べる".into(),
+            }],
+        )
+        .await
+        .unwrap();
+
+        let all = db::get_sentences_for_job(&pool, job_id).await.unwrap();
+        let sid = all[0].id;
+
+        // Submit with a target word selected: "sid:食べる" URL-encoded
+        let form_body = format!(
+            "job_id={job_id}&sentence_ids={sid}&target_words={sid}%3A%E9%A3%9F%E3%81%B9%E3%82%8B"
         );
         let response = server
             .post("/mining/export")

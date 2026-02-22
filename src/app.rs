@@ -8,6 +8,8 @@ use crate::routes::mining;
 use crate::services::download::AudioDownloader;
 use crate::services::export::AnkiExporter;
 use crate::services::media::MediaExtractor;
+use crate::services::dictionary::Dictionary;
+use crate::services::tokenize::Tokenizer;
 use crate::services::transcribe::Transcriber;
 
 #[derive(Clone)]
@@ -17,6 +19,8 @@ pub struct AppState {
     pub transcriber: Arc<dyn Transcriber>,
     pub exporter: Arc<dyn AnkiExporter>,
     pub media_extractor: Arc<dyn MediaExtractor>,
+    pub tokenizer: Arc<dyn Tokenizer>,
+    pub dictionary: Option<Arc<Dictionary>>,
     pub audio_dir: String,
     pub media_dir: String,
 }

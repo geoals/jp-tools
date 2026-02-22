@@ -15,6 +15,8 @@ use crate::config::Config;
 use crate::services::download::YtDlpDownloader;
 use crate::services::export::AnkiConnectExporter;
 use crate::services::media::FfmpegMediaExtractor;
+use crate::services::dictionary::Dictionary;
+use crate::services::tokenize::LinderaTokenizer;
 use crate::services::transcribe::WhisperWorker;
 
 #[tokio::main]
@@ -43,12 +45,27 @@ async fn main() {
     .await
     .expect("failed to start whisper worker");
 
+    let tokenizer = LinderaTokenizer::new().expect("failed to initialize tokenizer");
+
+    let dictionary = config.dictionary_path.as_ref().map(|path| {
+        info!(path, "loading dictionary");
+        Arc::new(
+            Dictionary::load_from_zip(std::path::Path::new(path))
+                .expect("failed to load dictionary"),
+        )
+    });
+    if dictionary.is_none() {
+        info!("no dictionary configured (set JP_TOOLS_DICTIONARY_PATH to enable definitions)");
+    }
+
     let state = AppState {
         db: pool,
         downloader: Arc::new(YtDlpDownloader),
         transcriber: Arc::new(transcriber),
         exporter: Arc::new(AnkiConnectExporter::new(config.anki_url)),
         media_extractor: Arc::new(FfmpegMediaExtractor),
+        tokenizer: Arc::new(tokenizer),
+        dictionary,
         audio_dir: config.audio_dir,
         media_dir,
     };
