@@ -57,9 +57,12 @@ impl AudioDownloader for YtDlpDownloader {
 
             let output_template = format!("{output_dir}/%(id)s.%(ext)s");
 
-            // Download video (no -x: keep the video file for screenshots)
+            // Download video at low resolution — 480p is enough for Anki screenshots,
+            // and keeps the file small. yt-dlp's -S prefers formats closest to 480p.
             let child = tokio::process::Command::new("yt-dlp")
                 .args([
+                    "-S",
+                    "res:480",
                     "--print",
                     "after_move:filepath",
                     "--print",
