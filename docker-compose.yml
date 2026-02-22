@@ -1,0 +1,14 @@
+services:
+  whisper:
+    build: .
+    container_name: jp-tools-whisper
+    volumes:
+      # Share audio files between host and container
+      - ./audio:/app/audio
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

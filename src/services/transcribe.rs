@@ -27,6 +27,7 @@ pub fn parse_transcript_json(json: &str) -> Result<Vec<TranscriptSegment>, Trans
 pub struct WhisperTranscriber {
     pub script_path: String,
     pub cpu_threads: u32,
+    pub device: String,
 }
 
 impl Transcriber for WhisperTranscriber {
@@ -36,11 +37,14 @@ impl Transcriber for WhisperTranscriber {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<TranscriptSegment>, TranscribeError>> + Send>> {
         let script_path = self.script_path.clone();
         let cpu_threads = self.cpu_threads.to_string();
+        let device = self.device.clone();
         Box::pin(async move {
             // Inherit stderr so model downloads, progress, and warnings
             // are streamed to the server logs in real time.
-            let child = tokio::process::Command::new("python3")
-                .args([&script_path, &audio_path, &cpu_threads])
+            // script_path is executed directly — either transcribe.py (via shebang)
+            // or a wrapper like transcribe-docker.sh.
+            let child = tokio::process::Command::new(&script_path)
+                .args([&audio_path, &cpu_threads, &device])
                 .stdout(Stdio::piped())
                 .stderr(Stdio::inherit())
                 .spawn()
@@ -101,6 +105,7 @@ mod tests {
         let transcriber = WhisperTranscriber {
             script_path: "scripts/transcribe.py".into(),
             cpu_threads: 0,
+            device: "auto".into(),
         };
         let result = transcriber
             .transcribe("/tmp/test_audio.wav".into())

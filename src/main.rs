@@ -35,6 +35,7 @@ async fn main() {
         transcriber: Arc::new(WhisperTranscriber {
             script_path: config.transcribe_script,
             cpu_threads: config.whisper_cpu_threads,
+            device: config.whisper_device,
         }),
         exporter: Arc::new(AnkiConnectExporter::new(config.anki_url)),
         audio_dir: config.audio_dir,

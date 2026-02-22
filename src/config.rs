@@ -8,6 +8,8 @@ pub struct Config {
     pub transcribe_script: String,
     /// Number of CPU threads for whisper transcription. 0 = all cores.
     pub whisper_cpu_threads: u32,
+    /// Device for whisper transcription: "auto", "cpu", or "cuda".
+    pub whisper_device: String,
 }
 
 impl Config {
@@ -28,6 +30,8 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(0),
+            whisper_device: env::var("JP_TOOLS_WHISPER_DEVICE")
+                .unwrap_or_else(|_| "auto".into()),
         }
     }
 

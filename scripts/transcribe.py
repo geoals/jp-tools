@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Transcribe an audio file using faster-whisper.
 
-Usage: python3 transcribe.py <audio_path> [cpu_threads]
+Usage: python3 transcribe.py <audio_path> [cpu_threads] [device]
 
 Outputs JSON to stdout: [{"start": 0.0, "end": 3.2, "text": "..."}, ...]
 All progress/status messages go to stderr so they appear in the server logs.
@@ -19,18 +19,19 @@ def main():
 
     audio_path = sys.argv[1]
     cpu_threads = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+    device = sys.argv[3] if len(sys.argv) > 3 else "auto"
 
     # 0 means use all available cores
     if cpu_threads <= 0:
         cpu_threads = os.cpu_count() or 4
 
-    print(f"Loading model (cpu_threads={cpu_threads})...", file=sys.stderr)
+    print(f"Loading model (device={device}, cpu_threads={cpu_threads})...", file=sys.stderr)
 
     from faster_whisper import WhisperModel
 
     model = WhisperModel(
         "large-v3",
-        device="auto",
+        device=device,
         compute_type="auto",
         cpu_threads=cpu_threads,
     )
