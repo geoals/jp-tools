@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Job #{{ job_id }} — Sentence Mining{% endblock %}
+
+{% block content %}
+<h1>Job #{{ job_id }}</h1>
+
+{% if let Some(title) = video_title %}
+<p><strong>{{ title }}</strong></p>
+{% endif %}
+
+<div id="job-status">
+    {% include "mining/job_status_fragment.html" %}
+</div>
+
+{% if is_done %}
+<form method="post" action="/mining/export">
+    <input type="hidden" name="job_id" value="{{ job_id }}">
+    <ul class="sentence-list">
+        {% for s in sentences %}
+        <li>
+            <label>
+                <input type="checkbox" name="sentence_ids" value="{{ s.id }}">
+                <span class="timestamp">{{ s.timestamp }}</span>
+                <span>{{ s.text }}</span>
+            </label>
+        </li>
+        {% endfor %}
+    </ul>
+    <button type="submit">Export to Anki</button>
+</form>
+{% endif %}
+{% endblock %}

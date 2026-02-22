@@ -1,0 +1,16 @@
+{% if !is_terminal %}
+<div class="status"
+     hx-get="/mining/jobs/{{ job_id }}/status"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML">
+    Status: {{ status }}...
+</div>
+{% else if is_done %}
+<div class="status done">
+    Status: {{ status }}
+</div>
+{% else %}
+<div class="status error">
+    Status: {{ status }}{% if let Some(msg) = error_message %} — {{ msg }}{% endif %}
+</div>
+{% endif %}
