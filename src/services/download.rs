@@ -56,7 +56,8 @@ impl AudioDownloader for YtDlpDownloader {
 
             let output_template = format!("{output_dir}/%(id)s.%(ext)s");
 
-            let output = tokio::process::Command::new("yt-dlp")
+            // Inherit stderr so yt-dlp progress is visible in server logs
+            let child = tokio::process::Command::new("yt-dlp")
                 .args([
                     "-x",
                     "--audio-format",
@@ -69,26 +70,35 @@ impl AudioDownloader for YtDlpDownloader {
                     &output_template,
                     &url,
                 ])
-                .output()
-                .await
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::inherit())
+                .spawn()
                 .map_err(|e| DownloadError::Failed(format!("failed to run yt-dlp: {e}")))?;
 
+            let output = child
+                .wait_with_output()
+                .await
+                .map_err(|e| DownloadError::Failed(format!("yt-dlp failed: {e}")))?;
+
             if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(DownloadError::Failed(format!("yt-dlp failed: {stderr}")));
+                return Err(DownloadError::Failed(
+                    "yt-dlp exited with non-zero status (see logs above)".into(),
+                ));
             }
 
             let stdout = String::from_utf8_lossy(&output.stdout);
             let mut lines = stdout.lines();
 
-            let audio_path = lines
-                .next()
-                .ok_or_else(|| DownloadError::Failed("no filepath in yt-dlp output".into()))?
-                .to_string();
-
+            // yt-dlp prints in execution order: title (info extraction phase)
+            // comes before after_move:filepath (post-processing phase)
             let video_title = lines
                 .next()
                 .ok_or_else(|| DownloadError::Failed("no title in yt-dlp output".into()))?
+                .to_string();
+
+            let audio_path = lines
+                .next()
+                .ok_or_else(|| DownloadError::Failed("no filepath in yt-dlp output".into()))?
                 .to_string();
 
             Ok(DownloadResult {

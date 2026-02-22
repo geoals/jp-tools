@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::pin::Pin;
+use std::process::Stdio;
 
 use crate::models::TranscriptSegment;
 
@@ -25,6 +26,7 @@ pub fn parse_transcript_json(json: &str) -> Result<Vec<TranscriptSegment>, Trans
 
 pub struct WhisperTranscriber {
     pub script_path: String,
+    pub cpu_threads: u32,
 }
 
 impl Transcriber for WhisperTranscriber {
@@ -33,20 +35,27 @@ impl Transcriber for WhisperTranscriber {
         audio_path: String,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<TranscriptSegment>, TranscribeError>> + Send>> {
         let script_path = self.script_path.clone();
+        let cpu_threads = self.cpu_threads.to_string();
         Box::pin(async move {
-            let output = tokio::process::Command::new("python3")
-                .args([&script_path, &audio_path])
-                .output()
-                .await
+            // Inherit stderr so model downloads, progress, and warnings
+            // are streamed to the server logs in real time.
+            let child = tokio::process::Command::new("python3")
+                .args([&script_path, &audio_path, &cpu_threads])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::inherit())
+                .spawn()
                 .map_err(|e| {
                     TranscribeError::Failed(format!("failed to run transcribe script: {e}"))
                 })?;
 
+            let output = child.wait_with_output().await.map_err(|e| {
+                TranscribeError::Failed(format!("transcribe script failed: {e}"))
+            })?;
+
             if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(TranscribeError::Failed(format!(
-                    "transcribe script failed: {stderr}"
-                )));
+                return Err(TranscribeError::Failed(
+                    "transcribe script exited with non-zero status (see logs above)".into(),
+                ));
             }
 
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -91,12 +100,11 @@ mod tests {
     async fn whisper_transcriber_integration() {
         let transcriber = WhisperTranscriber {
             script_path: "scripts/transcribe.py".into(),
+            cpu_threads: 0,
         };
-        // Would need a real audio file here
         let result = transcriber
             .transcribe("/tmp/test_audio.wav".into())
             .await;
-        // Just check it doesn't panic — actual result depends on environment
         println!("{result:?}");
     }
 }

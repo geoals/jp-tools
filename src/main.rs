@@ -34,6 +34,7 @@ async fn main() {
         downloader: Arc::new(YtDlpDownloader),
         transcriber: Arc::new(WhisperTranscriber {
             script_path: config.transcribe_script,
+            cpu_threads: config.whisper_cpu_threads,
         }),
         exporter: Arc::new(AnkiConnectExporter::new(config.anki_url)),
         audio_dir: config.audio_dir,

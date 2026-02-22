@@ -6,6 +6,8 @@ pub struct Config {
     pub listen_addr: String,
     pub anki_url: String,
     pub transcribe_script: String,
+    /// Number of CPU threads for whisper transcription. 0 = all cores.
+    pub whisper_cpu_threads: u32,
 }
 
 impl Config {
@@ -22,6 +24,10 @@ impl Config {
                 .unwrap_or_else(|_| "http://localhost:8765".into()),
             transcribe_script: env::var("JP_TOOLS_TRANSCRIBE_SCRIPT")
                 .unwrap_or_else(|_| "scripts/transcribe.py".into()),
+            whisper_cpu_threads: env::var("JP_TOOLS_WHISPER_CPU_THREADS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0),
         }
     }
 
