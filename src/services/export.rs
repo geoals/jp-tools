@@ -1,10 +1,11 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use tokio::fs;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
+use crate::config::AnkiConfig;
 use crate::models::Sentence;
 
 /// A sentence bundled with optional media file paths for Anki export.
@@ -36,9 +37,6 @@ pub enum ExportError {
     Failed(String),
 }
 
-const MODEL_NAME: &str = "jp-tools-mining";
-const DECK_NAME: &str = "Sentence Mining";
-
 /// Data for a single Anki note, ready to be serialized.
 pub struct NoteData {
     pub sentence_text: String,
@@ -49,34 +47,47 @@ pub struct NoteData {
     pub audio_clip_filename: Option<String>,
 }
 
-/// Build the AnkiConnect `addNotes` request body.
-pub fn build_add_notes_request(notes: &[NoteData]) -> Value {
+/// Build the AnkiConnect `addNotes` request body using the configured field mapping.
+/// Only fields that are mapped (Some) in the config are included on the note.
+pub fn build_add_notes_request(notes: &[NoteData], config: &AnkiConfig) -> Value {
     let notes_json: Vec<Value> = notes
         .iter()
         .map(|n| {
-            let image_field = n
-                .screenshot_filename
-                .as_deref()
-                .map(|f| format!("<img src=\"{f}\">"))
-                .unwrap_or_default();
+            let mut fields = Map::new();
 
-            let audio_field = n
-                .audio_clip_filename
-                .as_deref()
-                .map(|f| format!("[sound:{f}]"))
-                .unwrap_or_default();
+            if let Some(ref f) = config.field_vocab {
+                fields.insert(f.clone(), json!(n.vocab_kanji));
+            }
+            if let Some(ref f) = config.field_definition {
+                fields.insert(f.clone(), json!(n.vocab_def));
+            }
+            if let Some(ref f) = config.field_sentence {
+                fields.insert(f.clone(), json!(n.sentence_text));
+            }
+            if let Some(ref f) = config.field_image {
+                let val = n
+                    .screenshot_filename
+                    .as_deref()
+                    .map(|name| format!("<img src=\"{name}\">"))
+                    .unwrap_or_default();
+                fields.insert(f.clone(), json!(val));
+            }
+            if let Some(ref f) = config.field_audio {
+                let val = n
+                    .audio_clip_filename
+                    .as_deref()
+                    .map(|name| format!("[sound:{name}]"))
+                    .unwrap_or_default();
+                fields.insert(f.clone(), json!(val));
+            }
+            if let Some(ref f) = config.field_source {
+                fields.insert(f.clone(), json!(n.source));
+            }
 
             json!({
-                "deckName": DECK_NAME,
-                "modelName": MODEL_NAME,
-                "fields": {
-                    "VocabKanji": n.vocab_kanji,
-                    "VocabDef": n.vocab_def,
-                    "SentKanji": n.sentence_text,
-                    "Image": image_field,
-                    "SentAudio": audio_field,
-                    "Document": n.source,
-                },
+                "deckName": config.deck_name,
+                "modelName": config.model_name,
+                "fields": fields,
                 "tags": ["jp-tools", "youtube"]
             })
         })
@@ -98,31 +109,62 @@ fn format_timestamp(secs: f64) -> String {
     format!("{minutes}:{seconds:02}")
 }
 
-/// Build the request to create the note type if it doesn't exist.
-fn build_create_model_request() -> Value {
+/// Build the request to create a basic fallback note type.
+/// Only includes fields that are mapped in the config.
+fn build_create_model_request(config: &AnkiConfig) -> Value {
+    let fields: Vec<&str> = [
+        config.field_vocab.as_deref(),
+        config.field_definition.as_deref(),
+        config.field_sentence.as_deref(),
+        config.field_image.as_deref(),
+        config.field_audio.as_deref(),
+        config.field_source.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    // Build a minimal card template from the first field (sentence if available)
+    let front = config
+        .field_sentence
+        .as_ref()
+        .map(|f| format!("{{{{{f}}}}}"))
+        .unwrap_or_else(|| "{{Front}}".into());
+
+    let back_parts: Vec<String> = fields.iter().map(|f| format!("{{{{{f}}}}}")).collect();
+    let back = back_parts.join("<br>");
+
     json!({
         "action": "createModel",
         "version": 6,
         "params": {
-            "modelName": MODEL_NAME,
-            "inOrderFields": ["VocabKanji", "VocabDef", "SentKanji", "Image", "SentAudio", "Document"],
+            "modelName": config.model_name,
+            "inOrderFields": fields,
             "cardTemplates": [{
                 "Name": "Card 1",
-                "Front": "{{SentKanji}}",
-                "Back": "{{VocabKanji}}<br>{{VocabDef}}<br>{{Image}}<br>{{SentAudio}}<br>{{Document}}"
+                "Front": front,
+                "Back": back
             }]
         }
     })
 }
 
 /// Build the request to create the deck if it doesn't exist.
-fn build_create_deck_request() -> Value {
+fn build_create_deck_request(deck_name: &str) -> Value {
     json!({
         "action": "createDeck",
         "version": 6,
         "params": {
-            "deck": DECK_NAME
+            "deck": deck_name
         }
+    })
+}
+
+/// Check whether a model (note type) already exists in Anki.
+fn build_model_names_request() -> Value {
+    json!({
+        "action": "modelNames",
+        "version": 6
     })
 }
 
@@ -151,13 +193,15 @@ async fn read_file_base64(path: &str) -> Result<String, ExportError> {
 
 pub struct AnkiConnectExporter {
     pub anki_url: String,
+    pub config: AnkiConfig,
     client: reqwest::Client,
 }
 
 impl AnkiConnectExporter {
-    pub fn new(anki_url: String) -> Self {
+    pub fn new(anki_url: String, config: AnkiConfig) -> Self {
         Self {
             anki_url,
+            config,
             client: reqwest::Client::builder()
                 .pool_max_idle_per_host(0)
                 .build()
@@ -198,6 +242,19 @@ async fn send_anki_request(
     Ok(body)
 }
 
+/// Check if a model already exists in Anki by querying modelNames.
+async fn model_exists(
+    client: &reqwest::Client,
+    url: &str,
+    model_name: &str,
+) -> Result<bool, ExportError> {
+    let resp = send_anki_request(client, url, &build_model_names_request()).await?;
+    let names = resp["result"]
+        .as_array()
+        .ok_or_else(|| ExportError::Failed("unexpected modelNames response".into()))?;
+    Ok(names.iter().any(|v| v.as_str() == Some(model_name)))
+}
+
 impl AnkiExporter for AnkiConnectExporter {
     fn export_sentences(
         &self,
@@ -206,46 +263,55 @@ impl AnkiExporter for AnkiConnectExporter {
     ) -> Pin<Box<dyn Future<Output = Result<usize, ExportError>> + Send>> {
         let client = self.client.clone();
         let anki_url = self.anki_url.clone();
+        let config = self.config.clone();
         let count = sentences.len();
 
         Box::pin(async move {
-            // Ensure model and deck exist (ignore "already exists" errors on model)
-            let _ = send_anki_request(
+            // Only create the model if it doesn't already exist
+            if !model_exists(&client, &anki_url, &config.model_name).await? {
+                info!(model = %config.model_name, "model not found, creating fallback");
+                send_anki_request(&client, &anki_url, &build_create_model_request(&config))
+                    .await?;
+            }
+
+            send_anki_request(
                 &client,
                 &anki_url,
-                &build_create_model_request(),
+                &build_create_deck_request(&config.deck_name),
             )
-            .await;
-
-            send_anki_request(&client, &anki_url, &build_create_deck_request()).await?;
+            .await?;
 
             // Upload media files (read bytes and send as base64)
             for es in &sentences {
-                if let Some(screenshot_path) = &es.screenshot_path {
-                    let filename = std::path::Path::new(screenshot_path)
-                        .file_name()
-                        .and_then(|f| f.to_str())
-                        .unwrap_or("screenshot.jpg");
-                    match read_file_base64(screenshot_path).await {
-                        Ok(data) => {
-                            let req = build_store_media_request(filename, &data);
-                            send_anki_request(&client, &anki_url, &req).await?;
+                if config.field_image.is_some() {
+                    if let Some(screenshot_path) = &es.screenshot_path {
+                        let filename = std::path::Path::new(screenshot_path)
+                            .file_name()
+                            .and_then(|f| f.to_str())
+                            .unwrap_or("screenshot.jpg");
+                        match read_file_base64(screenshot_path).await {
+                            Ok(data) => {
+                                let req = build_store_media_request(filename, &data);
+                                send_anki_request(&client, &anki_url, &req).await?;
+                            }
+                            Err(e) => warn!(path = screenshot_path, error = %e, "skipping screenshot upload"),
                         }
-                        Err(e) => warn!(path = screenshot_path, error = %e, "skipping screenshot upload"),
                     }
                 }
 
-                if let Some(audio_clip_path) = &es.audio_clip_path {
-                    let filename = std::path::Path::new(audio_clip_path)
-                        .file_name()
-                        .and_then(|f| f.to_str())
-                        .unwrap_or("clip.mp3");
-                    match read_file_base64(audio_clip_path).await {
-                        Ok(data) => {
-                            let req = build_store_media_request(filename, &data);
-                            send_anki_request(&client, &anki_url, &req).await?;
+                if config.field_audio.is_some() {
+                    if let Some(audio_clip_path) = &es.audio_clip_path {
+                        let filename = std::path::Path::new(audio_clip_path)
+                            .file_name()
+                            .and_then(|f| f.to_str())
+                            .unwrap_or("clip.mp3");
+                        match read_file_base64(audio_clip_path).await {
+                            Ok(data) => {
+                                let req = build_store_media_request(filename, &data);
+                                send_anki_request(&client, &anki_url, &req).await?;
+                            }
+                            Err(e) => warn!(path = audio_clip_path, error = %e, "skipping audio clip upload"),
                         }
-                        Err(e) => warn!(path = audio_clip_path, error = %e, "skipping audio clip upload"),
                     }
                 }
             }
@@ -282,7 +348,7 @@ impl AnkiExporter for AnkiConnectExporter {
                 .collect();
 
             // Add notes
-            let add_notes_req = build_add_notes_request(&note_data);
+            let add_notes_req = build_add_notes_request(&note_data, &config);
             debug!(request = %add_notes_req, "sending addNotes to AnkiConnect");
             send_anki_request(&client, &anki_url, &add_notes_req).await?;
 
@@ -295,8 +361,13 @@ impl AnkiExporter for AnkiConnectExporter {
 mod tests {
     use super::*;
 
+    fn default_config() -> AnkiConfig {
+        AnkiConfig::default()
+    }
+
     #[test]
     fn build_add_notes_request_structure() {
+        let config = default_config();
         let notes = vec![
             NoteData {
                 sentence_text: "テスト文".into(),
@@ -316,7 +387,7 @@ mod tests {
             },
         ];
 
-        let request = build_add_notes_request(&notes);
+        let request = build_add_notes_request(&notes, &config);
 
         assert_eq!(request["action"], "addNotes");
         assert_eq!(request["version"], 6);
@@ -324,8 +395,8 @@ mod tests {
         let result_notes = request["params"]["notes"].as_array().unwrap();
         assert_eq!(result_notes.len(), 2);
 
-        assert_eq!(result_notes[0]["deckName"], DECK_NAME);
-        assert_eq!(result_notes[0]["modelName"], MODEL_NAME);
+        assert_eq!(result_notes[0]["deckName"], "Japanese");
+        assert_eq!(result_notes[0]["modelName"], "Japanese sentences");
         assert_eq!(result_notes[0]["fields"]["SentKanji"], "テスト文");
         assert_eq!(
             result_notes[0]["fields"]["Image"],
@@ -347,6 +418,71 @@ mod tests {
     }
 
     #[test]
+    fn build_add_notes_skips_unmapped_fields() {
+        let config = AnkiConfig {
+            model_name: "Minimal".into(),
+            deck_name: "Test".into(),
+            field_vocab: Some("Word".into()),
+            field_sentence: Some("Sentence".into()),
+            field_definition: None,
+            field_image: None,
+            field_audio: None,
+            field_source: None,
+        };
+
+        let notes = vec![NoteData {
+            sentence_text: "テスト".into(),
+            vocab_kanji: "テスト".into(),
+            vocab_def: "test".into(),
+            source: "src".into(),
+            screenshot_filename: Some("img.jpg".into()),
+            audio_clip_filename: Some("clip.mp3".into()),
+        }];
+
+        let request = build_add_notes_request(&notes, &config);
+        let fields = &request["params"]["notes"][0]["fields"];
+
+        assert_eq!(fields["Word"], "テスト");
+        assert_eq!(fields["Sentence"], "テスト");
+        assert!(fields.get("VocabDef").is_none());
+        assert!(fields.get("Image").is_none());
+        assert!(fields.get("SentAudio").is_none());
+        assert!(fields.get("Document").is_none());
+    }
+
+    #[test]
+    fn build_add_notes_custom_field_names() {
+        let config = AnkiConfig {
+            model_name: "Custom".into(),
+            deck_name: "MyDeck".into(),
+            field_vocab: Some("Expression".into()),
+            field_definition: Some("Meaning".into()),
+            field_sentence: Some("Context".into()),
+            field_image: Some("Screenshot".into()),
+            field_audio: Some("Audio".into()),
+            field_source: Some("Origin".into()),
+        };
+
+        let notes = vec![NoteData {
+            sentence_text: "文".into(),
+            vocab_kanji: "語".into(),
+            vocab_def: "def".into(),
+            source: "src".into(),
+            screenshot_filename: None,
+            audio_clip_filename: None,
+        }];
+
+        let request = build_add_notes_request(&notes, &config);
+        let note = &request["params"]["notes"][0];
+
+        assert_eq!(note["modelName"], "Custom");
+        assert_eq!(note["deckName"], "MyDeck");
+        assert_eq!(note["fields"]["Expression"], "語");
+        assert_eq!(note["fields"]["Meaning"], "def");
+        assert_eq!(note["fields"]["Context"], "文");
+    }
+
+    #[test]
     fn build_store_media_request_structure() {
         let req = build_store_media_request("test.jpg", "aGVsbG8=");
         assert_eq!(req["action"], "storeMediaFile");
@@ -358,7 +494,8 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires Anki + AnkiConnect running"]
     async fn anki_connect_integration() {
-        let exporter = AnkiConnectExporter::new("http://localhost:8765".into());
+        let exporter =
+            AnkiConnectExporter::new("http://localhost:8765".into(), AnkiConfig::default());
 
         let sentences = vec![ExportSentence {
             sentence: Sentence {

@@ -1520,6 +1520,7 @@ dependencies = [
  "axum",
  "axum-test",
  "base64",
+ "dotenvy",
  "lindera",
  "mockall",
  "reqwest 0.12.28",

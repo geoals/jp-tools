@@ -1,3 +1,5 @@
 /target
 /audio/
+/media/
 jp-tools.db
+.env

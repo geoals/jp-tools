@@ -66,19 +66,36 @@ cargo test                       # unit + integration (mocked)
 cargo test -- --ignored          # real subprocess tests (need yt-dlp, whisper, Anki)
 ```
 
-## Config (env vars)
+## Config
+
+Configuration via environment variables. Loaded from `.env` automatically via `dotenvy`. Copy `.env.example` to `.env` and adjust.
 
 | Variable | Default |
 |---|---|
 | `JP_TOOLS_DB_PATH` | `jp-tools.db` |
 | `JP_TOOLS_AUDIO_DIR` | `audio` |
+| `JP_TOOLS_MEDIA_DIR` | `media` |
 | `JP_TOOLS_LISTEN_ADDR` | `0.0.0.0:3000` |
-| `JP_TOOLS_ANKI_URL` | `http://localhost:8765` |
 | `JP_TOOLS_TRANSCRIBE_SCRIPT` | `scripts/transcribe.py` |
 | `JP_TOOLS_WHISPER_CPU_THREADS` | `0` (all cores) |
 | `JP_TOOLS_WHISPER_DEVICE` | `auto` (`cpu`, `cuda`) |
-| `JP_TOOLS_MEDIA_DIR` | `media` |
 | `JP_TOOLS_DICTIONARY_PATH` | *(none, optional)* |
+
+### Anki export config
+
+Model name, deck name, and field mapping are configurable to match an existing Anki note type. Defaults match the "Japanese sentences" model used by Yomitan. If the model doesn't exist in Anki, a basic fallback is created. Set a field var to empty string to skip it.
+
+| Variable | Default |
+|---|---|
+| `JP_TOOLS_ANKI_URL` | `http://localhost:8765` |
+| `JP_TOOLS_ANKI_MODEL` | `Japanese sentences` |
+| `JP_TOOLS_ANKI_DECK` | `Japanese` |
+| `JP_TOOLS_ANKI_FIELD_VOCAB` | `VocabKanji` |
+| `JP_TOOLS_ANKI_FIELD_DEFINITION` | `VocabDef` |
+| `JP_TOOLS_ANKI_FIELD_SENTENCE` | `SentKanji` |
+| `JP_TOOLS_ANKI_FIELD_IMAGE` | `Image` |
+| `JP_TOOLS_ANKI_FIELD_AUDIO` | `SentAudio` |
+| `JP_TOOLS_ANKI_FIELD_SOURCE` | `Document` |
 
 ## Testing
 

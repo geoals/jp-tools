@@ -14,6 +14,7 @@ use jp_tools::services::transcribe::WhisperWorker;
 
 #[tokio::main]
 async fn main() {
+    dotenvy::dotenv().ok();
     tracing_subscriber::fmt::init();
 
     let config = Config::from_env();
@@ -55,7 +56,7 @@ async fn main() {
         db: pool,
         downloader: Arc::new(YtDlpDownloader),
         transcriber: Arc::new(transcriber),
-        exporter: Arc::new(AnkiConnectExporter::new(config.anki_url)),
+        exporter: Arc::new(AnkiConnectExporter::new(config.anki_url, config.anki)),
         media_extractor: Arc::new(FfmpegMediaExtractor),
         tokenizer: Arc::new(tokenizer),
         dictionary,
