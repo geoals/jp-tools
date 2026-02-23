@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}{% if let Some(title) = video_title %}{{ title }}{% else %}{{ video_id }}{% endif %} — Sentence Mining{% endblock %}
+{% block title %}{% if let Some(title) = video_title %}{{ title }}{% else %}{{ video_id }}{% endif %}{% endblock %}
 
 {% block content %}
 {% if let Some(title) = video_title %}
-<h1>{{ title }}</h1>
+<h1 id="page-title">{{ title }}</h1>
 {% else %}
-<h1>{{ video_id }}</h1>
+<h1 id="page-title">{{ video_id }}</h1>
 {% endif %}
 
 <div id="job-content">

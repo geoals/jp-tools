@@ -66,6 +66,7 @@ struct VideoPageTemplate {
 struct VideoContentFragmentTemplate {
     video_id: String,
     job_id: i64,
+    video_title: Option<String>,
     status: String,
     is_done: bool,
     is_terminal: bool,
@@ -246,6 +247,7 @@ pub async fn video_status_fragment(
     let template = VideoContentFragmentTemplate {
         video_id,
         job_id: job.id,
+        video_title: job.video_title,
         status: job.status.as_str().to_string(),
         is_done,
         is_terminal,

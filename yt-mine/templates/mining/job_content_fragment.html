@@ -1,3 +1,7 @@
+{% if let Some(title) = video_title %}
+<h1 id="page-title" hx-swap-oob="true">{{ title }}</h1>
+<script>document.title = "{{ title }}";</script>
+{% endif %}
 {% if !is_terminal %}
 <div class="status"
      hx-get="/{{ video_id }}/status"
