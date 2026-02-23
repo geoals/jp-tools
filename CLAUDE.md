@@ -28,7 +28,10 @@ src/
     export.rs         — AnkiExporter trait, AnkiConnectExporter (HTTP to localhost:8765)
     media.rs          — MediaExtractor trait, FfmpegMediaExtractor (screenshots + audio clips)
     tokenize.rs       — Tokenizer trait, LinderaTokenizer (UniDic, morphological analysis)
-    dictionary.rs     — Dictionary struct, loads Yomitan zip files, exact-match lookup
+    dictionary/
+      mod.rs          — Dictionary struct, loading, parsing, title/slug, wrap_definitions
+      html.rs         — structured_content_to_html, html_escape, camel_to_kebab, render_style
+      tests.rs        — all dictionary + HTML conversion tests
   bin/
     tokenize.rs       — CLI tool for testing tokenization output
 scripts/
@@ -54,7 +57,17 @@ Current `is_content_word` POS filter: 名詞, 動詞, 形容詞, 形状詞, 副�
 
 ### Dictionary lookup
 
-Loads a Yomitan-format zip file. Lookup is exact match on headword (HashMap). The target word sent from the UI is the token's `base_form` (dictionary form from UniDic). If no match, VocabDef is left empty on the Anki card.
+Loads one or more Yomitan-format zip files. Lookup is exact match on headword (HashMap). The target word sent from the UI is the token's `base_form` (dictionary form from UniDic). If no match in any dictionary, VocabDef is left empty on the Anki card.
+
+Multiple dictionaries are supported — results from each are concatenated in the VocabDef field, each wrapped with title/body divs for per-dictionary CSS styling.
+
+Pitch accent data is read from `term_meta_bank_*.json` files inside Yomitan zips. Entries where the second element is `"pitch"` are parsed; `"freq"` and other meta types are skipped. On export, VocabFurigana uses Anki bracket notation (`食べる[たべる]`) and VocabPitchNum is the downstep position (e.g. `0`, `2`, or `0,3` for multiple accents). Both fields use the first dictionary that provides the data.
+
+### Structured-content HTML conversion
+
+Yomitan structured-content JSON (lists, ruby text, example sentences, links) is converted to semantic HTML by `structured_content_to_html()` in `dictionary/html.rs`. The conversion is a recursive descent that handles strings, arrays, tag objects with attributes (lang, title, href, data-*, style), void elements (br), and skips images. Styling is separated from markup — the HTML uses `data-content`/`data-class` attributes that can be targeted by CSS in the Anki card template.
+
+Each dictionary's definitions are wrapped with `<div class="dict-{slug}-title">` and `<div class="dict-{slug}-body">` where the slug is derived from the dictionary's `index.json` title via `css_slug()`. This allows per-dictionary styling in Anki (e.g. different colors for JE vs JJ dictionaries).
 
 ## Build & run
 
@@ -79,7 +92,8 @@ Configuration via environment variables. Loaded from `.env` automatically via `d
 | `JP_TOOLS_TRANSCRIBE_SCRIPT` | `scripts/transcribe.py` |
 | `JP_TOOLS_WHISPER_CPU_THREADS` | `0` (all cores) |
 | `JP_TOOLS_WHISPER_DEVICE` | `auto` (`cpu`, `cuda`) |
-| `JP_TOOLS_DICTIONARY_PATH` | *(none, optional)* |
+| `JP_TOOLS_DICTIONARY_PATHS` | *(none, optional)* — comma-separated list of Yomitan zip files |
+| `JP_TOOLS_DICTIONARY_PATH` | *(legacy)* — single path, fallback if `_PATHS` not set |
 
 ### Anki export config
 
@@ -96,6 +110,8 @@ Model name, deck name, and field mapping are configurable to match an existing A
 | `JP_TOOLS_ANKI_FIELD_IMAGE` | `Image` |
 | `JP_TOOLS_ANKI_FIELD_AUDIO` | `SentAudio` |
 | `JP_TOOLS_ANKI_FIELD_SOURCE` | `Document` |
+| `JP_TOOLS_ANKI_FIELD_FURIGANA` | `VocabFurigana` |
+| `JP_TOOLS_ANKI_FIELD_PITCH_NUM` | `VocabPitchNum` |
 
 ## Testing
 

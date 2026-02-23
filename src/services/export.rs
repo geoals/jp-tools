@@ -20,6 +20,12 @@ pub struct ExportSentence {
     pub target_word: Option<String>,
     /// Dictionary definition of the target word, if found.
     pub definition: Option<String>,
+    /// Anki bracket furigana notation, e.g. `隔週[かくしゅう]`.
+    pub vocab_furigana: Option<String>,
+    /// Pitch accent downstep position(s), e.g. `"0"` or `"0,3"`.
+    pub vocab_pitch_num: Option<String>,
+    /// Sentence text with the target word wrapped in `<b></b>` for Anki display.
+    pub sentence_html: Option<String>,
 }
 
 #[cfg_attr(test, mockall::automock)]
@@ -45,6 +51,8 @@ pub struct NoteData {
     pub source: String,
     pub screenshot_filename: Option<String>,
     pub audio_clip_filename: Option<String>,
+    pub vocab_furigana: String,
+    pub vocab_pitch_num: String,
 }
 
 /// Build the AnkiConnect `addNotes` request body using the configured field mapping.
@@ -83,6 +91,12 @@ pub fn build_add_notes_request(notes: &[NoteData], config: &AnkiConfig) -> Value
             if let Some(ref f) = config.field_source {
                 fields.insert(f.clone(), json!(n.source));
             }
+            if let Some(ref f) = config.field_furigana {
+                fields.insert(f.clone(), json!(n.vocab_furigana));
+            }
+            if let Some(ref f) = config.field_pitch_num {
+                fields.insert(f.clone(), json!(n.vocab_pitch_num));
+            }
 
             json!({
                 "deckName": config.deck_name,
@@ -119,6 +133,8 @@ fn build_create_model_request(config: &AnkiConfig) -> Value {
         config.field_image.as_deref(),
         config.field_audio.as_deref(),
         config.field_source.as_deref(),
+        config.field_furigana.as_deref(),
+        config.field_pitch_num.as_deref(),
     ]
     .into_iter()
     .flatten()
@@ -327,7 +343,7 @@ impl AnkiExporter for AnkiConnectExporter {
                         .unwrap_or_else(|| es.sentence.text.clone());
                     let vocab_def = es.definition.clone().unwrap_or_default();
                     NoteData {
-                        sentence_text: es.sentence.text.clone(),
+                        sentence_text: es.sentence_html.clone().unwrap_or_else(|| es.sentence.text.clone()),
                         vocab_kanji,
                         vocab_def,
                         source: format!("{source} ({timestamp})"),
@@ -343,6 +359,8 @@ impl AnkiExporter for AnkiConnectExporter {
                                 .and_then(|f| f.to_str())
                                 .map(|s| s.to_owned())
                         }),
+                        vocab_furigana: es.vocab_furigana.clone().unwrap_or_default(),
+                        vocab_pitch_num: es.vocab_pitch_num.clone().unwrap_or_default(),
                     }
                 })
                 .collect();
@@ -376,6 +394,8 @@ mod tests {
                 source: "Test Video (0:05)".into(),
                 screenshot_filename: Some("jp-tools_1_1.jpg".into()),
                 audio_clip_filename: Some("jp-tools_1_1.mp3".into()),
+                vocab_furigana: "テスト".into(),
+                vocab_pitch_num: "0".into(),
             },
             NoteData {
                 sentence_text: "もう一つ".into(),
@@ -384,6 +404,8 @@ mod tests {
                 source: "Test Video (1:05)".into(),
                 screenshot_filename: None,
                 audio_clip_filename: None,
+                vocab_furigana: "".into(),
+                vocab_pitch_num: "".into(),
             },
         ];
 
@@ -409,12 +431,16 @@ mod tests {
         assert_eq!(result_notes[0]["fields"]["Document"], "Test Video (0:05)");
         assert_eq!(result_notes[0]["fields"]["VocabKanji"], "テスト");
         assert_eq!(result_notes[0]["fields"]["VocabDef"], "test");
+        assert_eq!(result_notes[0]["fields"]["VocabFurigana"], "テスト");
+        assert_eq!(result_notes[0]["fields"]["VocabPitchNum"], "0");
 
         // Second note: no media, no target word
         assert_eq!(result_notes[1]["fields"]["Image"], "");
         assert_eq!(result_notes[1]["fields"]["SentAudio"], "");
         assert_eq!(result_notes[1]["fields"]["VocabKanji"], "もう一つ");
         assert_eq!(result_notes[1]["fields"]["VocabDef"], "");
+        assert_eq!(result_notes[1]["fields"]["VocabFurigana"], "");
+        assert_eq!(result_notes[1]["fields"]["VocabPitchNum"], "");
     }
 
     #[test]
@@ -428,6 +454,8 @@ mod tests {
             field_image: None,
             field_audio: None,
             field_source: None,
+            field_furigana: None,
+            field_pitch_num: None,
         };
 
         let notes = vec![NoteData {
@@ -437,6 +465,8 @@ mod tests {
             source: "src".into(),
             screenshot_filename: Some("img.jpg".into()),
             audio_clip_filename: Some("clip.mp3".into()),
+            vocab_furigana: "テスト".into(),
+            vocab_pitch_num: "".into(),
         }];
 
         let request = build_add_notes_request(&notes, &config);
@@ -448,6 +478,8 @@ mod tests {
         assert!(fields.get("Image").is_none());
         assert!(fields.get("SentAudio").is_none());
         assert!(fields.get("Document").is_none());
+        assert!(fields.get("VocabFurigana").is_none());
+        assert!(fields.get("VocabPitchNum").is_none());
     }
 
     #[test]
@@ -461,6 +493,8 @@ mod tests {
             field_image: Some("Screenshot".into()),
             field_audio: Some("Audio".into()),
             field_source: Some("Origin".into()),
+            field_furigana: Some("Furigana".into()),
+            field_pitch_num: Some("PitchNum".into()),
         };
 
         let notes = vec![NoteData {
@@ -470,6 +504,8 @@ mod tests {
             source: "src".into(),
             screenshot_filename: None,
             audio_clip_filename: None,
+            vocab_furigana: "語[ご]".into(),
+            vocab_pitch_num: "1".into(),
         }];
 
         let request = build_add_notes_request(&notes, &config);
@@ -480,6 +516,8 @@ mod tests {
         assert_eq!(note["fields"]["Expression"], "語");
         assert_eq!(note["fields"]["Meaning"], "def");
         assert_eq!(note["fields"]["Context"], "文");
+        assert_eq!(note["fields"]["Furigana"], "語[ご]");
+        assert_eq!(note["fields"]["PitchNum"], "1");
     }
 
     #[test]
@@ -510,6 +548,9 @@ mod tests {
             audio_clip_path: None,
             target_word: None,
             definition: None,
+            vocab_furigana: None,
+            vocab_pitch_num: None,
+            sentence_html: None,
         }];
 
         let count = exporter

@@ -507,6 +507,53 @@ fn export_form_parses_target_words() {
 }
 
 #[test]
+fn bold_target_wraps_matching_token() {
+    let tokens = vec![
+        Token { surface: "東京".into(), base_form: "東京".into(), reading: "トウキョウ".into(), pos: "名詞".into() },
+        Token { surface: "に".into(), base_form: "に".into(), reading: "ニ".into(), pos: "助詞".into() },
+        Token { surface: "行く".into(), base_form: "行く".into(), reading: "イク".into(), pos: "動詞".into() },
+    ];
+    assert_eq!(
+        bold_target_in_sentence(&tokens, "行く"),
+        Some("東京に<b>行く</b>".into()),
+    );
+}
+
+#[test]
+fn bold_target_wraps_conjugated_surface() {
+    let tokens = vec![
+        Token { surface: "食べ".into(), base_form: "食べる".into(), reading: "タベ".into(), pos: "動詞".into() },
+        Token { surface: "た".into(), base_form: "た".into(), reading: "タ".into(), pos: "助動詞".into() },
+    ];
+    assert_eq!(
+        bold_target_in_sentence(&tokens, "食べる"),
+        Some("<b>食べ</b>た".into()),
+    );
+}
+
+#[test]
+fn bold_target_no_match_returns_none() {
+    let tokens = vec![
+        Token { surface: "テスト".into(), base_form: "テスト".into(), reading: "テスト".into(), pos: "名詞".into() },
+    ];
+    assert_eq!(bold_target_in_sentence(&tokens, "別の語"), None);
+}
+
+#[test]
+fn bold_target_wraps_multiple_occurrences() {
+    let tokens = vec![
+        Token { surface: "食べ".into(), base_form: "食べる".into(), reading: "タベ".into(), pos: "動詞".into() },
+        Token { surface: "て".into(), base_form: "て".into(), reading: "テ".into(), pos: "助詞".into() },
+        Token { surface: "食べ".into(), base_form: "食べる".into(), reading: "タベ".into(), pos: "動詞".into() },
+        Token { surface: "た".into(), base_form: "た".into(), reading: "タ".into(), pos: "助動詞".into() },
+    ];
+    assert_eq!(
+        bold_target_in_sentence(&tokens, "食べる"),
+        Some("<b>食べ</b>て<b>食べ</b>た".into()),
+    );
+}
+
+#[test]
 fn target_word_map_skips_empty_words() {
     let form = ExportForm {
         job_id: 1,
@@ -520,7 +567,7 @@ fn target_word_map_skips_empty_words() {
 
 #[tokio::test]
 async fn export_with_target_word_and_dictionary_populates_vocab() {
-    use crate::services::dictionary::{Dictionary, DictionaryEntry};
+    use crate::services::dictionary::{Dictionary, DictionaryEntry, PitchEntry};
     use crate::services::export::ExportSentence;
 
     let mut media_extractor = MockMediaExtractor::new();
@@ -539,18 +586,39 @@ async fn export_with_target_word_and_dictionary_populates_vocab() {
             s.target_word.as_deref() == Some("食べる")
                 && s.definition.as_deref()
                     == Some(r#"<div class="dict-unknown-title">Unknown</div><div class="dict-unknown-body">to eat; to consume</div>"#)
+                && s.vocab_furigana.as_deref() == Some("食べる[たべる]")
+                && s.vocab_pitch_num.as_deref() == Some("2")
+                && s.sentence_html.as_deref() == Some("<b>食べる</b>")
         })
         .returning(|sentences, _source| {
             let count = sentences.len();
             Box::pin(async move { Ok(count) })
         });
 
-    let dict = Dictionary::from_entries(vec![DictionaryEntry {
+    let mut dict = Dictionary::from_entries(vec![DictionaryEntry {
         term: "食べる".into(),
         reading: "たべる".into(),
         definitions: vec!["to eat".into(), "to consume".into()],
         score: 100,
     }]);
+    dict.set_pitch(vec![(
+        "食べる".into(),
+        PitchEntry {
+            reading: "たべる".into(),
+            positions: vec![2],
+        },
+    )]);
+
+    // Tokenizer that returns "食べる" as a single verb token (realistic for this input)
+    let mut tokenizer = MockTokenizer::new();
+    tokenizer.expect_tokenize().returning(|_text| {
+        Ok(vec![Token {
+            surface: "食べる".into(),
+            base_form: "食べる".into(),
+            reading: "タベル".into(),
+            pos: "動詞".into(),
+        }])
+    });
 
     let pool = db::create_pool("sqlite::memory:").await.unwrap();
     let state = AppState {
@@ -559,7 +627,7 @@ async fn export_with_target_word_and_dictionary_populates_vocab() {
         transcriber: Arc::new(MockTranscriber::new()),
         exporter: Arc::new(exporter),
         media_extractor: Arc::new(media_extractor),
-        tokenizer: Arc::new(mock_tokenizer()),
+        tokenizer: Arc::new(tokenizer),
         dictionaries: vec![Arc::new(dict)],
         audio_dir: "/tmp".into(),
         media_dir: "/tmp/media".into(),

@@ -20,6 +20,7 @@ base64 = "0.22.1"
 lindera = { version = "2", features = ["embed-unidic"] }
 dotenvy = "0.15"
 zip = "2"
+flate2 = "1"
 
 [dev-dependencies]
 axum-test = "18"

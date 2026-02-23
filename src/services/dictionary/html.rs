@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde_json::Value;
 
 /// Escape special HTML characters in text content.
@@ -50,54 +52,126 @@ pub(crate) fn render_style(obj: &serde_json::Map<String, Value>) -> String {
 }
 
 /// Convert Yomitan structured-content JSON to an HTML string.
-pub(crate) fn structured_content_to_html(value: &Value) -> String {
-    let mut buf = String::new();
-    write_html(value, &mut buf);
-    buf
-}
-
-fn write_html(value: &Value, buf: &mut String) {
-    match value {
-        Value::String(s) => buf.push_str(&html_escape(s)),
-        Value::Array(arr) => {
-            for child in arr {
-                write_html(child, buf);
-            }
-        }
-        Value::Object(obj) => write_html_object(obj, buf),
-        _ => {}
-    }
-}
-
-fn write_html_object(obj: &serde_json::Map<String, Value>, buf: &mut String) {
-    let tag = match obj.get("tag").and_then(|t| t.as_str()) {
-        Some("img") => return,
-        Some("br") => {
-            buf.push_str("<br>");
-            return;
-        }
-        Some(t) => t,
-        None => {
-            // No tag — just recurse into content
-            if let Some(content) = obj.get("content") {
-                write_html(content, buf);
-            }
-            return;
-        }
+/// The `images` map provides pre-extracted image data URIs keyed by zip path,
+/// used to embed `img` tags inline rather than skipping them.
+pub(crate) fn structured_content_to_html(
+    value: &Value,
+    images: &HashMap<String, String>,
+) -> String {
+    let mut writer = HtmlWriter {
+        buf: String::new(),
+        images,
     };
+    writer.write(value);
+    writer.buf
+}
 
-    buf.push('<');
-    buf.push_str(tag);
-    write_attributes(obj, buf);
-    buf.push('>');
+/// Recursive HTML writer that carries an image map for embedding `img` tags.
+struct HtmlWriter<'a> {
+    buf: String,
+    images: &'a HashMap<String, String>,
+}
 
-    if let Some(content) = obj.get("content") {
-        write_html(content, buf);
+impl HtmlWriter<'_> {
+    fn write(&mut self, value: &Value) {
+        match value {
+            Value::String(s) => self.buf.push_str(&html_escape(s)),
+            Value::Array(arr) => {
+                for child in arr {
+                    self.write(child);
+                }
+            }
+            Value::Object(obj) => self.write_object(obj),
+            _ => {}
+        }
     }
 
-    buf.push_str("</");
-    buf.push_str(tag);
-    buf.push('>');
+    fn write_object(&mut self, obj: &serde_json::Map<String, Value>) {
+        let tag = match obj.get("tag").and_then(|t| t.as_str()) {
+            Some("img") => return self.write_img(obj),
+            Some("br") => {
+                self.buf.push_str("<br>");
+                return;
+            }
+            Some(t) => t,
+            None => {
+                // No tag — just recurse into content
+                if let Some(content) = obj.get("content") {
+                    self.write(content);
+                }
+                return;
+            }
+        };
+
+        self.buf.push('<');
+        self.buf.push_str(tag);
+        write_attributes(obj, &mut self.buf);
+        self.buf.push('>');
+
+        if let Some(content) = obj.get("content") {
+            self.write(content);
+        }
+
+        self.buf.push_str("</");
+        self.buf.push_str(tag);
+        self.buf.push('>');
+    }
+
+    /// Render an `img` tag. If the image path exists in the pre-extracted image map,
+    /// emit an `<img>` with an inline data URI. Otherwise skip (same as before).
+    fn write_img(&mut self, obj: &serde_json::Map<String, Value>) {
+        let path = match obj.get("path").and_then(|p| p.as_str()) {
+            Some(p) => p,
+            None => return,
+        };
+        let data_uri = match self.images.get(path) {
+            Some(uri) => uri,
+            None => return,
+        };
+
+        self.buf.push_str("<img src=\"");
+        self.buf.push_str(data_uri);
+        self.buf.push('"');
+
+        // Build style from width/height/sizeUnits
+        let units = obj
+            .get("sizeUnits")
+            .and_then(|v| v.as_str())
+            .unwrap_or("em");
+        let width = obj.get("width").and_then(|v| v.as_f64());
+        let height = obj.get("height").and_then(|v| v.as_f64());
+
+        if width.is_some() || height.is_some() {
+            self.buf.push_str(" style=\"");
+            let mut first = true;
+            if let Some(w) = width {
+                write_dimension(&mut self.buf, "width", w, units);
+                first = false;
+            }
+            if let Some(h) = height {
+                if !first {
+                    self.buf.push(';');
+                }
+                write_dimension(&mut self.buf, "height", h, units);
+            }
+            self.buf.push('"');
+        }
+
+        self.buf.push('>');
+    }
+}
+
+/// Format a CSS dimension value, omitting the decimal point for whole numbers.
+fn write_dimension(buf: &mut String, prop: &str, value: f64, units: &str) {
+    buf.push_str(prop);
+    buf.push(':');
+    if value.fract() == 0.0 {
+        // Write as integer to avoid "1.0em" → "1em"
+        buf.push_str(&format!("{}", value as i64));
+    } else {
+        buf.push_str(&format!("{value}"));
+    }
+    buf.push_str(units);
 }
 
 /// Write HTML attributes in deterministic order: lang, title, href, data-* (sorted), style.

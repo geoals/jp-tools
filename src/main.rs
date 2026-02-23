@@ -41,17 +41,14 @@ async fn main() {
 
     let tokenizer = LinderaTokenizer::new().expect("failed to initialize tokenizer");
 
-    let dictionaries: Vec<Arc<Dictionary>> = config
-        .dictionary_paths
-        .iter()
-        .map(|path| {
-            info!(path, "loading dictionary");
-            Arc::new(
-                Dictionary::load_from_zip(std::path::Path::new(path))
-                    .expect("failed to load dictionary"),
-            )
-        })
-        .collect();
+    let mut dictionaries: Vec<Arc<Dictionary>> = Vec::new();
+    for path in &config.dictionary_paths {
+        info!(path, "loading dictionary");
+        let dict = Dictionary::load_or_import(&pool, std::path::Path::new(path))
+            .await
+            .expect("failed to load dictionary");
+        dictionaries.push(Arc::new(dict));
+    }
     if dictionaries.is_empty() {
         info!("no dictionaries configured (set JP_TOOLS_DICTIONARY_PATHS to enable definitions)");
     }

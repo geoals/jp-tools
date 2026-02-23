@@ -13,7 +13,8 @@ use crate::models::JobStatus;
 use crate::services::export::ExportSentence;
 use crate::services::media::media_filenames;
 use crate::services::pipeline;
-use crate::services::tokenize::is_content_word;
+use crate::services::dictionary::format_furigana;
+use crate::services::tokenize::{Token, is_content_word};
 
 /// Form extractor that uses `serde_html_form` to handle repeated keys
 /// (e.g. checkboxes: `sentence_ids=1&sentence_ids=2` -> `Vec<i64>`).
@@ -303,17 +304,47 @@ pub async fn export_sentences(
 
         let target_word = target_word_map.get(&sentence.id).cloned();
 
-        let definition = target_word.as_ref().and_then(|word| {
-            let parts: Vec<String> = state
-                .dictionaries
-                .iter()
-                .filter_map(|dict| {
-                    let entry = dict.lookup(word).first()?;
+        let mut definition = None;
+        let mut reading = String::new();
+        let mut vocab_pitch_num = None;
+
+        if let Some(word) = &target_word {
+            let mut def_parts = Vec::new();
+            for dict in &state.dictionaries {
+                if let Some(entry) = dict.lookup(word).first() {
                     let joined = entry.definitions.join("; ");
-                    Some(dict.wrap_definitions(&joined))
-                })
-                .collect();
-            if parts.is_empty() { None } else { Some(parts.join("")) }
+                    def_parts.push(dict.wrap_definitions(&joined));
+                    if reading.is_empty() && !entry.reading.is_empty() {
+                        reading = entry.reading.clone();
+                    }
+                }
+                if vocab_pitch_num.is_none() {
+                    let pitch = dict.lookup_pitch(word);
+                    if !pitch.is_empty() {
+                        let nums: Vec<String> = pitch[0]
+                            .positions
+                            .iter()
+                            .map(|p| p.to_string())
+                            .collect();
+                        vocab_pitch_num = Some(nums.join(","));
+                    }
+                }
+            }
+            if !def_parts.is_empty() {
+                definition = Some(def_parts.join(""));
+            }
+        }
+
+        let vocab_furigana = target_word
+            .as_ref()
+            .map(|word| format_furigana(word, &reading));
+
+        let sentence_html = target_word.as_ref().and_then(|word| {
+            state
+                .tokenizer
+                .tokenize(&sentence.text)
+                .ok()
+                .and_then(|tokens| bold_target_in_sentence(&tokens, word))
         });
 
         export_sentences.push(ExportSentence {
@@ -322,6 +353,9 @@ pub async fn export_sentences(
             audio_clip_path: audio_result,
             target_word,
             definition,
+            vocab_furigana,
+            vocab_pitch_num,
+            sentence_html,
         });
     }
 
@@ -375,6 +409,28 @@ pub async fn sentence_audio(
         bytes,
     )
         .into_response())
+}
+
+/// Build sentence HTML with the target word's surface form(s) wrapped in `<b></b>`.
+///
+/// Matches tokens whose `base_form` equals the target, so conjugated forms are
+/// handled correctly (e.g. surface "食べ" with base_form "食べる").
+/// Returns `None` if no token matches, so callers can fall back to plain text.
+fn bold_target_in_sentence(tokens: &[Token], target_base_form: &str) -> Option<String> {
+    if !tokens.iter().any(|t| t.base_form == target_base_form) {
+        return None;
+    }
+    let mut result = String::new();
+    for token in tokens {
+        if token.base_form == target_base_form {
+            result.push_str("<b>");
+            result.push_str(&token.surface);
+            result.push_str("</b>");
+        } else {
+            result.push_str(&token.surface);
+        }
+    }
+    Some(result)
 }
 
 fn format_seconds(secs: f64) -> String {

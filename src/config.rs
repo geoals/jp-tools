@@ -33,6 +33,8 @@ pub struct AnkiConfig {
     pub field_image: Option<String>,
     pub field_audio: Option<String>,
     pub field_source: Option<String>,
+    pub field_furigana: Option<String>,
+    pub field_pitch_num: Option<String>,
 }
 
 impl Default for AnkiConfig {
@@ -46,6 +48,8 @@ impl Default for AnkiConfig {
             field_image: Some("Image".into()),
             field_audio: Some("SentAudio".into()),
             field_source: Some("Document".into()),
+            field_furigana: Some("VocabFurigana".into()),
+            field_pitch_num: Some("VocabPitchNum".into()),
         }
     }
 }
@@ -112,6 +116,14 @@ impl Config {
                 field_source: anki_field(
                     "JP_TOOLS_ANKI_FIELD_SOURCE",
                     anki_defaults.field_source.as_deref().unwrap_or(""),
+                ),
+                field_furigana: anki_field(
+                    "JP_TOOLS_ANKI_FIELD_FURIGANA",
+                    anki_defaults.field_furigana.as_deref().unwrap_or(""),
+                ),
+                field_pitch_num: anki_field(
+                    "JP_TOOLS_ANKI_FIELD_PITCH_NUM",
+                    anki_defaults.field_pitch_num.as_deref().unwrap_or(""),
                 ),
             },
         }
