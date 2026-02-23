@@ -31,8 +31,7 @@ pub async fn process_job(
         Ok(result) => result,
         Err(e) => {
             error!(job_id, error = %e, "download failed");
-            let msg = format!("Download failed: {e}");
-            db::update_job_status(&pool, job_id, &JobStatus::Error, Some(&msg))
+            db::update_job_status(&pool, job_id, &JobStatus::Error, Some("Download failed."))
                 .await
                 .ok();
             return;
@@ -62,8 +61,7 @@ pub async fn process_job(
         Ok(segments) => segments,
         Err(e) => {
             error!(job_id, error = %e, "transcription failed");
-            let msg = format!("Transcription failed: {e}");
-            db::update_job_status(&pool, job_id, &JobStatus::Error, Some(&msg))
+            db::update_job_status(&pool, job_id, &JobStatus::Error, Some("Transcription failed."))
                 .await
                 .ok();
             return;
@@ -73,8 +71,7 @@ pub async fn process_job(
     // Step 3: Store sentences
     if let Err(e) = db::insert_sentences(&pool, job_id, &segments).await {
         error!(job_id, error = %e, "failed to store sentences");
-        let msg = format!("Failed to store sentences: {e}");
-        db::update_job_status(&pool, job_id, &JobStatus::Error, Some(&msg))
+        db::update_job_status(&pool, job_id, &JobStatus::Error, Some("Failed to store results."))
             .await
             .ok();
         return;
@@ -173,7 +170,7 @@ mod tests {
 
         let job = db::get_job(&pool, job_id).await.unwrap().unwrap();
         assert_eq!(job.status, JobStatus::Error);
-        assert!(job.error_message.unwrap().contains("network error"));
+        assert_eq!(job.error_message.unwrap(), "Download failed.");
 
         let sentences = db::get_sentences_for_job(&pool, job_id).await.unwrap();
         assert!(sentences.is_empty());
@@ -215,7 +212,7 @@ mod tests {
         let job = db::get_job(&pool, job_id).await.unwrap().unwrap();
         assert_eq!(job.status, JobStatus::Error);
         assert_eq!(job.audio_path.as_deref(), Some("/tmp/audio.wav"));
-        assert!(job.error_message.unwrap().contains("model load failed"));
+        assert_eq!(job.error_message.unwrap(), "Transcription failed.");
 
         let sentences = db::get_sentences_for_job(&pool, job_id).await.unwrap();
         assert!(sentences.is_empty());

@@ -527,7 +527,7 @@ async fn video_page_error_shows_error_message() {
         &pool,
         job_id,
         &JobStatus::Error,
-        Some("yt-dlp not found in PATH"),
+        Some("Download failed."),
     )
     .await
     .unwrap();
@@ -536,8 +536,8 @@ async fn video_page_error_shows_error_message() {
     response.assert_status_ok();
     let body = response.text();
     assert!(
-        body.contains("yt-dlp not found in PATH"),
-        "should show the actual error message"
+        body.contains("Download failed."),
+        "should show user-facing error message"
     );
 }
 
