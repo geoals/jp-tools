@@ -4,4 +4,4 @@ Sentence mining tool for Japanese learners. Paste a YouTube URL, get transcribed
 
 ## Demo
 
-[Watch demo video](demo.mp4)
+[Screencast_20260223_091104.webm](https://github.com/user-attachments/assets/2c74e8d7-232b-41ff-bb5c-ce40f242cc48)
