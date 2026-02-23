@@ -50,7 +50,8 @@ struct SubmitTemplate;
 
 #[derive(askama::Template, askama_web::WebTemplate)]
 #[template(path = "mining/job_status.html")]
-struct JobPageTemplate {
+struct VideoPageTemplate {
+    video_id: String,
     job_id: i64,
     video_title: Option<String>,
     status: String,
@@ -62,7 +63,8 @@ struct JobPageTemplate {
 
 #[derive(askama::Template, askama_web::WebTemplate)]
 #[template(path = "mining/job_content_fragment.html")]
-struct JobContentFragmentTemplate {
+struct VideoContentFragmentTemplate {
+    video_id: String,
     job_id: i64,
     status: String,
     is_done: bool,
@@ -135,7 +137,7 @@ pub async fn submit_youtube(
     State(state): State<AppState>,
     Form(form): Form<SubmitForm>,
 ) -> Result<Response, AppError> {
-    use crate::services::download::is_valid_youtube_url;
+    use crate::services::download::{extract_video_id, is_valid_youtube_url};
 
     let url = form.url.trim().to_string();
     if url.is_empty() {
@@ -145,7 +147,15 @@ pub async fn submit_youtube(
         return Err(AppError::BadRequest("not a valid YouTube URL".into()));
     }
 
-    let job_id = db::create_job(&state.db, &url).await?;
+    let video_id = extract_video_id(&url)
+        .ok_or_else(|| AppError::BadRequest("could not extract video ID from URL".into()))?;
+
+    // Reuse existing non-error job for this video (deduplication)
+    if let Some(_existing) = db::get_job_by_video_id(&state.db, &video_id).await? {
+        return Ok(Redirect::to(&format!("/{video_id}")).into_response());
+    }
+
+    let job_id = db::create_job(&state.db, &url, &video_id).await?;
 
     let pool = state.db.clone();
     let downloader = Arc::clone(&state.downloader);
@@ -156,7 +166,7 @@ pub async fn submit_youtube(
         pipeline::process_job(pool, job_id, url, audio_dir, downloader, transcriber).await;
     });
 
-    Ok(Redirect::to(&format!("/mining/jobs/{job_id}")).into_response())
+    Ok(Redirect::to(&format!("/{video_id}")).into_response())
 }
 
 /// Build tokenized sentence views for display. Only fetches sentences for
@@ -196,18 +206,19 @@ async fn build_sentence_views(
         .collect())
 }
 
-pub async fn job_page(
+pub async fn video_page(
     State(state): State<AppState>,
-    Path(id): Path<i64>,
+    Path(video_id): Path<String>,
 ) -> Result<Response, AppError> {
-    let job = db::get_job(&state.db, id)
+    let job = db::get_job_by_video_id(&state.db, &video_id)
         .await?
         .ok_or(AppError::NotFound)?;
 
     let is_done = job.status == JobStatus::Done;
-    let sentence_views = build_sentence_views(&state, id, is_done).await?;
+    let sentence_views = build_sentence_views(&state, job.id, is_done).await?;
 
-    let template = JobPageTemplate {
+    let template = VideoPageTemplate {
+        video_id,
         job_id: job.id,
         video_title: job.video_title,
         status: job.status.as_str().to_string(),
@@ -220,19 +231,20 @@ pub async fn job_page(
     Ok(template.into_response())
 }
 
-pub async fn job_status_fragment(
+pub async fn video_status_fragment(
     State(state): State<AppState>,
-    Path(id): Path<i64>,
+    Path(video_id): Path<String>,
 ) -> Result<Response, AppError> {
-    let job = db::get_job(&state.db, id)
+    let job = db::get_job_by_video_id(&state.db, &video_id)
         .await?
         .ok_or(AppError::NotFound)?;
 
     let is_done = job.status == JobStatus::Done;
     let is_terminal = job.status.is_terminal();
-    let sentences = build_sentence_views(&state, id, is_done).await?;
+    let sentences = build_sentence_views(&state, job.id, is_done).await?;
 
-    let template = JobContentFragmentTemplate {
+    let template = VideoContentFragmentTemplate {
+        video_id,
         job_id: job.id,
         status: job.status.as_str().to_string(),
         is_done,
@@ -388,22 +400,22 @@ pub async fn export_sentences(
 
 pub async fn sentence_audio(
     State(state): State<AppState>,
-    Path((job_id, sentence_id)): Path<(i64, i64)>,
+    Path((video_id, sentence_id)): Path<(String, i64)>,
 ) -> Result<Response, AppError> {
-    let sentences = db::get_sentences_by_ids(&state.db, &[sentence_id]).await?;
-    let sentence = sentences.into_iter().next().ok_or(AppError::NotFound)?;
-    if sentence.job_id != job_id {
-        return Err(AppError::NotFound);
-    }
-
-    let job = db::get_job(&state.db, job_id)
+    let job = db::get_job_by_video_id(&state.db, &video_id)
         .await?
         .ok_or(AppError::NotFound)?;
+
+    let sentences = db::get_sentences_by_ids(&state.db, &[sentence_id]).await?;
+    let sentence = sentences.into_iter().next().ok_or(AppError::NotFound)?;
+    if sentence.job_id != job.id {
+        return Err(AppError::NotFound);
+    }
     let audio_path = job
         .audio_path
         .ok_or(AppError::BadRequest("no audio available".into()))?;
 
-    let (_, audio_filename) = media_filenames(job_id, sentence_id);
+    let (_, audio_filename) = media_filenames(job.id, sentence_id);
     let clip_path = format!("{}/{audio_filename}", state.media_dir);
 
     if !tokio::fs::try_exists(&clip_path).await.unwrap_or(false) {

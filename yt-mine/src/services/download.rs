@@ -42,6 +42,47 @@ pub fn is_valid_youtube_url(url: &str) -> bool {
     patterns.iter().any(|p| url.starts_with(p))
 }
 
+/// Extracts the YouTube video ID (11-char slug) from a URL.
+///
+/// Supports `youtube.com/watch?v=X`, `youtu.be/X`, and mobile/http variants.
+/// Returns `None` for non-YouTube URLs or URLs without a valid ID.
+pub fn extract_video_id(url: &str) -> Option<String> {
+    let url = url.trim();
+
+    // youtu.be/VIDEO_ID or youtu.be/VIDEO_ID?...
+    if let Some(rest) = url
+        .strip_prefix("https://youtu.be/")
+        .or_else(|| url.strip_prefix("http://youtu.be/"))
+    {
+        let id = rest.split(['?', '&', '/']).next()?;
+        return validate_video_id(id);
+    }
+
+    // youtube.com/watch?v=VIDEO_ID (with optional www./m. prefix, http/https)
+    if !is_valid_youtube_url(url) {
+        return None;
+    }
+    let query = url.split('?').nth(1)?;
+    for param in query.split('&') {
+        if let Some(value) = param.strip_prefix("v=") {
+            return validate_video_id(value);
+        }
+    }
+    None
+}
+
+fn validate_video_id(id: &str) -> Option<String> {
+    if id.len() == 11
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        Some(id.to_string())
+    } else {
+        None
+    }
+}
+
 pub struct YtDlpDownloader;
 
 impl AudioDownloader for YtDlpDownloader {
@@ -179,6 +220,60 @@ mod tests {
         ];
         for url in invalid {
             assert!(!is_valid_youtube_url(url), "should be invalid: {url}");
+        }
+    }
+
+    #[test]
+    fn extract_video_id_from_standard_url() {
+        assert_eq!(
+            extract_video_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+            Some("dQw4w9WgXcQ".into()),
+        );
+    }
+
+    #[test]
+    fn extract_video_id_from_short_url() {
+        assert_eq!(
+            extract_video_id("https://youtu.be/dQw4w9WgXcQ"),
+            Some("dQw4w9WgXcQ".into()),
+        );
+    }
+
+    #[test]
+    fn extract_video_id_from_mobile_url() {
+        assert_eq!(
+            extract_video_id("https://m.youtube.com/watch?v=dQw4w9WgXcQ"),
+            Some("dQw4w9WgXcQ".into()),
+        );
+    }
+
+    #[test]
+    fn extract_video_id_with_extra_params() {
+        assert_eq!(
+            extract_video_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf"),
+            Some("dQw4w9WgXcQ".into()),
+        );
+    }
+
+    #[test]
+    fn extract_video_id_from_short_url_with_query() {
+        assert_eq!(
+            extract_video_id("https://youtu.be/dQw4w9WgXcQ?t=42"),
+            Some("dQw4w9WgXcQ".into()),
+        );
+    }
+
+    #[test]
+    fn extract_video_id_returns_none_for_invalid_urls() {
+        let invalid = [
+            "https://example.com",
+            "https://vimeo.com/12345",
+            "not a url",
+            "",
+            "https://www.youtube.com/playlist?list=abc",
+        ];
+        for url in invalid {
+            assert_eq!(extract_video_id(url), None, "should be None: {url}");
         }
     }
 

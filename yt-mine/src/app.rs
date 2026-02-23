@@ -27,14 +27,14 @@ pub struct AppState {
 
 pub fn build_router(state: AppState) -> Router {
     Router::new()
-        .route("/mining", get(mining::submit_page))
+        .route("/", get(mining::submit_page))
         .route("/mining/youtube", post(mining::submit_youtube))
-        .route("/mining/jobs/{id}", get(mining::job_page))
-        .route("/mining/jobs/{id}/status", get(mining::job_status_fragment))
+        .route("/mining/export", post(mining::export_sentences))
+        .route("/{video_id}", get(mining::video_page))
+        .route("/{video_id}/status", get(mining::video_status_fragment))
         .route(
-            "/mining/jobs/{job_id}/sentences/{sentence_id}/audio",
+            "/{video_id}/sentences/{sentence_id}/audio",
             get(mining::sentence_audio),
         )
-        .route("/mining/export", post(mining::export_sentences))
         .with_state(state)
 }

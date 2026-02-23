@@ -97,7 +97,7 @@ mod tests {
     #[tokio::test]
     async fn happy_path_downloads_transcribes_and_stores() {
         let pool = test_pool().await;
-        let job_id = db::create_job(&pool, "https://youtube.com/watch?v=abc")
+        let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
             .await
             .unwrap();
 
@@ -146,7 +146,7 @@ mod tests {
     #[tokio::test]
     async fn download_failure_sets_error_status() {
         let pool = test_pool().await;
-        let job_id = db::create_job(&pool, "https://youtube.com/watch?v=abc")
+        let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
             .await
             .unwrap();
 
@@ -179,7 +179,7 @@ mod tests {
     #[tokio::test]
     async fn transcription_failure_sets_error_but_keeps_download_info() {
         let pool = test_pool().await;
-        let job_id = db::create_job(&pool, "https://youtube.com/watch?v=abc")
+        let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
             .await
             .unwrap();
 

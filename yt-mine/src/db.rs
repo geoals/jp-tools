@@ -7,6 +7,7 @@ use crate::services::dictionary::{DictionaryEntry, PitchEntry};
 const MIGRATION: &str = include_str!("../migrations/001_create_mining_tables.sql");
 const MIGRATION_DICT: &str = include_str!("../migrations/002_create_dictionary_tables.sql");
 const MIGRATION_PITCH: &str = include_str!("../migrations/003_create_pitch_tables.sql");
+const MIGRATION_VIDEO_ID: &str = include_str!("../migrations/004_add_video_id.sql");
 
 pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> {
     let pool = SqlitePoolOptions::new()
@@ -17,16 +18,22 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> 
     sqlx::raw_sql(MIGRATION).execute(&pool).await?;
     sqlx::raw_sql(MIGRATION_DICT).execute(&pool).await?;
     sqlx::raw_sql(MIGRATION_PITCH).execute(&pool).await?;
+    sqlx::raw_sql(MIGRATION_VIDEO_ID).execute(&pool).await?;
 
     Ok(pool)
 }
 
-pub async fn create_job(pool: &SqlitePool, youtube_url: &str) -> Result<i64, sqlx::Error> {
+pub async fn create_job(
+    pool: &SqlitePool,
+    youtube_url: &str,
+    video_id: &str,
+) -> Result<i64, sqlx::Error> {
     let now = chrono_now();
     let row = sqlx::query(
-        "INSERT INTO mining_jobs (youtube_url, status, created_at) VALUES (?, 'pending', ?) RETURNING id",
+        "INSERT INTO mining_jobs (youtube_url, video_id, status, created_at) VALUES (?, ?, 'pending', ?) RETURNING id",
     )
     .bind(youtube_url)
+    .bind(video_id)
     .bind(&now)
     .fetch_one(pool)
     .await?;
@@ -36,25 +43,50 @@ pub async fn create_job(pool: &SqlitePool, youtube_url: &str) -> Result<i64, sql
 
 pub async fn get_job(pool: &SqlitePool, id: i64) -> Result<Option<Job>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, youtube_url, video_title, audio_path, video_path, status, error_message, created_at FROM mining_jobs WHERE id = ?",
+        "SELECT id, youtube_url, video_id, video_title, audio_path, video_path, status, error_message, created_at FROM mining_jobs WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.map(|r| {
-        let status_str: String = r.get("status");
-        Job {
-            id: r.get("id"),
-            youtube_url: r.get("youtube_url"),
-            video_title: r.get("video_title"),
-            audio_path: r.get("audio_path"),
-            video_path: r.get("video_path"),
-            status: JobStatus::from_str(&status_str).unwrap_or(JobStatus::Error),
-            error_message: r.get("error_message"),
-            created_at: r.get("created_at"),
-        }
-    }))
+    Ok(row.map(job_from_row))
+}
+
+/// Find the most recent non-error job for a video ID.
+///
+/// Returns `None` if no usable job exists (allowing callers to create a new one).
+/// Error jobs are skipped so that re-submitting a failed video triggers a retry.
+pub async fn get_job_by_video_id(
+    pool: &SqlitePool,
+    video_id: &str,
+) -> Result<Option<Job>, sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT id, youtube_url, video_id, video_title, audio_path, video_path, status, error_message, created_at \
+         FROM mining_jobs \
+         WHERE video_id = ? AND status != 'error' \
+         ORDER BY id DESC \
+         LIMIT 1",
+    )
+    .bind(video_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(job_from_row))
+}
+
+fn job_from_row(r: sqlx::sqlite::SqliteRow) -> Job {
+    let status_str: String = r.get("status");
+    Job {
+        id: r.get("id"),
+        youtube_url: r.get("youtube_url"),
+        video_id: r.get("video_id"),
+        video_title: r.get("video_title"),
+        audio_path: r.get("audio_path"),
+        video_path: r.get("video_path"),
+        status: JobStatus::from_str(&status_str).unwrap_or(JobStatus::Error),
+        error_message: r.get("error_message"),
+        created_at: r.get("created_at"),
+    }
 }
 
 pub async fn update_job_status(
@@ -356,10 +388,10 @@ mod tests {
     async fn create_and_get_job() {
         let pool = test_pool().await;
 
-        let id = create_job(&pool, "https://youtube.com/watch?v=abc").await.unwrap();
+        let id = create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ").await.unwrap();
         let job = get_job(&pool, id).await.unwrap().unwrap();
 
-        assert_eq!(job.youtube_url, "https://youtube.com/watch?v=abc");
+        assert_eq!(job.youtube_url, "https://youtube.com/watch?v=dQw4w9WgXcQ");
         assert_eq!(job.status, JobStatus::Pending);
         assert!(job.video_title.is_none());
         assert!(job.audio_path.is_none());
@@ -374,9 +406,74 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_job_by_video_id_returns_none_when_no_jobs() {
+        let pool = test_pool().await;
+        let job = get_job_by_video_id(&pool, "dQw4w9WgXcQ").await.unwrap();
+        assert!(job.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_job_by_video_id_finds_done_job() {
+        let pool = test_pool().await;
+        let id = create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
+            .await
+            .unwrap();
+        update_job_status(&pool, id, &JobStatus::Done, None)
+            .await
+            .unwrap();
+
+        let job = get_job_by_video_id(&pool, "dQw4w9WgXcQ")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(job.id, id);
+        assert_eq!(job.status, JobStatus::Done);
+    }
+
+    #[tokio::test]
+    async fn get_job_by_video_id_skips_error_jobs() {
+        let pool = test_pool().await;
+
+        // Create an error job, then a done job
+        let err_id = create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
+            .await
+            .unwrap();
+        update_job_status(&pool, err_id, &JobStatus::Error, Some("failed"))
+            .await
+            .unwrap();
+
+        let ok_id = create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
+            .await
+            .unwrap();
+        update_job_status(&pool, ok_id, &JobStatus::Done, None)
+            .await
+            .unwrap();
+
+        let job = get_job_by_video_id(&pool, "dQw4w9WgXcQ")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(job.id, ok_id);
+    }
+
+    #[tokio::test]
+    async fn get_job_by_video_id_returns_none_when_only_errors() {
+        let pool = test_pool().await;
+        let id = create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
+            .await
+            .unwrap();
+        update_job_status(&pool, id, &JobStatus::Error, Some("failed"))
+            .await
+            .unwrap();
+
+        let job = get_job_by_video_id(&pool, "dQw4w9WgXcQ").await.unwrap();
+        assert!(job.is_none());
+    }
+
+    #[tokio::test]
     async fn update_job_status_sets_status_and_error() {
         let pool = test_pool().await;
-        let id = create_job(&pool, "https://youtube.com/watch?v=abc").await.unwrap();
+        let id = create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ").await.unwrap();
 
         update_job_status(&pool, id, &JobStatus::Downloading, None)
             .await
@@ -396,7 +493,7 @@ mod tests {
     #[tokio::test]
     async fn update_job_download_sets_audio_path_and_title() {
         let pool = test_pool().await;
-        let id = create_job(&pool, "https://youtube.com/watch?v=abc").await.unwrap();
+        let id = create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ").await.unwrap();
 
         update_job_download(&pool, id, "/tmp/audio.wav", "Test Video", "/tmp/video.mp4")
             .await
@@ -409,7 +506,7 @@ mod tests {
     #[tokio::test]
     async fn insert_and_get_sentences() {
         let pool = test_pool().await;
-        let job_id = create_job(&pool, "https://youtube.com/watch?v=abc").await.unwrap();
+        let job_id = create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ").await.unwrap();
 
         let segments = vec![
             TranscriptSegment { start: 0.0, end: 3.2, text: "First sentence".into() },
@@ -430,7 +527,7 @@ mod tests {
     #[tokio::test]
     async fn get_sentences_by_ids_returns_matching() {
         let pool = test_pool().await;
-        let job_id = create_job(&pool, "https://youtube.com/watch?v=abc").await.unwrap();
+        let job_id = create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ").await.unwrap();
 
         let segments = vec![
             TranscriptSegment { start: 0.0, end: 1.0, text: "A".into() },

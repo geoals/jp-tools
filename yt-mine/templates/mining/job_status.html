@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Job #{{ job_id }} — Sentence Mining{% endblock %}
+{% block title %}{% if let Some(title) = video_title %}{{ title }}{% else %}{{ video_id }}{% endif %} — Sentence Mining{% endblock %}
 
 {% block content %}
-<h1>Job #{{ job_id }}</h1>
-
 {% if let Some(title) = video_title %}
-<p><strong>{{ title }}</strong></p>
+<h1>{{ title }}</h1>
+{% else %}
+<h1>{{ video_id }}</h1>
 {% endif %}
 
 <div id="job-content">

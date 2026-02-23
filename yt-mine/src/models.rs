@@ -40,6 +40,7 @@ impl JobStatus {
 pub struct Job {
     pub id: i64,
     pub youtube_url: String,
+    pub video_id: Option<String>,
     pub video_title: Option<String>,
     pub audio_path: Option<String>,
     pub video_path: Option<String>,

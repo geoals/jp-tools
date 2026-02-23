@@ -1,6 +1,6 @@
 {% if !is_terminal %}
 <div class="status"
-     hx-get="/mining/jobs/{{ job_id }}/status"
+     hx-get="/{{ video_id }}/status"
      hx-trigger="every 2s"
      hx-target="#job-content"
      hx-swap="innerHTML">
@@ -25,7 +25,7 @@
         {% for s in sentences %}
         <li id="sentence-{{ s.id }}">
             <button type="button" class="play-btn"
-                    data-src="/mining/jobs/{{ job_id }}/sentences/{{ s.id }}/audio"
+                    data-src="/{{ video_id }}/sentences/{{ s.id }}/audio"
                     aria-label="Play audio">&#9654;</button>
             <span class="timestamp">{{ s.timestamp }}</span>
             <span class="sentence-tokens">

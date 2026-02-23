@@ -66,7 +66,7 @@ fn format_seconds_formats_correctly() {
 }
 
 #[tokio::test]
-async fn get_mining_returns_submit_form() {
+async fn get_root_returns_submit_form() {
     let (server, _pool) = test_app(
         MockAudioDownloader::new(),
         MockTranscriber::new(),
@@ -74,7 +74,7 @@ async fn get_mining_returns_submit_form() {
     )
     .await;
 
-    let response = server.get("/mining").await;
+    let response = server.get("/").await;
     response.assert_status_ok();
     let body = response.text();
     assert!(body.contains("<form"), "should contain a form");
@@ -106,14 +106,14 @@ async fn post_youtube_creates_job_and_redirects() {
     let response = server
         .post("/mining/youtube")
         .form(&SubmitForm {
-            url: "https://youtube.com/watch?v=abc".into(),
+            url: "https://youtube.com/watch?v=dQw4w9WgXcQ".into(),
         })
         .await;
 
-    // Should redirect (303) to job page
+    // Should redirect (303) to video page
     response.assert_status(axum::http::StatusCode::SEE_OTHER);
     let location = response.header("location").to_str().unwrap().to_string();
-    assert!(location.starts_with("/mining/jobs/"));
+    assert_eq!(location, "/dQw4w9WgXcQ");
 
     // Job should exist in DB
     let job = db::get_job(&pool, 1).await.unwrap();
@@ -121,7 +121,7 @@ async fn post_youtube_creates_job_and_redirects() {
 }
 
 #[tokio::test]
-async fn job_page_pending_job_shows_status() {
+async fn video_page_pending_job_shows_status() {
     let (server, pool) = test_app(
         MockAudioDownloader::new(),
         MockTranscriber::new(),
@@ -129,11 +129,11 @@ async fn job_page_pending_job_shows_status() {
     )
     .await;
 
-    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=abc")
+    db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
         .await
         .unwrap();
 
-    let response = server.get(&format!("/mining/jobs/{job_id}")).await;
+    let response = server.get("/dQw4w9WgXcQ").await;
     response.assert_status_ok();
     let body = response.text();
     assert!(body.contains("pending"), "should show pending status");
@@ -142,7 +142,7 @@ async fn job_page_pending_job_shows_status() {
 }
 
 #[tokio::test]
-async fn job_page_done_job_shows_sentences() {
+async fn video_page_done_job_shows_sentences() {
     let (server, pool) = test_app(
         MockAudioDownloader::new(),
         MockTranscriber::new(),
@@ -150,7 +150,7 @@ async fn job_page_done_job_shows_sentences() {
     )
     .await;
 
-    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=abc")
+    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
         .await
         .unwrap();
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
@@ -168,7 +168,7 @@ async fn job_page_done_job_shows_sentences() {
     .await
     .unwrap();
 
-    let response = server.get(&format!("/mining/jobs/{job_id}")).await;
+    let response = server.get("/dQw4w9WgXcQ").await;
     response.assert_status_ok();
     let body = response.text();
     // Sentence text is rendered as individual token spans
@@ -178,7 +178,7 @@ async fn job_page_done_job_shows_sentences() {
 }
 
 #[tokio::test]
-async fn job_page_not_found() {
+async fn video_page_not_found() {
     let (server, _pool) = test_app(
         MockAudioDownloader::new(),
         MockTranscriber::new(),
@@ -186,7 +186,7 @@ async fn job_page_not_found() {
     )
     .await;
 
-    let response = server.get("/mining/jobs/999").await;
+    let response = server.get("/nonexistent1").await;
     response.assert_status(axum::http::StatusCode::NOT_FOUND);
 }
 
@@ -199,16 +199,14 @@ async fn status_fragment_non_terminal_includes_polling() {
     )
     .await;
 
-    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=abc")
+    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
         .await
         .unwrap();
     db::update_job_status(&pool, job_id, &JobStatus::Downloading, None)
         .await
         .unwrap();
 
-    let response = server
-        .get(&format!("/mining/jobs/{job_id}/status"))
-        .await;
+    let response = server.get("/dQw4w9WgXcQ/status").await;
     response.assert_status_ok();
     let body = response.text();
     assert!(body.contains("hx-get"), "should include htmx polling");
@@ -223,7 +221,7 @@ async fn status_fragment_terminal_returns_sentences() {
     )
     .await;
 
-    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=abc")
+    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
         .await
         .unwrap();
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
@@ -241,9 +239,7 @@ async fn status_fragment_terminal_returns_sentences() {
     .await
     .unwrap();
 
-    let response = server
-        .get(&format!("/mining/jobs/{job_id}/status"))
-        .await;
+    let response = server.get("/dQw4w9WgXcQ/status").await;
     response.assert_status_ok();
     let body = response.text();
     assert!(body.contains("content-word"), "should show content-word token spans");
@@ -284,18 +280,16 @@ async fn sentence_audio_missing_sentence_returns_404() {
     )
     .await;
 
-    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=abc")
+    db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
         .await
         .unwrap();
 
-    let response = server
-        .get(&format!("/mining/jobs/{job_id}/sentences/999/audio"))
-        .await;
+    let response = server.get("/dQw4w9WgXcQ/sentences/999/audio").await;
     response.assert_status(axum::http::StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
-async fn sentence_audio_wrong_job_returns_404() {
+async fn sentence_audio_wrong_video_returns_404() {
     let (server, pool) = test_app(
         MockAudioDownloader::new(),
         MockTranscriber::new(),
@@ -303,7 +297,7 @@ async fn sentence_audio_wrong_job_returns_404() {
     )
     .await;
 
-    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=abc")
+    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
         .await
         .unwrap();
     db::insert_sentences(
@@ -320,11 +314,10 @@ async fn sentence_audio_wrong_job_returns_404() {
 
     let sentences = db::get_sentences_for_job(&pool, job_id).await.unwrap();
 
-    // Use a different job_id in the URL
+    // Use a different video_id in the URL
     let response = server
         .get(&format!(
-            "/mining/jobs/{}/sentences/{}/audio",
-            job_id + 100,
+            "/xxxxxxxxxxx/sentences/{}/audio",
             sentences[0].id
         ))
         .await;
@@ -356,7 +349,7 @@ async fn sentence_audio_extracts_and_returns_mp3() {
     )
     .await;
 
-    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=abc")
+    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
         .await
         .unwrap();
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
@@ -381,9 +374,7 @@ async fn sentence_audio_extracts_and_returns_mp3() {
     let sentence_id = sentences[0].id;
 
     let response = server
-        .get(&format!(
-            "/mining/jobs/{job_id}/sentences/{sentence_id}/audio"
-        ))
+        .get(&format!("/dQw4w9WgXcQ/sentences/{sentence_id}/audio"))
         .await;
 
     response.assert_status_ok();
@@ -411,7 +402,7 @@ async fn sentence_audio_serves_cached_clip_without_re_extracting() {
     )
     .await;
 
-    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=abc")
+    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
         .await
         .unwrap();
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
@@ -441,9 +432,7 @@ async fn sentence_audio_serves_cached_clip_without_re_extracting() {
     std::fs::write(&clip_path, b"cached-audio").unwrap();
 
     let response = server
-        .get(&format!(
-            "/mining/jobs/{job_id}/sentences/{sentence_id}/audio"
-        ))
+        .get(&format!("/dQw4w9WgXcQ/sentences/{sentence_id}/audio"))
         .await;
 
     response.assert_status_ok();
@@ -476,7 +465,7 @@ async fn export_calls_exporter_and_shows_success() {
     )
     .await;
 
-    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=abc")
+    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
         .await
         .unwrap();
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
@@ -659,7 +648,7 @@ async fn export_with_target_word_and_dictionary_populates_vocab() {
     let router = build_router(state);
     let server = axum_test::TestServer::new(router).unwrap();
 
-    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=abc")
+    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
         .await
         .unwrap();
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
