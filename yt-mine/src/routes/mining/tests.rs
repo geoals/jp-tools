@@ -511,6 +511,135 @@ async fn export_calls_exporter_and_shows_success() {
     );
 }
 
+#[tokio::test]
+async fn video_page_error_shows_error_message() {
+    let (server, pool) = test_app(
+        MockAudioDownloader::new(),
+        MockTranscriber::new(),
+        MockAnkiExporter::new(),
+    )
+    .await;
+
+    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
+        .await
+        .unwrap();
+    db::update_job_status(
+        &pool,
+        job_id,
+        &JobStatus::Error,
+        Some("yt-dlp not found in PATH"),
+    )
+    .await
+    .unwrap();
+
+    let response = server.get("/dQw4w9WgXcQ").await;
+    response.assert_status_ok();
+    let body = response.text();
+    assert!(
+        body.contains("yt-dlp not found in PATH"),
+        "should show the actual error message"
+    );
+}
+
+#[tokio::test]
+async fn video_page_error_without_message_shows_fallback() {
+    let (server, pool) = test_app(
+        MockAudioDownloader::new(),
+        MockTranscriber::new(),
+        MockAnkiExporter::new(),
+    )
+    .await;
+
+    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
+        .await
+        .unwrap();
+    db::update_job_status(&pool, job_id, &JobStatus::Error, None)
+        .await
+        .unwrap();
+
+    let response = server.get("/dQw4w9WgXcQ").await;
+    response.assert_status_ok();
+    let body = response.text();
+    assert!(
+        body.contains("Something went wrong"),
+        "should show fallback error message"
+    );
+}
+
+#[tokio::test]
+async fn export_failure_returns_styled_error_fragment() {
+    let mut exporter = MockAnkiExporter::new();
+    exporter.expect_export_sentences().returning(|_, _| {
+        Box::pin(async {
+            Err(crate::services::export::ExportError::Failed(
+                "connection refused".into(),
+            ))
+        })
+    });
+
+    let mut media_extractor = MockMediaExtractor::new();
+    media_extractor
+        .expect_extract_screenshot()
+        .returning(|_, _, _| Box::pin(async { Ok(()) }));
+    media_extractor
+        .expect_extract_audio_clip()
+        .returning(|_, _, _, _| Box::pin(async { Ok(()) }));
+
+    let (server, pool) = test_app_with_media(
+        MockAudioDownloader::new(),
+        MockTranscriber::new(),
+        exporter,
+        media_extractor,
+    )
+    .await;
+
+    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
+        .await
+        .unwrap();
+    db::update_job_status(&pool, job_id, &JobStatus::Done, None)
+        .await
+        .unwrap();
+    db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test", "/tmp/video.mp4")
+        .await
+        .unwrap();
+    db::insert_sentences(
+        &pool,
+        job_id,
+        &[TranscriptSegment {
+            start: 0.0,
+            end: 1.0,
+            text: "test".into(),
+        }],
+    )
+    .await
+    .unwrap();
+
+    let all = db::get_sentences_for_job(&pool, job_id).await.unwrap();
+    let sid = all[0].id;
+
+    let form_body = format!("job_id={job_id}&sentence_ids={sid}");
+    let response = server
+        .post("/mining/export")
+        .content_type("application/x-www-form-urlencoded")
+        .bytes(form_body.into_bytes().into())
+        .await;
+
+    response.assert_status_ok();
+    let body = response.text();
+    assert!(
+        body.contains("class=\"error\""),
+        "should contain styled error element"
+    );
+    assert!(
+        body.contains("Could not connect to Anki"),
+        "should show user-friendly connection error"
+    );
+    assert!(
+        !body.contains("connection refused"),
+        "should not expose raw error details"
+    );
+}
+
 #[test]
 fn export_form_parses_target_words() {
     let input = "job_id=1&sentence_ids=1&target_words=1%3Ahello";

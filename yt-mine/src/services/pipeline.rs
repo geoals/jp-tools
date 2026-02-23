@@ -31,7 +31,8 @@ pub async fn process_job(
         Ok(result) => result,
         Err(e) => {
             error!(job_id, error = %e, "download failed");
-            db::update_job_status(&pool, job_id, &JobStatus::Error, Some(&e.to_string()))
+            let msg = format!("Download failed: {e}");
+            db::update_job_status(&pool, job_id, &JobStatus::Error, Some(&msg))
                 .await
                 .ok();
             return;
@@ -61,7 +62,8 @@ pub async fn process_job(
         Ok(segments) => segments,
         Err(e) => {
             error!(job_id, error = %e, "transcription failed");
-            db::update_job_status(&pool, job_id, &JobStatus::Error, Some(&e.to_string()))
+            let msg = format!("Transcription failed: {e}");
+            db::update_job_status(&pool, job_id, &JobStatus::Error, Some(&msg))
                 .await
                 .ok();
             return;
@@ -71,7 +73,8 @@ pub async fn process_job(
     // Step 3: Store sentences
     if let Err(e) = db::insert_sentences(&pool, job_id, &segments).await {
         error!(job_id, error = %e, "failed to store sentences");
-        db::update_job_status(&pool, job_id, &JobStatus::Error, Some(&e.to_string()))
+        let msg = format!("Failed to store sentences: {e}");
+        db::update_job_status(&pool, job_id, &JobStatus::Error, Some(&msg))
             .await
             .ok();
         return;

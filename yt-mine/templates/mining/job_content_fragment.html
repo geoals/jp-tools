@@ -1,6 +1,5 @@
 {% if oob_title %}{% if let Some(title) = video_title %}
-<h1 id="page-title" hx-swap-oob="true">{{ title }}</h1>
-<script>document.title = "{{ title }}";</script>
+<h2 id="video-title" hx-swap-oob="true">{{ title }}</h2>
 {% endif %}{% endif %}
 {% if !is_terminal %}
 <div class="status"
@@ -12,42 +11,41 @@
 </div>
 {% else if is_done %}
 <div class="status done">
-    Status: {{ status }}
+    {{ sentence_count }} sentences found
 </div>
 {% else %}
 <div class="status error">
-    Something went wrong. Please check the server logs and try again.
+    {% if let Some(msg) = error_message %}
+    {{ msg }}
+    {% else %}
+    Something went wrong. Please check the server logs.
+    {% endif %}
 </div>
 {% endif %}
 
-<div id="export-result"></div>
-
 {% if is_done %}
-<form hx-post="/mining/export" hx-target="#export-result" hx-swap="innerHTML">
+<form hx-post="/mining/export" hx-target="#export-result" hx-swap="innerHTML" hx-disabled-elt="find button[type='submit']">
     <input type="hidden" name="job_id" value="{{ job_id }}">
+    <p class="helper-text">Click any word in a sentence to select it as the target vocabulary for export.</p>
     <ul class="sentence-list">
         {% for s in sentences %}
         <li id="sentence-{{ s.id }}">
             <button type="button" class="play-btn"
                     data-src="/{{ video_id }}/sentences/{{ s.id }}/audio"
                     aria-label="Play audio">&#9654;</button>
-            <span class="timestamp">{{ s.timestamp }}</span>
-            <span class="sentence-tokens">
-                {% for t in s.tokens %}
-                    {% if t.is_content_word %}
-                    <span class="token content-word" data-base-form="{{ t.base_form }}" data-sid="{{ s.id }}">{{ t.surface }}</span>
-                    {% else %}
-                    <span class="token">{{ t.surface }}</span>
-                    {% endif %}
-                {% endfor %}
-            </span>
+            <a class="timestamp" href="https://youtube.com/watch?v={{ video_id }}&t={{ s.start_seconds }}s" target="_blank" rel="noopener">{{ s.timestamp }}</a>
+            <span class="sentence-tokens">{% for t in s.tokens %}{% if t.is_content_word %}<span class="token content-word" data-base-form="{{ t.base_form }}" data-sid="{{ s.id }}">{{ t.surface }}</span>{% else %}<span class="token">{{ t.surface }}</span>{% endif %}{% endfor %}</span>
             <input type="hidden" name="sentence_ids" class="sentence-id-input" data-sid="{{ s.id }}" value="{{ s.id }}" disabled>
             <input type="hidden" name="target_words" class="target-word-input" data-sid="{{ s.id }}" value="" disabled>
         </li>
         {% endfor %}
     </ul>
-    <button type="submit">Export to Anki</button>
+    <button type="submit">
+        <span class="btn-text">Export to Anki</span>
+        <span class="spinner"></span>
+    </button>
 </form>
+<div id="export-result"></div>
 <audio id="sentence-player" preload="none"></audio>
 <script>
 (function() {
@@ -68,15 +66,35 @@
 
             if (activeBtn && activeBtn !== btn) {
                 activeBtn.textContent = '\u25B6';
+                activeBtn.classList.remove('loading');
             }
 
-            if (player.src !== location.origin + src) {
+            activeBtn = btn;
+            var needsLoad = player.src !== location.origin + src;
+            if (needsLoad) {
+                btn.classList.add('loading');
                 player.src = src;
             }
             player.play();
-            btn.textContent = '\u23F8';
-            activeBtn = btn;
+            if (!needsLoad) {
+                btn.textContent = '\u23F8';
+            }
         });
+    });
+
+    player.addEventListener('canplay', function() {
+        if (activeBtn) {
+            activeBtn.classList.remove('loading');
+            activeBtn.textContent = '\u23F8';
+        }
+    });
+
+    player.addEventListener('error', function() {
+        if (activeBtn) {
+            activeBtn.classList.remove('loading');
+            activeBtn.textContent = '\u25B6';
+            activeBtn = null;
+        }
     });
 
     player.addEventListener('ended', function() {

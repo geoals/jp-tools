@@ -58,9 +58,10 @@ struct VideoPageTemplate {
     is_done: bool,
     is_terminal: bool,
     error_message: Option<String>,
+    sentence_count: usize,
     sentences: Vec<SentenceView>,
     /// Passed through to the included fragment. Always false for the full page
-    /// (the page already has its own h1).
+    /// (the page already has its own h2).
     oob_title: bool,
 }
 
@@ -74,8 +75,9 @@ struct VideoContentFragmentTemplate {
     is_done: bool,
     is_terminal: bool,
     error_message: Option<String>,
+    sentence_count: usize,
     sentences: Vec<SentenceView>,
-    /// When true, emit an OOB `<h1>` swap to update the page title.
+    /// When true, emit an OOB `<h2>` swap to update the video title.
     /// Only set for htmx polling responses, not the initial page include.
     oob_title: bool,
 }
@@ -87,9 +89,16 @@ struct ExportResultTemplate {
     exported_ids: Vec<i64>,
 }
 
+#[derive(askama::Template, askama_web::WebTemplate)]
+#[template(path = "mining/export_error_fragment.html")]
+struct ExportErrorTemplate {
+    message: String,
+}
+
 struct SentenceView {
     id: i64,
     timestamp: String,
+    start_seconds: u64,
     tokens: Vec<TokenView>,
 }
 
@@ -207,6 +216,7 @@ async fn build_sentence_views(
             SentenceView {
                 id: s.id,
                 timestamp: format_seconds(s.start_time),
+                start_seconds: s.start_time as u64,
                 tokens,
             }
         })
@@ -217,13 +227,14 @@ pub async fn video_page(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
 ) -> Result<Response, AppError> {
-    let job = db::get_job_by_video_id(&state.db, &video_id)
+    let job = db::get_latest_job_by_video_id(&state.db, &video_id)
         .await?
         .ok_or(AppError::NotFound)?;
 
     let is_done = job.status == JobStatus::Done;
     let sentence_views = build_sentence_views(&state, job.id, is_done).await?;
 
+    let sentence_count = sentence_views.len();
     let template = VideoPageTemplate {
         video_id,
         job_id: job.id,
@@ -232,6 +243,7 @@ pub async fn video_page(
         is_done,
         is_terminal: job.status.is_terminal(),
         error_message: job.error_message,
+        sentence_count,
         sentences: sentence_views,
         oob_title: false,
     };
@@ -243,7 +255,7 @@ pub async fn video_status_fragment(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
 ) -> Result<Response, AppError> {
-    let job = db::get_job_by_video_id(&state.db, &video_id)
+    let job = db::get_latest_job_by_video_id(&state.db, &video_id)
         .await?
         .ok_or(AppError::NotFound)?;
 
@@ -251,6 +263,7 @@ pub async fn video_status_fragment(
     let is_terminal = job.status.is_terminal();
     let sentences = build_sentence_views(&state, job.id, is_done).await?;
 
+    let sentence_count = sentences.len();
     let template = VideoContentFragmentTemplate {
         video_id,
         job_id: job.id,
@@ -259,6 +272,7 @@ pub async fn video_status_fragment(
         is_done,
         is_terminal,
         error_message: job.error_message,
+        sentence_count,
         sentences,
         oob_title: true,
     };
@@ -271,7 +285,10 @@ pub async fn export_sentences(
     HtmlForm(form): HtmlForm<ExportForm>,
 ) -> Result<Response, AppError> {
     if form.sentence_ids.is_empty() {
-        return Err(AppError::BadRequest("no sentences selected".into()));
+        return Ok(ExportErrorTemplate {
+            message: "No sentences selected.".into(),
+        }
+        .into_response());
     }
 
     let target_word_map = form.target_word_map();
@@ -395,17 +412,31 @@ pub async fn export_sentences(
 
     let exported_ids: Vec<i64> = export_sentences.iter().map(|s| s.sentence.id).collect();
 
-    let count = state
+    match state
         .exporter
         .export_sentences(export_sentences, source)
         .await
-        .map_err(|e| AppError::Export(e.to_string()))?;
-
-    Ok(ExportResultTemplate {
-        count,
-        exported_ids,
+    {
+        Ok(count) => Ok(ExportResultTemplate {
+            count,
+            exported_ids,
+        }
+        .into_response()),
+        Err(e) => {
+            let raw = e.to_string();
+            warn!(error = %raw, "export to Anki failed");
+            let message = if raw.contains("connection")
+                || raw.contains("connect")
+                || raw.contains("refused")
+                || raw.contains("dns")
+            {
+                "Could not connect to Anki. Is AnkiConnect running?".into()
+            } else {
+                "Export to Anki failed.".into()
+            };
+            Ok(ExportErrorTemplate { message }.into_response())
+        }
     }
-    .into_response())
 }
 
 pub async fn sentence_audio(

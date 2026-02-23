@@ -69,6 +69,27 @@ pub async fn get_job(pool: &SqlitePool, id: i64) -> Result<Option<Job>, sqlx::Er
     Ok(row.map(job_from_row))
 }
 
+/// Find the most recent job for a video ID, including error jobs.
+///
+/// Used for the video page display — shows the current state even if it errored.
+pub async fn get_latest_job_by_video_id(
+    pool: &SqlitePool,
+    video_id: &str,
+) -> Result<Option<Job>, sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT id, youtube_url, video_id, video_title, audio_path, video_path, status, error_message, created_at \
+         FROM mining_jobs \
+         WHERE video_id = ? \
+         ORDER BY id DESC \
+         LIMIT 1",
+    )
+    .bind(video_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(job_from_row))
+}
+
 /// Find the most recent non-error job for a video ID.
 ///
 /// Returns `None` if no usable job exists (allowing callers to create a new one).
