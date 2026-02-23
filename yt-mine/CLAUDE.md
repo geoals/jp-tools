@@ -65,7 +65,7 @@ Pitch accent data is read from `term_meta_bank_*.json` files inside Yomitan zips
 
 ### Structured-content HTML conversion
 
-Yomitan structured-content JSON (lists, ruby text, example sentences, links) is converted to semantic HTML by `structured_content_to_html()` in `dictionary/html.rs`. The conversion is a recursive descent that handles strings, arrays, tag objects with attributes (lang, title, href, data-*, style), void elements (br), and skips images. Styling is separated from markup — the HTML uses `data-content`/`data-class` attributes that can be targeted by CSS in the Anki card template.
+Yomitan structured-content JSON (lists, ruby text, example sentences, links) is converted to semantic HTML by `structured_content_to_html()` in `dictionary/html.rs`. The conversion is a recursive descent that handles strings, arrays, tag objects with attributes (lang, title, href, data-\*, style), void elements (br), and skips images. Styling is separated from markup — the HTML uses `data-content`/`data-class` attributes that can be targeted by CSS in the Anki card template.
 
 Each dictionary's definitions are wrapped with `<div class="dict-{slug}-title">` and `<div class="dict-{slug}-body">` where the slug is derived from the dictionary's `index.json` title via `css_slug()`. This allows per-dictionary styling in Anki (e.g. different colors for JE vs JJ dictionaries).
 
@@ -83,35 +83,35 @@ cargo test -p yt-mine -- --ignored               # real subprocess tests (need y
 
 Configuration via environment variables. Loaded from `.env` (at repo root) automatically via `dotenvy`. Copy `.env.example` to `.env` and adjust.
 
-| Variable | Default |
-|---|---|
-| `JP_TOOLS_DB_PATH` | `yt-mine.db` |
-| `JP_TOOLS_AUDIO_DIR` | `audio` |
-| `JP_TOOLS_MEDIA_DIR` | `media` |
-| `JP_TOOLS_LISTEN_ADDR` | `0.0.0.0:3000` |
-| `JP_TOOLS_TRANSCRIBE_SCRIPT` | `scripts/transcribe.py` |
-| `JP_TOOLS_WHISPER_CPU_THREADS` | `0` (all cores) |
-| `JP_TOOLS_WHISPER_DEVICE` | `auto` (`cpu`, `cuda`) |
-| `JP_TOOLS_DICTIONARY_PATHS` | *(none, optional)* — comma-separated list of Yomitan zip files |
-| `JP_TOOLS_DICTIONARY_PATH` | *(legacy)* — single path, fallback if `_PATHS` not set |
+| Variable                       | Default                                                        |
+| ------------------------------ | -------------------------------------------------------------- |
+| `JP_TOOLS_DB_PATH`             | `yt-mine.db`                                                   |
+| `JP_TOOLS_AUDIO_DIR`           | `audio`                                                        |
+| `JP_TOOLS_MEDIA_DIR`           | `media`                                                        |
+| `JP_TOOLS_LISTEN_ADDR`         | `0.0.0.0:3000`                                                 |
+| `JP_TOOLS_TRANSCRIBE_SCRIPT`   | `scripts/transcribe.py`                                        |
+| `JP_TOOLS_WHISPER_CPU_THREADS` | `0` (all cores)                                                |
+| `JP_TOOLS_WHISPER_DEVICE`      | `auto` (`cpu`, `cuda`)                                         |
+| `JP_TOOLS_DICTIONARY_PATHS`    | _(none, optional)_ — comma-separated list of Yomitan zip files |
+| `JP_TOOLS_DICTIONARY_PATH`     | _(legacy)_ — single path, fallback if `_PATHS` not set         |
 
 ### Anki export config
 
 Model name, deck name, and field mapping are configurable to match an existing Anki note type. Defaults match the "Japanese sentences" model used by Yomitan. If the model doesn't exist in Anki, a basic fallback is created. Set a field var to empty string to skip it.
 
-| Variable | Default |
-|---|---|
-| `JP_TOOLS_ANKI_URL` | `http://localhost:8765` |
-| `JP_TOOLS_ANKI_MODEL` | `Japanese sentences` |
-| `JP_TOOLS_ANKI_DECK` | `Japanese` |
-| `JP_TOOLS_ANKI_FIELD_VOCAB` | `VocabKanji` |
-| `JP_TOOLS_ANKI_FIELD_DEFINITION` | `VocabDef` |
-| `JP_TOOLS_ANKI_FIELD_SENTENCE` | `SentKanji` |
-| `JP_TOOLS_ANKI_FIELD_IMAGE` | `Image` |
-| `JP_TOOLS_ANKI_FIELD_AUDIO` | `SentAudio` |
-| `JP_TOOLS_ANKI_FIELD_SOURCE` | `Document` |
-| `JP_TOOLS_ANKI_FIELD_FURIGANA` | `VocabFurigana` |
-| `JP_TOOLS_ANKI_FIELD_PITCH_NUM` | `VocabPitchNum` |
+| Variable                         | Default                 |
+| -------------------------------- | ----------------------- |
+| `JP_TOOLS_ANKI_URL`              | `http://localhost:8765` |
+| `JP_TOOLS_ANKI_MODEL`            | `Japanese sentences`    |
+| `JP_TOOLS_ANKI_DECK`             | `Japanese`              |
+| `JP_TOOLS_ANKI_FIELD_VOCAB`      | `VocabKanji`            |
+| `JP_TOOLS_ANKI_FIELD_DEFINITION` | `VocabDef`              |
+| `JP_TOOLS_ANKI_FIELD_SENTENCE`   | `SentKanji`             |
+| `JP_TOOLS_ANKI_FIELD_IMAGE`      | `Image`                 |
+| `JP_TOOLS_ANKI_FIELD_AUDIO`      | `SentAudio`             |
+| `JP_TOOLS_ANKI_FIELD_SOURCE`     | `Document`              |
+| `JP_TOOLS_ANKI_FIELD_FURIGANA`   | `VocabFurigana`         |
+| `JP_TOOLS_ANKI_FIELD_PITCH_NUM`  | `VocabPitchNum`         |
 
 ## Testing
 
@@ -122,6 +122,4 @@ Model name, deck name, and field mapping are configurable to match an existing A
 
 ## Next steps
 
-- Improve target word selection UX: multi-token selection and/or editable target word field
-- Fallback dictionary lookup (concatenated surface → base_form) for compound words
 - Frequency-based filtering. See `spec/` for roadmap.
