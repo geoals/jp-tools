@@ -61,19 +61,21 @@ struct JobPageTemplate {
 }
 
 #[derive(askama::Template, askama_web::WebTemplate)]
-#[template(path = "mining/job_status_fragment.html")]
-struct JobStatusFragmentTemplate {
+#[template(path = "mining/job_content_fragment.html")]
+struct JobContentFragmentTemplate {
     job_id: i64,
     status: String,
     is_done: bool,
     is_terminal: bool,
     error_message: Option<String>,
+    sentences: Vec<SentenceView>,
 }
 
 #[derive(askama::Template, askama_web::WebTemplate)]
-#[template(path = "mining/export_success.html")]
-struct ExportSuccessTemplate {
+#[template(path = "mining/export_result_fragment.html")]
+struct ExportResultTemplate {
     count: usize,
+    exported_ids: Vec<i64>,
 }
 
 struct SentenceView {
@@ -157,21 +159,19 @@ pub async fn submit_youtube(
     Ok(Redirect::to(&format!("/mining/jobs/{job_id}")).into_response())
 }
 
-pub async fn job_page(
-    State(state): State<AppState>,
-    Path(id): Path<i64>,
-) -> Result<Response, AppError> {
-    let job = db::get_job(&state.db, id)
-        .await?
-        .ok_or(AppError::NotFound)?;
+/// Build tokenized sentence views for display. Only fetches sentences for
+/// completed jobs; returns an empty vec otherwise.
+async fn build_sentence_views(
+    state: &AppState,
+    job_id: i64,
+    is_done: bool,
+) -> Result<Vec<SentenceView>, AppError> {
+    if !is_done {
+        return Ok(vec![]);
+    }
 
-    let sentences = if job.status == JobStatus::Done {
-        db::get_sentences_for_job(&state.db, id).await?
-    } else {
-        vec![]
-    };
-
-    let sentence_views: Vec<SentenceView> = sentences
+    let sentences = db::get_sentences_for_job(&state.db, job_id).await?;
+    Ok(sentences
         .into_iter()
         .map(|s| {
             let tokens = state
@@ -193,13 +193,25 @@ pub async fn job_page(
                 tokens,
             }
         })
-        .collect();
+        .collect())
+}
+
+pub async fn job_page(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    let job = db::get_job(&state.db, id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    let is_done = job.status == JobStatus::Done;
+    let sentence_views = build_sentence_views(&state, id, is_done).await?;
 
     let template = JobPageTemplate {
         job_id: job.id,
         video_title: job.video_title,
         status: job.status.as_str().to_string(),
-        is_done: job.status == JobStatus::Done,
+        is_done,
         is_terminal: job.status.is_terminal(),
         error_message: job.error_message,
         sentences: sentence_views,
@@ -216,18 +228,17 @@ pub async fn job_status_fragment(
         .await?
         .ok_or(AppError::NotFound)?;
 
-    // When terminal, redirect to the full page so htmx replaces the
-    // fragment with a full page load showing sentences or error.
-    if job.status.is_terminal() {
-        return Ok(Redirect::to(&format!("/mining/jobs/{id}")).into_response());
-    }
+    let is_done = job.status == JobStatus::Done;
+    let is_terminal = job.status.is_terminal();
+    let sentences = build_sentence_views(&state, id, is_done).await?;
 
-    let template = JobStatusFragmentTemplate {
+    let template = JobContentFragmentTemplate {
         job_id: job.id,
         status: job.status.as_str().to_string(),
-        is_done: job.status == JobStatus::Done,
-        is_terminal: job.status.is_terminal(),
+        is_done,
+        is_terminal,
         error_message: job.error_message,
+        sentences,
     };
 
     Ok(template.into_response())
@@ -359,13 +370,19 @@ pub async fn export_sentences(
         });
     }
 
+    let exported_ids: Vec<i64> = export_sentences.iter().map(|s| s.sentence.id).collect();
+
     let count = state
         .exporter
         .export_sentences(export_sentences, source)
         .await
         .map_err(|e| AppError::Export(e.to_string()))?;
 
-    Ok(ExportSuccessTemplate { count }.into_response())
+    Ok(ExportResultTemplate {
+        count,
+        exported_ids,
+    }
+    .into_response())
 }
 
 pub async fn sentence_audio(

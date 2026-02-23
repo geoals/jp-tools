@@ -1,0 +1,116 @@
+{% if !is_terminal %}
+<div class="status"
+     hx-get="/mining/jobs/{{ job_id }}/status"
+     hx-trigger="every 2s"
+     hx-target="#job-content"
+     hx-swap="innerHTML">
+    Status: {{ status }}...
+</div>
+{% else if is_done %}
+<div class="status done">
+    Status: {{ status }}
+</div>
+{% else %}
+<div class="status error">
+    Something went wrong. Please check the server logs and try again.
+</div>
+{% endif %}
+
+<div id="export-result"></div>
+
+{% if is_done %}
+<form hx-post="/mining/export" hx-target="#export-result" hx-swap="innerHTML">
+    <input type="hidden" name="job_id" value="{{ job_id }}">
+    <ul class="sentence-list">
+        {% for s in sentences %}
+        <li id="sentence-{{ s.id }}">
+            <button type="button" class="play-btn"
+                    data-src="/mining/jobs/{{ job_id }}/sentences/{{ s.id }}/audio"
+                    aria-label="Play audio">&#9654;</button>
+            <label>
+                <input type="checkbox" name="sentence_ids" value="{{ s.id }}">
+                <span class="timestamp">{{ s.timestamp }}</span>
+            </label>
+            <span class="sentence-tokens">
+                {% for t in s.tokens %}
+                    {% if t.is_content_word %}
+                    <span class="token content-word" data-base-form="{{ t.base_form }}" data-sid="{{ s.id }}">{{ t.surface }}</span>
+                    {% else %}
+                    <span class="token">{{ t.surface }}</span>
+                    {% endif %}
+                {% endfor %}
+            </span>
+            <input type="hidden" name="target_words" class="target-word-input" data-sid="{{ s.id }}" value="" disabled>
+        </li>
+        {% endfor %}
+    </ul>
+    <button type="submit">Export to Anki</button>
+</form>
+<audio id="sentence-player" preload="none"></audio>
+<script>
+(function() {
+    const player = document.getElementById('sentence-player');
+    let activeBtn = null;
+
+    document.querySelectorAll('.play-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            var src = btn.dataset.src;
+
+            if (activeBtn === btn && !player.paused) {
+                player.pause();
+                btn.textContent = '\u25B6';
+                activeBtn = null;
+                return;
+            }
+
+            if (activeBtn && activeBtn !== btn) {
+                activeBtn.textContent = '\u25B6';
+            }
+
+            if (player.src !== location.origin + src) {
+                player.src = src;
+            }
+            player.play();
+            btn.textContent = '\u23F8';
+            activeBtn = btn;
+        });
+    });
+
+    player.addEventListener('ended', function() {
+        if (activeBtn) {
+            activeBtn.textContent = '\u25B6';
+            activeBtn = null;
+        }
+    });
+})();
+</script>
+<script>
+(function() {
+    document.querySelectorAll('.token.content-word').forEach(function(span) {
+        span.addEventListener('click', function() {
+            var sid = span.dataset.sid;
+            var hiddenInput = document.querySelector('.target-word-input[data-sid="' + sid + '"]');
+
+            // Deselect if clicking the already-selected word
+            if (span.classList.contains('selected')) {
+                span.classList.remove('selected');
+                hiddenInput.value = '';
+                hiddenInput.disabled = true;
+                return;
+            }
+
+            // Deselect any previously selected word in same sentence
+            document.querySelectorAll('.token.content-word.selected[data-sid="' + sid + '"]').forEach(function(el) {
+                el.classList.remove('selected');
+            });
+
+            // Select this word
+            span.classList.add('selected');
+            hiddenInput.value = sid + ':' + span.dataset.baseForm;
+            hiddenInput.disabled = false;
+        });
+    });
+})();
+</script>
+{% endif %}

@@ -215,7 +215,7 @@ async fn status_fragment_non_terminal_includes_polling() {
 }
 
 #[tokio::test]
-async fn status_fragment_terminal_redirects() {
+async fn status_fragment_terminal_returns_sentences() {
     let (server, pool) = test_app(
         MockAudioDownloader::new(),
         MockTranscriber::new(),
@@ -229,11 +229,26 @@ async fn status_fragment_terminal_redirects() {
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
         .await
         .unwrap();
+    db::insert_sentences(
+        &pool,
+        job_id,
+        &[TranscriptSegment {
+            start: 0.0,
+            end: 3.0,
+            text: "テスト文".into(),
+        }],
+    )
+    .await
+    .unwrap();
 
     let response = server
         .get(&format!("/mining/jobs/{job_id}/status"))
         .await;
-    response.assert_status(axum::http::StatusCode::SEE_OTHER);
+    response.assert_status_ok();
+    let body = response.text();
+    assert!(body.contains("content-word"), "should show content-word token spans");
+    assert!(body.contains("Export to Anki"), "should show export button");
+    assert!(!body.contains("hx-get"), "terminal status should not poll");
 }
 
 async fn test_app_with_media_dir(
@@ -483,9 +498,10 @@ async fn export_calls_exporter_and_shows_success() {
 
     let all = db::get_sentences_for_job(&pool, job_id).await.unwrap();
 
+    let sid = all[0].id;
     let form_body = format!(
         "job_id={}&sentence_ids={}",
-        job_id, all[0].id
+        job_id, sid
     );
     let response = server
         .post("/mining/export")
@@ -496,6 +512,14 @@ async fn export_calls_exporter_and_shows_success() {
     response.assert_status_ok();
     let body = response.text();
     assert!(body.contains("1 sentence(s) exported"));
+    assert!(
+        body.contains(&format!("[{sid},]")),
+        "should contain exported sentence ID in script array"
+    );
+    assert!(
+        body.contains("classList.add('exported')"),
+        "should contain script to mark exported sentences"
+    );
 }
 
 #[test]

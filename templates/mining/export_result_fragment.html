@@ -1,0 +1,7 @@
+<p>{{ count }} sentence(s) exported to Anki.</p>
+<script>
+[{% for id in exported_ids %}{{ id }},{% endfor %}].forEach(function(id) {
+    var li = document.getElementById('sentence-' + id);
+    if (li) { li.classList.add('exported'); }
+});
+</script>
