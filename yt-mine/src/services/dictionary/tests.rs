@@ -186,8 +186,8 @@ fn parse_term_bank_multiple_entries() {
     assert_eq!(entries[1].term, "飲む");
 }
 
-#[test]
-fn dictionary_lookup_exact_match() {
+#[tokio::test]
+async fn dictionary_lookup_exact_match() {
     let entries = vec![
         DictionaryEntry {
             term: "食べる".into(),
@@ -203,21 +203,21 @@ fn dictionary_lookup_exact_match() {
         },
     ];
     let dict = Dictionary::from_entries(entries);
-    let results = dict.lookup("食べる");
+    let results = dict.lookup("食べる").await;
     assert_eq!(results.len(), 2);
     // Sorted by score descending
     assert_eq!(results[0].score, 100);
     assert_eq!(results[1].score, 50);
 }
 
-#[test]
-fn dictionary_lookup_no_match() {
+#[tokio::test]
+async fn dictionary_lookup_no_match() {
     let dict = Dictionary::from_entries(vec![]);
-    assert!(dict.lookup("missing").is_empty());
+    assert!(dict.lookup("missing").await.is_empty());
 }
 
-#[test]
-fn load_from_zip_in_memory() {
+#[tokio::test]
+async fn load_from_zip_in_memory() {
     let mut buf = std::io::Cursor::new(Vec::new());
     {
         let mut zip = zip::ZipWriter::new(&mut buf);
@@ -238,14 +238,15 @@ fn load_from_zip_in_memory() {
     buf.set_position(0);
 
     let dict = Dictionary::load_from_reader(buf).unwrap();
-    assert_eq!(dict.lookup("食べる").len(), 1);
-    assert_eq!(dict.lookup("食べる")[0].definitions, vec!["to eat"]);
-    assert_eq!(dict.lookup("飲む").len(), 1);
-    assert!(dict.lookup("missing").is_empty());
+    let taberu = dict.lookup("食べる").await;
+    assert_eq!(taberu.len(), 1);
+    assert_eq!(taberu[0].definitions, vec!["to eat"]);
+    assert_eq!(dict.lookup("飲む").await.len(), 1);
+    assert!(dict.lookup("missing").await.is_empty());
 }
 
-#[test]
-fn load_from_zip_multiple_term_banks() {
+#[tokio::test]
+async fn load_from_zip_multiple_term_banks() {
     let mut buf = std::io::Cursor::new(Vec::new());
     {
         let mut zip = zip::ZipWriter::new(&mut buf);
@@ -270,36 +271,36 @@ fn load_from_zip_multiple_term_banks() {
     buf.set_position(0);
 
     let dict = Dictionary::load_from_reader(buf).unwrap();
-    assert_eq!(dict.lookup("食べる").len(), 1);
-    assert_eq!(dict.lookup("飲む").len(), 1);
+    assert_eq!(dict.lookup("食べる").await.len(), 1);
+    assert_eq!(dict.lookup("飲む").await.len(), 1);
 }
 
 // --- lookup_pitch ---
 
-#[test]
-fn lookup_pitch_returns_matching_entry() {
+#[tokio::test]
+async fn lookup_pitch_returns_matching_entry() {
     let mut dict = Dictionary::from_entries(vec![]);
-    dict.pitch.insert(
+    dict.set_pitch(vec![(
         "食べる".into(),
-        vec![PitchEntry {
+        PitchEntry {
             reading: "たべる".into(),
             positions: vec![2],
-        }],
-    );
-    let results = dict.lookup_pitch("食べる");
+        },
+    )]);
+    let results = dict.lookup_pitch("食べる").await;
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].reading, "たべる");
     assert_eq!(results[0].positions, vec![2]);
 }
 
-#[test]
-fn lookup_pitch_returns_empty_for_missing_term() {
+#[tokio::test]
+async fn lookup_pitch_returns_empty_for_missing_term() {
     let dict = Dictionary::from_entries(vec![]);
-    assert!(dict.lookup_pitch("missing").is_empty());
+    assert!(dict.lookup_pitch("missing").await.is_empty());
 }
 
-#[test]
-fn load_from_zip_parses_term_meta_bank_pitch() {
+#[tokio::test]
+async fn load_from_zip_parses_term_meta_bank_pitch() {
     let mut buf = std::io::Cursor::new(Vec::new());
     {
         let mut zip = zip::ZipWriter::new(&mut buf);
@@ -328,14 +329,14 @@ fn load_from_zip_parses_term_meta_bank_pitch() {
     buf.set_position(0);
 
     let dict = Dictionary::load_from_reader(buf).unwrap();
-    let pitch = dict.lookup_pitch("食べる");
+    let pitch = dict.lookup_pitch("食べる").await;
     assert_eq!(pitch.len(), 1);
     assert_eq!(pitch[0].reading, "たべる");
     assert_eq!(pitch[0].positions, vec![2]);
 }
 
-#[test]
-fn load_from_zip_without_meta_bank_has_empty_pitch() {
+#[tokio::test]
+async fn load_from_zip_without_meta_bank_has_empty_pitch() {
     let mut buf = std::io::Cursor::new(Vec::new());
     {
         let mut zip = zip::ZipWriter::new(&mut buf);
@@ -353,7 +354,7 @@ fn load_from_zip_without_meta_bank_has_empty_pitch() {
     buf.set_position(0);
 
     let dict = Dictionary::load_from_reader(buf).unwrap();
-    assert!(dict.lookup_pitch("食べる").is_empty());
+    assert!(dict.lookup_pitch("食べる").await.is_empty());
 }
 
 // --- css_slug ---
@@ -783,8 +784,8 @@ fn build_image_map_ignores_non_image_files() {
     assert!(images.is_empty());
 }
 
-#[test]
-fn load_from_zip_embeds_images_in_structured_content() {
+#[tokio::test]
+async fn load_from_zip_embeds_images_in_structured_content() {
     use base64::Engine;
 
     let svg_content = b"<svg>pitch</svg>";
@@ -822,7 +823,7 @@ fn load_from_zip_embeds_images_in_structured_content() {
     buf.set_position(0);
 
     let dict = Dictionary::load_from_reader(buf).unwrap();
-    let entries = dict.lookup("テスト");
+    let entries = dict.lookup("テスト").await;
     assert_eq!(entries.len(), 1);
     let expected_img = format!(
         r#"<img src="data:image/svg+xml;base64,{svg_b64}" style="width:1em;height:1em">"#

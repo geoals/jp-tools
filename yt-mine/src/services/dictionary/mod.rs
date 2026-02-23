@@ -8,6 +8,7 @@ use std::path::Path;
 
 use base64::Engine;
 use serde_json::Value;
+use sqlx::SqlitePool;
 use tracing::{info, warn};
 
 use html::structured_content_to_html;
@@ -27,10 +28,23 @@ pub struct PitchEntry {
     pub positions: Vec<u32>,
 }
 
+/// Storage backend for dictionary data.
+/// Production uses `Sqlite` for lazy per-term lookups (no upfront loading).
+/// Tests use `InMemory` so they don't need a database.
+enum DictionaryStorage {
+    InMemory {
+        entries: HashMap<String, Vec<DictionaryEntry>>,
+        pitch: HashMap<String, Vec<PitchEntry>>,
+    },
+    Sqlite {
+        pool: SqlitePool,
+        dict_id: i64,
+    },
+}
+
 pub struct Dictionary {
     title: String,
-    entries: HashMap<String, Vec<DictionaryEntry>>,
-    pitch: HashMap<String, Vec<PitchEntry>>,
+    storage: DictionaryStorage,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -47,13 +61,31 @@ impl Dictionary {
     }
 
     /// Look up entries by exact headword match.
-    pub fn lookup(&self, term: &str) -> &[DictionaryEntry] {
-        self.entries.get(term).map(|v| v.as_slice()).unwrap_or(&[])
+    pub async fn lookup(&self, term: &str) -> Vec<DictionaryEntry> {
+        match &self.storage {
+            DictionaryStorage::InMemory { entries, .. } => {
+                entries.get(term).cloned().unwrap_or_default()
+            }
+            DictionaryStorage::Sqlite { pool, dict_id } => {
+                crate::db::lookup_dictionary_entries(pool, *dict_id, term)
+                    .await
+                    .unwrap_or_default()
+            }
+        }
     }
 
     /// Look up pitch accent entries by exact headword match.
-    pub fn lookup_pitch(&self, term: &str) -> &[PitchEntry] {
-        self.pitch.get(term).map(|v| v.as_slice()).unwrap_or(&[])
+    pub async fn lookup_pitch(&self, term: &str) -> Vec<PitchEntry> {
+        match &self.storage {
+            DictionaryStorage::InMemory { pitch, .. } => {
+                pitch.get(term).cloned().unwrap_or_default()
+            }
+            DictionaryStorage::Sqlite { pool, dict_id } => {
+                crate::db::lookup_pitch_entries(pool, *dict_id, term)
+                    .await
+                    .unwrap_or_default()
+            }
+        }
     }
 
     /// Wrap definition HTML with dictionary title and body container divs.
@@ -67,6 +99,14 @@ impl Dictionary {
             title = html::html_escape(&self.title),
             definitions_html = definitions_html,
         )
+    }
+
+    /// Create a dictionary backed by SQLite for lazy per-term lookups.
+    pub fn from_sqlite(pool: SqlitePool, dict_id: i64, title: String) -> Self {
+        Self {
+            title,
+            storage: DictionaryStorage::Sqlite { pool, dict_id },
+        }
     }
 }
 
@@ -455,12 +495,16 @@ impl Dictionary {
 
 impl Dictionary {
     /// Populate pitch accent data from a list of `(term, PitchEntry)` pairs.
+    /// Only valid for `InMemory`-backed dictionaries (used during zip parsing and tests).
     pub fn set_pitch(&mut self, entries: Vec<(String, PitchEntry)>) {
+        let DictionaryStorage::InMemory { ref mut pitch, .. } = self.storage else {
+            panic!("set_pitch called on Sqlite-backed dictionary");
+        };
         let mut map: HashMap<String, Vec<PitchEntry>> = HashMap::new();
         for (term, entry) in entries {
             map.entry(term).or_default().push(entry);
         }
-        self.pitch = map;
+        *pitch = map;
     }
 
     /// Build a dictionary from a list of parsed entries.
@@ -476,14 +520,16 @@ impl Dictionary {
         }
         Self {
             title: "Unknown".into(),
-            entries: map,
-            pitch: HashMap::new(),
+            storage: DictionaryStorage::InMemory {
+                entries: map,
+                pitch: HashMap::new(),
+            },
         }
     }
 
     /// Load a dictionary from the SQLite cache, or import from the zip file if not cached.
     /// On first load the zip is parsed and entries are stored in the database.
-    /// Subsequent loads read directly from SQLite, skipping the expensive zip parsing.
+    /// Subsequent loads return a lazy SQLite-backed handle — no data is loaded into memory.
     pub async fn load_or_import(
         pool: &sqlx::SqlitePool,
         path: &Path,
@@ -493,39 +539,31 @@ impl Dictionary {
         let path_str = path.to_string_lossy();
 
         if let Some((id, title)) = db::find_dictionary(pool, &path_str).await? {
-            let entries = db::load_dictionary_entries(pool, id).await?;
-            let pitch_entries = db::load_pitch_entries(pool, id).await?;
-
             // Handle existing cached dicts that were imported before pitch support:
             // if pitch table is empty but the zip might have pitch data, re-parse it.
-            let pitch_entries = if pitch_entries.is_empty() && path.exists() {
-                match Self::load_pitch_from_zip(path) {
-                    Ok(fresh_pitch) if !fresh_pitch.is_empty() => {
+            if !db::has_pitch_entries(pool, id).await? && path.exists() {
+                if let Ok(fresh_pitch) = Self::load_pitch_from_zip(path) {
+                    if !fresh_pitch.is_empty() {
                         let mut tx = pool.begin().await?;
                         db::insert_pitch_entries(&mut tx, id, &fresh_pitch).await?;
                         tx.commit().await?;
                         info!(title = %title, pitch = fresh_pitch.len(), "backfilled pitch data into cache");
-                        fresh_pitch
                     }
-                    _ => pitch_entries,
                 }
-            } else {
-                pitch_entries
-            };
+            }
 
-            info!(title = %title, entries = entries.len(), pitch = pitch_entries.len(), "loaded dictionary from cache");
-            let mut dict = Self::from_entries(entries);
-            dict.title = title;
-            dict.set_pitch(pitch_entries);
-            return Ok(dict);
+            info!(title = %title, "loaded dictionary from cache");
+            return Ok(Self::from_sqlite(pool.clone(), id, title));
         }
 
         // Not cached — load from zip and store in db atomically
         let dict = Self::load_from_zip(path)?;
+        let DictionaryStorage::InMemory { ref entries, ref pitch } = dict.storage else {
+            unreachable!("load_from_zip always creates InMemory");
+        };
         let entries_vec: Vec<DictionaryEntry> =
-            dict.entries.values().flat_map(|v| v.iter()).cloned().collect();
-        let pitch_vec: Vec<(String, PitchEntry)> = dict
-            .pitch
+            entries.values().flat_map(|v| v.iter()).cloned().collect();
+        let pitch_vec: Vec<(String, PitchEntry)> = pitch
             .iter()
             .flat_map(|(term, entries)| {
                 entries.iter().map(move |e| (term.clone(), e.clone()))
@@ -545,6 +583,6 @@ impl Dictionary {
             pitch = pitch_vec.len(),
             "imported dictionary into cache"
         );
-        Ok(dict)
+        Ok(Self::from_sqlite(pool.clone(), dict_id, dict.title))
     }
 }

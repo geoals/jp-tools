@@ -222,14 +222,16 @@ pub async fn import_dictionary(
     Ok(dict_id)
 }
 
-pub async fn load_dictionary_entries(
+pub async fn lookup_dictionary_entries(
     pool: &SqlitePool,
     dictionary_id: i64,
+    term: &str,
 ) -> Result<Vec<DictionaryEntry>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT term, reading, score, definitions_json FROM dictionary_entries WHERE dictionary_id = ?",
+        "SELECT term, reading, score, definitions_json FROM dictionary_entries WHERE dictionary_id = ? AND term = ?",
     )
     .bind(dictionary_id)
+    .bind(term)
     .fetch_all(pool)
     .await?;
 
@@ -271,29 +273,42 @@ pub async fn insert_pitch_entries(
     Ok(())
 }
 
-/// Load pitch accent entries for a dictionary from the cache.
-/// Returns `(term, PitchEntry)` pairs ready for `Dictionary::set_pitch`.
-pub async fn load_pitch_entries(
+pub async fn lookup_pitch_entries(
     pool: &SqlitePool,
     dictionary_id: i64,
-) -> Result<Vec<(String, PitchEntry)>, sqlx::Error> {
+    term: &str,
+) -> Result<Vec<PitchEntry>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT term, reading, positions_json FROM dictionary_pitch WHERE dictionary_id = ?",
+        "SELECT reading, positions_json FROM dictionary_pitch WHERE dictionary_id = ? AND term = ?",
     )
     .bind(dictionary_id)
+    .bind(term)
     .fetch_all(pool)
     .await?;
 
     Ok(rows
         .into_iter()
         .map(|r| {
-            let term: String = r.get("term");
             let reading: String = r.get("reading");
             let json_str: String = r.get("positions_json");
             let positions: Vec<u32> = serde_json::from_str(&json_str).unwrap_or_default();
-            (term, PitchEntry { reading, positions })
+            PitchEntry { reading, positions }
         })
         .collect())
+}
+
+/// Check whether any pitch entries exist for a dictionary.
+pub async fn has_pitch_entries(
+    pool: &SqlitePool,
+    dictionary_id: i64,
+) -> Result<bool, sqlx::Error> {
+    let count: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM dictionary_pitch WHERE dictionary_id = ?",
+    )
+    .bind(dictionary_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(count.0 > 0)
 }
 
 fn chrono_now() -> String {
@@ -487,22 +502,29 @@ mod tests {
             .await
             .unwrap();
 
-        let loaded = load_dictionary_entries(&pool, dict_id).await.unwrap();
-        assert_eq!(loaded.len(), 2);
-        assert_eq!(loaded[0].term, "食べる");
-        assert_eq!(loaded[0].reading, "たべる");
-        assert_eq!(loaded[0].score, 100);
-        assert_eq!(loaded[0].definitions, vec!["to eat", "to consume"]);
-        assert_eq!(loaded[1].term, "飲む");
-        assert_eq!(loaded[1].reading, "のむ");
-        assert_eq!(loaded[1].score, 80);
-        assert_eq!(loaded[1].definitions, vec!["to drink"]);
+        let taberu = lookup_dictionary_entries(&pool, dict_id, "食べる")
+            .await
+            .unwrap();
+        assert_eq!(taberu.len(), 1);
+        assert_eq!(taberu[0].term, "食べる");
+        assert_eq!(taberu[0].reading, "たべる");
+        assert_eq!(taberu[0].score, 100);
+        assert_eq!(taberu[0].definitions, vec!["to eat", "to consume"]);
+
+        let nomu = lookup_dictionary_entries(&pool, dict_id, "飲む")
+            .await
+            .unwrap();
+        assert_eq!(nomu.len(), 1);
+        assert_eq!(nomu[0].term, "飲む");
+        assert_eq!(nomu[0].reading, "のむ");
+        assert_eq!(nomu[0].score, 80);
+        assert_eq!(nomu[0].definitions, vec!["to drink"]);
     }
 
     #[tokio::test]
-    async fn load_dictionary_entries_empty_for_missing_dict() {
+    async fn lookup_dictionary_entries_empty_for_missing_dict() {
         let pool = test_pool().await;
-        let loaded = load_dictionary_entries(&pool, 999).await.unwrap();
+        let loaded = lookup_dictionary_entries(&pool, 999, "anything").await.unwrap();
         assert!(loaded.is_empty());
     }
 
@@ -536,22 +558,21 @@ mod tests {
         insert_pitch_entries(&mut tx, dict_id, &entries).await.unwrap();
         tx.commit().await.unwrap();
 
-        let loaded = load_pitch_entries(&pool, dict_id).await.unwrap();
-        assert_eq!(loaded.len(), 2);
+        let taberu = lookup_pitch_entries(&pool, dict_id, "食べる").await.unwrap();
+        assert_eq!(taberu.len(), 1);
+        assert_eq!(taberu[0].reading, "たべる");
+        assert_eq!(taberu[0].positions, vec![2]);
 
-        let taberu = loaded.iter().find(|(t, _)| t == "食べる").unwrap();
-        assert_eq!(taberu.1.reading, "たべる");
-        assert_eq!(taberu.1.positions, vec![2]);
-
-        let nomu = loaded.iter().find(|(t, _)| t == "飲む").unwrap();
-        assert_eq!(nomu.1.reading, "のむ");
-        assert_eq!(nomu.1.positions, vec![1]);
+        let nomu = lookup_pitch_entries(&pool, dict_id, "飲む").await.unwrap();
+        assert_eq!(nomu.len(), 1);
+        assert_eq!(nomu[0].reading, "のむ");
+        assert_eq!(nomu[0].positions, vec![1]);
     }
 
     #[tokio::test]
-    async fn load_pitch_entries_empty_for_missing_dict() {
+    async fn lookup_pitch_entries_empty_for_missing_dict() {
         let pool = test_pool().await;
-        let loaded = load_pitch_entries(&pool, 999).await.unwrap();
+        let loaded = lookup_pitch_entries(&pool, 999, "anything").await.unwrap();
         assert!(loaded.is_empty());
     }
 }

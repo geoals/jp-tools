@@ -25,7 +25,7 @@ def resolve_cpu_threads(cpu_threads):
 
 
 def load_model(cpu_threads, device):
-    print(f"Loading model (device={device}, cpu_threads={cpu_threads})...", file=sys.stderr)
+    print(f"Loading whisper large-v3 speech-to-text model (device={device}, cpu_threads={cpu_threads})...", file=sys.stderr)
 
     from faster_whisper import WhisperModel
 

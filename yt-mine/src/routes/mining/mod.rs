@@ -322,7 +322,8 @@ pub async fn export_sentences(
         if let Some(word) = &target_word {
             let mut def_parts = Vec::new();
             for dict in &state.dictionaries {
-                if let Some(entry) = dict.lookup(word).first() {
+                let entries = dict.lookup(word).await;
+                if let Some(entry) = entries.first() {
                     let joined = entry.definitions.join("; ");
                     def_parts.push(dict.wrap_definitions(&joined));
                     if reading.is_empty() && !entry.reading.is_empty() {
@@ -330,7 +331,7 @@ pub async fn export_sentences(
                     }
                 }
                 if vocab_pitch_num.is_none() {
-                    let pitch = dict.lookup_pitch(word);
+                    let pitch = dict.lookup_pitch(word).await;
                     if !pitch.is_empty() {
                         let nums: Vec<String> = pitch[0]
                             .positions

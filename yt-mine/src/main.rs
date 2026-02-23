@@ -31,15 +31,23 @@ async fn main() {
         .await
         .expect("failed to create database pool");
 
-    let transcriber = WhisperWorker::spawn(
+    // Whisper spawn (async, waits for subprocess) and tokenizer init (CPU-bound,
+    // loads UniDic) can run concurrently since they're independent.
+    let transcriber_fut = WhisperWorker::spawn(
         &config.transcribe_script,
         config.whisper_cpu_threads,
         &config.whisper_device,
-    )
-    .await
-    .expect("failed to start whisper worker");
+    );
+    let tokenizer_fut = tokio::task::spawn_blocking(|| {
+        info!("initializing Lindera tokenizer (UniDic)");
+        let tokenizer = LinderaTokenizer::new().expect("failed to initialize tokenizer");
+        info!("tokenizer ready");
+        tokenizer
+    });
 
-    let tokenizer = LinderaTokenizer::new().expect("failed to initialize tokenizer");
+    let (transcriber, tokenizer) = tokio::join!(transcriber_fut, tokenizer_fut);
+    let transcriber = transcriber.expect("failed to start whisper worker");
+    let tokenizer = tokenizer.expect("tokenizer task panicked");
 
     let mut dictionaries: Vec<Arc<Dictionary>> = Vec::new();
     for path in &config.dictionary_paths {
