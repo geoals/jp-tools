@@ -20,7 +20,7 @@ pub struct AppState {
     pub exporter: Arc<dyn AnkiExporter>,
     pub media_extractor: Arc<dyn MediaExtractor>,
     pub tokenizer: Arc<dyn Tokenizer>,
-    pub dictionary: Option<Arc<Dictionary>>,
+    pub dictionaries: Vec<Arc<Dictionary>>,
     pub audio_dir: String,
     pub media_dir: String,
 }

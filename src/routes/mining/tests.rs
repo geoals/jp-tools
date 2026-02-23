@@ -48,7 +48,7 @@ async fn test_app_with_media(
         exporter: Arc::new(exporter),
         media_extractor: Arc::new(media_extractor),
         tokenizer: Arc::new(mock_tokenizer()),
-        dictionary: None,
+        dictionaries: vec![],
         audio_dir: "/tmp".into(),
         media_dir: "/tmp/media".into(),
     };
@@ -251,7 +251,7 @@ async fn test_app_with_media_dir(
         exporter: Arc::new(exporter),
         media_extractor: Arc::new(media_extractor),
         tokenizer: Arc::new(mock_tokenizer()),
-        dictionary: None,
+        dictionaries: vec![],
         audio_dir: "/tmp".into(),
         media_dir,
     };
@@ -537,7 +537,8 @@ async fn export_with_target_word_and_dictionary_populates_vocab() {
         .withf(|sentences: &Vec<ExportSentence>, _source: &String| {
             let s = &sentences[0];
             s.target_word.as_deref() == Some("食べる")
-                && s.definition.as_deref() == Some("to eat; to consume")
+                && s.definition.as_deref()
+                    == Some(r#"<div class="dict-unknown-title">Unknown</div><div class="dict-unknown-body">to eat; to consume</div>"#)
         })
         .returning(|sentences, _source| {
             let count = sentences.len();
@@ -559,7 +560,7 @@ async fn export_with_target_word_and_dictionary_populates_vocab() {
         exporter: Arc::new(exporter),
         media_extractor: Arc::new(media_extractor),
         tokenizer: Arc::new(mock_tokenizer()),
-        dictionary: Some(Arc::new(dict)),
+        dictionaries: vec![Arc::new(dict)],
         audio_dir: "/tmp".into(),
         media_dir: "/tmp/media".into(),
     };

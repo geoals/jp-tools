@@ -12,9 +12,9 @@ pub struct Config {
     pub whisper_device: String,
     /// Directory for temporary media files (screenshots, audio clips).
     pub media_dir: String,
-    /// Path to a Yomitan dictionary zip file. Optional — if not set,
-    /// VocabDef will be left empty on exported Anki cards.
-    pub dictionary_path: Option<String>,
+    /// Paths to Yomitan dictionary zip files. If empty, VocabDef will be
+    /// left empty on exported Anki cards.
+    pub dictionary_paths: Vec<String>,
     pub anki: AnkiConfig,
 }
 
@@ -83,7 +83,7 @@ impl Config {
                 .unwrap_or_else(|_| "auto".into()),
             media_dir: env::var("JP_TOOLS_MEDIA_DIR")
                 .unwrap_or_else(|_| "media".into()),
-            dictionary_path: env::var("JP_TOOLS_DICTIONARY_PATH").ok(),
+            dictionary_paths: parse_dictionary_paths(),
             anki: AnkiConfig {
                 model_name: env::var("JP_TOOLS_ANKI_MODEL")
                     .unwrap_or(anki_defaults.model_name),
@@ -120,4 +120,22 @@ impl Config {
     pub fn database_url(&self) -> String {
         format!("sqlite://{}?mode=rwc", self.db_path)
     }
+}
+
+/// Parse dictionary paths from environment.
+/// Supports `JP_TOOLS_DICTIONARY_PATHS` (comma-separated) with fallback
+/// to `JP_TOOLS_DICTIONARY_PATH` (single path) for backward compatibility.
+fn parse_dictionary_paths() -> Vec<String> {
+    if let Ok(paths) = env::var("JP_TOOLS_DICTIONARY_PATHS") {
+        return paths
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+    }
+    // Backward compat: single path
+    env::var("JP_TOOLS_DICTIONARY_PATH")
+        .ok()
+        .into_iter()
+        .collect()
 }

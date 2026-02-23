@@ -304,10 +304,16 @@ pub async fn export_sentences(
         let target_word = target_word_map.get(&sentence.id).cloned();
 
         let definition = target_word.as_ref().and_then(|word| {
-            let dict = state.dictionary.as_ref()?;
-            let entries = dict.lookup(word);
-            let entry = entries.first()?;
-            Some(entry.definitions.join("; "))
+            let parts: Vec<String> = state
+                .dictionaries
+                .iter()
+                .filter_map(|dict| {
+                    let entry = dict.lookup(word).first()?;
+                    let joined = entry.definitions.join("; ");
+                    Some(dict.wrap_definitions(&joined))
+                })
+                .collect();
+            if parts.is_empty() { None } else { Some(parts.join("")) }
         });
 
         export_sentences.push(ExportSentence {

@@ -41,15 +41,19 @@ async fn main() {
 
     let tokenizer = LinderaTokenizer::new().expect("failed to initialize tokenizer");
 
-    let dictionary = config.dictionary_path.as_ref().map(|path| {
-        info!(path, "loading dictionary");
-        Arc::new(
-            Dictionary::load_from_zip(std::path::Path::new(path))
-                .expect("failed to load dictionary"),
-        )
-    });
-    if dictionary.is_none() {
-        info!("no dictionary configured (set JP_TOOLS_DICTIONARY_PATH to enable definitions)");
+    let dictionaries: Vec<Arc<Dictionary>> = config
+        .dictionary_paths
+        .iter()
+        .map(|path| {
+            info!(path, "loading dictionary");
+            Arc::new(
+                Dictionary::load_from_zip(std::path::Path::new(path))
+                    .expect("failed to load dictionary"),
+            )
+        })
+        .collect();
+    if dictionaries.is_empty() {
+        info!("no dictionaries configured (set JP_TOOLS_DICTIONARY_PATHS to enable definitions)");
     }
 
     let state = AppState {
@@ -59,7 +63,7 @@ async fn main() {
         exporter: Arc::new(AnkiConnectExporter::new(config.anki_url, config.anki)),
         media_extractor: Arc::new(FfmpegMediaExtractor),
         tokenizer: Arc::new(tokenizer),
-        dictionary,
+        dictionaries,
         audio_dir: config.audio_dir,
         media_dir,
     };
