@@ -102,7 +102,7 @@ pub fn build_add_notes_request(notes: &[NoteData], config: &AnkiConfig) -> Value
                 "deckName": config.deck_name,
                 "modelName": config.model_name,
                 "fields": fields,
-                "tags": ["jp-tools", "youtube"]
+                "tags": ["yt-mine", "youtube"]
             })
         })
         .collect();
@@ -186,7 +186,7 @@ fn build_model_names_request() -> Value {
 
 /// Build a `storeMediaFile` request for AnkiConnect.
 /// Uses the `data` field (base64-encoded bytes) so it works even when
-/// AnkiConnect runs on a different machine than jp-tools.
+/// AnkiConnect runs on a different machine than yt-mine.
 pub fn build_store_media_request(filename: &str, data_base64: &str) -> Value {
     json!({
         "action": "storeMediaFile",
@@ -392,8 +392,8 @@ mod tests {
                 vocab_kanji: "テスト".into(),
                 vocab_def: "test".into(),
                 source: "Test Video (0:05)".into(),
-                screenshot_filename: Some("jp-tools_1_1.jpg".into()),
-                audio_clip_filename: Some("jp-tools_1_1.mp3".into()),
+                screenshot_filename: Some("yt-mine_1_1.jpg".into()),
+                audio_clip_filename: Some("yt-mine_1_1.mp3".into()),
                 vocab_furigana: "テスト".into(),
                 vocab_pitch_num: "0".into(),
             },
@@ -422,11 +422,11 @@ mod tests {
         assert_eq!(result_notes[0]["fields"]["SentKanji"], "テスト文");
         assert_eq!(
             result_notes[0]["fields"]["Image"],
-            "<img src=\"jp-tools_1_1.jpg\">"
+            "<img src=\"yt-mine_1_1.jpg\">"
         );
         assert_eq!(
             result_notes[0]["fields"]["SentAudio"],
-            "[sound:jp-tools_1_1.mp3]"
+            "[sound:yt-mine_1_1.mp3]"
         );
         assert_eq!(result_notes[0]["fields"]["Document"], "Test Video (0:05)");
         assert_eq!(result_notes[0]["fields"]["VocabKanji"], "テスト");

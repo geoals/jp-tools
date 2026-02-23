@@ -1,7 +1,7 @@
 services:
   whisper:
     build: .
-    container_name: jp-tools-whisper
+    container_name: yt-mine-whisper
     volumes:
       # Share audio files between host and container
       - ./audio:/app/audio

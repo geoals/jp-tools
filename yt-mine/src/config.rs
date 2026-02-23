@@ -70,7 +70,7 @@ impl Config {
 
         Self {
             db_path: env::var("JP_TOOLS_DB_PATH")
-                .unwrap_or_else(|_| "jp-tools.db".into()),
+                .unwrap_or_else(|_| "yt-mine.db".into()),
             audio_dir: env::var("JP_TOOLS_AUDIO_DIR")
                 .unwrap_or_else(|_| "audio".into()),
             listen_addr: env::var("JP_TOOLS_LISTEN_ADDR")

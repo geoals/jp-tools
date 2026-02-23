@@ -12,7 +12,7 @@ if [ "$1" = "--worker" ]; then
     # into docker exec. Docker's stdout flows back to Rust unchanged.
     while IFS= read -r line; do
         echo "/app/audio/$(basename "$line")"
-    done | docker exec -i -w /app jp-tools-whisper python3 scripts/transcribe.py --worker "$@"
+    done | docker exec -i -w /app yt-mine-whisper python3 scripts/transcribe.py --worker "$@"
     exit
 fi
 
@@ -22,4 +22,4 @@ shift
 # Replace everything up to and including /audio/ with /app/audio/
 AUDIO_CONTAINER="/app/audio/$(basename "$AUDIO_HOST")"
 
-exec docker exec -w /app jp-tools-whisper python3 scripts/transcribe.py "$AUDIO_CONTAINER" "$@"
+exec docker exec -w /app yt-mine-whisper python3 scripts/transcribe.py "$AUDIO_CONTAINER" "$@"

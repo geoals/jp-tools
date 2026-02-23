@@ -1,6 +1,7 @@
 /target
-/audio/
-/media/
-jp-tools.db
+yt-mine/target
+yt-mine/audio/
+yt-mine/media/
+*.db
 .env
 *.zip

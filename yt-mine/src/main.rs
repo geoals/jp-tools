@@ -2,15 +2,15 @@ use std::sync::Arc;
 
 use tracing::info;
 
-use jp_tools::app::{AppState, build_router};
-use jp_tools::config::Config;
-use jp_tools::db;
-use jp_tools::services::download::YtDlpDownloader;
-use jp_tools::services::export::AnkiConnectExporter;
-use jp_tools::services::media::FfmpegMediaExtractor;
-use jp_tools::services::dictionary::Dictionary;
-use jp_tools::services::tokenize::LinderaTokenizer;
-use jp_tools::services::transcribe::WhisperWorker;
+use yt_mine::app::{AppState, build_router};
+use yt_mine::config::Config;
+use yt_mine::db;
+use yt_mine::services::download::YtDlpDownloader;
+use yt_mine::services::export::AnkiConnectExporter;
+use yt_mine::services::media::FfmpegMediaExtractor;
+use yt_mine::services::dictionary::Dictionary;
+use yt_mine::services::tokenize::LinderaTokenizer;
+use yt_mine::services::transcribe::WhisperWorker;
 
 #[tokio::main]
 async fn main() {

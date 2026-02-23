@@ -1512,32 +1512,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jp-tools"
-version = "0.1.0"
-dependencies = [
- "askama",
- "askama_web",
- "axum",
- "axum-test",
- "base64",
- "dotenvy",
- "flate2",
- "lindera",
- "mockall",
- "reqwest 0.12.28",
- "serde",
- "serde_html_form",
- "serde_json",
- "sqlx",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "zip",
-]
-
-[[package]]
 name = "js-sys"
 version = "0.3.88"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4367,6 +4341,32 @@ dependencies = [
  "quote",
  "syn",
  "synstructure",
+]
+
+[[package]]
+name = "yt-mine"
+version = "0.1.0"
+dependencies = [
+ "askama",
+ "askama_web",
+ "axum",
+ "axum-test",
+ "base64",
+ "dotenvy",
+ "flate2",
+ "lindera",
+ "mockall",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_html_form",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "zip",
 ]
 
 [[package]]

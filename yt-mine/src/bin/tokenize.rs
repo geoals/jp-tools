@@ -1,6 +1,6 @@
 use std::env;
 
-use jp_tools::services::tokenize::{LinderaTokenizer, Token, Tokenizer};
+use yt_mine::services::tokenize::{LinderaTokenizer, Token, Tokenizer};
 
 fn main() {
     let text: String = env::args().skip(1).collect::<Vec<_>>().join(" ");

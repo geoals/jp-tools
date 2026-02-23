@@ -39,8 +39,8 @@ pub fn format_ffmpeg_timestamp(secs: f64) -> String {
 /// Returns `(screenshot_filename, audio_clip_filename)`.
 pub fn media_filenames(job_id: i64, sentence_id: i64) -> (String, String) {
     (
-        format!("jp-tools_{job_id}_{sentence_id}.jpg"),
-        format!("jp-tools_{job_id}_{sentence_id}.mp3"),
+        format!("yt-mine_{job_id}_{sentence_id}.jpg"),
+        format!("yt-mine_{job_id}_{sentence_id}.mp3"),
     )
 }
 
@@ -166,7 +166,7 @@ mod tests {
     #[test]
     fn media_filenames_format() {
         let (screenshot, audio) = media_filenames(42, 7);
-        assert_eq!(screenshot, "jp-tools_42_7.jpg");
-        assert_eq!(audio, "jp-tools_42_7.mp3");
+        assert_eq!(screenshot, "yt-mine_42_7.jpg");
+        assert_eq!(audio, "yt-mine_42_7.mp3");
     }
 }
