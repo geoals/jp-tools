@@ -5,12 +5,15 @@ use tracing::info;
 use yt_mine::app::{AppState, build_router};
 use yt_mine::config::Config;
 use yt_mine::db;
-use yt_mine::services::download::YtDlpDownloader;
-use yt_mine::services::export::AnkiConnectExporter;
-use yt_mine::services::media::FfmpegMediaExtractor;
 use yt_mine::services::dictionary::Dictionary;
-use yt_mine::services::tokenize::LinderaTokenizer;
-use yt_mine::services::transcribe::WhisperWorker;
+use yt_mine::services::download::{AudioDownloader, YtDlpDownloader};
+use yt_mine::services::export::{AnkiConnectExporter, AnkiExporter};
+use yt_mine::services::fake::{
+    FakeAnkiExporter, FakeDownloader, FakeMediaExtractor, FakeTokenizer, FakeTranscriber,
+};
+use yt_mine::services::media::{FfmpegMediaExtractor, MediaExtractor};
+use yt_mine::services::tokenize::{LazyTokenizer, Tokenizer};
+use yt_mine::services::transcribe::{Transcriber, WhisperWorker};
 
 #[tokio::main]
 async fn main() {
@@ -31,23 +34,44 @@ async fn main() {
         .await
         .expect("failed to create database pool");
 
-    // Whisper spawn (async, waits for subprocess) and tokenizer init (CPU-bound,
-    // loads UniDic) can run concurrently since they're independent.
-    let transcriber_fut = WhisperWorker::spawn(
-        &config.transcribe_script,
-        config.whisper_cpu_threads,
-        &config.whisper_device,
-    );
-    let tokenizer_fut = tokio::task::spawn_blocking(|| {
-        info!("initializing Lindera tokenizer (UniDic)");
-        let tokenizer = LinderaTokenizer::new().expect("failed to initialize tokenizer");
-        info!("tokenizer ready");
-        tokenizer
-    });
+    let (downloader, transcriber, exporter, media_extractor, tokenizer): (
+        Arc<dyn AudioDownloader>,
+        Arc<dyn Transcriber>,
+        Arc<dyn AnkiExporter>,
+        Arc<dyn MediaExtractor>,
+        Arc<dyn Tokenizer>,
+    ) = if config.fake_api {
+        info!("*** DEV MODE — using fake services (no external deps needed) ***");
+        (
+            Arc::new(FakeDownloader),
+            Arc::new(FakeTranscriber),
+            Arc::new(FakeAnkiExporter),
+            Arc::new(FakeMediaExtractor),
+            Arc::new(FakeTokenizer),
+        )
+    } else {
+        // Tokenizer loads UniDic (~8s). LazyTokenizer defers this to a
+        // background OS thread so the server starts accepting requests
+        // immediately. First tokenize() call blocks if init isn't done yet.
+        let tokenizer = Arc::new(LazyTokenizer::new());
+        tokenizer.start_background_init();
 
-    let (transcriber, tokenizer) = tokio::join!(transcriber_fut, tokenizer_fut);
-    let transcriber = transcriber.expect("failed to start whisper worker");
-    let tokenizer = tokenizer.expect("tokenizer task panicked");
+        let transcriber = WhisperWorker::spawn(
+            &config.transcribe_script,
+            config.whisper_cpu_threads,
+            &config.whisper_device,
+        )
+        .await
+        .expect("failed to start whisper worker");
+
+        (
+            Arc::new(YtDlpDownloader),
+            Arc::new(transcriber),
+            Arc::new(AnkiConnectExporter::new(config.anki_url, config.anki)),
+            Arc::new(FfmpegMediaExtractor),
+            tokenizer,
+        )
+    };
 
     let mut dictionaries: Vec<Arc<Dictionary>> = Vec::new();
     for path in &config.dictionary_paths {
@@ -63,11 +87,11 @@ async fn main() {
 
     let state = AppState {
         db: pool,
-        downloader: Arc::new(YtDlpDownloader),
-        transcriber: Arc::new(transcriber),
-        exporter: Arc::new(AnkiConnectExporter::new(config.anki_url, config.anki)),
-        media_extractor: Arc::new(FfmpegMediaExtractor),
-        tokenizer: Arc::new(tokenizer),
+        downloader,
+        transcriber,
+        exporter,
+        media_extractor,
+        tokenizer,
         dictionaries,
         audio_dir: config.audio_dir,
         media_dir,

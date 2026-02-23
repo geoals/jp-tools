@@ -74,6 +74,7 @@ Each dictionary's definitions are wrapped with `<div class="dict-{slug}-title">`
 ```sh
 cargo build                                      # from repo root or yt-mine/
 cargo run -p yt-mine                             # server on 0.0.0.0:3000
+JP_TOOLS_FAKE_API=true cargo run -p yt-mine      # dev mode — no yt-dlp/whisper/ffmpeg/Anki needed
 cargo run -p yt-mine --bin tokenize -- "日本語のテキスト"  # test tokenizer output
 cargo test -p yt-mine                            # unit + integration (mocked)
 cargo test -p yt-mine -- --ignored               # real subprocess tests (need yt-dlp, whisper, Anki)
@@ -94,6 +95,7 @@ Configuration via environment variables. Loaded from `.env` (at repo root) autom
 | `JP_TOOLS_WHISPER_DEVICE`      | `auto` (`cpu`, `cuda`)                                         |
 | `JP_TOOLS_DICTIONARY_PATHS`    | _(none, optional)_ — comma-separated list of Yomitan zip files |
 | `JP_TOOLS_DICTIONARY_PATH`     | _(legacy)_ — single path, fallback if `_PATHS` not set         |
+| `JP_TOOLS_FAKE_API`            | `false` — set `true`/`1` to use fake services (no external deps) |
 
 ### Anki export config
 

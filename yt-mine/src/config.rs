@@ -16,6 +16,9 @@ pub struct Config {
     /// left empty on exported Anki cards.
     pub dictionary_paths: Vec<String>,
     pub anki: AnkiConfig,
+    /// When true, use fake implementations of external tools (yt-dlp, whisper,
+    /// ffmpeg, AnkiConnect) so the server can run without any dependencies.
+    pub fake_api: bool,
 }
 
 /// Anki note type configuration: model name, deck name, and field mapping.
@@ -88,6 +91,10 @@ impl Config {
             media_dir: env::var("JP_TOOLS_MEDIA_DIR")
                 .unwrap_or_else(|_| "media".into()),
             dictionary_paths: parse_dictionary_paths(),
+            fake_api: matches!(
+                env::var("JP_TOOLS_FAKE_API").as_deref(),
+                Ok("true" | "1"),
+            ),
             anki: AnkiConfig {
                 model_name: env::var("JP_TOOLS_ANKI_MODEL")
                     .unwrap_or(anki_defaults.model_name),

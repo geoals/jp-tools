@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Token {
@@ -39,6 +39,36 @@ impl LinderaTokenizer {
     }
 }
 
+/// Defers tokenizer initialization to a background thread so the server
+/// can start accepting requests immediately. The first call to `tokenize`
+/// blocks until init completes (if it hasn't already).
+pub struct LazyTokenizer {
+    inner: OnceLock<LinderaTokenizer>,
+}
+
+impl LazyTokenizer {
+    pub fn new() -> Self {
+        Self {
+            inner: OnceLock::new(),
+        }
+    }
+
+    /// Kick off initialization in a background OS thread. If the tokenizer
+    /// is already initialized (or another thread is initializing it), this
+    /// is a no-op.
+    pub fn start_background_init(self: &std::sync::Arc<Self>) {
+        let this = std::sync::Arc::clone(self);
+        std::thread::spawn(move || {
+            tracing::info!("initializing Lindera tokenizer (UniDic) in background");
+            this.inner.get_or_init(|| {
+                let t = LinderaTokenizer::new().expect("failed to initialize tokenizer");
+                tracing::info!("tokenizer ready");
+                t
+            });
+        });
+    }
+}
+
 impl Tokenizer for LinderaTokenizer {
     fn tokenize(&self, text: &str) -> Result<Vec<Token>, TokenizeError> {
         let tokenizer = self
@@ -73,6 +103,15 @@ impl Tokenizer for LinderaTokenizer {
                 }
             })
             .collect())
+    }
+}
+
+impl Tokenizer for LazyTokenizer {
+    fn tokenize(&self, text: &str) -> Result<Vec<Token>, TokenizeError> {
+        let tokenizer = self.inner.get_or_init(|| {
+            LinderaTokenizer::new().expect("failed to initialize tokenizer")
+        });
+        tokenizer.tokenize(text)
     }
 }
 

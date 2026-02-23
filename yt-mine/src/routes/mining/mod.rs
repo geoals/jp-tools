@@ -59,6 +59,9 @@ struct VideoPageTemplate {
     is_terminal: bool,
     error_message: Option<String>,
     sentences: Vec<SentenceView>,
+    /// Passed through to the included fragment. Always false for the full page
+    /// (the page already has its own h1).
+    oob_title: bool,
 }
 
 #[derive(askama::Template, askama_web::WebTemplate)]
@@ -72,6 +75,9 @@ struct VideoContentFragmentTemplate {
     is_terminal: bool,
     error_message: Option<String>,
     sentences: Vec<SentenceView>,
+    /// When true, emit an OOB `<h1>` swap to update the page title.
+    /// Only set for htmx polling responses, not the initial page include.
+    oob_title: bool,
 }
 
 #[derive(askama::Template, askama_web::WebTemplate)]
@@ -227,6 +233,7 @@ pub async fn video_page(
         is_terminal: job.status.is_terminal(),
         error_message: job.error_message,
         sentences: sentence_views,
+        oob_title: false,
     };
 
     Ok(template.into_response())
@@ -253,6 +260,7 @@ pub async fn video_status_fragment(
         is_terminal,
         error_message: job.error_message,
         sentences,
+        oob_title: true,
     };
 
     Ok(template.into_response())
