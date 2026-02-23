@@ -113,7 +113,7 @@ impl AudioDownloader for YtDlpDownloader {
                     &url,
                 ])
                 .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::inherit())
+                .stderr(std::process::Stdio::piped())
                 .spawn()
                 .map_err(|e| DownloadError::Failed(format!("failed to run yt-dlp: {e}")))?;
 
@@ -123,9 +123,10 @@ impl AudioDownloader for YtDlpDownloader {
                 .map_err(|e| DownloadError::Failed(format!("yt-dlp failed: {e}")))?;
 
             if !output.status.success() {
-                return Err(DownloadError::Failed(
-                    "yt-dlp exited with non-zero status (see logs above)".into(),
-                ));
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(DownloadError::Failed(format!(
+                    "yt-dlp exited with non-zero status: {stderr}"
+                )));
             }
 
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -164,7 +165,7 @@ impl AudioDownloader for YtDlpDownloader {
                     "-y",
                 ])
                 .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::inherit())
+                .stderr(std::process::Stdio::piped())
                 .spawn()
                 .map_err(|e| DownloadError::Failed(format!("failed to run ffmpeg: {e}")))?;
 
@@ -174,9 +175,10 @@ impl AudioDownloader for YtDlpDownloader {
                 .map_err(|e| DownloadError::Failed(format!("ffmpeg failed: {e}")))?;
 
             if !ffmpeg_output.status.success() {
-                return Err(DownloadError::Failed(
-                    "ffmpeg audio extraction exited with non-zero status".into(),
-                ));
+                let stderr = String::from_utf8_lossy(&ffmpeg_output.stderr);
+                return Err(DownloadError::Failed(format!(
+                    "ffmpeg audio extraction failed: {stderr}"
+                )));
             }
 
             Ok(DownloadResult {

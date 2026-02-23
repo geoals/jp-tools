@@ -7,7 +7,6 @@ use crate::services::dictionary::{DictionaryEntry, PitchEntry};
 const MIGRATION: &str = include_str!("../migrations/001_create_mining_tables.sql");
 const MIGRATION_DICT: &str = include_str!("../migrations/002_create_dictionary_tables.sql");
 const MIGRATION_PITCH: &str = include_str!("../migrations/003_create_pitch_tables.sql");
-const MIGRATION_VIDEO_ID: &str = include_str!("../migrations/004_add_video_id.sql");
 
 pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> {
     let pool = SqlitePoolOptions::new()
@@ -18,9 +17,27 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> 
     sqlx::raw_sql(MIGRATION).execute(&pool).await?;
     sqlx::raw_sql(MIGRATION_DICT).execute(&pool).await?;
     sqlx::raw_sql(MIGRATION_PITCH).execute(&pool).await?;
-    sqlx::raw_sql(MIGRATION_VIDEO_ID).execute(&pool).await?;
+
+    // ALTER TABLE ADD COLUMN has no IF NOT EXISTS in SQLite,
+    // so check whether the column is already present first.
+    if !has_column(&pool, "mining_jobs", "video_id").await? {
+        sqlx::raw_sql(include_str!("../migrations/004_add_video_id.sql"))
+            .execute(&pool)
+            .await?;
+    }
 
     Ok(pool)
+}
+
+/// Check whether a table already has a given column.
+async fn has_column(pool: &SqlitePool, table: &str, column: &str) -> Result<bool, sqlx::Error> {
+    let rows = sqlx::query(&format!("PRAGMA table_info({table})"))
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.iter().any(|r| {
+        let name: &str = r.get("name");
+        name == column
+    }))
 }
 
 pub async fn create_job(
@@ -380,8 +397,14 @@ mod tests {
 
     #[tokio::test]
     async fn migration_is_idempotent() {
-        let pool = test_pool().await;
+        // Running create_pool twice on the same database must not fail.
+        let pool = create_pool("sqlite::memory:").await.unwrap();
+        // Re-run all migrations (simulates second server start).
         sqlx::raw_sql(MIGRATION).execute(&pool).await.unwrap();
+        sqlx::raw_sql(MIGRATION_DICT).execute(&pool).await.unwrap();
+        sqlx::raw_sql(MIGRATION_PITCH).execute(&pool).await.unwrap();
+        // 004 uses ALTER TABLE ADD COLUMN which would fail without the guard.
+        assert!(has_column(&pool, "mining_jobs", "video_id").await.unwrap());
     }
 
     #[tokio::test]

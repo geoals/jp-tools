@@ -79,6 +79,6 @@ async fn main() {
         .await
         .expect("failed to bind listener");
 
-    info!(addr = %config.listen_addr, "server starting");
+    info!(addr = %config.listen_addr, "server ready, listening");
     axum::serve(listener, router).await.expect("server error");
 }
