@@ -4,27 +4,224 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}jp-tools{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <style>
-        body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
-        h1 { margin-bottom: 1rem; }
-        form { margin: 1rem 0; }
-        input[type="url"], input[type="text"] { width: 100%; padding: 0.5rem; font-size: 1rem; box-sizing: border-box; }
-        button { padding: 0.5rem 1rem; font-size: 1rem; cursor: pointer; margin-top: 0.5rem; }
-        .status { padding: 1rem; margin: 1rem 0; border-radius: 4px; background: #f0f0f0; }
-        .status.done { background: #d4edda; }
-        .status.error { background: #f8d7da; }
-        .sentence-list { list-style: none; padding: 0; }
-        .sentence-list li { padding: 0.5rem; margin: 0.25rem 0; border: 1px solid #ddd; border-radius: 4px; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
-        .sentence-list .timestamp { flex-shrink: 0; }
-        .timestamp { color: #666; font-size: 0.85rem; }
-        .play-btn { background: none; border: 1px solid #ccc; border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85rem; cursor: pointer; line-height: 1; min-width: 1.8em; }
-        .play-btn:hover { background: #e8e8e8; }
-        .sentence-tokens { font-size: 1.1rem; }
-        .token.content-word { cursor: pointer; border-radius: 2px; padding: 0 1px; }
-        .token.content-word:hover { background: #e8d5f5; }
-        .token.content-word.selected { background: #9b59b6; color: #fff; }
-        .sentence-list li.exported { border-left: 3px solid #27ae60; background: #f0faf4; }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg:         hsl(220, 8%, 7%);
+            --bg-surface: hsl(215, 8%, 11%);
+            --bg-hover:   hsl(210, 7%, 15%);
+            --text:       hsl(210, 8%, 78%);
+            --text-muted: hsl(210, 5%, 44%);
+            --accent:       hsl(175, 50%, 48%);
+            --accent-hover: hsl(175, 55%, 58%);
+            --accent-dim:   hsl(175, 30%, 16%);
+            --border:       hsl(210, 6%, 17%);
+            --danger-bg:      hsl(0, 30%, 12%);
+            --danger-border:  hsl(0, 30%, 22%);
+            --danger-text:    hsl(0, 35%, 60%);
+            --success-bg:     hsl(170, 25%, 11%);
+            --success-border: hsl(170, 25%, 20%);
+            --success-text:   hsl(170, 35%, 55%);
+            --radius: 6px;
+        }
+
+        body {
+            font-family: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+            max-width: 780px;
+            margin: 0 auto;
+            padding: 2.5rem 1.5rem;
+        }
+
+        h1 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+            letter-spacing: -0.01em;
+        }
+
+        p strong {
+            font-weight: 500;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* --- Forms --- */
+
+        form { margin: 1.25rem 0; }
+
+        input[type="url"],
+        input[type="text"] {
+            width: 100%;
+            padding: 0.55rem 0.75rem;
+            font-size: 0.9rem;
+            font-family: inherit;
+            background: var(--bg-surface);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            outline: none;
+            transition: border-color 0.15s;
+        }
+
+        input[type="url"]:focus,
+        input[type="text"]:focus {
+            border-color: var(--accent);
+        }
+
+        input::placeholder { color: var(--text-muted); }
+
+        button {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.5rem 1rem;
+            font-size: 0.85rem;
+            font-family: inherit;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 0.6rem;
+            background: var(--accent);
+            color: var(--bg);
+            border: none;
+            border-radius: var(--radius);
+            transition: background 0.15s;
+        }
+
+        button:hover { background: var(--accent-hover); }
+
+        /* --- Status --- */
+
+        .status {
+            padding: 0.6rem 0.9rem;
+            margin: 1rem 0;
+            border-radius: var(--radius);
+            font-size: 0.85rem;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+
+        .status:not(.done):not(.error) {
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.55; }
+        }
+
+        .status.done {
+            background: var(--success-bg);
+            border-color: var(--success-border);
+            color: var(--success-text);
+        }
+
+        .status.error {
+            background: var(--danger-bg);
+            border-color: var(--danger-border);
+            color: var(--danger-text);
+        }
+
+        /* --- Sentence list --- */
+
+        .sentence-list {
+            list-style: none;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .sentence-list li {
+            padding: 0.5rem 0.7rem;
+            background: var(--bg-surface);
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .sentence-list .timestamp {
+            flex-shrink: 0;
+            font-variant-numeric: tabular-nums;
+            min-width: 3.2em;
+        }
+
+        .timestamp {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        .play-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            padding: 0.15rem 0.3rem;
+            font-size: 0.8rem;
+            cursor: pointer;
+            border-radius: 4px;
+            line-height: 1;
+            min-width: 1.5em;
+            transition: color 0.12s, background 0.12s;
+        }
+
+        .play-btn:hover {
+            color: var(--accent);
+            background: var(--bg-hover);
+        }
+
+        .sentence-tokens {
+            font-size: 1.05rem;
+            line-height: 1.7;
+        }
+
+        .token.content-word {
+            cursor: pointer;
+            border-radius: 3px;
+            padding: 0.05em 0.1em;
+            transition: background 0.1s, color 0.1s;
+        }
+
+        .token.content-word:hover {
+            background: var(--accent-dim);
+        }
+
+        .token.content-word.selected {
+            background: var(--accent);
+            color: var(--bg);
+        }
+
+        .sentence-list li.exported {
+            opacity: 0.45;
+        }
+
+        /* --- Export result --- */
+
+        #export-result p {
+            padding: 0.55rem 0.85rem;
+            margin: 0.75rem 0;
+            font-size: 0.85rem;
+            background: var(--success-bg);
+            border: 1px solid var(--success-border);
+            color: var(--success-text);
+            border-radius: var(--radius);
+        }
+
+        /* --- Scrollbar --- */
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: hsl(210, 5%, 22%); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: hsl(210, 5%, 28%); }
     </style>
 </head>
 <body>
