@@ -552,7 +552,7 @@ impl Dictionary {
                 }
             }
 
-            info!(title = %title, "loaded dictionary from cache");
+            info!(title = %title, "dictionary available (cached in db)");
             return Ok(Self::from_sqlite(pool.clone(), id, title));
         }
 
