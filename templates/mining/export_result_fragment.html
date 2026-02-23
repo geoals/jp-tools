@@ -2,6 +2,15 @@
 <script>
 [{% for id in exported_ids %}{{ id }},{% endfor %}].forEach(function(id) {
     var li = document.getElementById('sentence-' + id);
-    if (li) { li.classList.add('exported'); }
+    if (!li) return;
+    li.classList.add('exported');
+    // Deselect so re-clicking export won't re-export these sentences
+    li.querySelectorAll('.token.content-word.selected').forEach(function(el) {
+        el.classList.remove('selected');
+    });
+    var wordInput = li.querySelector('.target-word-input');
+    if (wordInput) { wordInput.value = ''; wordInput.disabled = true; }
+    var idInput = li.querySelector('.sentence-id-input');
+    if (idInput) { idInput.disabled = true; }
 });
 </script>

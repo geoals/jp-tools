@@ -27,10 +27,7 @@
             <button type="button" class="play-btn"
                     data-src="/mining/jobs/{{ job_id }}/sentences/{{ s.id }}/audio"
                     aria-label="Play audio">&#9654;</button>
-            <label>
-                <input type="checkbox" name="sentence_ids" value="{{ s.id }}">
-                <span class="timestamp">{{ s.timestamp }}</span>
-            </label>
+            <span class="timestamp">{{ s.timestamp }}</span>
             <span class="sentence-tokens">
                 {% for t in s.tokens %}
                     {% if t.is_content_word %}
@@ -40,6 +37,7 @@
                     {% endif %}
                 {% endfor %}
             </span>
+            <input type="hidden" name="sentence_ids" class="sentence-id-input" data-sid="{{ s.id }}" value="{{ s.id }}" disabled>
             <input type="hidden" name="target_words" class="target-word-input" data-sid="{{ s.id }}" value="" disabled>
         </li>
         {% endfor %}
@@ -90,13 +88,15 @@
     document.querySelectorAll('.token.content-word').forEach(function(span) {
         span.addEventListener('click', function() {
             var sid = span.dataset.sid;
-            var hiddenInput = document.querySelector('.target-word-input[data-sid="' + sid + '"]');
+            var wordInput = document.querySelector('.target-word-input[data-sid="' + sid + '"]');
+            var idInput = document.querySelector('.sentence-id-input[data-sid="' + sid + '"]');
 
             // Deselect if clicking the already-selected word
             if (span.classList.contains('selected')) {
                 span.classList.remove('selected');
-                hiddenInput.value = '';
-                hiddenInput.disabled = true;
+                wordInput.value = '';
+                wordInput.disabled = true;
+                idInput.disabled = true;
                 return;
             }
 
@@ -107,8 +107,9 @@
 
             // Select this word
             span.classList.add('selected');
-            hiddenInput.value = sid + ':' + span.dataset.baseForm;
-            hiddenInput.disabled = false;
+            wordInput.value = sid + ':' + span.dataset.baseForm;
+            wordInput.disabled = false;
+            idInput.disabled = false;
         });
     });
 })();
