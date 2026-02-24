@@ -1,27 +1,12 @@
-# jp-tools — Monorepo
+# jp-tools
 
-Cargo workspace containing Japanese language learning tools.
+Cargo workspace for Japanese language learning tools.
 
-## Projects
-
-| Directory | Description |
-|---|---|
-| `yt-mine/` | YouTube sentence mining — Axum server + htmx frontend, SQLite, Anki export |
-
-## Workspace layout
-
-```
-Cargo.toml          — workspace manifest
-Cargo.lock          — shared lockfile
-.env / .env.example — runtime config (stays at root)
-spec/               — feature specs and roadmap
-yt-mine/            — sentence mining tool (see yt-mine/CLAUDE.md)
-```
-
-## Build & run
+- `yt-mine/` — YouTube sentence mining (Axum + htmx, SQLite, Anki export). See `yt-mine/CLAUDE.md`
+- `spec/` — feature specs and roadmap
 
 ```sh
-cargo build              # build all workspace members
-cargo test               # test all workspace members
-cargo run -p yt-mine     # run the yt-mine server
+cargo build           # all members
+cargo test            # all members
+cargo run -p yt-mine  # server
 ```
