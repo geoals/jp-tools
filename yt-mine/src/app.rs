@@ -38,5 +38,13 @@ pub fn build_router(state: AppState) -> Router {
             "/{video_id}/sentences/{sentence_id}/audio",
             get(mining::sentence_audio),
         )
+        .route(
+            "/{video_id}/sentences/{sentence_id}/preview",
+            get(mining::word_preview),
+        )
+        .route(
+            "/{video_id}/sentences/{sentence_id}/llm-definition",
+            get(mining::llm_definition),
+        )
         .with_state(state)
 }

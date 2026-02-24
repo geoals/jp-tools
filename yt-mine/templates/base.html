@@ -266,6 +266,92 @@
             color: var(--bg);
         }
 
+        .sentence-list li.preview-container {
+            padding: 0;
+            background: none;
+        }
+
+        .preview-panel {
+            padding: 0.7rem 0.9rem;
+            background: var(--bg-hover);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .preview-header {
+            display: flex;
+            align-items: baseline;
+            gap: 0.5rem;
+        }
+
+        .preview-word {
+            font-family: "Noto Sans JP", "Hiragino Sans", sans-serif;
+            font-size: 1.2rem;
+            font-weight: 500;
+            color: var(--accent);
+        }
+
+        .preview-reading {
+            font-family: "Noto Sans JP", "Hiragino Sans", sans-serif;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .preview-pitch {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .preview-definitions {
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+
+        .preview-definitions.preview-empty {
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        .preview-sentence {
+            font-family: "Noto Sans JP", "Hiragino Sans", sans-serif;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            color: var(--text-muted);
+        }
+
+        .preview-sentence b {
+            color: var(--accent);
+            font-weight: 500;
+        }
+
+        .preview-llm {
+            min-height: 1.2em;
+        }
+
+        .llm-spinner {
+            display: inline-block;
+            width: 0.9em;
+            height: 0.9em;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        .llm-definition {
+            font-size: 0.85rem;
+            line-height: 1.5;
+            color: var(--text);
+        }
+
+        .llm-definition.llm-unavailable {
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
         .sentence-list li.exported {
             opacity: 0.5;
         }

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::Form;
 
@@ -13,7 +13,7 @@ use crate::models::JobStatus;
 use crate::services::export::ExportSentence;
 use crate::services::media::media_filenames;
 use crate::services::pipeline;
-use crate::services::dictionary::format_furigana;
+use crate::services::dictionary::{Dictionary, format_furigana};
 use crate::services::tokenize::{Token, is_content_word};
 
 /// Form extractor that uses `serde_html_form` to handle repeated keys
@@ -95,6 +95,24 @@ struct ExportErrorTemplate {
     message: String,
 }
 
+#[derive(askama::Template, askama_web::WebTemplate)]
+#[template(path = "mining/preview_fragment.html")]
+struct PreviewFragmentTemplate {
+    video_id: String,
+    sentence_id: i64,
+    word: String,
+    reading: String,
+    pitch_num: Option<String>,
+    definition_html: Option<String>,
+    sentence_html: Option<String>,
+}
+
+#[derive(askama::Template, askama_web::WebTemplate)]
+#[template(path = "mining/llm_definition_fragment.html")]
+struct LlmDefinitionFragmentTemplate {
+    definition: Option<String>,
+}
+
 struct SentenceView {
     id: i64,
     timestamp: String,
@@ -141,6 +159,11 @@ impl ExportForm {
             })
             .collect()
     }
+}
+
+#[derive(serde::Deserialize)]
+pub struct PreviewQuery {
+    word: String,
 }
 
 // --- Handlers ---
@@ -354,41 +377,13 @@ pub async fn export_sentences(
 
         let target_word = target_word_map.get(&sentence.id).cloned();
 
-        let mut definition = None;
-        let mut reading = String::new();
-        let mut vocab_pitch_num = None;
-
-        if let Some(word) = &target_word {
-            let mut def_parts = Vec::new();
-            for dict in &state.dictionaries {
-                let entries = dict.lookup(word).await;
-                if let Some(entry) = entries.first() {
-                    let joined = entry.definitions.join("; ");
-                    def_parts.push(dict.wrap_definitions(&joined));
-                    if reading.is_empty() && !entry.reading.is_empty() {
-                        reading = entry.reading.clone();
-                    }
-                }
-                if vocab_pitch_num.is_none() {
-                    let pitch = dict.lookup_pitch(word).await;
-                    if !pitch.is_empty() {
-                        let nums: Vec<String> = pitch[0]
-                            .positions
-                            .iter()
-                            .map(|p| p.to_string())
-                            .collect();
-                        vocab_pitch_num = Some(nums.join(","));
-                    }
-                }
-            }
-            if !def_parts.is_empty() {
-                definition = Some(def_parts.join(""));
-            }
-        }
-
-        let vocab_furigana = target_word
-            .as_ref()
-            .map(|word| format_furigana(word, &reading));
+        let (definition, vocab_furigana, vocab_pitch_num) = if let Some(word) = &target_word {
+            let result = lookup_word(&state.dictionaries, word).await;
+            let furigana = format_furigana(word, &result.reading);
+            (result.definition_html, Some(furigana), result.pitch_num)
+        } else {
+            (None, None, None)
+        };
 
         let mut llm_definition = None;
         if let (Some(word), Some(definer)) = (&target_word, &state.llm_definer) {
@@ -448,6 +443,71 @@ pub async fn export_sentences(
     }
 }
 
+pub async fn word_preview(
+    State(state): State<AppState>,
+    Path((video_id, sentence_id)): Path<(String, i64)>,
+    Query(query): Query<PreviewQuery>,
+) -> Result<Response, AppError> {
+    let job = db::get_job_by_video_id(&state.db, &video_id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    let sentences = db::get_sentences_by_ids(&state.db, &[sentence_id]).await?;
+    let sentence = sentences.into_iter().next().ok_or(AppError::NotFound)?;
+    if sentence.job_id != job.id {
+        return Err(AppError::NotFound);
+    }
+
+    let result = lookup_word(&state.dictionaries, &query.word).await;
+
+    let sentence_html = state
+        .tokenizer
+        .tokenize(&sentence.text)
+        .ok()
+        .and_then(|tokens| bold_target_in_sentence(&tokens, &query.word));
+
+    Ok(PreviewFragmentTemplate {
+        video_id,
+        sentence_id,
+        word: query.word,
+        reading: result.reading,
+        pitch_num: result.pitch_num,
+        definition_html: result.definition_html,
+        sentence_html,
+    }
+    .into_response())
+}
+
+pub async fn llm_definition(
+    State(state): State<AppState>,
+    Path((video_id, sentence_id)): Path<(String, i64)>,
+    Query(query): Query<PreviewQuery>,
+) -> Result<Response, AppError> {
+    let job = db::get_job_by_video_id(&state.db, &video_id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    let sentences = db::get_sentences_by_ids(&state.db, &[sentence_id]).await?;
+    let sentence = sentences.into_iter().next().ok_or(AppError::NotFound)?;
+    if sentence.job_id != job.id {
+        return Err(AppError::NotFound);
+    }
+
+    let definition = if let Some(definer) = &state.llm_definer {
+        match definer.define(&query.word, &sentence.text).await {
+            Ok(def) => Some(def),
+            Err(e) => {
+                warn!(word = query.word, error = %e, "LLM definition failed");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    Ok(LlmDefinitionFragmentTemplate { definition }.into_response())
+}
+
 pub async fn sentence_audio(
     State(state): State<AppState>,
     Path((video_id, sentence_id)): Path<(String, i64)>,
@@ -489,6 +549,50 @@ pub async fn sentence_audio(
         bytes,
     )
         .into_response())
+}
+
+struct WordLookupResult {
+    definition_html: Option<String>,
+    reading: String,
+    pitch_num: Option<String>,
+}
+
+async fn lookup_word(dictionaries: &[Arc<Dictionary>], word: &str) -> WordLookupResult {
+    let mut def_parts = Vec::new();
+    let mut reading = String::new();
+    let mut pitch_num = None;
+
+    for dict in dictionaries {
+        let entries = dict.lookup(word).await;
+        if let Some(entry) = entries.first() {
+            let joined = entry.definitions.join("; ");
+            def_parts.push(dict.wrap_definitions(&joined));
+            if reading.is_empty() && !entry.reading.is_empty() {
+                reading = entry.reading.clone();
+            }
+        }
+        if pitch_num.is_none() {
+            let pitch = dict.lookup_pitch(word).await;
+            if !pitch.is_empty() {
+                let nums: Vec<String> = pitch[0]
+                    .positions
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect();
+                pitch_num = Some(nums.join(","));
+            }
+        }
+    }
+
+    WordLookupResult {
+        definition_html: if def_parts.is_empty() {
+            None
+        } else {
+            Some(def_parts.join(""))
+        },
+        reading,
+        pitch_num,
+    }
 }
 
 /// Build sentence HTML with the target word's surface form(s) wrapped in `<b></b>`.

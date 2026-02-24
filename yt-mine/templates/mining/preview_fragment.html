@@ -1,0 +1,21 @@
+<div class="preview-panel">
+    <div class="preview-header">
+        <span class="preview-word">{{ word }}</span>
+        {% if reading != word && !reading.is_empty() %}<span class="preview-reading">{{ reading }}</span>{% endif %}
+        {% if let Some(pitch) = pitch_num %}<span class="preview-pitch">[{{ pitch }}]</span>{% endif %}
+    </div>
+    {% if let Some(defs) = definition_html %}
+    <div class="preview-definitions">{{ defs|safe }}</div>
+    {% else %}
+    <div class="preview-definitions preview-empty">No dictionary entries found.</div>
+    {% endif %}
+    {% if let Some(html) = sentence_html %}
+    <div class="preview-sentence">{{ html|safe }}</div>
+    {% endif %}
+    <div class="preview-llm"
+         hx-get="/{{ video_id }}/sentences/{{ sentence_id }}/llm-definition?word={{ word|urlencode }}"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <span class="llm-spinner"></span>
+    </div>
+</div>

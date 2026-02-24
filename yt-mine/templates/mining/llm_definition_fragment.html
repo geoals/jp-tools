@@ -1,0 +1,5 @@
+{% if let Some(def) = definition %}
+<div class="llm-definition">{{ def }}</div>
+{% else %}
+<div class="llm-definition llm-unavailable">AI definition unavailable.</div>
+{% endif %}

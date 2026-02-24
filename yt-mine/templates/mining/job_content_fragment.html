@@ -34,10 +34,11 @@
                     data-src="/{{ video_id }}/sentences/{{ s.id }}/audio"
                     aria-label="Play audio">&#9654;</button>
             <a class="timestamp" href="https://youtube.com/watch?v={{ video_id }}&t={{ s.start_seconds }}s" target="_blank" rel="noopener">{{ s.timestamp }}</a>
-            <span class="sentence-tokens">{% for t in s.tokens %}{% if t.is_content_word %}<span class="token content-word" data-base-form="{{ t.base_form }}" data-sid="{{ s.id }}">{{ t.surface }}</span>{% else %}<span class="token">{{ t.surface }}</span>{% endif %}{% endfor %}</span>
+            <span class="sentence-tokens">{% for t in s.tokens %}{% if t.is_content_word %}<span class="token content-word" data-base-form="{{ t.base_form }}" data-sid="{{ s.id }}" data-video-id="{{ video_id }}">{{ t.surface }}</span>{% else %}<span class="token">{{ t.surface }}</span>{% endif %}{% endfor %}</span>
             <input type="hidden" name="sentence_ids" class="sentence-id-input" data-sid="{{ s.id }}" value="{{ s.id }}" disabled>
             <input type="hidden" name="target_words" class="target-word-input" data-sid="{{ s.id }}" value="" disabled>
         </li>
+        <li class="preview-container" id="preview-container-{{ s.id }}" style="display:none;"></li>
         {% endfor %}
     </ul>
     <button type="submit">
@@ -107,9 +108,26 @@
 </script>
 <script>
 (function() {
+    function hidePreview(sid) {
+        var container = document.getElementById('preview-container-' + sid);
+        if (container) {
+            container.style.display = 'none';
+            container.innerHTML = '';
+        }
+    }
+
+    function showPreview(videoId, sid, word) {
+        var container = document.getElementById('preview-container-' + sid);
+        if (!container) return;
+        container.style.display = '';
+        var url = '/' + videoId + '/sentences/' + sid + '/preview?word=' + encodeURIComponent(word);
+        htmx.ajax('GET', url, {target: container, swap: 'innerHTML'});
+    }
+
     document.querySelectorAll('.token.content-word').forEach(function(span) {
         span.addEventListener('click', function() {
             var sid = span.dataset.sid;
+            var videoId = span.dataset.videoId;
             var wordInput = document.querySelector('.target-word-input[data-sid="' + sid + '"]');
             var idInput = document.querySelector('.sentence-id-input[data-sid="' + sid + '"]');
 
@@ -119,8 +137,21 @@
                 wordInput.value = '';
                 wordInput.disabled = true;
                 idInput.disabled = true;
+                hidePreview(sid);
                 return;
             }
+
+            // Close previews in other sentences
+            document.querySelectorAll('.token.content-word.selected').forEach(function(el) {
+                if (el.dataset.sid !== sid) {
+                    el.classList.remove('selected');
+                    var otherWordInput = document.querySelector('.target-word-input[data-sid="' + el.dataset.sid + '"]');
+                    var otherIdInput = document.querySelector('.sentence-id-input[data-sid="' + el.dataset.sid + '"]');
+                    if (otherWordInput) { otherWordInput.value = ''; otherWordInput.disabled = true; }
+                    if (otherIdInput) { otherIdInput.disabled = true; }
+                    hidePreview(el.dataset.sid);
+                }
+            });
 
             // Deselect any previously selected word in same sentence
             document.querySelectorAll('.token.content-word.selected[data-sid="' + sid + '"]').forEach(function(el) {
@@ -132,6 +163,9 @@
             wordInput.value = sid + ':' + span.dataset.baseForm;
             wordInput.disabled = false;
             idInput.disabled = false;
+
+            // Show preview
+            showPreview(videoId, sid, span.dataset.baseForm);
         });
     });
 })();

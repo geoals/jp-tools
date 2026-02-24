@@ -7,6 +7,8 @@ use crate::services::media::MockMediaExtractor;
 use crate::services::tokenize::MockTokenizer;
 use crate::services::transcribe::MockTranscriber;
 
+use crate::services::dictionary::{Dictionary, DictionaryEntry, PitchEntry};
+use crate::services::llm::MockLlmDefiner;
 use crate::services::tokenize::Token;
 
 /// Returns a mock tokenizer that echoes each char as a single noun token.
@@ -817,4 +819,206 @@ async fn export_with_target_word_and_dictionary_populates_vocab() {
     response.assert_status_ok();
     let body = response.text();
     assert!(body.contains("1 sentence(s) exported"));
+}
+
+// --- Helper for preview/LLM tests ---
+
+async fn test_app_with_dicts(
+    dictionaries: Vec<Arc<Dictionary>>,
+    llm_definer: Option<Arc<dyn crate::services::llm::LlmDefiner>>,
+) -> (axum_test::TestServer, sqlx::SqlitePool) {
+    let pool = db::create_pool("sqlite::memory:").await.unwrap();
+    let state = AppState {
+        db: pool.clone(),
+        downloader: Arc::new(MockAudioDownloader::new()),
+        transcriber: Arc::new(MockTranscriber::new()),
+        exporter: Arc::new(MockAnkiExporter::new()),
+        media_extractor: Arc::new(MockMediaExtractor::new()),
+        tokenizer: Arc::new(mock_tokenizer()),
+        dictionaries,
+        llm_definer,
+        audio_dir: "/tmp".into(),
+        media_dir: "/tmp/media".into(),
+    };
+    let router = build_router(state);
+    let server = axum_test::TestServer::new(router).unwrap();
+    (server, pool)
+}
+
+/// Seed a done job with one sentence, return (job_id, sentence_id).
+async fn seed_job_with_sentence(
+    pool: &sqlx::SqlitePool,
+    video_id: &str,
+    text: &str,
+) -> (i64, i64) {
+    let job_id = db::create_job(pool, &format!("https://youtube.com/watch?v={video_id}"), video_id)
+        .await
+        .unwrap();
+    db::update_job_status(pool, job_id, &JobStatus::Done, None)
+        .await
+        .unwrap();
+    db::insert_sentences(
+        pool,
+        job_id,
+        &[crate::models::TranscriptSegment {
+            start: 0.0,
+            end: 3.0,
+            text: text.into(),
+        }],
+    )
+    .await
+    .unwrap();
+    let sentences = db::get_sentences_for_job(pool, job_id).await.unwrap();
+    (job_id, sentences[0].id)
+}
+
+// --- lookup_word unit test ---
+
+#[tokio::test]
+async fn lookup_word_returns_definition_reading_and_pitch() {
+    let mut dict = Dictionary::from_entries(vec![DictionaryEntry {
+        term: "食べる".into(),
+        reading: "たべる".into(),
+        definitions: vec!["to eat".into(), "to consume".into()],
+        score: 100,
+    }]);
+    dict.set_pitch(vec![(
+        "食べる".into(),
+        PitchEntry {
+            reading: "たべる".into(),
+            positions: vec![2],
+        },
+    )]);
+
+    let dictionaries: Vec<Arc<Dictionary>> = vec![Arc::new(dict)];
+    let result = lookup_word(&dictionaries, "食べる").await;
+
+    assert!(result.definition_html.is_some());
+    assert!(result.definition_html.unwrap().contains("to eat"));
+    assert_eq!(result.reading, "たべる");
+    assert_eq!(result.pitch_num, Some("2".into()));
+}
+
+#[tokio::test]
+async fn lookup_word_unknown_returns_empty() {
+    let dict = Dictionary::from_entries(vec![]);
+    let dictionaries: Vec<Arc<Dictionary>> = vec![Arc::new(dict)];
+    let result = lookup_word(&dictionaries, "存在しない").await;
+
+    assert!(result.definition_html.is_none());
+    assert!(result.reading.is_empty());
+    assert!(result.pitch_num.is_none());
+}
+
+// --- Preview endpoint tests ---
+
+#[tokio::test]
+async fn preview_returns_dictionary_data() {
+    let mut dict = Dictionary::from_entries(vec![DictionaryEntry {
+        term: "食べる".into(),
+        reading: "たべる".into(),
+        definitions: vec!["to eat".into()],
+        score: 100,
+    }]);
+    dict.set_pitch(vec![(
+        "食べる".into(),
+        PitchEntry {
+            reading: "たべる".into(),
+            positions: vec![2],
+        },
+    )]);
+
+    let (server, pool) = test_app_with_dicts(vec![Arc::new(dict)], None).await;
+    let (_job_id, sid) = seed_job_with_sentence(&pool, "dQw4w9WgXcQ", "食べる").await;
+
+    let url = format!(
+        "/dQw4w9WgXcQ/sentences/{sid}/preview?word={}",
+        "%E9%A3%9F%E3%81%B9%E3%82%8B"
+    );
+    let response = server.get(&url).await;
+
+    response.assert_status_ok();
+    let body = response.text();
+    assert!(body.contains("食べる"), "should contain the word");
+    assert!(body.contains("たべる"), "should contain the reading");
+    assert!(body.contains("[2]"), "should contain pitch number");
+    assert!(body.contains("to eat"), "should contain definition");
+}
+
+#[tokio::test]
+async fn preview_unknown_word_shows_empty() {
+    let dict = Dictionary::from_entries(vec![]);
+    let (server, pool) = test_app_with_dicts(vec![Arc::new(dict)], None).await;
+    let (_job_id, sid) = seed_job_with_sentence(&pool, "dQw4w9WgXcQ", "テスト").await;
+
+    let url = format!(
+        "/dQw4w9WgXcQ/sentences/{sid}/preview?word={}",
+        "%E4%B8%8D%E6%98%8E%E8%AA%9E"
+    );
+    let response = server.get(&url).await;
+
+    response.assert_status_ok();
+    let body = response.text();
+    assert!(
+        body.contains("No dictionary entries"),
+        "should show empty message"
+    );
+}
+
+#[tokio::test]
+async fn preview_wrong_video_returns_404() {
+    let (server, pool) = test_app_with_dicts(vec![], None).await;
+    let (_job_id, sid) = seed_job_with_sentence(&pool, "dQw4w9WgXcQ", "テスト").await;
+
+    let url = format!(
+        "/xxxxxxxxxxx/sentences/{sid}/preview?word={}",
+        "%E3%83%86%E3%82%B9%E3%83%88"
+    );
+    let response = server.get(&url).await;
+    response.assert_status(axum::http::StatusCode::NOT_FOUND);
+}
+
+// --- LLM definition endpoint tests ---
+
+#[tokio::test]
+async fn llm_definition_returns_text() {
+    let mut definer = MockLlmDefiner::new();
+    definer.expect_define().returning(|_word, _ctx| {
+        Box::pin(async { Ok("A verb meaning to eat.".into()) })
+    });
+
+    let (server, pool) = test_app_with_dicts(vec![], Some(Arc::new(definer))).await;
+    let (_job_id, sid) = seed_job_with_sentence(&pool, "dQw4w9WgXcQ", "食べる").await;
+
+    let url = format!(
+        "/dQw4w9WgXcQ/sentences/{sid}/llm-definition?word={}",
+        "%E9%A3%9F%E3%81%B9%E3%82%8B"
+    );
+    let response = server.get(&url).await;
+
+    response.assert_status_ok();
+    let body = response.text();
+    assert!(
+        body.contains("A verb meaning to eat."),
+        "should contain LLM definition"
+    );
+}
+
+#[tokio::test]
+async fn llm_definition_without_definer_shows_unavailable() {
+    let (server, pool) = test_app_with_dicts(vec![], None).await;
+    let (_job_id, sid) = seed_job_with_sentence(&pool, "dQw4w9WgXcQ", "テスト").await;
+
+    let url = format!(
+        "/dQw4w9WgXcQ/sentences/{sid}/llm-definition?word={}",
+        "%E3%83%86%E3%82%B9%E3%83%88"
+    );
+    let response = server.get(&url).await;
+
+    response.assert_status_ok();
+    let body = response.text();
+    assert!(
+        body.contains("AI definition unavailable"),
+        "should show unavailable message"
+    );
 }
