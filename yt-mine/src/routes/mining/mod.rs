@@ -390,6 +390,14 @@ pub async fn export_sentences(
             .as_ref()
             .map(|word| format_furigana(word, &reading));
 
+        let mut llm_definition = None;
+        if let (Some(word), Some(definer)) = (&target_word, &state.llm_definer) {
+            match definer.define(word, &sentence.text).await {
+                Ok(def) => llm_definition = Some(def),
+                Err(e) => warn!(word, error = %e, "LLM definition failed, exporting without"),
+            }
+        }
+
         let sentence_html = target_word.as_ref().and_then(|word| {
             state
                 .tokenizer
@@ -407,6 +415,7 @@ pub async fn export_sentences(
             vocab_furigana,
             vocab_pitch_num,
             sentence_html,
+            llm_definition,
         });
     }
 

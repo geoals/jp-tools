@@ -15,6 +15,11 @@ pub struct Config {
     /// When true, use fake implementations of external tools (yt-dlp, whisper,
     /// ffmpeg, AnkiConnect) so the server can run without any dependencies.
     pub fake_api: bool,
+    /// Anthropic API key for LLM-generated definitions. When absent, LLM
+    /// definitions are skipped entirely.
+    pub anthropic_api_key: Option<String>,
+    /// Model to use for LLM definitions.
+    pub llm_model: String,
 }
 
 /// Anki note type configuration: model name, deck name, and field mapping.
@@ -34,6 +39,7 @@ pub struct AnkiConfig {
     pub field_source: Option<String>,
     pub field_furigana: Option<String>,
     pub field_pitch_num: Option<String>,
+    pub field_llm_definition: Option<String>,
 }
 
 impl Default for AnkiConfig {
@@ -49,6 +55,7 @@ impl Default for AnkiConfig {
             field_source: Some("Document".into()),
             field_furigana: Some("VocabFurigana".into()),
             field_pitch_num: Some("VocabPitchNum".into()),
+            field_llm_definition: Some("LLMDef".into()),
         }
     }
 }
@@ -85,6 +92,9 @@ impl Config {
                 env::var("JP_TOOLS_FAKE_API").as_deref(),
                 Ok("true" | "1"),
             ),
+            anthropic_api_key: env::var("JP_TOOLS_ANTHROPIC_API_KEY").ok(),
+            llm_model: env::var("JP_TOOLS_LLM_MODEL")
+                .unwrap_or_else(|_| "claude-sonnet-4-6-20250514".into()),
             anki: AnkiConfig {
                 model_name: env::var("JP_TOOLS_ANKI_MODEL")
                     .unwrap_or(anki_defaults.model_name),
@@ -121,6 +131,10 @@ impl Config {
                 field_pitch_num: anki_field(
                     "JP_TOOLS_ANKI_FIELD_PITCH_NUM",
                     anki_defaults.field_pitch_num.as_deref().unwrap_or(""),
+                ),
+                field_llm_definition: anki_field(
+                    "JP_TOOLS_ANKI_FIELD_LLM_DEFINITION",
+                    anki_defaults.field_llm_definition.as_deref().unwrap_or(""),
                 ),
             },
         }

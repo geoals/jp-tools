@@ -26,6 +26,7 @@ src/
     download.rs       — AudioDownloader trait, YtDlpDownloader (subprocess)
     transcribe.rs     — Transcriber trait, WhisperWorker (persistent Python subprocess)
     export.rs         — AnkiExporter trait, AnkiConnectExporter (HTTP to localhost:8765)
+    llm.rs            — LlmDefiner trait, AnthropicDefiner (Anthropic Messages API)
     media.rs          — MediaExtractor trait, FfmpegMediaExtractor (screenshots + audio clips)
     tokenize.rs       — Tokenizer trait, LinderaTokenizer (UniDic, morphological analysis)
     dictionary/
@@ -69,6 +70,10 @@ Yomitan structured-content JSON (lists, ruby text, example sentences, links) is 
 
 Each dictionary's definitions are wrapped with `<div class="dict-{slug}-title">` and `<div class="dict-{slug}-body">` where the slug is derived from the dictionary's `index.json` title via `css_slug()`. This allows per-dictionary styling in Anki (e.g. different colors for JE vs JJ dictionaries).
 
+### LLM definitions
+
+Optional feature — when `JP_TOOLS_ANTHROPIC_API_KEY` is set, the export flow calls the Anthropic Messages API to generate a short English explanation of the target word in context. The result is stored in the `LLMDef` Anki field (configurable). Follows the same trait pattern (`LlmDefiner` in `services/llm.rs`) with graceful degradation — if the API call fails, the card is exported without the LLM definition. In fake API mode, a placeholder string is returned.
+
 ## Build & run
 
 ```sh
@@ -94,6 +99,8 @@ Configuration via environment variables. Loaded from `.env` (at repo root) autom
 | `JP_TOOLS_DICTIONARY_PATHS`    | _(none, optional)_ — comma-separated list of Yomitan zip files |
 | `JP_TOOLS_DICTIONARY_PATH`     | _(legacy)_ — single path, fallback if `_PATHS` not set         |
 | `JP_TOOLS_FAKE_API`            | `false` — set `true`/`1` to use fake services (no external deps) |
+| `JP_TOOLS_ANTHROPIC_API_KEY`   | _(none, optional)_ — enables LLM-generated definitions           |
+| `JP_TOOLS_LLM_MODEL`          | `claude-sonnet-4-6-20250514`                                     |
 
 ### Anki export config
 
@@ -112,6 +119,7 @@ Model name, deck name, and field mapping are configurable to match an existing A
 | `JP_TOOLS_ANKI_FIELD_SOURCE`     | `Document`              |
 | `JP_TOOLS_ANKI_FIELD_FURIGANA`   | `VocabFurigana`         |
 | `JP_TOOLS_ANKI_FIELD_PITCH_NUM`  | `VocabPitchNum`         |
+| `JP_TOOLS_ANKI_FIELD_LLM_DEFINITION` | `LLMDef`         |
 
 ## Testing
 

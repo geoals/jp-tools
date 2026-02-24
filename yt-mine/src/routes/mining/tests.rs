@@ -49,6 +49,7 @@ async fn test_app_with_media(
         media_extractor: Arc::new(media_extractor),
         tokenizer: Arc::new(mock_tokenizer()),
         dictionaries: vec![],
+        llm_definer: None,
         audio_dir: "/tmp".into(),
         media_dir: "/tmp/media".into(),
     };
@@ -263,6 +264,7 @@ async fn test_app_with_media_dir(
         media_extractor: Arc::new(media_extractor),
         tokenizer: Arc::new(mock_tokenizer()),
         dictionaries: vec![],
+        llm_definer: None,
         audio_dir: "/tmp".into(),
         media_dir,
     };
@@ -771,6 +773,7 @@ async fn export_with_target_word_and_dictionary_populates_vocab() {
         media_extractor: Arc::new(media_extractor),
         tokenizer: Arc::new(tokenizer),
         dictionaries: vec![Arc::new(dict)],
+        llm_definer: None,
         audio_dir: "/tmp".into(),
         media_dir: "/tmp/media".into(),
     };

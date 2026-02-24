@@ -26,6 +26,8 @@ pub struct ExportSentence {
     pub vocab_pitch_num: Option<String>,
     /// Sentence text with the target word wrapped in `<b></b>` for Anki display.
     pub sentence_html: Option<String>,
+    /// LLM-generated definition/explanation of the target word.
+    pub llm_definition: Option<String>,
 }
 
 #[cfg_attr(test, mockall::automock)]
@@ -53,6 +55,7 @@ pub struct NoteData {
     pub audio_clip_filename: Option<String>,
     pub vocab_furigana: String,
     pub vocab_pitch_num: String,
+    pub llm_definition: String,
 }
 
 /// Build the AnkiConnect `addNotes` request body using the configured field mapping.
@@ -97,6 +100,9 @@ pub fn build_add_notes_request(notes: &[NoteData], config: &AnkiConfig) -> Value
             if let Some(ref f) = config.field_pitch_num {
                 fields.insert(f.clone(), json!(n.vocab_pitch_num));
             }
+            if let Some(ref f) = config.field_llm_definition {
+                fields.insert(f.clone(), json!(n.llm_definition));
+            }
 
             json!({
                 "deckName": config.deck_name,
@@ -135,6 +141,7 @@ fn build_create_model_request(config: &AnkiConfig) -> Value {
         config.field_source.as_deref(),
         config.field_furigana.as_deref(),
         config.field_pitch_num.as_deref(),
+        config.field_llm_definition.as_deref(),
     ]
     .into_iter()
     .flatten()
@@ -361,6 +368,7 @@ impl AnkiExporter for AnkiConnectExporter {
                         }),
                         vocab_furigana: es.vocab_furigana.clone().unwrap_or_default(),
                         vocab_pitch_num: es.vocab_pitch_num.clone().unwrap_or_default(),
+                        llm_definition: es.llm_definition.clone().unwrap_or_default(),
                     }
                 })
                 .collect();
@@ -396,6 +404,7 @@ mod tests {
                 audio_clip_filename: Some("yt-mine_1_1.mp3".into()),
                 vocab_furigana: "テスト".into(),
                 vocab_pitch_num: "0".into(),
+                llm_definition: "".into(),
             },
             NoteData {
                 sentence_text: "もう一つ".into(),
@@ -406,6 +415,7 @@ mod tests {
                 audio_clip_filename: None,
                 vocab_furigana: "".into(),
                 vocab_pitch_num: "".into(),
+                llm_definition: "".into(),
             },
         ];
 
@@ -456,6 +466,7 @@ mod tests {
             field_source: None,
             field_furigana: None,
             field_pitch_num: None,
+            field_llm_definition: None,
         };
 
         let notes = vec![NoteData {
@@ -467,6 +478,7 @@ mod tests {
             audio_clip_filename: Some("clip.mp3".into()),
             vocab_furigana: "テスト".into(),
             vocab_pitch_num: "".into(),
+            llm_definition: "llm def".into(),
         }];
 
         let request = build_add_notes_request(&notes, &config);
@@ -480,6 +492,7 @@ mod tests {
         assert!(fields.get("Document").is_none());
         assert!(fields.get("VocabFurigana").is_none());
         assert!(fields.get("VocabPitchNum").is_none());
+        assert!(fields.get("LLMDef").is_none());
     }
 
     #[test]
@@ -495,6 +508,7 @@ mod tests {
             field_source: Some("Origin".into()),
             field_furigana: Some("Furigana".into()),
             field_pitch_num: Some("PitchNum".into()),
+            field_llm_definition: Some("AIDef".into()),
         };
 
         let notes = vec![NoteData {
@@ -506,6 +520,7 @@ mod tests {
             audio_clip_filename: None,
             vocab_furigana: "語[ご]".into(),
             vocab_pitch_num: "1".into(),
+            llm_definition: "ai definition".into(),
         }];
 
         let request = build_add_notes_request(&notes, &config);
@@ -518,6 +533,7 @@ mod tests {
         assert_eq!(note["fields"]["Context"], "文");
         assert_eq!(note["fields"]["Furigana"], "語[ご]");
         assert_eq!(note["fields"]["PitchNum"], "1");
+        assert_eq!(note["fields"]["AIDef"], "ai definition");
     }
 
     #[test]
@@ -551,6 +567,7 @@ mod tests {
             vocab_furigana: None,
             vocab_pitch_num: None,
             sentence_html: None,
+            llm_definition: None,
         }];
 
         let count = exporter

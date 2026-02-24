@@ -9,8 +9,10 @@ use yt_mine::services::dictionary::Dictionary;
 use yt_mine::services::download::{AudioDownloader, YtDlpDownloader};
 use yt_mine::services::export::{AnkiConnectExporter, AnkiExporter};
 use yt_mine::services::fake::{
-    FakeAnkiExporter, FakeDownloader, FakeMediaExtractor, FakeTokenizer, FakeTranscriber,
+    FakeAnkiExporter, FakeDownloader, FakeLlmDefiner, FakeMediaExtractor, FakeTokenizer,
+    FakeTranscriber,
 };
+use yt_mine::services::llm::{AnthropicDefiner, LlmDefiner};
 use yt_mine::services::media::{FfmpegMediaExtractor, MediaExtractor};
 use yt_mine::services::tokenize::{LazyTokenizer, Tokenizer};
 use yt_mine::services::transcribe::{Transcriber, WhisperWorker};
@@ -82,6 +84,16 @@ async fn main() {
         info!("no dictionaries configured (set JP_TOOLS_DICTIONARY_PATHS to enable definitions)");
     }
 
+    let llm_definer: Option<Arc<dyn LlmDefiner>> = if config.fake_api {
+        Some(Arc::new(FakeLlmDefiner))
+    } else {
+        config.anthropic_api_key.as_ref().map(|key| {
+            info!("LLM definitions enabled (model: {})", config.llm_model);
+            Arc::new(AnthropicDefiner::new(key.clone(), config.llm_model.clone()))
+                as Arc<dyn LlmDefiner>
+        })
+    };
+
     let state = AppState {
         db: pool,
         downloader,
@@ -90,6 +102,7 @@ async fn main() {
         media_extractor,
         tokenizer,
         dictionaries,
+        llm_definer,
         audio_dir: config.audio_dir,
         media_dir,
     };

@@ -11,6 +11,7 @@ use tracing::info;
 use crate::models::TranscriptSegment;
 use crate::services::download::{AudioDownloader, DownloadError, DownloadResult};
 use crate::services::export::{AnkiExporter, ExportError, ExportSentence};
+use crate::services::llm::{LlmDefiner, LlmError};
 use crate::services::media::{MediaError, MediaExtractor};
 use crate::services::tokenize::{Token, TokenizeError, Tokenizer};
 use crate::services::transcribe::{TranscribeError, Transcriber};
@@ -135,6 +136,20 @@ impl Tokenizer for FakeTokenizer {
     }
 }
 
+/// Returns a placeholder LLM definition string.
+pub struct FakeLlmDefiner;
+
+impl LlmDefiner for FakeLlmDefiner {
+    fn define(
+        &self,
+        word: &str,
+        _sentence_context: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<String, LlmError>> + Send>> {
+        let word = word.to_owned();
+        Box::pin(async move { Ok(format!("[LLM definition for {word}]")) })
+    }
+}
+
 /// Logs what would be exported and returns success.
 pub struct FakeAnkiExporter;
 
@@ -217,6 +232,13 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fake_llm_definer_returns_placeholder() {
+        let definer = FakeLlmDefiner;
+        let result = definer.define("食べる", "毎日ラーメンを食べる").await.unwrap();
+        assert_eq!(result, "[LLM definition for 食べる]");
+    }
+
+    #[tokio::test]
     async fn fake_anki_exporter_returns_correct_count() {
         use crate::models::Sentence;
 
@@ -230,6 +252,7 @@ mod tests {
                 screenshot_path: None, audio_clip_path: None,
                 target_word: Some("test".into()), definition: None,
                 vocab_furigana: None, vocab_pitch_num: None, sentence_html: None,
+                llm_definition: None,
             },
             ExportSentence {
                 sentence: Sentence {
@@ -239,6 +262,7 @@ mod tests {
                 screenshot_path: None, audio_clip_path: None,
                 target_word: None, definition: None,
                 vocab_furigana: None, vocab_pitch_num: None, sentence_html: None,
+                llm_definition: None,
             },
         ];
 

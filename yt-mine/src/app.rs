@@ -7,6 +7,7 @@ use sqlx::SqlitePool;
 use crate::routes::mining;
 use crate::services::download::AudioDownloader;
 use crate::services::export::AnkiExporter;
+use crate::services::llm::LlmDefiner;
 use crate::services::media::MediaExtractor;
 use crate::services::dictionary::Dictionary;
 use crate::services::tokenize::Tokenizer;
@@ -21,6 +22,7 @@ pub struct AppState {
     pub media_extractor: Arc<dyn MediaExtractor>,
     pub tokenizer: Arc<dyn Tokenizer>,
     pub dictionaries: Vec<Arc<Dictionary>>,
+    pub llm_definer: Option<Arc<dyn LlmDefiner>>,
     pub audio_dir: String,
     pub media_dir: String,
 }
