@@ -2,10 +2,10 @@
 """Transcribe an audio file using faster-whisper.
 
 One-shot mode:
-    python3 transcribe.py <audio_path> [cpu_threads] [device]
+    python3 transcribe.py <audio_path>
 
 Worker mode (persistent — model loaded once):
-    python3 transcribe.py --worker [cpu_threads] [device]
+    python3 transcribe.py --worker
     Reads audio paths from stdin (one per line), writes JSON results to stdout.
     Prints READY to stdout after model is loaded.
 
@@ -14,26 +14,21 @@ All progress/status messages go to stderr so they appear in the server logs.
 """
 
 import json
-import os
 import sys
 
 
-def resolve_cpu_threads(cpu_threads):
-    if cpu_threads <= 0:
-        return os.cpu_count() or 4
-    return cpu_threads
+DEVICE = "cuda"
 
 
-def load_model(cpu_threads, device):
-    print(f"Loading whisper large-v3 speech-to-text model (device={device}, cpu_threads={cpu_threads})...", file=sys.stderr)
+def load_model():
+    print(f"Loading whisper large-v3 speech-to-text model (device={DEVICE})...", file=sys.stderr)
 
     from faster_whisper import WhisperModel
 
     return WhisperModel(
         "large-v3",
-        device=device,
+        device=DEVICE,
         compute_type="auto",
-        cpu_threads=cpu_threads,
     )
 
 
@@ -66,25 +61,17 @@ def transcribe_audio(model, audio_path):
 
 def run_oneshot(args):
     if len(args) < 1:
-        print("Usage: transcribe.py <audio_path> [cpu_threads] [device]", file=sys.stderr)
+        print("Usage: transcribe.py <audio_path>", file=sys.stderr)
         sys.exit(1)
 
     audio_path = args[0]
-    cpu_threads = int(args[1]) if len(args) > 1 else 0
-    device = args[2] if len(args) > 2 else "auto"
-    cpu_threads = resolve_cpu_threads(cpu_threads)
-
-    model = load_model(cpu_threads, device)
+    model = load_model()
     result = transcribe_audio(model, audio_path)
     json.dump(result, sys.stdout, ensure_ascii=False)
 
 
-def run_worker(args):
-    cpu_threads = int(args[0]) if len(args) > 0 else 0
-    device = args[1] if len(args) > 1 else "auto"
-    cpu_threads = resolve_cpu_threads(cpu_threads)
-
-    model = load_model(cpu_threads, device)
+def run_worker():
+    model = load_model()
 
     print("READY", flush=True)
 
@@ -108,7 +95,7 @@ def main():
     args = sys.argv[1:]
 
     if len(args) > 0 and args[0] == "--worker":
-        run_worker(args[1:])
+        run_worker()
     else:
         run_oneshot(args)
 

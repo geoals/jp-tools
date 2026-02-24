@@ -91,8 +91,6 @@ Configuration via environment variables. Loaded from `.env` (at repo root) autom
 | `JP_TOOLS_MEDIA_DIR`           | `media`                                                        |
 | `JP_TOOLS_LISTEN_ADDR`         | `0.0.0.0:3000`                                                 |
 | `JP_TOOLS_TRANSCRIBE_SCRIPT`   | `scripts/transcribe.py`                                        |
-| `JP_TOOLS_WHISPER_CPU_THREADS` | `0` (all cores)                                                |
-| `JP_TOOLS_WHISPER_DEVICE`      | `auto` (`cpu`, `cuda`)                                         |
 | `JP_TOOLS_DICTIONARY_PATHS`    | _(none, optional)_ — comma-separated list of Yomitan zip files |
 | `JP_TOOLS_DICTIONARY_PATH`     | _(legacy)_ — single path, fallback if `_PATHS` not set         |
 | `JP_TOOLS_FAKE_API`            | `false` — set `true`/`1` to use fake services (no external deps) |

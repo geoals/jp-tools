@@ -56,11 +56,7 @@ async fn main() {
         let tokenizer = Arc::new(LazyTokenizer::new());
         tokenizer.start_background_init();
 
-        let transcriber = WhisperWorker::spawn(
-            &config.transcribe_script,
-            config.whisper_cpu_threads,
-            &config.whisper_device,
-        )
+        let transcriber = WhisperWorker::spawn(&config.transcribe_script)
         .await
         .expect("failed to start whisper worker");
 

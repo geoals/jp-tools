@@ -60,15 +60,11 @@ impl std::fmt::Debug for WhisperWorker {
 impl WhisperWorker {
     /// Spawns the whisper worker subprocess and waits for it to signal READY
     /// (indicating the model is loaded and ready for transcription requests).
-    pub async fn spawn(
-        script_path: &str,
-        cpu_threads: u32,
-        device: &str,
-    ) -> Result<Self, TranscribeError> {
-        info!(script_path, cpu_threads, device, "spawning whisper worker");
+    pub async fn spawn(script_path: &str) -> Result<Self, TranscribeError> {
+        info!(script_path, "spawning whisper worker");
 
         let mut child = tokio::process::Command::new(script_path)
-            .args(["--worker", &cpu_threads.to_string(), device])
+            .arg("--worker")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -203,7 +199,7 @@ done
         )
         .unwrap();
 
-        let worker = WhisperWorker::spawn(script_path.to_str().unwrap(), 0, "cpu")
+        let worker = WhisperWorker::spawn(script_path.to_str().unwrap())
             .await
             .unwrap();
 
@@ -231,7 +227,7 @@ done
         )
         .unwrap();
 
-        let worker = WhisperWorker::spawn(script_path.to_str().unwrap(), 0, "cpu")
+        let worker = WhisperWorker::spawn(script_path.to_str().unwrap())
             .await
             .unwrap();
 
@@ -254,7 +250,7 @@ echo "NOT_READY"
         )
         .unwrap();
 
-        let result = WhisperWorker::spawn(script_path.to_str().unwrap(), 0, "cpu").await;
+        let result = WhisperWorker::spawn(script_path.to_str().unwrap()).await;
         let err = result.unwrap_err();
         assert!(err.to_string().contains("expected READY"));
     }
@@ -278,7 +274,7 @@ done
         )
         .unwrap();
 
-        let worker = WhisperWorker::spawn(script_path.to_str().unwrap(), 0, "cpu")
+        let worker = WhisperWorker::spawn(script_path.to_str().unwrap())
             .await
             .unwrap();
 
@@ -294,7 +290,7 @@ done
     #[tokio::test]
     #[ignore = "requires Python + faster-whisper installed"]
     async fn whisper_worker_integration() {
-        let worker = WhisperWorker::spawn("scripts/transcribe.py", 0, "auto")
+        let worker = WhisperWorker::spawn("scripts/transcribe.py")
             .await
             .unwrap();
         let result = worker.transcribe("/tmp/test_audio.wav".into()).await;
