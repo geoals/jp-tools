@@ -17,17 +17,14 @@ import json
 import sys
 
 
-DEVICE = "cuda"
-
-
-def load_model():
-    print(f"Loading whisper large-v3 speech-to-text model (device={DEVICE})...", file=sys.stderr)
+def load_model(device):
+    print(f"Loading whisper large-v3 speech-to-text model (device={device})...", file=sys.stderr)
 
     from faster_whisper import WhisperModel
 
     return WhisperModel(
         "large-v3",
-        device=DEVICE,
+        device=device,
         compute_type="auto",
     )
 
@@ -59,19 +56,19 @@ def transcribe_audio(model, audio_path):
     return result
 
 
-def run_oneshot(args):
+def run_oneshot(args, device):
     if len(args) < 1:
         print("Usage: transcribe.py <audio_path>", file=sys.stderr)
         sys.exit(1)
 
     audio_path = args[0]
-    model = load_model()
+    model = load_model(device)
     result = transcribe_audio(model, audio_path)
     json.dump(result, sys.stdout, ensure_ascii=False)
 
 
-def run_worker():
-    model = load_model()
+def run_worker(device):
+    model = load_model(device)
 
     print("READY", flush=True)
 
@@ -94,10 +91,14 @@ def run_worker():
 def main():
     args = sys.argv[1:]
 
+    disable_cuda = "--disable-cuda" in args
+    args = [a for a in args if a != "--disable-cuda"]
+    device = "cpu" if disable_cuda else "cuda"
+
     if len(args) > 0 and args[0] == "--worker":
-        run_worker()
+        run_worker(device)
     else:
-        run_oneshot(args)
+        run_oneshot(args, device)
 
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ async fn main() {
     dotenvy::dotenv().ok();
     tracing_subscriber::fmt::init();
 
+    let disable_cuda = std::env::args().any(|a| a == "--disable-cuda");
     let config = Config::from_env();
 
     // Ensure output directories exist
@@ -56,9 +57,9 @@ async fn main() {
         let tokenizer = Arc::new(LazyTokenizer::new());
         tokenizer.start_background_init();
 
-        let transcriber = WhisperWorker::spawn(&config.transcribe_script)
-        .await
-        .expect("failed to start whisper worker");
+        let transcriber = WhisperWorker::spawn(&config.transcribe_script, disable_cuda)
+            .await
+            .expect("failed to start whisper worker");
 
         (
             Arc::new(YtDlpDownloader),

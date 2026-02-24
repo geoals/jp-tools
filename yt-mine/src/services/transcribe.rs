@@ -60,11 +60,19 @@ impl std::fmt::Debug for WhisperWorker {
 impl WhisperWorker {
     /// Spawns the whisper worker subprocess and waits for it to signal READY
     /// (indicating the model is loaded and ready for transcription requests).
-    pub async fn spawn(script_path: &str) -> Result<Self, TranscribeError> {
-        info!(script_path, "spawning whisper worker");
+    pub async fn spawn(
+        script_path: &str,
+        disable_cuda: bool,
+    ) -> Result<Self, TranscribeError> {
+        info!(script_path, disable_cuda, "spawning whisper worker");
 
-        let mut child = tokio::process::Command::new(script_path)
-            .arg("--worker")
+        let mut cmd = tokio::process::Command::new(script_path);
+        cmd.arg("--worker");
+        if disable_cuda {
+            cmd.arg("--disable-cuda");
+        }
+
+        let mut child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -199,7 +207,7 @@ done
         )
         .unwrap();
 
-        let worker = WhisperWorker::spawn(script_path.to_str().unwrap())
+        let worker = WhisperWorker::spawn(script_path.to_str().unwrap(), false)
             .await
             .unwrap();
 
@@ -227,7 +235,7 @@ done
         )
         .unwrap();
 
-        let worker = WhisperWorker::spawn(script_path.to_str().unwrap())
+        let worker = WhisperWorker::spawn(script_path.to_str().unwrap(), false)
             .await
             .unwrap();
 
@@ -250,7 +258,7 @@ echo "NOT_READY"
         )
         .unwrap();
 
-        let result = WhisperWorker::spawn(script_path.to_str().unwrap()).await;
+        let result = WhisperWorker::spawn(script_path.to_str().unwrap(), false).await;
         let err = result.unwrap_err();
         assert!(err.to_string().contains("expected READY"));
     }
@@ -274,7 +282,7 @@ done
         )
         .unwrap();
 
-        let worker = WhisperWorker::spawn(script_path.to_str().unwrap())
+        let worker = WhisperWorker::spawn(script_path.to_str().unwrap(), false)
             .await
             .unwrap();
 
@@ -288,9 +296,43 @@ done
     }
 
     #[tokio::test]
+    async fn worker_passes_disable_cuda_flag() {
+        let script = r#"#!/bin/bash
+for arg in "$@"; do
+    if [ "$arg" = "--disable-cuda" ]; then
+        echo "READY"
+        while IFS= read -r line; do
+            echo '[{"start":0.0,"end":1.0,"text":"cpu_mode"}]'
+        done
+        exit 0
+    fi
+done
+echo "READY"
+while IFS= read -r line; do
+    echo '[{"start":0.0,"end":1.0,"text":"cuda_mode"}]'
+done
+"#;
+        let dir = tempfile::tempdir().unwrap();
+        let script_path = dir.path().join("device_worker.sh");
+        std::fs::write(&script_path, script).unwrap();
+        std::fs::set_permissions(
+            &script_path,
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .unwrap();
+
+        let worker = WhisperWorker::spawn(script_path.to_str().unwrap(), true)
+            .await
+            .unwrap();
+
+        let segments = worker.transcribe("/tmp/test.wav".into()).await.unwrap();
+        assert_eq!(segments[0].text, "cpu_mode");
+    }
+
+    #[tokio::test]
     #[ignore = "requires Python + faster-whisper installed"]
     async fn whisper_worker_integration() {
-        let worker = WhisperWorker::spawn("scripts/transcribe.py")
+        let worker = WhisperWorker::spawn("scripts/transcribe.py", false)
             .await
             .unwrap();
         let result = worker.transcribe("/tmp/test_audio.wav".into()).await;
