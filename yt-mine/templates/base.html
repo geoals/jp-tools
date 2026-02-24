@@ -20,7 +20,7 @@
             --accent:       hsl(175, 50%, 48%);
             --accent-hover: hsl(175, 55%, 58%);
             --accent-dim:   hsl(175, 30%, 16%);
-            --border:       hsl(210, 6%, 17%);
+            --border:       hsl(210, 6%, 24%);
             --danger-bg:      hsl(0, 30%, 12%);
             --danger-border:  hsl(0, 30%, 22%);
             --danger-text:    hsl(0, 35%, 60%);
@@ -186,7 +186,7 @@
             gap: 0.5rem;
         }
 
-        .sentence-list li {
+        .sentence-list > li {
             padding: 0.5rem 0.7rem;
             background: var(--bg-surface);
             border-radius: var(--radius);
@@ -266,19 +266,31 @@
             color: var(--bg);
         }
 
+        .sentence-list li.has-preview {
+            border: 1px solid var(--border);
+            border-bottom: none;
+            border-bottom-left-radius: 0;
+            border-bottom-right-radius: 0;
+        }
+
         .sentence-list li.preview-container {
             padding: 0;
             background: none;
+            margin-top: -0.5rem;
         }
 
         .preview-panel {
-            padding: 0.7rem 0.9rem;
-            background: var(--bg-hover);
+            width: 100%;
+            padding: 0.6rem 0.7rem;
+            background: var(--bg-surface);
             border: 1px solid var(--border);
-            border-radius: var(--radius);
+            border-top: none;
+            border-radius: 0 0 var(--radius) var(--radius);
             display: flex;
             flex-direction: column;
-            gap: 0.5rem;
+            gap: 0.4rem;
+            max-height: 600px;
+            overflow-y: auto;
         }
 
         .preview-header {
@@ -289,14 +301,14 @@
 
         .preview-word {
             font-family: "Noto Sans JP", "Hiragino Sans", sans-serif;
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             font-weight: 500;
             color: var(--accent);
         }
 
         .preview-reading {
             font-family: "Noto Sans JP", "Hiragino Sans", sans-serif;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             color: var(--text-muted);
         }
 
@@ -305,9 +317,14 @@
             color: var(--text-muted);
         }
 
+        /* --- Preview: dictionary & LLM sections --- */
+
         .preview-definitions {
             font-size: 0.85rem;
-            line-height: 1.5;
+            line-height: 1.6;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
         }
 
         .preview-definitions.preview-empty {
@@ -315,17 +332,90 @@
             font-style: italic;
         }
 
-        .preview-sentence {
-            font-family: "Noto Sans JP", "Hiragino Sans", sans-serif;
-            font-size: 0.95rem;
-            line-height: 1.6;
+        .dict-section {
+            background: var(--bg-hover);
+            border-radius: var(--radius);
+            padding: 0.4rem 0.6rem;
+        }
+
+        .dict-title {
+            font-size: 0.7rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-muted);
+            margin-bottom: 0.2rem;
+        }
+
+        .preview-definitions [data-content="attribution"],
+        .preview-definitions [data-content="extra-info"] {
+            display: none;
+        }
+
+        .preview-definitions [data-class="tag"] {
+            font-size: 0.7rem;
+            color: var(--accent);
+            margin-right: 0.3rem;
+            margin-left: 0.3rem;
+        }
+
+        .preview-definitions ul {
+            list-style: none;
+            list-style-position: inside;
+            padding: 0;
+        }
+
+        .preview-definitions [data-content="glossary"] li::before {
+            content: "· ";
             color: var(--text-muted);
         }
 
-        .preview-sentence b {
-            color: var(--accent);
-            font-weight: 500;
+        .preview-definitions [data-content="forms"] ul {
+            display: flex;
+            gap: 0.4rem;
         }
+
+        .preview-definitions [data-content="forms"] [data-class="tag"] {
+            margin-right: 0;
+        }
+
+        .preview-definitions table {
+            border-collapse: collapse;
+            font-size: 0.8rem;
+            margin: 0.3rem 0;
+        }
+
+        .preview-definitions th,
+        .preview-definitions td {
+            padding: 0.15rem 0.5rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .preview-definitions th {
+            color: var(--text-muted);
+            font-weight: 400;
+        }
+
+        .preview-definitions [data-content="forms-header-row"] th {
+            font-weight: 500;
+            color: var(--text);
+        }
+
+        .preview-definitions [data-class="form-pri"] {
+            color: var(--accent);
+        }
+
+        .preview-definitions [data-class="form-out"] {
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        .dict-三省堂国語辞典-第八版-body img {
+            filter: invert(16%) sepia(100%) saturate(7404%) hue-rotate(0deg) brightness(106%) contrast(116%);
+        }
+
+        /* --- Preview: LLM definition --- */
 
         .preview-llm {
             min-height: 1.2em;

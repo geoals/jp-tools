@@ -14,9 +14,25 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> 
         .connect(database_url)
         .await?;
 
+    // WAL mode allows concurrent reads during writes (no reader-blocks-writer).
+    // busy_timeout prevents "database is locked" errors under contention.
+    sqlx::raw_sql("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")
+        .execute(&pool)
+        .await?;
+
     sqlx::raw_sql(MIGRATION).execute(&pool).await?;
     sqlx::raw_sql(MIGRATION_DICT).execute(&pool).await?;
     sqlx::raw_sql(MIGRATION_PITCH).execute(&pool).await?;
+
+    // Replace old single-column indexes with composite ones
+    sqlx::raw_sql(
+        "DROP INDEX IF EXISTS idx_dictionary_entries_term;\
+         DROP INDEX IF EXISTS idx_dictionary_entries_dict;\
+         DROP INDEX IF EXISTS idx_dictionary_pitch_term;\
+         DROP INDEX IF EXISTS idx_dictionary_pitch_dict;",
+    )
+    .execute(&pool)
+    .await?;
 
     // ALTER TABLE ADD COLUMN has no IF NOT EXISTS in SQLite,
     // so check whether the column is already present first.

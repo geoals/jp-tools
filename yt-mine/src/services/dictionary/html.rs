@@ -35,12 +35,22 @@ pub(crate) fn camel_to_kebab(s: &str) -> String {
 
 /// Render a JSON style object to a CSS inline style string.
 /// Properties are sorted alphabetically by kebab-case name for deterministic output.
+/// Style prefixes stripped from inline styles — our stylesheet controls layout and theming.
+/// Yomitan styles target light-background popups and conflict with our dark theme.
+const STRIPPED_STYLE_PROPS: &[&str] = &[
+    "padding", "margin", "background", "border", "border-radius",
+];
+
 pub(crate) fn render_style(obj: &serde_json::Map<String, Value>) -> String {
     let mut props: Vec<(String, &str)> = obj
         .iter()
         .filter_map(|(k, v)| {
             let val = v.as_str()?;
-            Some((camel_to_kebab(k), val))
+            let kebab = camel_to_kebab(k);
+            if STRIPPED_STYLE_PROPS.iter().any(|p| kebab.starts_with(p)) {
+                return None;
+            }
+            Some((kebab, val))
         })
         .collect();
     props.sort_by(|a, b| a.0.cmp(&b.0));

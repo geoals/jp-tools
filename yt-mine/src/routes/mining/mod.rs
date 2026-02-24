@@ -104,7 +104,6 @@ struct PreviewFragmentTemplate {
     reading: String,
     pitch_num: Option<String>,
     definition_html: Option<String>,
-    sentence_html: Option<String>,
 }
 
 #[derive(askama::Template, askama_web::WebTemplate)]
@@ -448,34 +447,35 @@ pub async fn word_preview(
     Path((video_id, sentence_id)): Path<(String, i64)>,
     Query(query): Query<PreviewQuery>,
 ) -> Result<Response, AppError> {
+    let t0 = std::time::Instant::now();
+
     let job = db::get_job_by_video_id(&state.db, &video_id)
         .await?
         .ok_or(AppError::NotFound)?;
+    tracing::debug!(elapsed_ms = t0.elapsed().as_millis(), "get_job_by_video_id");
 
     let sentences = db::get_sentences_by_ids(&state.db, &[sentence_id]).await?;
     let sentence = sentences.into_iter().next().ok_or(AppError::NotFound)?;
     if sentence.job_id != job.id {
         return Err(AppError::NotFound);
     }
+    tracing::debug!(elapsed_ms = t0.elapsed().as_millis(), "get_sentences_by_ids");
 
     let result = lookup_word(&state.dictionaries, &query.word).await;
+    tracing::debug!(elapsed_ms = t0.elapsed().as_millis(), "lookup_word done");
 
-    let sentence_html = state
-        .tokenizer
-        .tokenize(&sentence.text)
-        .ok()
-        .and_then(|tokens| bold_target_in_sentence(&tokens, &query.word));
-
-    Ok(PreviewFragmentTemplate {
+    let response = PreviewFragmentTemplate {
         video_id,
         sentence_id,
         word: query.word,
         reading: result.reading,
         pitch_num: result.pitch_num,
         definition_html: result.definition_html,
-        sentence_html,
     }
-    .into_response())
+    .into_response();
+    tracing::debug!(elapsed_ms = t0.elapsed().as_millis(), "word_preview total");
+
+    Ok(response)
 }
 
 pub async fn llm_definition(
@@ -558,12 +558,14 @@ struct WordLookupResult {
 }
 
 async fn lookup_word(dictionaries: &[Arc<Dictionary>], word: &str) -> WordLookupResult {
+    let t0 = std::time::Instant::now();
     let mut def_parts = Vec::new();
     let mut reading = String::new();
     let mut pitch_num = None;
 
-    for dict in dictionaries {
+    for (i, dict) in dictionaries.iter().enumerate() {
         let entries = dict.lookup(word).await;
+        tracing::debug!(dict = i, elapsed_ms = t0.elapsed().as_millis(), "dict.lookup");
         if let Some(entry) = entries.first() {
             let joined = entry.definitions.join("; ");
             def_parts.push(dict.wrap_definitions(&joined));
@@ -573,6 +575,7 @@ async fn lookup_word(dictionaries: &[Arc<Dictionary>], word: &str) -> WordLookup
         }
         if pitch_num.is_none() {
             let pitch = dict.lookup_pitch(word).await;
+            tracing::debug!(dict = i, elapsed_ms = t0.elapsed().as_millis(), "dict.lookup_pitch");
             if !pitch.is_empty() {
                 let nums: Vec<String> = pitch[0]
                     .positions

@@ -94,7 +94,7 @@ impl Config {
             ),
             anthropic_api_key: env::var("JP_TOOLS_ANTHROPIC_API_KEY").ok(),
             llm_model: env::var("JP_TOOLS_LLM_MODEL")
-                .unwrap_or_else(|_| "claude-sonnet-4-6-20250514".into()),
+                .unwrap_or_else(|_| "claude-haiku-4-5".into()),
             anki: AnkiConfig {
                 model_name: env::var("JP_TOOLS_ANKI_MODEL")
                     .unwrap_or(anki_defaults.model_name),

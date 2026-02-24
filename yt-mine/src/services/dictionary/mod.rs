@@ -94,7 +94,7 @@ impl Dictionary {
     pub fn wrap_definitions(&self, definitions_html: &str) -> String {
         let slug = css_slug(&self.title);
         format!(
-            r#"<div class="dict-{slug}-title">{title}</div><div class="dict-{slug}-body">{definitions_html}</div>"#,
+            r#"<div class="dict-section"><div class="dict-{slug}-title dict-title">{title}</div><div class="dict-{slug}-body">{definitions_html}</div></div>"#,
             slug = slug,
             title = html::html_escape(&self.title),
             definitions_html = definitions_html,

@@ -6,5 +6,4 @@ CREATE TABLE IF NOT EXISTS dictionary_pitch (
     positions_json TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_dictionary_pitch_term ON dictionary_pitch(term);
-CREATE INDEX IF NOT EXISTS idx_dictionary_pitch_dict ON dictionary_pitch(dictionary_id);
+CREATE INDEX IF NOT EXISTS idx_dictionary_pitch_lookup ON dictionary_pitch(dictionary_id, term);

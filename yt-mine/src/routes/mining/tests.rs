@@ -731,7 +731,7 @@ async fn export_with_target_word_and_dictionary_populates_vocab() {
             let s = &sentences[0];
             s.target_word.as_deref() == Some("食べる")
                 && s.definition.as_deref()
-                    == Some(r#"<div class="dict-unknown-title">Unknown</div><div class="dict-unknown-body">to eat; to consume</div>"#)
+                    == Some(r#"<div class="dict-section"><div class="dict-unknown-title dict-title">Unknown</div><div class="dict-unknown-body">to eat; to consume</div></div>"#)
                 && s.vocab_furigana.as_deref() == Some("食べる[たべる]")
                 && s.vocab_pitch_num.as_deref() == Some("2")
                 && s.sentence_html.as_deref() == Some("<b>食べる</b>")

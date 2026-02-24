@@ -51,11 +51,13 @@ impl AnthropicDefiner {
 }
 
 const SYSTEM_PROMPT: &str = "\
-You are a Japanese language tutor. Given a Japanese word and the sentence it appeared in, \
-provide a concise explanation in English that covers:\n\
-1. Core meaning and common translations\n\
-2. Usage notes: formality level, typical contexts, or connotations\n\
-3. When NOT to use this word (common mistakes or confusable alternatives)\n\n\
+You are a Japanese language expert. Given a Japanese word and the sentence it appeared in, \
+explain in English what concept or nuance the word expresses — do not simply translate it.\n\n\
+Then state how common the word is among native Japanese adults. Use one of these labels:\n\
+- CORE: every adult knows and uses this regularly\n\
+- COMMON: widely known, most adults use it\n\
+- LITERATE: educated adults know it; may be literary, formal, or domain-specific\n\
+- RARE: many native speakers would not recognize this\n\n\
 Keep your response to 2-4 sentences. Do not use markdown formatting.";
 
 impl LlmDefiner for AnthropicDefiner {
@@ -146,10 +148,10 @@ mod tests {
 
     #[test]
     fn build_request_body_structure() {
-        let definer = AnthropicDefiner::new("test-key".into(), "claude-sonnet-4-6-20250514".into());
+        let definer = AnthropicDefiner::new("test-key".into(), "claude-sonnet-4-6".into());
         let body = definer.build_request_body("食べる", "毎日ラーメンを食べる");
 
-        assert_eq!(body["model"], "claude-sonnet-4-6-20250514");
+        assert_eq!(body["model"], "claude-sonnet-4-6");
         assert_eq!(body["max_tokens"], 512);
         assert!(body["system"].as_str().unwrap().contains("Japanese"));
 
@@ -165,7 +167,7 @@ mod tests {
     #[ignore = "requires ANTHROPIC_API_KEY environment variable"]
     async fn anthropic_definer_integration() {
         let api_key = std::env::var("ANTHROPIC_API_KEY").expect("set ANTHROPIC_API_KEY");
-        let definer = AnthropicDefiner::new(api_key, "claude-sonnet-4-6-20250514".into());
+        let definer = AnthropicDefiner::new(api_key, "claude-sonnet-4-6".into());
         let result = definer
             .define("食べる", "毎日ラーメンを食べる")
             .await

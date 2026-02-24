@@ -114,14 +114,23 @@
             container.style.display = 'none';
             container.innerHTML = '';
         }
+        var sentenceLi = document.getElementById('sentence-' + sid);
+        if (sentenceLi) sentenceLi.classList.remove('has-preview');
     }
 
     function showPreview(videoId, sid, word) {
         var container = document.getElementById('preview-container-' + sid);
         if (!container) return;
         container.style.display = '';
+        var sentenceLi = document.getElementById('sentence-' + sid);
+        if (sentenceLi) sentenceLi.classList.add('has-preview');
         var url = '/' + videoId + '/sentences/' + sid + '/preview?word=' + encodeURIComponent(word);
-        htmx.ajax('GET', url, {target: container, swap: 'innerHTML'});
+        htmx.ajax('GET', url, {target: container, swap: 'innerHTML'}).then(function() {
+            var llmDiv = container.querySelector('.llm-content[data-llm-url]');
+            if (llmDiv) {
+                htmx.ajax('GET', llmDiv.dataset.llmUrl, {target: llmDiv, swap: 'innerHTML'});
+            }
+        });
     }
 
     document.querySelectorAll('.token.content-word').forEach(function(span) {

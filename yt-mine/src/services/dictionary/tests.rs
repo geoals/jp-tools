@@ -387,7 +387,7 @@ fn wrap_definitions_produces_title_and_body() {
     let html = dict.wrap_definitions("some definition");
     assert_eq!(
         html,
-        r#"<div class="dict-unknown-title">Unknown</div><div class="dict-unknown-body">some definition</div>"#
+        r#"<div class="dict-section"><div class="dict-unknown-title dict-title">Unknown</div><div class="dict-unknown-body">some definition</div></div>"#
     );
 }
 

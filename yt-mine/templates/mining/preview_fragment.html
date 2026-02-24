@@ -9,13 +9,11 @@
     {% else %}
     <div class="preview-definitions preview-empty">No dictionary entries found.</div>
     {% endif %}
-    {% if let Some(html) = sentence_html %}
-    <div class="preview-sentence">{{ html|safe }}</div>
-    {% endif %}
-    <div class="preview-llm"
-         hx-get="/{{ video_id }}/sentences/{{ sentence_id }}/llm-definition?word={{ word|urlencode }}"
-         hx-trigger="load"
-         hx-swap="innerHTML">
-        <span class="llm-spinner"></span>
+    <div class="preview-llm dict-section">
+        <div class="dict-title">LLM Definition</div>
+        <div class="llm-content"
+             data-llm-url="/{{ video_id }}/sentences/{{ sentence_id }}/llm-definition?word={{ word|urlencode }}">
+            <span class="llm-spinner"></span>
+        </div>
     </div>
 </div>

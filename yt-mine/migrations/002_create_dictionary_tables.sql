@@ -13,5 +13,4 @@ CREATE TABLE IF NOT EXISTS dictionary_entries (
     definitions_json TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_dictionary_entries_term ON dictionary_entries(term);
-CREATE INDEX IF NOT EXISTS idx_dictionary_entries_dict ON dictionary_entries(dictionary_id);
+CREATE INDEX IF NOT EXISTS idx_dictionary_entries_lookup ON dictionary_entries(dictionary_id, term);

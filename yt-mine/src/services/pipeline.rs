@@ -19,7 +19,7 @@ pub async fn process_job(
     transcriber: Arc<dyn Transcriber>,
 ) {
     // Step 1: Download
-    info!(job_id, "starting download");
+    info!(job_id, url = youtube_url, "starting download");
     db::update_job_status(&pool, job_id, &JobStatus::Downloading, None)
         .await
         .ok();
