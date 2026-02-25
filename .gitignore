@@ -3,5 +3,7 @@ yt-mine/target
 yt-mine/audio/
 yt-mine/media/
 *.db
+*.db-shm
+*.db-wal
 .env
 *.zip

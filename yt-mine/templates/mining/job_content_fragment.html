@@ -6,7 +6,10 @@
      hx-get="/{{ video_id }}/status"
      hx-trigger="every 2s"
      hx-target="#job-content"
-     hx-swap="innerHTML">
+     hx-swap="innerHTML"
+     hx-on::response-error="this.innerHTML='Connection lost. Retrying...'"
+     hx-on::send-error="this.innerHTML='Connection lost. Retrying...'"
+>
     {% if !sentences.is_empty() %}
     Transcribing... {{ sentences.len() }} sentences found
     {% else %}
