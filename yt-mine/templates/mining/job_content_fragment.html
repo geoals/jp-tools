@@ -2,31 +2,23 @@
 <h2 id="video-title" hx-swap-oob="true">{{ title }}</h2>
 {% endif %}{% endif %}
 {% if !is_terminal %}
-<div class="status"
+<div id="poll-trigger"
      hx-get="/{{ video_id }}/status"
      hx-trigger="every 2s"
      hx-target="#job-content"
-     hx-swap="innerHTML"
-     hx-on::response-error="this.innerHTML='Connection lost. Retrying...'"
-     hx-on::send-error="this.innerHTML='Connection lost. Retrying...'"
->
-    {% if !sentences.is_empty() %}
+     hx-swap="morph:innerHTML"
+     hx-vals='{"sc":"{{ sentence_count }}","st":"{{ status }}"}'
+></div>
+<div class="status">
+    {% if let Some(pct) = progress_percent %}
+    <div class="progress-fill" style="width:{{ pct }}%"></div>
+    <span class="progress-text">Transcribing... {{ pct }}% — {{ sentences.len() }} sentences</span>
+    {% else if !sentences.is_empty() %}
     Transcribing... {{ sentences.len() }} sentences found
     {% else %}
     Status: {{ status }}...
     {% endif %}
 </div>
-
-{% if !sentences.is_empty() %}
-<ul class="sentence-list transcribing">
-    {% for s in sentences %}
-    <li>
-        <span class="timestamp">{{ s.timestamp }}</span>
-        <span class="sentence-text">{{ s.text }}</span>
-    </li>
-    {% endfor %}
-</ul>
-{% endif %}
 {% else if is_done %}
 <div class="status done">
     {{ sentence_count }} sentences found
@@ -41,11 +33,11 @@
 </div>
 {% endif %}
 
-{% if is_done %}
+{% if !sentences.is_empty() %}
 <form hx-post="/mining/export" hx-target="#export-result" hx-swap="innerHTML" hx-disabled-elt="find button[type='submit']">
     <input type="hidden" name="job_id" value="{{ job_id }}">
     <p class="helper-text">Click any word in a sentence to select it as the target vocabulary for export.</p>
-    <ul class="sentence-list">
+    <ul class="sentence-list{% if !is_done %} transcribing{% endif %}">
         {% for s in sentences %}
         <li id="sentence-{{ s.id }}">
             <button type="button" class="play-btn"
@@ -67,38 +59,41 @@
 <div id="export-result"></div>
 <audio id="sentence-player" preload="none"></audio>
 <script>
+if (!window.__ytMinePlayBound) {
+window.__ytMinePlayBound = true;
 (function() {
-    const player = document.getElementById('sentence-player');
-    let activeBtn = null;
+    var player = document.getElementById('sentence-player');
+    var activeBtn = null;
+    var container = document.getElementById('job-content');
 
-    document.querySelectorAll('.play-btn').forEach(function(btn) {
-        btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            var src = btn.dataset.src;
+    container.addEventListener('click', function(e) {
+        var btn = e.target.closest('.play-btn');
+        if (!btn) return;
+        e.preventDefault();
+        var src = btn.dataset.src;
 
-            if (activeBtn === btn && !player.paused) {
-                player.pause();
-                btn.textContent = '\u25B6';
-                activeBtn = null;
-                return;
-            }
+        if (activeBtn === btn && !player.paused) {
+            player.pause();
+            btn.textContent = '\u25B6';
+            activeBtn = null;
+            return;
+        }
 
-            if (activeBtn && activeBtn !== btn) {
-                activeBtn.textContent = '\u25B6';
-                activeBtn.classList.remove('loading');
-            }
+        if (activeBtn && activeBtn !== btn) {
+            activeBtn.textContent = '\u25B6';
+            activeBtn.classList.remove('loading');
+        }
 
-            activeBtn = btn;
-            var needsLoad = player.src !== location.origin + src;
-            if (needsLoad) {
-                btn.classList.add('loading');
-                player.src = src;
-            }
-            player.play();
-            if (!needsLoad) {
-                btn.textContent = '\u23F8';
-            }
-        });
+        activeBtn = btn;
+        var needsLoad = player.src !== location.origin + src;
+        if (needsLoad) {
+            btn.classList.add('loading');
+            player.src = src;
+        }
+        player.play();
+        if (!needsLoad) {
+            btn.textContent = '\u23F8';
+        }
     });
 
     player.addEventListener('canplay', function() {
@@ -123,78 +118,145 @@
         }
     });
 })();
+}
 </script>
 <script>
+if (!window.__ytMineWordBound) {
+window.__ytMineWordBound = true;
 (function() {
+    var container = document.getElementById('job-content');
+
     function hidePreview(sid) {
-        var container = document.getElementById('preview-container-' + sid);
-        if (container) {
-            container.style.display = 'none';
-            container.innerHTML = '';
+        var el = document.getElementById('preview-container-' + sid);
+        if (el) {
+            el.style.display = 'none';
+            el.innerHTML = '';
         }
         var sentenceLi = document.getElementById('sentence-' + sid);
         if (sentenceLi) sentenceLi.classList.remove('has-preview');
     }
 
     function showPreview(videoId, sid, word) {
-        var container = document.getElementById('preview-container-' + sid);
-        if (!container) return;
-        container.style.display = '';
+        var el = document.getElementById('preview-container-' + sid);
+        if (!el) return;
+        el.style.display = '';
         var sentenceLi = document.getElementById('sentence-' + sid);
         if (sentenceLi) sentenceLi.classList.add('has-preview');
         var url = '/' + videoId + '/sentences/' + sid + '/preview?word=' + encodeURIComponent(word);
-        htmx.ajax('GET', url, {target: container, swap: 'innerHTML'}).then(function() {
-            var llmDiv = container.querySelector('.llm-content[data-llm-url]');
+        htmx.ajax('GET', url, {target: el, swap: 'innerHTML'}).then(function() {
+            var llmDiv = el.querySelector('.llm-content[data-llm-url]');
             if (llmDiv) {
                 htmx.ajax('GET', llmDiv.dataset.llmUrl, {target: llmDiv, swap: 'innerHTML'});
             }
         });
     }
 
-    document.querySelectorAll('.token.content-word').forEach(function(span) {
-        span.addEventListener('click', function() {
-            var sid = span.dataset.sid;
-            var videoId = span.dataset.videoId;
+    container.addEventListener('click', function(e) {
+        var span = e.target.closest('.token.content-word');
+        if (!span) return;
+
+        var sid = span.dataset.sid;
+        var videoId = span.dataset.videoId;
+        var wordInput = document.querySelector('.target-word-input[data-sid="' + sid + '"]');
+        var idInput = document.querySelector('.sentence-id-input[data-sid="' + sid + '"]');
+
+        // Deselect if clicking the already-selected word
+        if (span.classList.contains('selected')) {
+            span.classList.remove('selected');
+            wordInput.value = '';
+            wordInput.disabled = true;
+            idInput.disabled = true;
+            hidePreview(sid);
+            return;
+        }
+
+        // Close previews in other sentences
+        document.querySelectorAll('.token.content-word.selected').forEach(function(el) {
+            if (el.dataset.sid !== sid) {
+                el.classList.remove('selected');
+                var otherWordInput = document.querySelector('.target-word-input[data-sid="' + el.dataset.sid + '"]');
+                var otherIdInput = document.querySelector('.sentence-id-input[data-sid="' + el.dataset.sid + '"]');
+                if (otherWordInput) { otherWordInput.value = ''; otherWordInput.disabled = true; }
+                if (otherIdInput) { otherIdInput.disabled = true; }
+                hidePreview(el.dataset.sid);
+            }
+        });
+
+        // Deselect any previously selected word in same sentence
+        document.querySelectorAll('.token.content-word.selected[data-sid="' + sid + '"]').forEach(function(el) {
+            el.classList.remove('selected');
+        });
+
+        // Select this word
+        span.classList.add('selected');
+        wordInput.value = sid + ':' + span.dataset.baseForm;
+        wordInput.disabled = false;
+        idInput.disabled = false;
+
+        // Show preview
+        showPreview(videoId, sid, span.dataset.baseForm);
+    });
+
+    // Preserve client state across idiomorph swaps.
+    // Save in beforeSwap, restore in afterSwap (fires synchronously after
+    // the morph, before the browser paints — no visible flash).
+    var savedState = null;
+
+    document.body.addEventListener('htmx:beforeSwap', function(evt) {
+        if (evt.detail.target.id !== 'job-content') return;
+        var selected = {};
+        document.querySelectorAll('.token.content-word.selected').forEach(function(el) {
+            selected[el.dataset.sid] = el.dataset.baseForm;
+        });
+        var previews = {};
+        document.querySelectorAll('.preview-container').forEach(function(el) {
+            if (el.style.display !== 'none' && el.innerHTML) {
+                var sid = el.id.replace('preview-container-', '');
+                previews[sid] = el.innerHTML;
+            }
+        });
+        var exported = [];
+        document.querySelectorAll('.sentence-list li.exported').forEach(function(el) {
+            if (el.id) exported.push(el.id);
+        });
+        savedState = { selected: selected, previews: previews, exported: exported };
+    });
+
+    document.body.addEventListener('htmx:afterSwap', function(evt) {
+        if (evt.detail.target.id !== 'job-content' || !savedState) return;
+        var st = savedState;
+        savedState = null;
+
+        // Restore selected words
+        Object.keys(st.selected).forEach(function(sid) {
+            var baseForm = st.selected[sid];
+            document.querySelectorAll('.token.content-word[data-sid="' + sid + '"]').forEach(function(el) {
+                if (el.dataset.baseForm === baseForm) el.classList.add('selected');
+            });
             var wordInput = document.querySelector('.target-word-input[data-sid="' + sid + '"]');
             var idInput = document.querySelector('.sentence-id-input[data-sid="' + sid + '"]');
+            if (wordInput) { wordInput.value = sid + ':' + baseForm; wordInput.disabled = false; }
+            if (idInput) { idInput.disabled = false; }
+        });
 
-            // Deselect if clicking the already-selected word
-            if (span.classList.contains('selected')) {
-                span.classList.remove('selected');
-                wordInput.value = '';
-                wordInput.disabled = true;
-                idInput.disabled = true;
-                hidePreview(sid);
-                return;
+        // Restore preview panels
+        Object.keys(st.previews).forEach(function(sid) {
+            var el = document.getElementById('preview-container-' + sid);
+            if (el) {
+                el.style.display = '';
+                el.innerHTML = st.previews[sid];
             }
+            var sentenceLi = document.getElementById('sentence-' + sid);
+            if (sentenceLi) sentenceLi.classList.add('has-preview');
+        });
 
-            // Close previews in other sentences
-            document.querySelectorAll('.token.content-word.selected').forEach(function(el) {
-                if (el.dataset.sid !== sid) {
-                    el.classList.remove('selected');
-                    var otherWordInput = document.querySelector('.target-word-input[data-sid="' + el.dataset.sid + '"]');
-                    var otherIdInput = document.querySelector('.sentence-id-input[data-sid="' + el.dataset.sid + '"]');
-                    if (otherWordInput) { otherWordInput.value = ''; otherWordInput.disabled = true; }
-                    if (otherIdInput) { otherIdInput.disabled = true; }
-                    hidePreview(el.dataset.sid);
-                }
-            });
-
-            // Deselect any previously selected word in same sentence
-            document.querySelectorAll('.token.content-word.selected[data-sid="' + sid + '"]').forEach(function(el) {
-                el.classList.remove('selected');
-            });
-
-            // Select this word
-            span.classList.add('selected');
-            wordInput.value = sid + ':' + span.dataset.baseForm;
-            wordInput.disabled = false;
-            idInput.disabled = false;
-
-            // Show preview
-            showPreview(videoId, sid, span.dataset.baseForm);
+        // Restore exported state
+        st.exported.forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.classList.add('exported');
         });
     });
 })();
+}
 </script>
 {% endif %}

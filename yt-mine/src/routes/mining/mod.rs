@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::Form;
 
@@ -63,6 +64,7 @@ struct VideoPageTemplate {
     /// Passed through to the included fragment. Always false for the full page
     /// (the page already has its own h2).
     oob_title: bool,
+    progress_percent: Option<u8>,
 }
 
 #[derive(askama::Template, askama_web::WebTemplate)]
@@ -80,6 +82,7 @@ struct VideoContentFragmentTemplate {
     /// When true, emit an OOB `<h2>` swap to update the video title.
     /// Only set for htmx polling responses, not the initial page include.
     oob_title: bool,
+    progress_percent: Option<u8>,
 }
 
 #[derive(askama::Template, askama_web::WebTemplate)]
@@ -209,37 +212,36 @@ pub async fn submit_youtube(
     Ok(Redirect::to(&format!("/{video_id}")).into_response())
 }
 
-/// Build sentence views for display. During transcription, returns simplified
-/// views (text only, no tokenization). For completed jobs, returns fully
-/// tokenized views with interactive word selection.
+/// Build sentence views for display. Always tokenizes sentences so they are
+/// interactive as soon as they appear (even during transcription).
+///
+/// Returns `(views, max_end_time)` where `max_end_time` is the highest
+/// `end_time` across all sentences (0.0 if none). Used to compute progress %.
 async fn build_sentence_views(
     state: &AppState,
     job_id: i64,
-    is_done: bool,
-) -> Result<Vec<SentenceView>, AppError> {
+) -> Result<(Vec<SentenceView>, f64), AppError> {
     let sentences = db::get_sentences_for_job(&state.db, job_id).await?;
-    Ok(sentences
+    let mut max_end: f64 = 0.0;
+    let views = sentences
         .into_iter()
         .map(|s| {
-            // Only tokenize for completed jobs — during transcription we
-            // show plain text to keep polling responses fast.
-            let tokens = if is_done {
-                state
-                    .tokenizer
-                    .tokenize(&s.text)
-                    .map(|toks| {
-                        toks.into_iter()
-                            .map(|t| TokenView {
-                                is_content_word: is_content_word(&t.pos),
-                                base_form: t.base_form,
-                                surface: t.surface,
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default()
-            } else {
-                vec![]
-            };
+            if s.end_time > max_end {
+                max_end = s.end_time;
+            }
+            let tokens = state
+                .tokenizer
+                .tokenize(&s.text)
+                .map(|toks| {
+                    toks.into_iter()
+                        .map(|t| TokenView {
+                            is_content_word: is_content_word(&t.pos),
+                            base_form: t.base_form,
+                            surface: t.surface,
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
             SentenceView {
                 id: s.id,
                 timestamp: format_seconds(s.start_time),
@@ -248,7 +250,8 @@ async fn build_sentence_views(
                 tokens,
             }
         })
-        .collect())
+        .collect();
+    Ok((views, max_end))
 }
 
 pub async fn video_page(
@@ -260,7 +263,11 @@ pub async fn video_page(
         .ok_or(AppError::NotFound)?;
 
     let is_done = job.status == JobStatus::Done;
-    let sentence_views = build_sentence_views(&state, job.id, is_done).await?;
+    let (sentence_views, max_end) = build_sentence_views(&state, job.id).await?;
+
+    let progress_percent = job.video_duration.map(|d| {
+        if d > 0.0 { (max_end / d * 100.0).min(100.0) as u8 } else { 0 }
+    });
 
     let sentence_count = sentence_views.len();
     let template = VideoPageTemplate {
@@ -274,35 +281,62 @@ pub async fn video_page(
         sentence_count,
         sentences: sentence_views,
         oob_title: false,
+        progress_percent,
     };
 
     Ok(template.into_response())
 }
 
+#[derive(serde::Deserialize, Default)]
+pub struct PollQuery {
+    /// Sentence count from the previous poll (client-side).
+    #[serde(default)]
+    sc: Option<usize>,
+    /// Status string from the previous poll (client-side).
+    #[serde(default)]
+    st: Option<String>,
+}
+
 pub async fn video_status_fragment(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
+    Query(poll): Query<PollQuery>,
 ) -> Result<Response, AppError> {
     let job = db::get_latest_job_by_video_id(&state.db, &video_id)
         .await?
         .ok_or(AppError::NotFound)?;
 
+    let status_str = job.status.as_str().to_string();
+
+    // Skip the swap if nothing changed — htmx treats 204 as "don't swap".
+    if let (Some(prev_sc), Some(prev_st)) = (poll.sc, &poll.st) {
+        let current_count = db::count_sentences_for_job(&state.db, job.id).await? as usize;
+        if prev_st == &status_str && prev_sc == current_count {
+            return Ok(StatusCode::NO_CONTENT.into_response());
+        }
+    }
+
     let is_done = job.status == JobStatus::Done;
     let is_terminal = job.status.is_terminal();
-    let sentences = build_sentence_views(&state, job.id, is_done).await?;
+    let (sentences, max_end) = build_sentence_views(&state, job.id).await?;
+
+    let progress_percent = job.video_duration.map(|d| {
+        if d > 0.0 { (max_end / d * 100.0).min(100.0) as u8 } else { 0 }
+    });
 
     let sentence_count = sentences.len();
     let template = VideoContentFragmentTemplate {
         video_id,
         job_id: job.id,
         video_title: job.video_title,
-        status: job.status.as_str().to_string(),
+        status: status_str,
         is_done,
         is_terminal,
         error_message: job.error_message,
         sentence_count,
         sentences,
         oob_title: true,
+        progress_percent,
     };
 
     Ok(template.into_response())

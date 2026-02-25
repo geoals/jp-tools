@@ -15,6 +15,7 @@ pub struct DownloadResult {
     pub audio_path: String,
     pub video_path: String,
     pub video_title: String,
+    pub video_duration: Option<f64>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -105,9 +106,11 @@ impl AudioDownloader for YtDlpDownloader {
                     "-S",
                     "res:480",
                     "--print",
-                    "after_move:filepath",
+                    "duration",
                     "--print",
                     "title",
+                    "--print",
+                    "after_move:filepath",
                     "-o",
                     &output_template,
                     &url,
@@ -132,8 +135,13 @@ impl AudioDownloader for YtDlpDownloader {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let mut lines = stdout.lines();
 
-            // yt-dlp prints in execution order: title (info extraction phase)
-            // comes before after_move:filepath (post-processing phase)
+            // yt-dlp prints in execution order: info-extraction fields (duration, title)
+            // before post-processing fields (after_move:filepath).
+            // Duration may be "NA" for live streams — parse failure is fine.
+            let video_duration = lines
+                .next()
+                .and_then(|s| s.parse::<f64>().ok());
+
             let video_title = lines
                 .next()
                 .ok_or_else(|| DownloadError::Failed("no title in yt-dlp output".into()))?
@@ -185,6 +193,7 @@ impl AudioDownloader for YtDlpDownloader {
                 audio_path,
                 video_path,
                 video_title,
+                video_duration,
             })
         })
     }

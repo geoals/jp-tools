@@ -95,6 +95,7 @@ async fn post_youtube_creates_job_and_redirects() {
                 audio_path: "/tmp/audio.wav".into(),
                 video_path: "/tmp/video.mp4".into(),
                 video_title: "Test".into(),
+                video_duration: Some(60.0),
             })
         })
     });
@@ -359,7 +360,7 @@ async fn sentence_audio_extracts_and_returns_mp3() {
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
         .await
         .unwrap();
-    db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test", "/tmp/video.mp4")
+    db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test", "/tmp/video.mp4", Some(60.0))
         .await
         .unwrap();
     db::insert_sentences(
@@ -412,7 +413,7 @@ async fn sentence_audio_serves_cached_clip_without_re_extracting() {
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
         .await
         .unwrap();
-    db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test", "/tmp/video.mp4")
+    db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test", "/tmp/video.mp4", Some(60.0))
         .await
         .unwrap();
     db::insert_sentences(
@@ -475,7 +476,7 @@ async fn export_calls_exporter_and_shows_success() {
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
         .await
         .unwrap();
-    db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test Video", "/tmp/video.mp4")
+    db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test Video", "/tmp/video.mp4", Some(60.0))
         .await
         .unwrap();
     db::insert_sentences(
@@ -603,7 +604,7 @@ async fn export_failure_returns_styled_error_fragment() {
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
         .await
         .unwrap();
-    db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test", "/tmp/video.mp4")
+    db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test", "/tmp/video.mp4", Some(60.0))
         .await
         .unwrap();
     db::insert_sentences(
@@ -788,7 +789,7 @@ async fn export_with_target_word_and_dictionary_populates_vocab() {
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
         .await
         .unwrap();
-    db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test Video", "/tmp/video.mp4")
+    db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test Video", "/tmp/video.mp4", Some(60.0))
         .await
         .unwrap();
     db::insert_sentences(
@@ -819,6 +820,80 @@ async fn export_with_target_word_and_dictionary_populates_vocab() {
     response.assert_status_ok();
     let body = response.text();
     assert!(body.contains("1 sentence(s) exported"));
+}
+
+#[tokio::test]
+async fn status_fragment_transcribing_shows_interactive_sentences() {
+    let (server, pool) = test_app(
+        MockAudioDownloader::new(),
+        MockTranscriber::new(),
+        MockAnkiExporter::new(),
+    )
+    .await;
+
+    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
+        .await
+        .unwrap();
+    db::update_job_status(&pool, job_id, &JobStatus::Transcribing, None)
+        .await
+        .unwrap();
+    db::insert_sentences(
+        &pool,
+        job_id,
+        &[TranscriptSegment {
+            start: 0.0,
+            end: 3.0,
+            text: "テスト文".into(),
+        }],
+    )
+    .await
+    .unwrap();
+
+    let response = server.get("/dQw4w9WgXcQ/status").await;
+    response.assert_status_ok();
+    let body = response.text();
+    assert!(body.contains("content-word"), "should show interactive tokenized spans");
+    assert!(body.contains("Export to Anki"), "should show export button");
+    assert!(body.contains("hx-get"), "should still be polling");
+    assert!(body.contains("morph:innerHTML"), "should use idiomorph swap");
+    assert!(body.contains("transcribing"), "should have transcribing class");
+}
+
+#[tokio::test]
+async fn status_fragment_transcribing_shows_progress_bar() {
+    let (server, pool) = test_app(
+        MockAudioDownloader::new(),
+        MockTranscriber::new(),
+        MockAnkiExporter::new(),
+    )
+    .await;
+
+    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
+        .await
+        .unwrap();
+    db::update_job_status(&pool, job_id, &JobStatus::Transcribing, None)
+        .await
+        .unwrap();
+    db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test", "/tmp/video.mp4", Some(100.0))
+        .await
+        .unwrap();
+    db::insert_sentences(
+        &pool,
+        job_id,
+        &[TranscriptSegment {
+            start: 0.0,
+            end: 50.0,
+            text: "テスト文".into(),
+        }],
+    )
+    .await
+    .unwrap();
+
+    let response = server.get("/dQw4w9WgXcQ/status").await;
+    response.assert_status_ok();
+    let body = response.text();
+    assert!(body.contains("progress-fill"), "should contain progress bar fill element");
+    assert!(body.contains("50%"), "should show 50% progress");
 }
 
 // --- Helper for preview/LLM tests ---

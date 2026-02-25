@@ -43,6 +43,7 @@ impl AudioDownloader for FakeDownloader {
                 audio_path,
                 video_path,
                 video_title: "[Dev] 日本語の勉強法".into(),
+                video_duration: Some(45.0),
             })
         })
     }

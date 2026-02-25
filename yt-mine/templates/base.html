@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+JP:wght@400;500&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://unpkg.com/idiomorph@0.3.0/dist/idiomorph-ext.min.js"></script>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -15,7 +16,7 @@
             --bg:         hsl(220, 8%, 7%);
             --bg-surface: hsl(215, 8%, 11%);
             --bg-hover:   hsl(210, 7%, 15%);
-            --text:       hsl(210, 8%, 78%);
+            --text:       hsl(210, 8%, 92%);
             --text-muted: hsl(210, 5%, 44%);
             --accent:       hsl(175, 50%, 48%);
             --accent-hover: hsl(175, 55%, 58%);
@@ -146,6 +147,8 @@
         /* --- Status --- */
 
         .status {
+            position: relative;
+            overflow: hidden;
             padding: 0.6rem 0.9rem;
             margin: 1rem 0;
             border-radius: var(--radius);
@@ -153,6 +156,20 @@
             background: var(--bg-surface);
             border: 1px solid var(--border);
             color: var(--text-muted);
+        }
+
+        .progress-fill {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            background: var(--accent-dim);
+            transition: width 0.5s ease;
+            border-radius: var(--radius);
+        }
+
+        .progress-text {
+            position: relative;
         }
 
         .status:not(.done):not(.error) {
@@ -495,7 +512,7 @@
         ::-webkit-scrollbar-thumb:hover { background: hsl(210, 5%, 28%); }
     </style>
 </head>
-<body>
+<body hx-ext="morph">
     {% block content %}{% endblock %}
 </body>
 </html>

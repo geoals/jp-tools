@@ -45,6 +45,7 @@ pub async fn process_job(
         &download_result.audio_path,
         &download_result.video_title,
         &download_result.video_path,
+        download_result.video_duration,
     )
     .await
     .ok();
@@ -120,6 +121,7 @@ mod tests {
                     audio_path: "/tmp/audio.wav".into(),
                     video_path: "/tmp/video.mp4".into(),
                     video_title: "Test Video".into(),
+                    video_duration: Some(60.0),
                 })
             })
         });
@@ -208,6 +210,7 @@ mod tests {
                     audio_path: "/tmp/audio.wav".into(),
                     video_path: "/tmp/video.mp4".into(),
                     video_title: "Test Video".into(),
+                    video_duration: Some(60.0),
                 })
             })
         });
