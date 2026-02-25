@@ -436,6 +436,36 @@ pub async fn has_pitch_entries(
     Ok(count.0 > 0)
 }
 
+/// Delete jobs that were left in a non-terminal state (pending/downloading/transcribing)
+/// from a previous run, along with any partial sentences they accumulated.
+/// Returns the number of deleted jobs.
+pub async fn delete_incomplete_jobs(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
+    let statuses = [
+        JobStatus::Pending.as_str(),
+        JobStatus::Downloading.as_str(),
+        JobStatus::Transcribing.as_str(),
+    ];
+
+    sqlx::query(
+        "DELETE FROM mining_sentences WHERE job_id IN \
+         (SELECT id FROM mining_jobs WHERE status IN (?, ?, ?))",
+    )
+    .bind(statuses[0])
+    .bind(statuses[1])
+    .bind(statuses[2])
+    .execute(pool)
+    .await?;
+
+    let result = sqlx::query("DELETE FROM mining_jobs WHERE status IN (?, ?, ?)")
+        .bind(statuses[0])
+        .bind(statuses[1])
+        .bind(statuses[2])
+        .execute(pool)
+        .await?;
+
+    Ok(result.rows_affected())
+}
+
 fn chrono_now() -> String {
     // ISO 8601 timestamp without external chrono dependency
     // In production this would use a proper time library, but for MVP
@@ -770,5 +800,69 @@ mod tests {
         let pool = test_pool().await;
         let loaded = lookup_pitch_entries(&pool, 999, "anything").await.unwrap();
         assert!(loaded.is_empty());
+    }
+
+    // --- delete incomplete jobs ---
+
+    #[tokio::test]
+    async fn delete_incomplete_jobs_removes_stale_jobs_and_sentences() {
+        let pool = test_pool().await;
+        let url = "https://youtube.com/watch?v=abc";
+
+        // Create jobs in each status
+        let pending = create_job(&pool, url, "pending1").await.unwrap();
+
+        let downloading = create_job(&pool, url, "downloading1").await.unwrap();
+        update_job_status(&pool, downloading, &JobStatus::Downloading, None)
+            .await
+            .unwrap();
+
+        let transcribing = create_job(&pool, url, "transcribing1").await.unwrap();
+        update_job_status(&pool, transcribing, &JobStatus::Transcribing, None)
+            .await
+            .unwrap();
+
+        let done = create_job(&pool, url, "done1").await.unwrap();
+        update_job_status(&pool, done, &JobStatus::Done, None)
+            .await
+            .unwrap();
+
+        let error = create_job(&pool, url, "error1").await.unwrap();
+        update_job_status(&pool, error, &JobStatus::Error, Some("fail"))
+            .await
+            .unwrap();
+
+        // Add sentences to the transcribing job (partial data)
+        let seg = TranscriptSegment { start: 0.0, end: 1.0, text: "partial".into() };
+        insert_sentences(&pool, transcribing, &[seg.clone()]).await.unwrap();
+        // And to the done job (should survive)
+        insert_sentences(&pool, done, &[seg]).await.unwrap();
+
+        let deleted = delete_incomplete_jobs(&pool).await.unwrap();
+        assert_eq!(deleted, 3);
+
+        // Incomplete jobs are gone
+        assert!(get_job(&pool, pending).await.unwrap().is_none());
+        assert!(get_job(&pool, downloading).await.unwrap().is_none());
+        assert!(get_job(&pool, transcribing).await.unwrap().is_none());
+
+        // Terminal jobs survive
+        assert!(get_job(&pool, done).await.unwrap().is_some());
+        assert!(get_job(&pool, error).await.unwrap().is_some());
+
+        // Partial sentences for transcribing job are deleted
+        let sentences = get_sentences_for_job(&pool, transcribing).await.unwrap();
+        assert!(sentences.is_empty());
+
+        // Sentences for done job survive
+        let sentences = get_sentences_for_job(&pool, done).await.unwrap();
+        assert_eq!(sentences.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn delete_incomplete_jobs_returns_zero_when_nothing_to_clean() {
+        let pool = test_pool().await;
+        let deleted = delete_incomplete_jobs(&pool).await.unwrap();
+        assert_eq!(deleted, 0);
     }
 }

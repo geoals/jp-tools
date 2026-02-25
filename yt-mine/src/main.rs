@@ -36,6 +36,13 @@ async fn main() {
         .await
         .expect("failed to create database pool");
 
+    let deleted = db::delete_incomplete_jobs(&pool)
+        .await
+        .expect("failed to clean up incomplete jobs");
+    if deleted > 0 {
+        info!(count = deleted, "cleaned up incomplete jobs from previous run");
+    }
+
     let (downloader, transcriber, exporter, media_extractor, tokenizer): (
         Arc<dyn AudioDownloader>,
         Arc<dyn Transcriber>,

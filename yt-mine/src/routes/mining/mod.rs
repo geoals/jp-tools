@@ -60,7 +60,6 @@ struct VideoPageTemplate {
     error_message: Option<String>,
     sentence_count: usize,
     sentences: Vec<SentenceView>,
-    segments_found: i64,
     /// Passed through to the included fragment. Always false for the full page
     /// (the page already has its own h2).
     oob_title: bool,
@@ -78,7 +77,6 @@ struct VideoContentFragmentTemplate {
     error_message: Option<String>,
     sentence_count: usize,
     sentences: Vec<SentenceView>,
-    segments_found: i64,
     /// When true, emit an OOB `<h2>` swap to update the video title.
     /// Only set for htmx polling responses, not the initial page include.
     oob_title: bool,
@@ -218,13 +216,7 @@ async fn build_sentence_views(
     state: &AppState,
     job_id: i64,
     is_done: bool,
-    segments_found: i64,
 ) -> Result<Vec<SentenceView>, AppError> {
-    let show_sentences = is_done || segments_found > 0;
-    if !show_sentences {
-        return Ok(vec![]);
-    }
-
     let sentences = db::get_sentences_for_job(&state.db, job_id).await?;
     Ok(sentences
         .into_iter()
@@ -268,8 +260,7 @@ pub async fn video_page(
         .ok_or(AppError::NotFound)?;
 
     let is_done = job.status == JobStatus::Done;
-    let segments_found = job.segments_found;
-    let sentence_views = build_sentence_views(&state, job.id, is_done, segments_found).await?;
+    let sentence_views = build_sentence_views(&state, job.id, is_done).await?;
 
     let sentence_count = sentence_views.len();
     let template = VideoPageTemplate {
@@ -282,7 +273,6 @@ pub async fn video_page(
         error_message: job.error_message,
         sentence_count,
         sentences: sentence_views,
-        segments_found,
         oob_title: false,
     };
 
@@ -299,8 +289,7 @@ pub async fn video_status_fragment(
 
     let is_done = job.status == JobStatus::Done;
     let is_terminal = job.status.is_terminal();
-    let segments_found = job.segments_found;
-    let sentences = build_sentence_views(&state, job.id, is_done, segments_found).await?;
+    let sentences = build_sentence_views(&state, job.id, is_done).await?;
 
     let sentence_count = sentences.len();
     let template = VideoContentFragmentTemplate {
@@ -313,7 +302,6 @@ pub async fn video_status_fragment(
         error_message: job.error_message,
         sentence_count,
         sentences,
-        segments_found,
         oob_title: true,
     };
 

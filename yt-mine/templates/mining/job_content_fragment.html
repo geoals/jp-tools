@@ -7,8 +7,8 @@
      hx-trigger="every 2s"
      hx-target="#job-content"
      hx-swap="innerHTML">
-    {% if segments_found > 0 %}
-    Transcribing... {{ segments_found }} sentences found
+    {% if !sentences.is_empty() %}
+    Transcribing... {{ sentences.len() }} sentences found
     {% else %}
     Status: {{ status }}...
     {% endif %}

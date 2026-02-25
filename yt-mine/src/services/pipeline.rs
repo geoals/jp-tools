@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use sqlx::SqlitePool;
+use tokio::task::JoinHandle;
 use tracing::{error, info};
 
 use crate::db;
@@ -56,14 +57,16 @@ pub async fn process_job(
         .ok();
 
     let progress_pool = pool.clone();
-    let on_progress: Option<ProgressCallback> = Some(Box::new(move |segment, count| {
+    let write_handles: Arc<std::sync::Mutex<Vec<JoinHandle<()>>>> =
+        Arc::new(std::sync::Mutex::new(Vec::new()));
+    let cb_handles = write_handles.clone();
+
+    let on_progress: Option<ProgressCallback> = Some(Box::new(move |segment, _count| {
         let pool = progress_pool.clone();
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             db::insert_sentence(&pool, job_id, &segment).await.ok();
-            db::update_job_progress(&pool, job_id, count as i64)
-                .await
-                .ok();
         });
+        cb_handles.lock().unwrap().push(handle);
     }));
 
     let segments = match transcriber
@@ -79,6 +82,12 @@ pub async fn process_job(
             return;
         }
     };
+
+    // Ensure all sentence inserts finish before marking the job as Done.
+    let pending: Vec<_> = write_handles.lock().unwrap().drain(..).collect();
+    for handle in pending {
+        handle.await.ok();
+    }
 
     info!(job_id, count = segments.len(), "job complete");
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
@@ -140,9 +149,6 @@ mod tests {
             Arc::new(transcriber),
         )
         .await;
-
-        // Yield to let spawned progress callbacks complete their DB writes
-        tokio::task::yield_now().await;
 
         let job = db::get_job(&pool, job_id).await.unwrap().unwrap();
         assert_eq!(job.status, JobStatus::Done);
