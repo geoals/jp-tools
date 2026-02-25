@@ -38,7 +38,7 @@ pub(crate) fn camel_to_kebab(s: &str) -> String {
 /// Style prefixes stripped from inline styles — our stylesheet controls layout and theming.
 /// Yomitan styles target light-background popups and conflict with our dark theme.
 const STRIPPED_STYLE_PROPS: &[&str] = &[
-    "padding", "margin", "background", "border", "border-radius",
+    "color", "padding", "margin", "background", "border", "border-radius",
 ];
 
 pub(crate) fn render_style(obj: &serde_json::Map<String, Value>) -> String {

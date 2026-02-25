@@ -499,8 +499,8 @@ fn render_style_single_property() {
 fn render_style_multiple_properties_sorted() {
     let obj: serde_json::Map<String, Value> =
         serde_json::from_str(r#"{"fontSize": "1em", "color": "red"}"#).unwrap();
-    // Sorted alphabetically by CSS property name
-    assert_eq!(render_style(&obj), "color:red;font-size:1em");
+    // color is stripped (conflicts with dark theme); only font-size remains
+    assert_eq!(render_style(&obj), "font-size:1em");
 }
 
 // --- structured_content_to_html ---
@@ -660,7 +660,7 @@ fn sc_html_attribute_order() {
     // lang, title, href, data-*, style
     let v = serde_json::json!({
         "tag": "a",
-        "style": {"color": "red"},
+        "style": {"fontWeight": "bold"},
         "href": "https://example.com",
         "lang": "ja",
         "title": "tooltip",
@@ -669,7 +669,7 @@ fn sc_html_attribute_order() {
     });
     assert_eq!(
         structured_content_to_html(&v, &HashMap::new()),
-        r#"<a lang="ja" title="tooltip" href="https://example.com" data-x="1" style="color:red">text</a>"#
+        r#"<a lang="ja" title="tooltip" href="https://example.com" data-x="1" style="font-weight:bold">text</a>"#
     );
 }
 
