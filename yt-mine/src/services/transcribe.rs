@@ -1,21 +1,18 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::process::Stdio;
-
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{ChildStdin, ChildStdout};
-use std::sync::Arc;
-
-use tokio::sync::Mutex;
-use tracing::info;
 
 use crate::models::TranscriptSegment;
+
+/// Called for each segment as it arrives during transcription.
+/// Receives the segment and the cumulative count so far.
+pub type ProgressCallback = Box<dyn Fn(TranscriptSegment, usize) + Send + Sync>;
 
 #[cfg_attr(test, mockall::automock)]
 pub trait Transcriber: Send + Sync {
     fn transcribe(
         &self,
         audio_path: String,
+        on_progress: Option<ProgressCallback>,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<TranscriptSegment>, TranscribeError>> + Send>>;
 }
 
@@ -25,317 +22,120 @@ pub enum TranscribeError {
     Failed(String),
 }
 
-/// Parses the JSON output from the transcribe.py script.
-/// Handles both segment arrays and error objects from worker mode.
-pub fn parse_transcript_json(json: &str) -> Result<Vec<TranscriptSegment>, TranscribeError> {
-    // Check for error response from worker mode: {"error": "..."}
-    if let Ok(err_obj) = serde_json::from_str::<serde_json::Value>(json) {
-        if let Some(err_msg) = err_obj.get("error").and_then(|v| v.as_str()) {
-            return Err(TranscribeError::Failed(err_msg.to_string()));
-        }
-    }
-
-    serde_json::from_str(json)
-        .map_err(|e| TranscribeError::Failed(format!("failed to parse transcript JSON: {e}")))
+/// Transcribes audio by uploading it to a remote whisper-service instance.
+/// The service streams NDJSON segments back as they complete.
+pub struct RemoteTranscriber {
+    base_url: String,
+    client: reqwest::Client,
 }
 
-struct WorkerProcess {
-    stdin: ChildStdin,
-    stdout: BufReader<ChildStdout>,
-}
-
-/// Persistent whisper worker — spawns the transcription script once at startup
-/// in `--worker` mode, keeping the model loaded in RAM. Subsequent transcriptions
-/// send audio paths over stdin and read JSON results from stdout.
-pub struct WhisperWorker {
-    process: Arc<Mutex<WorkerProcess>>,
-}
-
-impl std::fmt::Debug for WhisperWorker {
+impl std::fmt::Debug for RemoteTranscriber {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("WhisperWorker").finish_non_exhaustive()
+        f.debug_struct("RemoteTranscriber")
+            .field("base_url", &self.base_url)
+            .finish()
     }
 }
 
-impl WhisperWorker {
-    /// Spawns the whisper worker subprocess and waits for it to signal READY
-    /// (indicating the model is loaded and ready for transcription requests).
-    pub async fn spawn(
-        script_path: &str,
-        disable_cuda: bool,
-    ) -> Result<Self, TranscribeError> {
-        info!(script_path, disable_cuda, "spawning whisper worker");
-
-        let mut cmd = tokio::process::Command::new(script_path);
-        cmd.arg("--worker");
-        if disable_cuda {
-            cmd.arg("--disable-cuda");
+impl RemoteTranscriber {
+    pub fn new(base_url: String) -> Self {
+        Self {
+            base_url,
+            client: reqwest::Client::new(),
         }
-
-        let mut child = cmd
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .map_err(|e| {
-                TranscribeError::Failed(format!("failed to spawn whisper worker: {e}"))
-            })?;
-
-        let stdin = child.stdin.take().expect("stdin was piped");
-        let stdout = child.stdout.take().expect("stdout was piped");
-        let mut stdout = BufReader::new(stdout);
-
-        // Wait for the READY signal from the worker
-        let mut ready_line = String::new();
-        stdout.read_line(&mut ready_line).await.map_err(|e| {
-            TranscribeError::Failed(format!("failed to read READY from whisper worker: {e}"))
-        })?;
-
-        if ready_line.trim() != "READY" {
-            return Err(TranscribeError::Failed(format!(
-                "expected READY from whisper worker, got: {ready_line:?}"
-            )));
-        }
-
-        info!("whisper worker ready");
-
-        Ok(Self {
-            process: Arc::new(Mutex::new(WorkerProcess { stdin, stdout })),
-        })
     }
 }
 
-impl Transcriber for WhisperWorker {
+impl Transcriber for RemoteTranscriber {
     fn transcribe(
         &self,
         audio_path: String,
+        on_progress: Option<ProgressCallback>,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<TranscriptSegment>, TranscribeError>> + Send>> {
-        let process = Arc::clone(&self.process);
+        let url = format!("{}/transcribe", self.base_url);
+        let client = self.client.clone();
 
         Box::pin(async move {
-            let mut worker = process.lock().await;
-
-            // Send the audio path
-            worker
-                .stdin
-                .write_all(format!("{audio_path}\n").as_bytes())
-                .await
-                .map_err(|e| {
-                    TranscribeError::Failed(format!("failed to write to whisper worker: {e}"))
-                })?;
-            worker.stdin.flush().await.map_err(|e| {
-                TranscribeError::Failed(format!("failed to flush whisper worker stdin: {e}"))
+            let file_bytes = tokio::fs::read(&audio_path).await.map_err(|e| {
+                TranscribeError::Failed(format!("failed to read audio file {audio_path}: {e}"))
             })?;
 
-            // Read one line of JSON response
-            let mut response = String::new();
-            worker
-                .stdout
-                .read_line(&mut response)
+            let file_name = std::path::Path::new(&audio_path)
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+
+            let part = reqwest::multipart::Part::bytes(file_bytes).file_name(file_name);
+            let form = reqwest::multipart::Form::new().part("audio", part);
+
+            let response = client
+                .post(&url)
+                .multipart(form)
+                .send()
                 .await
                 .map_err(|e| {
-                    TranscribeError::Failed(format!(
-                        "failed to read response from whisper worker: {e}"
-                    ))
+                    TranscribeError::Failed(format!("failed to send request to whisper service: {e}"))
                 })?;
 
-            if response.is_empty() {
-                return Err(TranscribeError::Failed(
-                    "whisper worker closed stdout unexpectedly".into(),
-                ));
+            if !response.status().is_success() {
+                let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                return Err(TranscribeError::Failed(format!(
+                    "whisper service returned {status}: {body}"
+                )));
             }
 
-            parse_transcript_json(response.trim())
+            // Stream NDJSON response via chunk(): one TranscriptSegment per line.
+            // No extra deps needed — reqwest's chunk() returns Option<Bytes>.
+            let mut segments = Vec::new();
+            let mut buffer = String::new();
+            let mut response = response;
+
+            while let Some(chunk) = response.chunk().await.map_err(|e| {
+                TranscribeError::Failed(format!("error reading response stream: {e}"))
+            })? {
+                buffer.push_str(&String::from_utf8_lossy(&chunk));
+
+                // Process complete lines
+                while let Some(newline_pos) = buffer.find('\n') {
+                    let line = buffer[..newline_pos].trim().to_string();
+                    buffer = buffer[newline_pos + 1..].to_string();
+
+                    if line.is_empty() {
+                        continue;
+                    }
+
+                    let segment: TranscriptSegment =
+                        serde_json::from_str(&line).map_err(|e| {
+                            TranscribeError::Failed(format!(
+                                "failed to parse NDJSON segment: {e}"
+                            ))
+                        })?;
+
+                    segments.push(segment.clone());
+                    if let Some(cb) = &on_progress {
+                        cb(segment, segments.len());
+                    }
+                }
+            }
+
+            // Handle any remaining data in buffer (last line may lack trailing newline)
+            let remaining = buffer.trim();
+            if !remaining.is_empty() {
+                let segment: TranscriptSegment =
+                    serde_json::from_str(remaining).map_err(|e| {
+                        TranscribeError::Failed(format!(
+                            "failed to parse final NDJSON segment: {e}"
+                        ))
+                    })?;
+                segments.push(segment.clone());
+                if let Some(cb) = &on_progress {
+                    cb(segment, segments.len());
+                }
+            }
+
+            Ok(segments)
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_valid_transcript_json() {
-        let json = r#"[
-            {"start": 0.0, "end": 3.2, "text": "今日は皆さんにお知らせがあります"},
-            {"start": 3.5, "end": 6.1, "text": "来週から新しいプロジェクトが始まります"}
-        ]"#;
-
-        let segments = parse_transcript_json(json).unwrap();
-        assert_eq!(segments.len(), 2);
-        assert_eq!(segments[0].text, "今日は皆さんにお知らせがあります");
-        assert_eq!(segments[0].start, 0.0);
-        assert_eq!(segments[0].end, 3.2);
-        assert_eq!(segments[1].text, "来週から新しいプロジェクトが始まります");
-    }
-
-    #[test]
-    fn parse_empty_transcript() {
-        let segments = parse_transcript_json("[]").unwrap();
-        assert!(segments.is_empty());
-    }
-
-    #[test]
-    fn parse_invalid_json_returns_error() {
-        let result = parse_transcript_json("not json");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn parse_worker_error_response() {
-        let json = r#"{"error": "file not found: /tmp/missing.wav"}"#;
-        let result = parse_transcript_json(json);
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("file not found"));
-    }
-
-    #[tokio::test]
-    async fn worker_spawn_and_transcribe() {
-        // Fake worker script that immediately prints READY, then echoes a fixed response
-        let script = r#"#!/bin/bash
-echo "READY"
-while IFS= read -r line; do
-    echo '[{"start":0.0,"end":1.0,"text":"test"}]'
-done
-"#;
-        let dir = tempfile::tempdir().unwrap();
-        let script_path = dir.path().join("fake_worker.sh");
-        std::fs::write(&script_path, script).unwrap();
-        std::fs::set_permissions(
-            &script_path,
-            std::os::unix::fs::PermissionsExt::from_mode(0o755),
-        )
-        .unwrap();
-
-        let worker = WhisperWorker::spawn(script_path.to_str().unwrap(), false)
-            .await
-            .unwrap();
-
-        let segments = worker.transcribe("/tmp/test.wav".into()).await.unwrap();
-        assert_eq!(segments.len(), 1);
-        assert_eq!(segments[0].text, "test");
-        assert_eq!(segments[0].start, 0.0);
-        assert_eq!(segments[0].end, 1.0);
-    }
-
-    #[tokio::test]
-    async fn worker_handles_error_response() {
-        let script = r#"#!/bin/bash
-echo "READY"
-while IFS= read -r line; do
-    echo '{"error":"something went wrong"}'
-done
-"#;
-        let dir = tempfile::tempdir().unwrap();
-        let script_path = dir.path().join("fake_worker_err.sh");
-        std::fs::write(&script_path, script).unwrap();
-        std::fs::set_permissions(
-            &script_path,
-            std::os::unix::fs::PermissionsExt::from_mode(0o755),
-        )
-        .unwrap();
-
-        let worker = WhisperWorker::spawn(script_path.to_str().unwrap(), false)
-            .await
-            .unwrap();
-
-        let result = worker.transcribe("/tmp/test.wav".into()).await;
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("something went wrong"));
-    }
-
-    #[tokio::test]
-    async fn worker_spawn_fails_on_bad_ready() {
-        let script = r#"#!/bin/bash
-echo "NOT_READY"
-"#;
-        let dir = tempfile::tempdir().unwrap();
-        let script_path = dir.path().join("bad_ready.sh");
-        std::fs::write(&script_path, script).unwrap();
-        std::fs::set_permissions(
-            &script_path,
-            std::os::unix::fs::PermissionsExt::from_mode(0o755),
-        )
-        .unwrap();
-
-        let result = WhisperWorker::spawn(script_path.to_str().unwrap(), false).await;
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("expected READY"));
-    }
-
-    #[tokio::test]
-    async fn worker_handles_multiple_requests() {
-        let script = r#"#!/bin/bash
-echo "READY"
-count=0
-while IFS= read -r line; do
-    count=$((count + 1))
-    echo "[{\"start\":0.0,\"end\":${count}.0,\"text\":\"segment ${count}\"}]"
-done
-"#;
-        let dir = tempfile::tempdir().unwrap();
-        let script_path = dir.path().join("multi_worker.sh");
-        std::fs::write(&script_path, script).unwrap();
-        std::fs::set_permissions(
-            &script_path,
-            std::os::unix::fs::PermissionsExt::from_mode(0o755),
-        )
-        .unwrap();
-
-        let worker = WhisperWorker::spawn(script_path.to_str().unwrap(), false)
-            .await
-            .unwrap();
-
-        let seg1 = worker.transcribe("/tmp/first.wav".into()).await.unwrap();
-        assert_eq!(seg1[0].end, 1.0);
-        assert_eq!(seg1[0].text, "segment 1");
-
-        let seg2 = worker.transcribe("/tmp/second.wav".into()).await.unwrap();
-        assert_eq!(seg2[0].end, 2.0);
-        assert_eq!(seg2[0].text, "segment 2");
-    }
-
-    #[tokio::test]
-    async fn worker_passes_disable_cuda_flag() {
-        let script = r#"#!/bin/bash
-for arg in "$@"; do
-    if [ "$arg" = "--disable-cuda" ]; then
-        echo "READY"
-        while IFS= read -r line; do
-            echo '[{"start":0.0,"end":1.0,"text":"cpu_mode"}]'
-        done
-        exit 0
-    fi
-done
-echo "READY"
-while IFS= read -r line; do
-    echo '[{"start":0.0,"end":1.0,"text":"cuda_mode"}]'
-done
-"#;
-        let dir = tempfile::tempdir().unwrap();
-        let script_path = dir.path().join("device_worker.sh");
-        std::fs::write(&script_path, script).unwrap();
-        std::fs::set_permissions(
-            &script_path,
-            std::os::unix::fs::PermissionsExt::from_mode(0o755),
-        )
-        .unwrap();
-
-        let worker = WhisperWorker::spawn(script_path.to_str().unwrap(), true)
-            .await
-            .unwrap();
-
-        let segments = worker.transcribe("/tmp/test.wav".into()).await.unwrap();
-        assert_eq!(segments[0].text, "cpu_mode");
-    }
-
-    #[tokio::test]
-    #[ignore = "requires Python + faster-whisper installed"]
-    async fn whisper_worker_integration() {
-        let worker = WhisperWorker::spawn("scripts/transcribe.py", false)
-            .await
-            .unwrap();
-        let result = worker.transcribe("/tmp/test_audio.wav".into()).await;
-        println!("{result:?}");
     }
 }

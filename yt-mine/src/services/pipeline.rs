@@ -6,7 +6,7 @@ use tracing::{error, info};
 use crate::db;
 use crate::models::JobStatus;
 use crate::services::download::AudioDownloader;
-use crate::services::transcribe::Transcriber;
+use crate::services::transcribe::{ProgressCallback, Transcriber};
 
 /// Runs the full pipeline for a job: download -> transcribe -> store sentences.
 /// Updates job status at each step. On failure, sets status to `error` with a message.
@@ -48,14 +48,26 @@ pub async fn process_job(
     .await
     .ok();
 
-    // Step 2: Transcribe
+    // Step 2: Transcribe — sentences are inserted progressively via the callback,
+    // so they appear in the UI during transcription (htmx polling picks them up).
     info!(job_id, "starting transcription");
     db::update_job_status(&pool, job_id, &JobStatus::Transcribing, None)
         .await
         .ok();
 
+    let progress_pool = pool.clone();
+    let on_progress: Option<ProgressCallback> = Some(Box::new(move |segment, count| {
+        let pool = progress_pool.clone();
+        tokio::spawn(async move {
+            db::insert_sentence(&pool, job_id, &segment).await.ok();
+            db::update_job_progress(&pool, job_id, count as i64)
+                .await
+                .ok();
+        });
+    }));
+
     let segments = match transcriber
-        .transcribe(download_result.audio_path)
+        .transcribe(download_result.audio_path, on_progress)
         .await
     {
         Ok(segments) => segments,
@@ -67,15 +79,6 @@ pub async fn process_job(
             return;
         }
     };
-
-    // Step 3: Store sentences
-    if let Err(e) = db::insert_sentences(&pool, job_id, &segments).await {
-        error!(job_id, error = %e, "failed to store sentences");
-        db::update_job_status(&pool, job_id, &JobStatus::Error, Some("Failed to store results."))
-            .await
-            .ok();
-        return;
-    }
 
     info!(job_id, count = segments.len(), "job complete");
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
@@ -113,12 +116,18 @@ mod tests {
         });
 
         let mut transcriber = MockTranscriber::new();
-        transcriber.expect_transcribe().returning(|_| {
-            Box::pin(async {
-                Ok(vec![
+        transcriber.expect_transcribe().returning(|_, on_progress| {
+            Box::pin(async move {
+                let segments = vec![
                     TranscriptSegment { start: 0.0, end: 3.0, text: "Hello".into() },
                     TranscriptSegment { start: 3.0, end: 6.0, text: "World".into() },
-                ])
+                ];
+                if let Some(cb) = &on_progress {
+                    for (i, seg) in segments.iter().enumerate() {
+                        cb(seg.clone(), i + 1);
+                    }
+                }
+                Ok(segments)
             })
         });
 
@@ -131,6 +140,9 @@ mod tests {
             Arc::new(transcriber),
         )
         .await;
+
+        // Yield to let spawned progress callbacks complete their DB writes
+        tokio::task::yield_now().await;
 
         let job = db::get_job(&pool, job_id).await.unwrap().unwrap();
         assert_eq!(job.status, JobStatus::Done);
@@ -195,7 +207,7 @@ mod tests {
         });
 
         let mut transcriber = MockTranscriber::new();
-        transcriber.expect_transcribe().returning(|_| {
+        transcriber.expect_transcribe().returning(|_, _| {
             Box::pin(async { Err(TranscribeError::Failed("model load failed".into())) })
         });
 

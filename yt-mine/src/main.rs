@@ -15,14 +15,13 @@ use yt_mine::services::fake::{
 use yt_mine::services::llm::{AnthropicDefiner, LlmDefiner};
 use yt_mine::services::media::{FfmpegMediaExtractor, MediaExtractor};
 use yt_mine::services::tokenize::{LazyTokenizer, Tokenizer};
-use yt_mine::services::transcribe::{Transcriber, WhisperWorker};
+use yt_mine::services::transcribe::{RemoteTranscriber, Transcriber};
 
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
     tracing_subscriber::fmt::init();
 
-    let disable_cuda = std::env::args().any(|a| a == "--disable-cuda");
     let config = Config::from_env();
 
     // Ensure output directories exist
@@ -59,13 +58,13 @@ async fn main() {
         let tokenizer = Arc::new(LazyTokenizer::new());
         tokenizer.start_background_init();
 
-        let transcriber = WhisperWorker::spawn(&config.transcribe_script, disable_cuda)
-            .await
-            .expect("failed to start whisper worker");
+        info!(url = %config.whisper_service_url, "using remote whisper service");
+        let transcriber: Arc<dyn Transcriber> =
+            Arc::new(RemoteTranscriber::new(config.whisper_service_url.clone()));
 
         (
             Arc::new(YtDlpDownloader),
-            Arc::new(transcriber),
+            transcriber,
             Arc::new(AnkiConnectExporter::new(config.anki_url, config.anki)),
             Arc::new(FfmpegMediaExtractor),
             tokenizer,

@@ -56,10 +56,17 @@ impl Transcriber for FakeTranscriber {
     fn transcribe(
         &self,
         _audio_path: String,
+        on_progress: Option<crate::services::transcribe::ProgressCallback>,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<TranscriptSegment>, TranscribeError>> + Send>> {
-        Box::pin(async {
-            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-            Ok(fake_segments())
+        Box::pin(async move {
+            let segments = fake_segments();
+            for (i, seg) in segments.iter().enumerate() {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                if let Some(cb) = &on_progress {
+                    cb(seg.clone(), i + 1);
+                }
+            }
+            Ok(segments)
         })
     }
 }
@@ -191,7 +198,7 @@ mod tests {
     #[tokio::test]
     async fn fake_transcriber_returns_non_empty_segments() {
         let t = FakeTranscriber;
-        let segments = t.transcribe("/tmp/audio.wav".into()).await.unwrap();
+        let segments = t.transcribe("/tmp/audio.wav".into(), None).await.unwrap();
         assert!(!segments.is_empty());
         // Timestamps should be increasing
         for window in segments.windows(2) {

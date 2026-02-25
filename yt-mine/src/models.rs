@@ -47,6 +47,7 @@ pub struct Job {
     pub status: JobStatus,
     pub error_message: Option<String>,
     pub created_at: String,
+    pub segments_found: i64,
 }
 
 #[derive(Debug, Clone)]

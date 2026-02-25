@@ -100,7 +100,7 @@ async fn post_youtube_creates_job_and_redirects() {
     });
 
     let mut transcriber = MockTranscriber::new();
-    transcriber.expect_transcribe().returning(|_| {
+    transcriber.expect_transcribe().returning(|_, _| {
         Box::pin(async { Ok(vec![]) })
     });
 

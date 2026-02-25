@@ -42,6 +42,12 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> 
             .await?;
     }
 
+    if !has_column(&pool, "mining_jobs", "segments_found").await? {
+        sqlx::raw_sql(include_str!("../migrations/005_add_segments_found.sql"))
+            .execute(&pool)
+            .await?;
+    }
+
     Ok(pool)
 }
 
@@ -76,7 +82,7 @@ pub async fn create_job(
 
 pub async fn get_job(pool: &SqlitePool, id: i64) -> Result<Option<Job>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, youtube_url, video_id, video_title, audio_path, video_path, status, error_message, created_at FROM mining_jobs WHERE id = ?",
+        "SELECT id, youtube_url, video_id, video_title, audio_path, video_path, status, error_message, created_at, segments_found FROM mining_jobs WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -93,7 +99,7 @@ pub async fn get_latest_job_by_video_id(
     video_id: &str,
 ) -> Result<Option<Job>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, youtube_url, video_id, video_title, audio_path, video_path, status, error_message, created_at \
+        "SELECT id, youtube_url, video_id, video_title, audio_path, video_path, status, error_message, created_at, segments_found \
          FROM mining_jobs \
          WHERE video_id = ? \
          ORDER BY id DESC \
@@ -115,7 +121,7 @@ pub async fn get_job_by_video_id(
     video_id: &str,
 ) -> Result<Option<Job>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, youtube_url, video_id, video_title, audio_path, video_path, status, error_message, created_at \
+        "SELECT id, youtube_url, video_id, video_title, audio_path, video_path, status, error_message, created_at, segments_found \
          FROM mining_jobs \
          WHERE video_id = ? AND status != 'error' \
          ORDER BY id DESC \
@@ -140,6 +146,7 @@ fn job_from_row(r: sqlx::sqlite::SqliteRow) -> Job {
         status: JobStatus::from_str(&status_str).unwrap_or(JobStatus::Error),
         error_message: r.get("error_message"),
         created_at: r.get("created_at"),
+        segments_found: r.get("segments_found"),
     }
 }
 
@@ -195,6 +202,38 @@ pub async fn insert_sentences(
         .execute(pool)
         .await?;
     }
+    Ok(())
+}
+
+pub async fn insert_sentence(
+    pool: &SqlitePool,
+    job_id: i64,
+    segment: &TranscriptSegment,
+) -> Result<(), sqlx::Error> {
+    let now = chrono_now();
+    sqlx::query(
+        "INSERT INTO mining_sentences (job_id, text, start_time, end_time, created_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(job_id)
+    .bind(&segment.text)
+    .bind(segment.start)
+    .bind(segment.end)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn update_job_progress(
+    pool: &SqlitePool,
+    id: i64,
+    segments_found: i64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE mining_jobs SET segments_found = ? WHERE id = ?")
+        .bind(segments_found)
+        .bind(id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 

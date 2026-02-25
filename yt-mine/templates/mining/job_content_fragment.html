@@ -7,8 +7,23 @@
      hx-trigger="every 2s"
      hx-target="#job-content"
      hx-swap="innerHTML">
+    {% if segments_found > 0 %}
+    Transcribing... {{ segments_found }} sentences found
+    {% else %}
     Status: {{ status }}...
+    {% endif %}
 </div>
+
+{% if !sentences.is_empty() %}
+<ul class="sentence-list transcribing">
+    {% for s in sentences %}
+    <li>
+        <span class="timestamp">{{ s.timestamp }}</span>
+        <span class="sentence-text">{{ s.text }}</span>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}
 {% else if is_done %}
 <div class="status done">
     {{ sentence_count }} sentences found

@@ -4,7 +4,7 @@ Rust 2024 edition. Axum web server + htmx frontend, SQLite persistence.
 
 ## Pipeline
 
-YouTube URL → yt-dlp download → faster-whisper transcription → Lindera tokenization → sentence display → target word selection → dictionary lookup → Anki export
+YouTube URL → yt-dlp download → whisper-service transcription → Lindera tokenization → sentence display → target word selection → dictionary lookup → Anki export
 
 Jobs run as background `tokio::spawn` tasks. Frontend polls via htmx fragments.
 
@@ -23,7 +23,7 @@ src/
   services/
     pipeline.rs     — orchestrates download → transcribe → store
     download.rs     — AudioDownloader trait, YtDlpDownloader
-    transcribe.rs   — Transcriber trait, WhisperWorker (persistent Python subprocess)
+    transcribe.rs   — Transcriber trait, RemoteTranscriber (whisper-service client)
     export.rs       — AnkiExporter trait, AnkiConnectExporter
     llm.rs          — LlmDefiner trait, AnthropicDefiner
     media.rs        — MediaExtractor trait, FfmpegMediaExtractor
@@ -32,15 +32,14 @@ src/
       mod.rs        — Dictionary loading, lookup, wrap_definitions
       html.rs       — structured_content_to_html (Yomitan JSON → HTML)
       tests.rs      — dictionary + HTML conversion tests
-scripts/transcribe.py — faster-whisper persistent worker (stdin/stdout JSON)
 templates/            — base layout + htmx fragments
 ```
 
 ## Key design decisions
 
 - **Traits for external tools** — `AudioDownloader`, `Transcriber`, `AnkiExporter`, `MediaExtractor`, `Tokenizer`, `LlmDefiner` enable mocking via `mockall`
-- **Subprocesses over FFI** — clean boundary for yt-dlp, faster-whisper, ffmpeg
-- **Persistent whisper worker** — model loaded once, reused via JSON protocol
+- **Subprocesses over FFI** — clean boundary for yt-dlp, ffmpeg
+- **Remote whisper-service** — transcription offloaded to separate FastAPI container (NDJSON streaming)
 - **htmx over SPA** — server-rendered HTML fragments, no JS framework
 
 ## Tokenization
@@ -66,7 +65,7 @@ cargo test -p yt-mine -- --ignored                # real subprocess tests
 
 Via env vars, loaded from `.env` (repo root) via `dotenvy`. See `.env.example`.
 
-Key variables: `JP_TOOLS_DB_PATH`, `JP_TOOLS_AUDIO_DIR`, `JP_TOOLS_MEDIA_DIR`, `JP_TOOLS_LISTEN_ADDR`, `JP_TOOLS_TRANSCRIBE_SCRIPT`, `JP_TOOLS_DICTIONARY_PATHS` (comma-separated Yomitan zips), `JP_TOOLS_FAKE_API`, `JP_TOOLS_ANTHROPIC_API_KEY`, `JP_TOOLS_LLM_MODEL`.
+Key variables: `JP_TOOLS_DB_PATH`, `JP_TOOLS_AUDIO_DIR`, `JP_TOOLS_MEDIA_DIR`, `JP_TOOLS_LISTEN_ADDR`, `JP_TOOLS_WHISPER_SERVICE_URL`, `JP_TOOLS_DICTIONARY_PATHS` (comma-separated Yomitan zips), `JP_TOOLS_FAKE_API`, `JP_TOOLS_ANTHROPIC_API_KEY`, `JP_TOOLS_LLM_MODEL`.
 
 Anki export fields are all configurable via `JP_TOOLS_ANKI_*` vars (model, deck, field mapping). Defaults match "Japanese sentences" Yomitan note type.
 

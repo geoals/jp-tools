@@ -5,7 +5,6 @@ pub struct Config {
     pub audio_dir: String,
     pub listen_addr: String,
     pub anki_url: String,
-    pub transcribe_script: String,
     /// Directory for temporary media files (screenshots, audio clips).
     pub media_dir: String,
     /// Paths to Yomitan dictionary zip files. If empty, VocabDef will be
@@ -20,6 +19,8 @@ pub struct Config {
     pub anthropic_api_key: Option<String>,
     /// Model to use for LLM definitions.
     pub llm_model: String,
+    /// URL of remote whisper-service for transcription.
+    pub whisper_service_url: String,
 }
 
 /// Anki note type configuration: model name, deck name, and field mapping.
@@ -83,8 +84,6 @@ impl Config {
                 .unwrap_or_else(|_| "0.0.0.0:3000".into()),
             anki_url: env::var("JP_TOOLS_ANKI_URL")
                 .unwrap_or_else(|_| "http://localhost:8765".into()),
-            transcribe_script: env::var("JP_TOOLS_TRANSCRIBE_SCRIPT")
-                .unwrap_or_else(|_| "scripts/transcribe.py".into()),
             media_dir: env::var("JP_TOOLS_MEDIA_DIR")
                 .unwrap_or_else(|_| "media".into()),
             dictionary_paths: parse_dictionary_paths(),
@@ -95,6 +94,8 @@ impl Config {
             anthropic_api_key: env::var("JP_TOOLS_ANTHROPIC_API_KEY").ok(),
             llm_model: env::var("JP_TOOLS_LLM_MODEL")
                 .unwrap_or_else(|_| "claude-haiku-4-5".into()),
+            whisper_service_url: env::var("JP_TOOLS_WHISPER_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:8100".into()),
             anki: AnkiConfig {
                 model_name: env::var("JP_TOOLS_ANKI_MODEL")
                     .unwrap_or(anki_defaults.model_name),

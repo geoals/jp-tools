@@ -60,6 +60,7 @@ struct VideoPageTemplate {
     error_message: Option<String>,
     sentence_count: usize,
     sentences: Vec<SentenceView>,
+    segments_found: i64,
     /// Passed through to the included fragment. Always false for the full page
     /// (the page already has its own h2).
     oob_title: bool,
@@ -77,6 +78,7 @@ struct VideoContentFragmentTemplate {
     error_message: Option<String>,
     sentence_count: usize,
     sentences: Vec<SentenceView>,
+    segments_found: i64,
     /// When true, emit an OOB `<h2>` swap to update the video title.
     /// Only set for htmx polling responses, not the initial page include.
     oob_title: bool,
@@ -117,6 +119,8 @@ struct SentenceView {
     timestamp: String,
     start_seconds: u64,
     tokens: Vec<TokenView>,
+    /// Raw text for display during transcription (no tokenization needed).
+    text: String,
 }
 
 struct TokenView {
@@ -207,14 +211,17 @@ pub async fn submit_youtube(
     Ok(Redirect::to(&format!("/{video_id}")).into_response())
 }
 
-/// Build tokenized sentence views for display. Only fetches sentences for
-/// completed jobs; returns an empty vec otherwise.
+/// Build sentence views for display. During transcription, returns simplified
+/// views (text only, no tokenization). For completed jobs, returns fully
+/// tokenized views with interactive word selection.
 async fn build_sentence_views(
     state: &AppState,
     job_id: i64,
     is_done: bool,
+    segments_found: i64,
 ) -> Result<Vec<SentenceView>, AppError> {
-    if !is_done {
+    let show_sentences = is_done || segments_found > 0;
+    if !show_sentences {
         return Ok(vec![]);
     }
 
@@ -222,23 +229,30 @@ async fn build_sentence_views(
     Ok(sentences
         .into_iter()
         .map(|s| {
-            let tokens = state
-                .tokenizer
-                .tokenize(&s.text)
-                .map(|toks| {
-                    toks.into_iter()
-                        .map(|t| TokenView {
-                            is_content_word: is_content_word(&t.pos),
-                            base_form: t.base_form,
-                            surface: t.surface,
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
+            // Only tokenize for completed jobs — during transcription we
+            // show plain text to keep polling responses fast.
+            let tokens = if is_done {
+                state
+                    .tokenizer
+                    .tokenize(&s.text)
+                    .map(|toks| {
+                        toks.into_iter()
+                            .map(|t| TokenView {
+                                is_content_word: is_content_word(&t.pos),
+                                base_form: t.base_form,
+                                surface: t.surface,
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            } else {
+                vec![]
+            };
             SentenceView {
                 id: s.id,
                 timestamp: format_seconds(s.start_time),
                 start_seconds: s.start_time as u64,
+                text: s.text,
                 tokens,
             }
         })
@@ -254,7 +268,8 @@ pub async fn video_page(
         .ok_or(AppError::NotFound)?;
 
     let is_done = job.status == JobStatus::Done;
-    let sentence_views = build_sentence_views(&state, job.id, is_done).await?;
+    let segments_found = job.segments_found;
+    let sentence_views = build_sentence_views(&state, job.id, is_done, segments_found).await?;
 
     let sentence_count = sentence_views.len();
     let template = VideoPageTemplate {
@@ -267,6 +282,7 @@ pub async fn video_page(
         error_message: job.error_message,
         sentence_count,
         sentences: sentence_views,
+        segments_found,
         oob_title: false,
     };
 
@@ -283,7 +299,8 @@ pub async fn video_status_fragment(
 
     let is_done = job.status == JobStatus::Done;
     let is_terminal = job.status.is_terminal();
-    let sentences = build_sentence_views(&state, job.id, is_done).await?;
+    let segments_found = job.segments_found;
+    let sentences = build_sentence_views(&state, job.id, is_done, segments_found).await?;
 
     let sentence_count = sentences.len();
     let template = VideoContentFragmentTemplate {
@@ -296,6 +313,7 @@ pub async fn video_status_fragment(
         error_message: job.error_message,
         sentence_count,
         sentences,
+        segments_found,
         oob_title: true,
     };
 
