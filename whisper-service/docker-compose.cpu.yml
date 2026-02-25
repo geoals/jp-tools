@@ -2,8 +2,7 @@ services:
   whisper:
     build: .
     container_name: whisper-service
-    ports:
-      - "8100:8100"
+    network_mode: host
     environment:
       - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-large-v3}
       - WHISPER_DEVICE=cpu
