@@ -1,12 +1,12 @@
 # yt-mine — YouTube Sentence Mining
 
-Rust 2024 edition. Axum web server + htmx frontend, SQLite persistence.
+Rust 2024 edition. Axum JSON API + Preact frontend (no build step), SQLite persistence.
 
 ## Pipeline
 
 YouTube URL → yt-dlp download → whisper-service transcription → Lindera tokenization → sentence display → target word selection → dictionary lookup → Anki export
 
-Jobs run as background `tokio::spawn` tasks. Frontend polls via htmx fragments.
+Jobs run as background `tokio::spawn` tasks. Frontend polls via JSON API.
 
 ## Project structure
 
@@ -14,12 +14,16 @@ Jobs run as background `tokio::spawn` tasks. Frontend polls via htmx fragments.
 src/
   main.rs           — server bootstrap, wires concrete implementations
   lib.rs            — pub mod declarations
-  app.rs            — AppState (DI container) + router
+  app.rs            — AppState (DI container) + router, SPA shell handler
   config.rs         — env-based config (dotenvy)
   db.rs             — SQLite via sqlx, compile-time checked queries
   error.rs          — AppError enum → HTTP status mapping
   models.rs         — Job, JobStatus, Sentence, TranscriptSegment
-  routes/mining.rs  — HTTP handlers, htmx polling, export orchestration
+  routes/
+    api/mod.rs      — JSON API handlers (submit, poll, preview, export, audio)
+    api/tests.rs    — JSON API route tests
+    mining/mod.rs   — shared business logic (tokenize, lookup, format)
+    mining/tests.rs — pure function tests
   services/
     pipeline.rs     — orchestrates download → transcribe → store
     download.rs     — AudioDownloader trait, YtDlpDownloader
@@ -32,7 +36,8 @@ src/
       mod.rs        — Dictionary loading, lookup, wrap_definitions
       html.rs       — structured_content_to_html (Yomitan JSON → HTML)
       tests.rs      — dictionary + HTML conversion tests
-templates/            — base layout + htmx fragments
+static/               — Preact components, CSS, fetch wrappers, router, signals
+templates/spa.html    — minimal HTML shell (inlined via include_str!)
 ```
 
 ## Key design decisions
@@ -40,7 +45,8 @@ templates/            — base layout + htmx fragments
 - **Traits for external tools** — `AudioDownloader`, `Transcriber`, `AnkiExporter`, `MediaExtractor`, `Tokenizer`, `LlmDefiner` enable mocking via `mockall`
 - **Subprocesses over FFI** — clean boundary for yt-dlp, ffmpeg
 - **Remote whisper-service** — transcription offloaded to separate FastAPI container (NDJSON streaming)
-- **htmx over SPA** — server-rendered HTML fragments, no JS framework
+- **Preact + htm + signals from CDN** — no build step, ES module imports from esm.sh with pinned versions
+- **JSON API + SPA shell** — `/api/*` returns JSON, `/` and `/{video_id}` serve the SPA shell
 
 ## Tokenization
 

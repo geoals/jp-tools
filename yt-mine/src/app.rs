@@ -1,17 +1,21 @@
 use std::sync::Arc;
 
 use axum::Router;
+use axum::response::Html;
 use axum::routing::{get, post};
 use sqlx::SqlitePool;
+use tower_http::services::ServeDir;
 
-use crate::routes::mining;
+use crate::routes::api;
+use crate::services::dictionary::Dictionary;
 use crate::services::download::AudioDownloader;
 use crate::services::export::AnkiExporter;
 use crate::services::llm::LlmDefiner;
 use crate::services::media::MediaExtractor;
-use crate::services::dictionary::Dictionary;
 use crate::services::tokenize::Tokenizer;
 use crate::services::transcribe::Transcriber;
+
+const SPA_HTML: &str = include_str!("../templates/spa.html");
 
 #[derive(Clone)]
 pub struct AppState {
@@ -27,24 +31,30 @@ pub struct AppState {
     pub media_dir: String,
 }
 
+async fn spa_shell() -> Html<&'static str> {
+    Html(SPA_HTML)
+}
+
 pub fn build_router(state: AppState) -> Router {
     Router::new()
-        .route("/", get(mining::submit_page))
-        .route("/mining/youtube", post(mining::submit_youtube))
-        .route("/mining/export", post(mining::export_sentences))
-        .route("/{video_id}", get(mining::video_page))
-        .route("/{video_id}/status", get(mining::video_status_fragment))
+        .route("/", get(spa_shell))
+        .route("/api/jobs", post(api::submit_job))
+        .route("/api/{video_id}", get(api::get_job))
+        .route("/api/{video_id}/status", get(api::poll_status))
+        .route(
+            "/api/{video_id}/sentences/{sentence_id}/preview",
+            get(api::word_preview),
+        )
+        .route(
+            "/api/{video_id}/sentences/{sentence_id}/llm-definition",
+            get(api::llm_definition),
+        )
+        .route("/api/export", post(api::export_sentences))
         .route(
             "/{video_id}/sentences/{sentence_id}/audio",
-            get(mining::sentence_audio),
+            get(api::sentence_audio),
         )
-        .route(
-            "/{video_id}/sentences/{sentence_id}/preview",
-            get(mining::word_preview),
-        )
-        .route(
-            "/{video_id}/sentences/{sentence_id}/llm-definition",
-            get(mining::llm_definition),
-        )
+        .route("/{video_id}", get(spa_shell))
+        .nest_service("/static", ServeDir::new("static"))
         .with_state(state)
 }

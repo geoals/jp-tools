@@ -17,7 +17,7 @@ use crate::services::tokenize::{Token, TokenizeError, Tokenizer};
 use crate::services::transcribe::{TranscribeError, Transcriber};
 
 /// Returns hardcoded download paths after a short delay (so the
-/// "Downloading..." state is visible during htmx polling).
+/// "Downloading..." state is visible during polling).
 pub struct FakeDownloader;
 
 impl AudioDownloader for FakeDownloader {
@@ -50,7 +50,7 @@ impl AudioDownloader for FakeDownloader {
 }
 
 /// Returns hardcoded Japanese transcript segments after a short delay (so the
-/// "Transcribing..." state is visible during htmx polling).
+/// "Transcribing..." state is visible during polling).
 pub struct FakeTranscriber;
 
 impl Transcriber for FakeTranscriber {

@@ -51,7 +51,7 @@ pub async fn process_job(
     .ok();
 
     // Step 2: Transcribe — sentences are inserted progressively via the callback,
-    // so they appear in the UI during transcription (htmx polling picks them up).
+    // so they appear in the UI during transcription (the frontend polls for updates).
     info!(job_id, "starting transcription");
     db::update_job_status(&pool, job_id, &JobStatus::Transcribing, None)
         .await
