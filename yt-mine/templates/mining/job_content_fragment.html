@@ -245,6 +245,13 @@ window.__ytMineWordBound = true;
             if (el) {
                 el.style.display = '';
                 el.innerHTML = st.previews[sid];
+                // Re-trigger LLM fetch if it was still in-flight (spinner visible).
+                // The original htmx.ajax target was a DOM node that got replaced
+                // by the morph, so its response would go to a detached element.
+                var llmDiv = el.querySelector('.llm-content[data-llm-url]');
+                if (llmDiv && llmDiv.querySelector('.llm-spinner')) {
+                    htmx.ajax('GET', llmDiv.dataset.llmUrl, {target: llmDiv, swap: 'innerHTML'});
+                }
             }
             var sentenceLi = document.getElementById('sentence-' + sid);
             if (sentenceLi) sentenceLi.classList.add('has-preview');
