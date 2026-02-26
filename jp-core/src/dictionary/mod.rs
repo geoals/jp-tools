@@ -158,7 +158,7 @@ fn parse_definitions(value: &Value, images: &HashMap<String, String>) -> Vec<Str
 
 /// Recursively extract plain text from Yomitan structured-content.
 /// Handles strings, arrays, and tag objects with nested `content`.
-pub(crate) fn extract_text_from_content(value: &Value) -> String {
+pub fn extract_text_from_content(value: &Value) -> String {
     match value {
         Value::String(s) => s.clone(),
         Value::Array(arr) => arr.iter().map(extract_text_from_content).collect(),

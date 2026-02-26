@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
+use jp_core::dictionary::Dictionary;
+use jp_core::tokenize::{Token, is_content_word};
+
 use crate::app::AppState;
 use crate::db;
 use crate::error::AppError;
-use crate::services::dictionary::Dictionary;
-use crate::services::tokenize::{Token, is_content_word};
 
 // --- Shared view types ---
 

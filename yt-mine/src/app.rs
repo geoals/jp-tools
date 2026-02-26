@@ -6,16 +6,18 @@ use axum::routing::{get, post};
 use sqlx::SqlitePool;
 use tower_http::services::ServeDir;
 
+use jp_core::dictionary::Dictionary;
+use jp_core::tokenize::Tokenizer;
+
 use crate::routes::api;
-use crate::services::dictionary::Dictionary;
 use crate::services::download::AudioDownloader;
 use crate::services::export::AnkiExporter;
 use crate::services::llm::LlmDefiner;
 use crate::services::media::MediaExtractor;
-use crate::services::tokenize::Tokenizer;
 use crate::services::transcribe::Transcriber;
 
 const SPA_HTML: &str = include_str!("../templates/spa.html");
+const STATIC_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
 
 #[derive(Clone)]
 pub struct AppState {
@@ -55,6 +57,6 @@ pub fn build_router(state: AppState) -> Router {
             get(api::sentence_audio),
         )
         .route("/{video_id}", get(spa_shell))
-        .nest_service("/static", ServeDir::new("static"))
+        .nest_service("/static", ServeDir::new(STATIC_DIR))
         .with_state(state)
 }

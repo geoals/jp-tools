@@ -1433,6 +1433,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "jp-core"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "flate2",
+ "lindera",
+ "mockall",
+ "serde_json",
+ "sqlx",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "zip",
+]
+
+[[package]]
 name = "js-sys"
 version = "0.3.90"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4291,8 +4307,7 @@ dependencies = [
  "axum-test",
  "base64",
  "dotenvy",
- "flate2",
- "lindera",
+ "jp-core",
  "mockall",
  "reqwest 0.12.28",
  "serde",
@@ -4304,7 +4319,6 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
- "zip",
 ]
 
 [[package]]

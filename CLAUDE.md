@@ -2,7 +2,8 @@
 
 Cargo workspace for Japanese language learning tools.
 
-- `yt-mine/` — YouTube sentence mining (Axum + htmx, SQLite, Anki export). See `yt-mine/CLAUDE.md`
+- `jp-core/` — tokenization (Lindera/UniDic) + dictionary (Yomitan zip parsing, SQLite cache) library crate
+- `yt-mine/` — YouTube sentence mining (Axum JSON API + Preact SPA, SQLite, Anki export). See `yt-mine/CLAUDE.md`
 - `spec/` — feature specs and roadmap
 
 ```sh

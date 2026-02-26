@@ -1,0 +1,21 @@
+[package]
+name = "jp-core"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+test-support = ["dep:mockall"]
+
+[dependencies]
+lindera = { version = "2", features = ["embed-unidic"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+serde_json = "1"
+zip = "2"
+flate2 = "1"
+base64 = "0.22.1"
+thiserror = "2"
+tracing = "0.1"
+mockall = { version = "0.13", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }

@@ -8,12 +8,13 @@ use std::pin::Pin;
 
 use tracing::info;
 
+use jp_core::tokenize::{Token, TokenizeError, Tokenizer};
+
 use crate::models::TranscriptSegment;
 use crate::services::download::{AudioDownloader, DownloadError, DownloadResult};
 use crate::services::export::{AnkiExporter, ExportError, ExportSentence};
 use crate::services::llm::{LlmDefiner, LlmError};
 use crate::services::media::{MediaError, MediaExtractor};
-use crate::services::tokenize::{Token, TokenizeError, Tokenizer};
 use crate::services::transcribe::{TranscribeError, Transcriber};
 
 /// Returns hardcoded download paths after a short delay (so the
@@ -223,7 +224,7 @@ mod tests {
 
     #[test]
     fn fake_tokenizer_marks_kanji_as_content_words() {
-        use crate::services::tokenize::is_content_word;
+        use jp_core::tokenize::is_content_word;
 
         let t = FakeTokenizer;
         let tokens = t.tokenize("漢字とカタカナ。").unwrap();

@@ -7,13 +7,14 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
+use jp_core::dictionary::format_furigana;
+
 use crate::app::AppState;
 use crate::db;
 use crate::error::AppError;
 use crate::routes::mining::{
     bold_target_in_sentence, build_sentence_views, lookup_word,
 };
-use crate::services::dictionary::format_furigana;
 use crate::services::export::ExportSentence;
 use crate::services::media::media_filenames;
 use crate::services::pipeline;

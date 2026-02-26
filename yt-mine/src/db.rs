@@ -2,11 +2,8 @@ use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Row, SqlitePool};
 
 use crate::models::{Job, JobStatus, Sentence, TranscriptSegment};
-use crate::services::dictionary::{DictionaryEntry, PitchEntry};
 
 const MIGRATION: &str = include_str!("../migrations/001_create_mining_tables.sql");
-const MIGRATION_DICT: &str = include_str!("../migrations/002_create_dictionary_tables.sql");
-const MIGRATION_PITCH: &str = include_str!("../migrations/003_create_pitch_tables.sql");
 
 pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> {
     let pool = SqlitePoolOptions::new()
@@ -21,18 +18,7 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> 
         .await?;
 
     sqlx::raw_sql(MIGRATION).execute(&pool).await?;
-    sqlx::raw_sql(MIGRATION_DICT).execute(&pool).await?;
-    sqlx::raw_sql(MIGRATION_PITCH).execute(&pool).await?;
-
-    // Replace old single-column indexes with composite ones
-    sqlx::raw_sql(
-        "DROP INDEX IF EXISTS idx_dictionary_entries_term;\
-         DROP INDEX IF EXISTS idx_dictionary_entries_dict;\
-         DROP INDEX IF EXISTS idx_dictionary_pitch_term;\
-         DROP INDEX IF EXISTS idx_dictionary_pitch_dict;",
-    )
-    .execute(&pool)
-    .await?;
+    jp_core::db::run_migrations(&pool).await?;
 
     // ALTER TABLE ADD COLUMN has no IF NOT EXISTS in SQLite,
     // so check whether the column is already present first.
@@ -313,146 +299,6 @@ pub async fn get_sentences_by_ids(
         .collect())
 }
 
-pub async fn find_dictionary(
-    pool: &SqlitePool,
-    source_path: &str,
-) -> Result<Option<(i64, String)>, sqlx::Error> {
-    let row = sqlx::query("SELECT id, title FROM dictionaries WHERE source_path = ?")
-        .bind(source_path)
-        .fetch_optional(pool)
-        .await?;
-
-    Ok(row.map(|r| (r.get("id"), r.get("title"))))
-}
-
-/// Insert a dictionary and all its entries in a single transaction.
-/// Returns the dictionary id. If interrupted, the transaction rolls back
-/// so no partial data is left behind.
-pub async fn import_dictionary(
-    pool: &SqlitePool,
-    title: &str,
-    source_path: &str,
-    entries: &[DictionaryEntry],
-) -> Result<i64, sqlx::Error> {
-    let mut tx = pool.begin().await?;
-
-    let row = sqlx::query(
-        "INSERT INTO dictionaries (title, source_path) VALUES (?, ?) RETURNING id",
-    )
-    .bind(title)
-    .bind(source_path)
-    .fetch_one(&mut *tx)
-    .await?;
-    let dict_id: i64 = row.get("id");
-
-    for entry in entries {
-        let definitions_json = serde_json::to_string(&entry.definitions)
-            .unwrap_or_else(|_| "[]".into());
-        sqlx::query(
-            "INSERT INTO dictionary_entries (dictionary_id, term, reading, score, definitions_json) VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(dict_id)
-        .bind(&entry.term)
-        .bind(&entry.reading)
-        .bind(entry.score)
-        .bind(&definitions_json)
-        .execute(&mut *tx)
-        .await?;
-    }
-
-    tx.commit().await?;
-    Ok(dict_id)
-}
-
-pub async fn lookup_dictionary_entries(
-    pool: &SqlitePool,
-    dictionary_id: i64,
-    term: &str,
-) -> Result<Vec<DictionaryEntry>, sqlx::Error> {
-    let rows = sqlx::query(
-        "SELECT term, reading, score, definitions_json FROM dictionary_entries WHERE dictionary_id = ? AND term = ?",
-    )
-    .bind(dictionary_id)
-    .bind(term)
-    .fetch_all(pool)
-    .await?;
-
-    Ok(rows
-        .into_iter()
-        .map(|r| {
-            let json_str: String = r.get("definitions_json");
-            let definitions: Vec<String> =
-                serde_json::from_str(&json_str).unwrap_or_default();
-            DictionaryEntry {
-                term: r.get("term"),
-                reading: r.get("reading"),
-                score: r.get("score"),
-                definitions,
-            }
-        })
-        .collect())
-}
-
-/// Insert pitch accent entries for a dictionary within a transaction.
-pub async fn insert_pitch_entries(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-    dictionary_id: i64,
-    entries: &[(String, PitchEntry)],
-) -> Result<(), sqlx::Error> {
-    for (term, entry) in entries {
-        let positions_json =
-            serde_json::to_string(&entry.positions).unwrap_or_else(|_| "[]".into());
-        sqlx::query(
-            "INSERT INTO dictionary_pitch (dictionary_id, term, reading, positions_json) VALUES (?, ?, ?, ?)",
-        )
-        .bind(dictionary_id)
-        .bind(term)
-        .bind(&entry.reading)
-        .bind(&positions_json)
-        .execute(&mut **tx)
-        .await?;
-    }
-    Ok(())
-}
-
-pub async fn lookup_pitch_entries(
-    pool: &SqlitePool,
-    dictionary_id: i64,
-    term: &str,
-) -> Result<Vec<PitchEntry>, sqlx::Error> {
-    let rows = sqlx::query(
-        "SELECT reading, positions_json FROM dictionary_pitch WHERE dictionary_id = ? AND term = ?",
-    )
-    .bind(dictionary_id)
-    .bind(term)
-    .fetch_all(pool)
-    .await?;
-
-    Ok(rows
-        .into_iter()
-        .map(|r| {
-            let reading: String = r.get("reading");
-            let json_str: String = r.get("positions_json");
-            let positions: Vec<u32> = serde_json::from_str(&json_str).unwrap_or_default();
-            PitchEntry { reading, positions }
-        })
-        .collect())
-}
-
-/// Check whether any pitch entries exist for a dictionary.
-pub async fn has_pitch_entries(
-    pool: &SqlitePool,
-    dictionary_id: i64,
-) -> Result<bool, sqlx::Error> {
-    let count: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM dictionary_pitch WHERE dictionary_id = ?",
-    )
-    .bind(dictionary_id)
-    .fetch_one(pool)
-    .await?;
-    Ok(count.0 > 0)
-}
-
 /// Delete jobs that were left in a non-terminal state (pending/downloading/transcribing)
 /// from a previous run, along with any partial sentences they accumulated.
 /// Returns the number of deleted jobs.
@@ -524,8 +370,7 @@ mod tests {
         let pool = create_pool("sqlite::memory:").await.unwrap();
         // Re-run all migrations (simulates second server start).
         sqlx::raw_sql(MIGRATION).execute(&pool).await.unwrap();
-        sqlx::raw_sql(MIGRATION_DICT).execute(&pool).await.unwrap();
-        sqlx::raw_sql(MIGRATION_PITCH).execute(&pool).await.unwrap();
+        jp_core::db::run_migrations(&pool).await.unwrap();
         // 004 uses ALTER TABLE ADD COLUMN which would fail without the guard.
         assert!(has_column(&pool, "mining_jobs", "video_id").await.unwrap());
     }
@@ -697,127 +542,6 @@ mod tests {
         let pool = test_pool().await;
         let result = get_sentences_by_ids(&pool, &[]).await.unwrap();
         assert!(result.is_empty());
-    }
-
-    // --- dictionary cache ---
-
-    #[tokio::test]
-    async fn find_dictionary_returns_none_when_not_cached() {
-        let pool = test_pool().await;
-        let result = find_dictionary(&pool, "/path/to/dict.zip").await.unwrap();
-        assert!(result.is_none());
-    }
-
-    #[tokio::test]
-    async fn import_and_find_dictionary() {
-        let pool = test_pool().await;
-        let id = import_dictionary(&pool, "Jitendex", "/path/to/jitendex.zip", &[])
-            .await
-            .unwrap();
-
-        let found = find_dictionary(&pool, "/path/to/jitendex.zip")
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(found.0, id);
-        assert_eq!(found.1, "Jitendex");
-    }
-
-    #[tokio::test]
-    async fn round_trip_dictionary_entries() {
-        let pool = test_pool().await;
-
-        let entries = vec![
-            DictionaryEntry {
-                term: "食べる".into(),
-                reading: "たべる".into(),
-                definitions: vec!["to eat".into(), "to consume".into()],
-                score: 100,
-            },
-            DictionaryEntry {
-                term: "飲む".into(),
-                reading: "のむ".into(),
-                definitions: vec!["to drink".into()],
-                score: 80,
-            },
-        ];
-
-        let dict_id = import_dictionary(&pool, "Test Dict", "/test.zip", &entries)
-            .await
-            .unwrap();
-
-        let taberu = lookup_dictionary_entries(&pool, dict_id, "食べる")
-            .await
-            .unwrap();
-        assert_eq!(taberu.len(), 1);
-        assert_eq!(taberu[0].term, "食べる");
-        assert_eq!(taberu[0].reading, "たべる");
-        assert_eq!(taberu[0].score, 100);
-        assert_eq!(taberu[0].definitions, vec!["to eat", "to consume"]);
-
-        let nomu = lookup_dictionary_entries(&pool, dict_id, "飲む")
-            .await
-            .unwrap();
-        assert_eq!(nomu.len(), 1);
-        assert_eq!(nomu[0].term, "飲む");
-        assert_eq!(nomu[0].reading, "のむ");
-        assert_eq!(nomu[0].score, 80);
-        assert_eq!(nomu[0].definitions, vec!["to drink"]);
-    }
-
-    #[tokio::test]
-    async fn lookup_dictionary_entries_empty_for_missing_dict() {
-        let pool = test_pool().await;
-        let loaded = lookup_dictionary_entries(&pool, 999, "anything").await.unwrap();
-        assert!(loaded.is_empty());
-    }
-
-    // --- pitch cache ---
-
-    #[tokio::test]
-    async fn round_trip_pitch_entries() {
-        let pool = test_pool().await;
-        let dict_id = import_dictionary(&pool, "Test", "/test.zip", &[])
-            .await
-            .unwrap();
-
-        let entries = vec![
-            (
-                "食べる".to_string(),
-                PitchEntry {
-                    reading: "たべる".into(),
-                    positions: vec![2],
-                },
-            ),
-            (
-                "飲む".to_string(),
-                PitchEntry {
-                    reading: "のむ".into(),
-                    positions: vec![1],
-                },
-            ),
-        ];
-
-        let mut tx = pool.begin().await.unwrap();
-        insert_pitch_entries(&mut tx, dict_id, &entries).await.unwrap();
-        tx.commit().await.unwrap();
-
-        let taberu = lookup_pitch_entries(&pool, dict_id, "食べる").await.unwrap();
-        assert_eq!(taberu.len(), 1);
-        assert_eq!(taberu[0].reading, "たべる");
-        assert_eq!(taberu[0].positions, vec![2]);
-
-        let nomu = lookup_pitch_entries(&pool, dict_id, "飲む").await.unwrap();
-        assert_eq!(nomu.len(), 1);
-        assert_eq!(nomu[0].reading, "のむ");
-        assert_eq!(nomu[0].positions, vec![1]);
-    }
-
-    #[tokio::test]
-    async fn lookup_pitch_entries_empty_for_missing_dict() {
-        let pool = test_pool().await;
-        let loaded = lookup_pitch_entries(&pool, 999, "anything").await.unwrap();
-        assert!(loaded.is_empty());
     }
 
     // --- delete incomplete jobs ---

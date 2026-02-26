@@ -8,7 +8,7 @@ pub struct Token {
     pub pos: String,
 }
 
-#[cfg_attr(test, mockall::automock)]
+#[cfg_attr(any(test, feature = "test-support"), mockall::automock)]
 pub trait Tokenizer: Send + Sync {
     fn tokenize(&self, text: &str) -> Result<Vec<Token>, TokenizeError>;
 }

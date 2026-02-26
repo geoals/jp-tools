@@ -2,10 +2,12 @@ use std::sync::Arc;
 
 use tracing::info;
 
+use jp_core::dictionary::Dictionary;
+use jp_core::tokenize::{LazyTokenizer, Tokenizer};
+
 use yt_mine::app::{AppState, build_router};
 use yt_mine::config::Config;
 use yt_mine::db;
-use yt_mine::services::dictionary::Dictionary;
 use yt_mine::services::download::{AudioDownloader, YtDlpDownloader};
 use yt_mine::services::export::{AnkiConnectExporter, AnkiExporter};
 use yt_mine::services::fake::{
@@ -14,7 +16,6 @@ use yt_mine::services::fake::{
 };
 use yt_mine::services::llm::{AnthropicDefiner, LlmDefiner};
 use yt_mine::services::media::{FfmpegMediaExtractor, MediaExtractor};
-use yt_mine::services::tokenize::{LazyTokenizer, Tokenizer};
 use yt_mine::services::transcribe::{RemoteTranscriber, Transcriber};
 
 #[tokio::main]

@@ -1,5 +1,5 @@
 use super::*;
-use crate::services::tokenize::Token;
+use jp_core::tokenize::Token;
 
 #[test]
 fn format_seconds_formats_correctly() {

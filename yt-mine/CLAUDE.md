@@ -31,32 +31,26 @@ src/
     export.rs       — AnkiExporter trait, AnkiConnectExporter
     llm.rs          — LlmDefiner trait, AnthropicDefiner
     media.rs        — MediaExtractor trait, FfmpegMediaExtractor
-    tokenize.rs     — Tokenizer trait, LinderaTokenizer (UniDic)
-    dictionary/
-      mod.rs        — Dictionary loading, lookup, wrap_definitions
-      html.rs       — structured_content_to_html (Yomitan JSON → HTML)
-      tests.rs      — dictionary + HTML conversion tests
+    fake.rs         — fake impls for dev mode (JP_TOOLS_FAKE_API=true)
 static/               — Preact components, CSS, fetch wrappers, router, signals
 templates/spa.html    — minimal HTML shell (inlined via include_str!)
 ```
 
 ## Key design decisions
 
-- **Traits for external tools** — `AudioDownloader`, `Transcriber`, `AnkiExporter`, `MediaExtractor`, `Tokenizer`, `LlmDefiner` enable mocking via `mockall`
+- **Tokenizer + dictionary in `jp-core`** — shared library crate with Lindera/UniDic tokenization and Yomitan dictionary parsing
+- **Traits for external tools** — `AudioDownloader`, `Transcriber`, `AnkiExporter`, `MediaExtractor`, `Tokenizer` (in jp-core), `LlmDefiner` enable mocking via `mockall`
 - **Subprocesses over FFI** — clean boundary for yt-dlp, ffmpeg
 - **Remote whisper-service** — transcription offloaded to separate FastAPI container (NDJSON streaming)
 - **Preact + htm + signals from CDN** — no build step, ES module imports from esm.sh with pinned versions
 - **JSON API + SPA shell** — `/api/*` returns JSON, `/` and `/{video_id}` serve the SPA shell
 
-## Tokenization
+## Tokenization & Dictionary
 
-Lindera with UniDic. Morpheme-level tokens (短単位). Content-word POS filter: 名詞, 動詞, 形容詞, 形状詞, 副詞. Verb conjugations are split (known limitation).
+Provided by `jp-core` crate. See `jp-core/` for details.
 
-## Dictionary lookup
-
-Yomitan-format zips, exact headword match (HashMap). Multiple dictionaries concatenated with per-dictionary CSS classes (`dict-{slug}-title/body`). Pitch accent from `term_meta_bank_*.json`. Furigana uses Anki bracket notation (`食べる[たべる]`).
-
-Structured-content JSON → HTML via recursive descent in `dictionary/html.rs`. Uses `data-content`/`data-class` attributes for CSS targeting.
+- Lindera with UniDic, morpheme-level tokens (短単位), content-word POS filter
+- Yomitan-format zips, exact headword match, pitch accent, structured-content HTML
 
 ## Build & run
 
