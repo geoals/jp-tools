@@ -1,4 +1,5 @@
-import { html, render } from 'https://esm.sh/htm@3.1.1/preact/standalone';
+import { render } from 'preact';
+import { html } from 'htm/preact';
 import { route } from './router.js';
 import { SubmitForm } from './components/submit-form.js';
 import { VideoPage } from './components/video-page.js';

@@ -1,4 +1,4 @@
-import { html } from 'https://esm.sh/htm@3.1.1/preact/standalone';
+import { html } from 'htm/preact';
 import { activePreview, selectedWords, exportedIds, audioState } from '../state.js';
 
 export function SentenceRow({ sentence, videoId, isTranscribing }) {

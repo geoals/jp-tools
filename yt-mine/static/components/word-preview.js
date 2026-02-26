@@ -1,5 +1,5 @@
-import { html } from 'https://esm.sh/htm@3.1.1/preact/standalone';
-import { useState, useEffect, useRef } from 'https://esm.sh/preact@10.25.4/hooks';
+import { html } from 'htm/preact';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { fetchPreview, fetchLlmDefinition } from '../api.js';
 
 export function WordPreview({ videoId, sentenceId, word }) {

@@ -1,4 +1,4 @@
-import { html } from 'https://esm.sh/htm@3.1.1/preact/standalone';
+import { html } from 'htm/preact';
 import { exportResult } from '../state.js';
 
 export function ExportResult() {

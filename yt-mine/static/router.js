@@ -1,4 +1,4 @@
-import { signal } from 'https://esm.sh/@preact/signals@1.3.1?deps=preact@10.25.4';
+import { signal } from '@preact/signals';
 
 export const route = signal(parseRoute());
 

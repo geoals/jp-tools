@@ -1,5 +1,5 @@
-import { html } from 'https://esm.sh/htm@3.1.1/preact/standalone';
-import { useState } from 'https://esm.sh/preact@10.25.4/hooks';
+import { html } from 'htm/preact';
+import { useState } from 'preact/hooks';
 import { SentenceRow } from './sentence-row.js';
 import { WordPreview } from './word-preview.js';
 import { ExportResult } from './export-result.js';
@@ -18,7 +18,6 @@ export function SentenceList({ sentences, videoId, jobId, isDone, isTranscribing
     for (const [sentenceId, targetWord] of selected) {
       entries.push({ id: sentenceId, target_word: targetWord });
     }
-    // Also include sentences without a selected word? No — export only selected.
     if (entries.length === 0) {
       exportResult.value = 'Error: No words selected. Click a word in a sentence first.';
       return;

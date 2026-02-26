@@ -1,5 +1,5 @@
-import { html } from 'https://esm.sh/htm@3.1.1/preact/standalone';
-import { useState } from 'https://esm.sh/preact@10.25.4/hooks';
+import { html } from 'htm/preact';
+import { useState } from 'preact/hooks';
 import { submitUrl } from '../api.js';
 import { navigate } from '../router.js';
 
