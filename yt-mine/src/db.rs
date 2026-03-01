@@ -1,9 +1,10 @@
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Row, SqlitePool};
 
-use crate::models::{Job, JobStatus, Sentence, TranscriptSegment};
+use crate::models::{Job, JobStatus, Sentence, TranscriptSegment, VocabStatus};
 
 const MIGRATION: &str = include_str!("../migrations/001_create_mining_tables.sql");
+const VOCAB_MIGRATION: &str = include_str!("../migrations/007_create_vocabulary_table.sql");
 
 pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> {
     let pool = SqlitePoolOptions::new()
@@ -39,6 +40,8 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> 
             .execute(&pool)
             .await?;
     }
+
+    sqlx::raw_sql(VOCAB_MIGRATION).execute(&pool).await?;
 
     Ok(pool)
 }
@@ -329,6 +332,121 @@ pub async fn delete_incomplete_jobs(pool: &SqlitePool) -> Result<u64, sqlx::Erro
     Ok(result.rows_affected())
 }
 
+// --- Vocabulary ---
+
+#[derive(Debug, Clone)]
+pub struct VocabRow {
+    pub lemma: String,
+    pub reading: String,
+    pub pos: Option<String>,
+    pub status: VocabStatus,
+    pub encounter_count: i64,
+}
+
+pub struct VocabUpsert {
+    pub user_id: i64,
+    pub lemma: String,
+    pub reading: String,
+    pub pos: Option<String>,
+    pub status: VocabStatus,
+    pub count: i64,
+    pub source: String,
+}
+
+pub async fn get_vocab_by_lemmas(
+    pool: &SqlitePool,
+    user_id: i64,
+    lemmas: &[String],
+) -> Result<Vec<VocabRow>, sqlx::Error> {
+    if lemmas.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let placeholders: Vec<&str> = lemmas.iter().map(|_| "?").collect();
+    let query_str = format!(
+        "SELECT lemma, reading, pos, status, encounter_count \
+         FROM vocabulary WHERE user_id = ? AND lemma IN ({})",
+        placeholders.join(", ")
+    );
+
+    let mut query = sqlx::query(&query_str).bind(user_id);
+    for lemma in lemmas {
+        query = query.bind(lemma);
+    }
+
+    let rows = query.fetch_all(pool).await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            let status_str: String = r.get("status");
+            VocabRow {
+                lemma: r.get("lemma"),
+                reading: r.get("reading"),
+                pos: r.get("pos"),
+                status: VocabStatus::from_str(&status_str).unwrap_or(VocabStatus::Seen),
+                encounter_count: r.get("encounter_count"),
+            }
+        })
+        .collect())
+}
+
+pub async fn upsert_vocab_entries(
+    pool: &SqlitePool,
+    entries: &[VocabUpsert],
+) -> Result<usize, sqlx::Error> {
+    if entries.is_empty() {
+        return Ok(0);
+    }
+
+    let now = chrono_now();
+    let mut tx = pool.begin().await?;
+    let mut count = 0usize;
+
+    for entry in entries {
+        let result = sqlx::query(
+            "INSERT INTO vocabulary (user_id, lemma, reading, pos, status, encounter_count, first_seen, last_seen, source) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) \
+             ON CONFLICT(user_id, lemma, reading) DO UPDATE SET \
+               encounter_count = vocabulary.encounter_count + excluded.encounter_count, \
+               last_seen = excluded.last_seen, \
+               status = excluded.status",
+        )
+        .bind(entry.user_id)
+        .bind(&entry.lemma)
+        .bind(&entry.reading)
+        .bind(&entry.pos)
+        .bind(entry.status.as_str())
+        .bind(entry.count)
+        .bind(&now)
+        .bind(&now)
+        .bind(&entry.source)
+        .execute(&mut *tx)
+        .await?;
+
+        count += result.rows_affected() as usize;
+    }
+
+    tx.commit().await?;
+    Ok(count)
+}
+
+pub async fn get_blacklisted_keys(
+    pool: &SqlitePool,
+    user_id: i64,
+) -> Result<std::collections::HashSet<(String, String)>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT lemma, reading FROM vocabulary WHERE user_id = ? AND status = 'blacklisted'",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| (r.get("lemma"), r.get("reading")))
+        .collect())
+}
+
 fn chrono_now() -> String {
     // ISO 8601 timestamp without external chrono dependency
     // In production this would use a proper time library, but for MVP
@@ -606,5 +724,120 @@ mod tests {
         let pool = test_pool().await;
         let deleted = delete_incomplete_jobs(&pool).await.unwrap();
         assert_eq!(deleted, 0);
+    }
+
+    // --- vocabulary ---
+
+    #[tokio::test]
+    async fn vocab_migration_creates_table() {
+        let pool = test_pool().await;
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM vocabulary")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count.0, 0);
+    }
+
+    #[tokio::test]
+    async fn upsert_vocab_inserts_new_entries() {
+        let pool = test_pool().await;
+        let entries = vec![
+            VocabUpsert {
+                user_id: 1,
+                lemma: "東京".into(),
+                reading: "トウキョウ".into(),
+                pos: Some("名詞".into()),
+                status: VocabStatus::Known,
+                count: 2,
+                source: "calibration".into(),
+            },
+        ];
+
+        let count = upsert_vocab_entries(&pool, &entries).await.unwrap();
+        assert_eq!(count, 1);
+
+        let rows = get_vocab_by_lemmas(&pool, 1, &["東京".into()]).await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].lemma, "東京");
+        assert_eq!(rows[0].reading, "トウキョウ");
+        assert_eq!(rows[0].status, VocabStatus::Known);
+        assert_eq!(rows[0].encounter_count, 2);
+    }
+
+    #[tokio::test]
+    async fn upsert_vocab_increments_encounter_count() {
+        let pool = test_pool().await;
+
+        let entries = vec![VocabUpsert {
+            user_id: 1,
+            lemma: "行く".into(),
+            reading: "イク".into(),
+            pos: Some("動詞".into()),
+            status: VocabStatus::Seen,
+            count: 3,
+            source: "calibration".into(),
+        }];
+        upsert_vocab_entries(&pool, &entries).await.unwrap();
+
+        // Upsert again with count 2 and status change
+        let entries2 = vec![VocabUpsert {
+            user_id: 1,
+            lemma: "行く".into(),
+            reading: "イク".into(),
+            pos: Some("動詞".into()),
+            status: VocabStatus::Known,
+            count: 2,
+            source: "calibration".into(),
+        }];
+        upsert_vocab_entries(&pool, &entries2).await.unwrap();
+
+        let rows = get_vocab_by_lemmas(&pool, 1, &["行く".into()]).await.unwrap();
+        assert_eq!(rows[0].encounter_count, 5); // 3 + 2
+        assert_eq!(rows[0].status, VocabStatus::Known);
+    }
+
+    #[tokio::test]
+    async fn get_vocab_by_lemmas_empty_returns_empty() {
+        let pool = test_pool().await;
+        let rows = get_vocab_by_lemmas(&pool, 1, &[]).await.unwrap();
+        assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn get_blacklisted_keys_returns_only_blacklisted() {
+        let pool = test_pool().await;
+
+        let entries = vec![
+            VocabUpsert {
+                user_id: 1,
+                lemma: "する".into(),
+                reading: "スル".into(),
+                pos: Some("動詞".into()),
+                status: VocabStatus::Blacklisted,
+                count: 1,
+                source: "calibration".into(),
+            },
+            VocabUpsert {
+                user_id: 1,
+                lemma: "東京".into(),
+                reading: "トウキョウ".into(),
+                pos: Some("名詞".into()),
+                status: VocabStatus::Known,
+                count: 1,
+                source: "calibration".into(),
+            },
+        ];
+        upsert_vocab_entries(&pool, &entries).await.unwrap();
+
+        let blacklisted = get_blacklisted_keys(&pool, 1).await.unwrap();
+        assert_eq!(blacklisted.len(), 1);
+        assert!(blacklisted.contains(&("する".into(), "スル".into())));
+    }
+
+    #[tokio::test]
+    async fn upsert_vocab_empty_entries_returns_zero() {
+        let pool = test_pool().await;
+        let count = upsert_vocab_entries(&pool, &[]).await.unwrap();
+        assert_eq!(count, 0);
     }
 }

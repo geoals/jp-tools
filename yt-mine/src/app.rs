@@ -9,7 +9,7 @@ use tower_http::services::ServeDir;
 use jp_core::dictionary::Dictionary;
 use jp_core::tokenize::Tokenizer;
 
-use crate::routes::api;
+use crate::routes::{api, vocab};
 use crate::services::download::AudioDownloader;
 use crate::services::export::AnkiExporter;
 use crate::services::llm::LlmDefiner;
@@ -52,10 +52,13 @@ pub fn build_router(state: AppState) -> Router {
             get(api::llm_definition),
         )
         .route("/api/export", post(api::export_sentences))
+        .route("/api/vocab/tokenize", post(vocab::tokenize_text))
+        .route("/api/vocab/submit", post(vocab::submit_vocab))
         .route(
             "/{video_id}/sentences/{sentence_id}/audio",
             get(api::sentence_audio),
         )
+        .route("/vocab", get(spa_shell))
         .route("/{video_id}", get(spa_shell))
         .nest_service("/static", ServeDir::new(STATIC_DIR))
         .with_state(state)

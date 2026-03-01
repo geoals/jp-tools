@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JobStatus {
@@ -61,6 +61,33 @@ pub struct Sentence {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VocabStatus {
+    Seen,
+    Known,
+    Blacklisted,
+}
+
+impl VocabStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Seen => "seen",
+            Self::Known => "known",
+            Self::Blacklisted => "blacklisted",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "seen" => Some(Self::Seen),
+            "known" => Some(Self::Known),
+            "blacklisted" => Some(Self::Blacklisted),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct TranscriptSegment {
     pub start: f64,
@@ -92,6 +119,21 @@ mod tests {
     #[test]
     fn job_status_from_str_unknown_returns_none() {
         assert_eq!(JobStatus::from_str("unknown"), None);
+    }
+
+    #[test]
+    fn vocab_status_roundtrip() {
+        let statuses = [VocabStatus::Seen, VocabStatus::Known, VocabStatus::Blacklisted];
+        for status in &statuses {
+            let s = status.as_str();
+            let parsed = VocabStatus::from_str(s).unwrap();
+            assert_eq!(&parsed, status);
+        }
+    }
+
+    #[test]
+    fn vocab_status_from_str_unknown_returns_none() {
+        assert_eq!(VocabStatus::from_str("unknown"), None);
     }
 
     #[test]

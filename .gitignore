@@ -7,3 +7,4 @@ yt-mine/media/
 *.db-wal
 .env
 *.zip
+*.dic

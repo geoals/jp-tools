@@ -9,6 +9,10 @@ function parseRoute() {
     return { page: 'home' };
   }
 
+  if (path === '/vocab') {
+    return { page: 'vocab' };
+  }
+
   // /{videoId} — everything after the leading slash
   const videoId = path.slice(1);
   if (videoId && !videoId.includes('/')) {

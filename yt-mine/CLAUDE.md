@@ -4,7 +4,7 @@ Rust 2024 edition. Axum JSON API + Preact frontend (no build step), SQLite persi
 
 ## Pipeline
 
-YouTube URL → yt-dlp download → whisper-service transcription → Lindera tokenization → sentence display → target word selection → dictionary lookup → Anki export
+YouTube URL → yt-dlp download → whisper-service transcription → Sudachi tokenization (Mode C + dictionary validation) → sentence display → target word selection → dictionary lookup → Anki export
 
 Jobs run as background `tokio::spawn` tasks. Frontend polls via JSON API.
 
@@ -38,7 +38,7 @@ templates/spa.html    — minimal HTML shell (inlined via include_str!)
 
 ## Key design decisions
 
-- **Tokenizer + dictionary in `jp-core`** — shared library crate with Lindera/UniDic tokenization and Yomitan dictionary parsing
+- **Tokenizer + dictionary in `jp-core`** — shared library crate with Sudachi tokenization (hybrid Mode C/B: Mode C for compounds, validated against dictionary headwords, unknown compounds split to Mode B) and Yomitan dictionary parsing
 - **Traits for external tools** — `AudioDownloader`, `Transcriber`, `AnkiExporter`, `MediaExtractor`, `Tokenizer` (in jp-core), `LlmDefiner` enable mocking via `mockall`
 - **Subprocesses over FFI** — clean boundary for yt-dlp, ffmpeg
 - **Remote whisper-service** — transcription offloaded to separate FastAPI container (NDJSON streaming)
@@ -49,7 +49,7 @@ templates/spa.html    — minimal HTML shell (inlined via include_str!)
 
 Provided by `jp-core` crate. See `jp-core/` for details.
 
-- Lindera with UniDic, morpheme-level tokens (短単位), content-word POS filter
+- Sudachi hybrid Mode C/B: tokenizes with Mode C, keeps compounds that exist as dictionary headwords (天気予報, 自己紹介), splits unknown compounds to Mode B sub-morphemes. Falls back to pure Mode B when no dictionaries are loaded
 - Yomitan-format zips, exact headword match, pitch accent, structured-content HTML
 
 ## Build & run
@@ -65,7 +65,7 @@ cargo test -p yt-mine -- --ignored                # real subprocess tests
 
 Via env vars, loaded from `.env` (repo root) via `dotenvy`. See `.env.example`.
 
-Key variables: `JP_TOOLS_DB_PATH`, `JP_TOOLS_AUDIO_DIR`, `JP_TOOLS_MEDIA_DIR`, `JP_TOOLS_LISTEN_ADDR`, `JP_TOOLS_WHISPER_SERVICE_URL`, `JP_TOOLS_DICTIONARY_PATHS` (comma-separated Yomitan zips), `JP_TOOLS_FAKE_API`, `JP_TOOLS_ANTHROPIC_API_KEY`, `JP_TOOLS_LLM_MODEL`.
+Key variables: `JP_TOOLS_DB_PATH`, `JP_TOOLS_AUDIO_DIR`, `JP_TOOLS_MEDIA_DIR`, `JP_TOOLS_LISTEN_ADDR`, `JP_TOOLS_WHISPER_SERVICE_URL`, `JP_TOOLS_DICTIONARY_PATHS` (comma-separated Yomitan zips), `JP_TOOLS_SUDACHI_DICT_PATH` (path to system_core.dic), `JP_TOOLS_FAKE_API`, `JP_TOOLS_ANTHROPIC_API_KEY`, `JP_TOOLS_LLM_MODEL`.
 
 Anki export fields are all configurable via `JP_TOOLS_ANKI_*` vars (model, deck, field mapping). Defaults match "Japanese sentences" Yomitan note type.
 

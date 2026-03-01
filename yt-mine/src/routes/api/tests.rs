@@ -595,3 +595,13 @@ async fn video_url_returns_spa_shell() {
     let body = response.text();
     assert!(body.contains("<div id=\"app\">"), "should contain app mount point");
 }
+
+#[tokio::test]
+async fn vocab_url_returns_spa_shell() {
+    let (server, _pool) = test_app().await;
+
+    let response = server.get("/vocab").await;
+    response.assert_status_ok();
+    let body = response.text();
+    assert!(body.contains("<div id=\"app\">"), "should contain app mount point");
+}

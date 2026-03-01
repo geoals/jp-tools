@@ -51,6 +51,24 @@ export async function fetchLlmDefinition(videoId, sentenceId, word, signal) {
   return res.json();
 }
 
+export async function tokenizeVocab(text) {
+  const res = await request(`${BASE}/vocab/tokenize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  return res.json();
+}
+
+export async function submitVocab(entries) {
+  const res = await request(`${BASE}/vocab/submit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries }),
+  });
+  return res.json();
+}
+
 export async function exportSentences(jobId, sentences) {
   const res = await fetch(`${BASE}/export`, {
     method: 'POST',

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tracing::info;
 
 use jp_core::dictionary::Dictionary;
-use jp_core::tokenize::{LazyTokenizer, Tokenizer};
+use jp_core::tokenize::{SudachiTokenizer, Tokenizer};
 
 use yt_mine::app::{AppState, build_router};
 use yt_mine::config::Config;
@@ -44,6 +44,26 @@ async fn main() {
         info!(count = deleted, "cleaned up incomplete jobs from previous run");
     }
 
+    // Load dictionaries first so headwords are available for tokenizer
+    let mut dictionaries: Vec<Arc<Dictionary>> = Vec::new();
+    for path in &config.dictionary_paths {
+        info!(path, "loading dictionary");
+        let dict = Dictionary::load_or_import(&pool, std::path::Path::new(path))
+            .await
+            .expect("failed to load dictionary");
+        dictionaries.push(Arc::new(dict));
+    }
+    if dictionaries.is_empty() {
+        info!("no dictionaries configured (set JP_TOOLS_DICTIONARY_PATHS to enable definitions)");
+    }
+
+    let headwords = jp_core::db::get_all_headwords(&pool)
+        .await
+        .expect("failed to load headwords");
+    if !headwords.is_empty() {
+        info!(count = headwords.len(), "loaded headwords for dictionary-aware tokenization");
+    }
+
     let (downloader, transcriber, exporter, media_extractor, tokenizer): (
         Arc<dyn AudioDownloader>,
         Arc<dyn Transcriber>,
@@ -60,11 +80,11 @@ async fn main() {
             Arc::new(FakeTokenizer),
         )
     } else {
-        // Tokenizer loads UniDic (~8s). LazyTokenizer defers this to a
-        // background OS thread so the server starts accepting requests
-        // immediately. First tokenize() call blocks if init isn't done yet.
-        let tokenizer = Arc::new(LazyTokenizer::new());
-        tokenizer.start_background_init();
+        let tokenizer: Arc<dyn Tokenizer> = Arc::new(
+            SudachiTokenizer::new(&config.sudachi_dict_path, headwords)
+                .expect("failed to initialize tokenizer"),
+        );
+        info!("Sudachi tokenizer ready");
 
         info!(url = %config.whisper_service_url, "using remote whisper service");
         let transcriber: Arc<dyn Transcriber> =
@@ -78,18 +98,6 @@ async fn main() {
             tokenizer,
         )
     };
-
-    let mut dictionaries: Vec<Arc<Dictionary>> = Vec::new();
-    for path in &config.dictionary_paths {
-        info!(path, "loading dictionary");
-        let dict = Dictionary::load_or_import(&pool, std::path::Path::new(path))
-            .await
-            .expect("failed to load dictionary");
-        dictionaries.push(Arc::new(dict));
-    }
-    if dictionaries.is_empty() {
-        info!("no dictionaries configured (set JP_TOOLS_DICTIONARY_PATHS to enable definitions)");
-    }
 
     let llm_definer: Option<Arc<dyn LlmDefiner>> = if config.fake_api {
         Some(Arc::new(FakeLlmDefiner))

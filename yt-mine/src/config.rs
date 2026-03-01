@@ -1,4 +1,5 @@
 use std::env;
+use std::path::PathBuf;
 
 pub struct Config {
     pub db_path: String,
@@ -21,6 +22,8 @@ pub struct Config {
     pub llm_model: String,
     /// URL of remote whisper-service for transcription.
     pub whisper_service_url: String,
+    /// Path to the Sudachi system dictionary (.dic file).
+    pub sudachi_dict_path: PathBuf,
 }
 
 /// Anki note type configuration: model name, deck name, and field mapping.
@@ -96,6 +99,9 @@ impl Config {
                 .unwrap_or_else(|_| "claude-haiku-4-5".into()),
             whisper_service_url: env::var("JP_TOOLS_WHISPER_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:8100".into()),
+            sudachi_dict_path: env::var("JP_TOOLS_SUDACHI_DICT_PATH")
+                .unwrap_or_else(|_| "system_full.dic".into())
+                .into(),
             anki: AnkiConfig {
                 model_name: env::var("JP_TOOLS_ANKI_MODEL")
                     .unwrap_or(anki_defaults.model_name),

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use sqlx::{Row, SqlitePool};
 
 use crate::dictionary::{DictionaryEntry, PitchEntry};
@@ -22,6 +24,16 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     .await?;
 
     Ok(())
+}
+
+/// Load all distinct headwords from dictionary_entries.
+/// Used at startup to build the set for dictionary-aware tokenization.
+pub async fn get_all_headwords(pool: &SqlitePool) -> Result<HashSet<String>, sqlx::Error> {
+    let rows: Vec<(String,)> =
+        sqlx::query_as("SELECT DISTINCT term FROM dictionary_entries")
+            .fetch_all(pool)
+            .await?;
+    Ok(rows.into_iter().map(|(term,)| term).collect())
 }
 
 pub async fn find_dictionary(

@@ -1,4 +1,11 @@
-use std::sync::{Mutex, OnceLock};
+use std::collections::HashSet;
+use std::path::Path;
+use std::sync::Arc;
+
+use sudachi::analysis::stateless_tokenizer::StatelessTokenizer;
+use sudachi::analysis::{Mode, Tokenize};
+use sudachi::config::Config;
+use sudachi::dic::dictionary::JapaneseDictionary;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Token {
@@ -19,101 +26,77 @@ pub enum TokenizeError {
     Failed(String),
 }
 
-/// Wraps lindera's tokenizer in a Mutex since it requires `&mut self`
-/// for tokenization (not Sync). Sub-millisecond per call, so contention
-/// is not a concern.
-pub struct LinderaTokenizer {
-    inner: Mutex<lindera::tokenizer::Tokenizer>,
+pub struct SudachiTokenizer {
+    dict: Arc<JapaneseDictionary>,
+    headwords: HashSet<String>,
 }
 
-impl LinderaTokenizer {
-    pub fn new() -> Result<Self, TokenizeError> {
-        let dictionary = lindera::dictionary::load_dictionary("embedded://unidic")
-            .map_err(|e| TokenizeError::Failed(format!("failed to load UniDic: {e}")))?;
-        let segmenter =
-            lindera::segmenter::Segmenter::new(lindera::mode::Mode::Normal, dictionary, None);
-        let tokenizer = lindera::tokenizer::Tokenizer::new(segmenter);
+impl SudachiTokenizer {
+    pub fn new(dict_path: &Path, headwords: HashSet<String>) -> Result<Self, TokenizeError> {
+        let abs_path = std::fs::canonicalize(dict_path).map_err(|e| {
+            TokenizeError::Failed(format!("dictionary not found at {}: {e}", dict_path.display()))
+        })?;
+        let config = Config::new(None, None, Some(abs_path))
+            .map_err(|e| TokenizeError::Failed(format!("failed to load Sudachi config: {e}")))?;
+        let dict = JapaneseDictionary::from_cfg(&config)
+            .map_err(|e| TokenizeError::Failed(format!("failed to load Sudachi dictionary: {e}")))?;
         Ok(Self {
-            inner: Mutex::new(tokenizer),
+            dict: Arc::new(dict),
+            headwords,
         })
     }
 }
 
-/// Defers tokenizer initialization to a background thread so the server
-/// can start accepting requests immediately. The first call to `tokenize`
-/// blocks until init completes (if it hasn't already).
-pub struct LazyTokenizer {
-    inner: OnceLock<LinderaTokenizer>,
-}
-
-impl LazyTokenizer {
-    pub fn new() -> Self {
-        Self {
-            inner: OnceLock::new(),
-        }
-    }
-
-    /// Kick off initialization in a background OS thread. If the tokenizer
-    /// is already initialized (or another thread is initializing it), this
-    /// is a no-op.
-    pub fn start_background_init(self: &std::sync::Arc<Self>) {
-        let this = std::sync::Arc::clone(self);
-        std::thread::spawn(move || {
-            tracing::info!("initializing Lindera tokenizer (UniDic) in background");
-            this.inner.get_or_init(|| {
-                let t = LinderaTokenizer::new().expect("failed to initialize tokenizer");
-                tracing::info!("tokenizer ready");
-                t
-            });
-        });
-    }
-}
-
-impl Tokenizer for LinderaTokenizer {
+impl Tokenizer for SudachiTokenizer {
     fn tokenize(&self, text: &str) -> Result<Vec<Token>, TokenizeError> {
-        let tokenizer = self
-            .inner
-            .lock()
-            .map_err(|e| TokenizeError::Failed(format!("lock poisoned: {e}")))?;
-        let mut tokens = tokenizer
-            .tokenize(text)
+        let tokenizer = StatelessTokenizer::new(&self.dict);
+        let to_token = |m: sudachi::prelude::Morpheme<'_, _>| Token {
+            surface: m.surface().to_string(),
+            base_form: m.dictionary_form().to_string(),
+            reading: m.reading_form().to_string(),
+            pos: m.part_of_speech()[0].clone(),
+        };
+
+        if self.headwords.is_empty() {
+            // No dictionaries loaded — Mode B (current behavior)
+            let morphemes = tokenizer
+                .tokenize(text, Mode::B, false)
+                .map_err(|e| TokenizeError::Failed(e.to_string()))?;
+            return Ok(morphemes.iter().map(&to_token).collect());
+        }
+
+        // Mode C with dictionary validation: keep compounds that are real
+        // headwords, split the rest to Mode B sub-morphemes.
+        let morphemes = tokenizer
+            .tokenize(text, Mode::C, false)
             .map_err(|e| TokenizeError::Failed(e.to_string()))?;
 
-        Ok(tokens
-            .iter_mut()
-            .map(|t| {
-                let surface = t.surface.to_string();
-                let pos = t
-                    .get("part_of_speech")
-                    .unwrap_or("*")
-                    .to_string();
-                let base_form = t
-                    .get("orthographic_base_form")
-                    .unwrap_or(&surface)
-                    .to_string();
-                let reading = t
-                    .get("reading")
-                    .unwrap_or("*")
-                    .to_string();
-                Token {
-                    surface,
-                    base_form,
-                    reading,
-                    pos,
+        let mut split_buf = morphemes.empty_clone();
+        let mut tokens = Vec::new();
+
+        for m in morphemes.iter() {
+            if self.headwords.contains(m.dictionary_form()) {
+                tokens.push(to_token(m));
+            } else {
+                split_buf.clear();
+                let did_split = m
+                    .split_into(Mode::B, &mut split_buf)
+                    .map_err(|e| TokenizeError::Failed(e.to_string()))?;
+                if did_split {
+                    for sub in split_buf.iter() {
+                        tokens.push(to_token(sub));
+                    }
+                } else {
+                    // Already atomic — keep as-is
+                    tokens.push(to_token(m));
                 }
-            })
-            .collect())
+            }
+        }
+
+        Ok(tokens)
     }
 }
 
-impl Tokenizer for LazyTokenizer {
-    fn tokenize(&self, text: &str) -> Result<Vec<Token>, TokenizeError> {
-        let tokenizer = self.inner.get_or_init(|| {
-            LinderaTokenizer::new().expect("failed to initialize tokenizer")
-        });
-        tokenizer.tokenize(text)
-    }
-}
 
 /// Returns true if the part-of-speech tag represents a content word
 /// (noun, verb, adjective, adjectival noun, adverb).
@@ -174,9 +157,11 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires lindera UniDic (embedded, slow to init)"]
-    fn lindera_tokenizer_produces_tokens() {
-        let tokenizer = LinderaTokenizer::new().unwrap();
+    #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+    fn sudachi_tokenizer_produces_tokens() {
+        let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
+            .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+        let tokenizer = SudachiTokenizer::new(Path::new(&dict_path), HashSet::new()).unwrap();
         let tokens = tokenizer.tokenize("東京に行く").unwrap();
 
         assert!(!tokens.is_empty());
@@ -195,4 +180,5 @@ mod tests {
         assert_eq!(iku.pos, "動詞");
         assert_eq!(iku.base_form, "行く");
     }
+
 }
