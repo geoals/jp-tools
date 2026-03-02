@@ -1,6 +1,6 @@
 import { html } from 'htm/preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { fetchPreview, fetchLlmDefinition } from '../api.js';
+import { fetchPreview, fetchLlmDefinition } from '../../api.js';
 
 export function WordPreview({ videoId, sentenceId, word }) {
   const [preview, setPreview] = useState(null);

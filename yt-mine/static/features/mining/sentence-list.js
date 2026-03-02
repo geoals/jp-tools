@@ -3,8 +3,8 @@ import { useState, useRef } from 'preact/hooks';
 import { SentenceRow } from './sentence-row.js';
 import { WordPreview } from './word-preview.js';
 import { ExportResult } from './export-result.js';
-import { activePreview, selectedWords, exportedIds, exportResult } from '../state.js';
-import { exportSentences } from '../api.js';
+import { activePreview, selectedWords, exportedIds, exportResult } from './state.js';
+import { exportSentences } from '../../api.js';
 
 export function SentenceList({ sentences, videoId, jobId, isDone, isTranscribing }) {
   if (!sentences || sentences.length === 0) return null;

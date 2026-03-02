@@ -1,5 +1,5 @@
 import { html } from 'htm/preact';
-import { activePreview, selectedWords, exportedIds, audioState } from '../state.js';
+import { activePreview, selectedWords, exportedIds, audioState } from './state.js';
 
 export function SentenceRow({ sentence, videoId, isTranscribing }) {
   const preview = activePreview.value;

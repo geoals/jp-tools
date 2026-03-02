@@ -1,0 +1,217 @@
+.vocab-page h2 {
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 0.3rem;
+}
+
+.vocab-textarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  font-size: 1rem;
+  font-family: "Noto Sans JP", "Hiragino Sans", sans-serif;
+  background: var(--bg-surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+  resize: vertical;
+  line-height: 1.6;
+  transition: border-color 0.15s;
+}
+
+.vocab-textarea:focus {
+  border-color: var(--accent);
+}
+
+.vocab-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.vocab-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.85rem;
+}
+
+.vocab-table th {
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+}
+
+.vocab-table td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid hsl(210, 6%, 14%);
+}
+
+.vocab-table tr.in-db {
+  background: hsl(210, 7%, 10%);
+}
+
+.vocab-table tr.not-in-dict {
+  opacity: 0.55;
+}
+
+.vocab-lemma {
+  font-family: "Noto Sans JP", "Hiragino Sans", sans-serif;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.vocab-reading {
+  font-family: "Noto Sans JP", "Hiragino Sans", sans-serif;
+  color: var(--text-muted);
+}
+
+.vocab-pos {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.vocab-dict {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.vocab-count {
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.vocab-status-cell {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.status-toggle {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.status-toggle:hover {
+  background: var(--bg-surface);
+}
+
+.status-toggle.seen.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.status-toggle.known.active {
+  background: var(--success-bg);
+  color: var(--success-text);
+  border-color: var(--success-border);
+}
+
+.status-toggle.blacklisted.active {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  border-color: var(--danger-border);
+}
+
+.vocab-sort-bar,
+.vocab-filter-bar {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.vocab-sort-bar > span:first-child,
+.vocab-filter-bar > span:first-child {
+  display: inline-block;
+  min-width: 8rem;
+  flex-shrink: 0;
+}
+
+.sort-toggle,
+.filter-toggle {
+  padding: 0.2rem 0.6rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.vocab-pos-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  flex: 1;
+  align-items: baseline;
+}
+
+.sort-toggle:hover,
+.filter-toggle:hover,
+.filter-toggle-all:hover {
+  background: var(--bg-surface);
+}
+
+.filter-toggle-all {
+  padding: 0.2rem 0.6rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  background: none;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.filter-toggle-all.active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.sort-toggle.active,
+.filter-toggle.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.vocab-submit {
+  margin-top: 0.5rem;
+}
+
+.vocab-message {
+  padding: 0.55rem 0.85rem;
+  margin: 0.75rem 0;
+  font-size: 0.85rem;
+  border-radius: var(--radius);
+}
+
+.vocab-success {
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
+  color: var(--success-text);
+}
+
+.vocab-error {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  color: var(--danger-text);
+}

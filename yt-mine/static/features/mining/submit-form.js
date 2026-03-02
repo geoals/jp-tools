@@ -1,7 +1,7 @@
 import { html } from 'htm/preact';
 import { useState } from 'preact/hooks';
-import { submitUrl } from '../api.js';
-import { navigate } from '../router.js';
+import { submitUrl } from '../../api.js';
+import { navigate } from '../../router.js';
 
 export function SubmitForm() {
   const [url, setUrl] = useState('');

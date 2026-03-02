@@ -1,5 +1,5 @@
 import { html } from 'htm/preact';
-import { exportResult } from '../state.js';
+import { exportResult } from './state.js';
 
 export function ExportResult() {
   const result = exportResult.value;

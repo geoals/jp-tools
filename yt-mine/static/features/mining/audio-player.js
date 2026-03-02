@@ -1,6 +1,6 @@
 import { html } from 'htm/preact';
 import { useEffect, useRef } from 'preact/hooks';
-import { audioState } from '../state.js';
+import { audioState } from './state.js';
 
 export function AudioPlayer() {
   const audioRef = useRef(null);

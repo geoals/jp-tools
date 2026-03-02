@@ -1,6 +1,6 @@
 import { html } from 'htm/preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { fetchJob, pollStatus } from '../api.js';
+import { fetchJob, pollStatus } from '../../api.js';
 import { JobStatus } from './job-status.js';
 import { SentenceList } from './sentence-list.js';
 

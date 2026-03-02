@@ -1,14 +1,17 @@
 import { html } from 'htm/preact';
-import { useState } from 'preact/hooks';
-import { tokenizeVocab, submitVocab } from '../api.js';
+import { useState, useMemo } from 'preact/hooks';
+import { tokenizeVocab, submitVocab } from '../../api.js';
 
 const STATUS_OPTIONS = ['seen', 'known', 'blacklisted'];
+const STATUS_LABELS = { seen: 'seen', known: 'known', blacklisted: 'blacklist' };
 
 export function VocabPage() {
   const [text, setText] = useState('');
   const [tokens, setTokens] = useState(null);
   const [statuses, setStatuses] = useState({});
   const [sortBy, setSortBy] = useState('occurrence');
+  const [filterBy, setFilterBy] = useState('all');
+  const [posFilter, setPosFilter] = useState(null);
   const [tokenizing, setTokenizing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
@@ -22,13 +25,13 @@ export function VocabPage() {
     try {
       const data = await tokenizeVocab(text);
       setTokens(data.tokens);
-      // Initialize statuses: use DB status if present, otherwise 'seen'
       const initial = {};
       for (const t of data.tokens) {
         const key = `${t.lemma}\t${t.reading}`;
-        initial[key] = t.status || 'seen';
+        initial[key] = t.status || (t.in_dictionary ? 'seen' : 'blacklisted');
       }
       setStatuses(initial);
+      setPosFilter(new Set(data.tokens.map((t) => t.pos)));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -63,7 +66,36 @@ export function VocabPage() {
     }
   }
 
-  const sortedTokens = tokens && [...tokens].sort((a, b) =>
+  const allPos = useMemo(() => {
+    if (!tokens) return [];
+    const seen = new Set();
+    return tokens.map((t) => t.pos).filter((p) => seen.has(p) ? false : (seen.add(p), true));
+  }, [tokens]);
+
+  function togglePos(pos) {
+    setPosFilter((prev) => {
+      const next = new Set(prev);
+      next.has(pos) ? next.delete(pos) : next.add(pos);
+      return next;
+    });
+  }
+
+  function toggleAllPos() {
+    setPosFilter((prev) =>
+      prev && prev.size === allPos.length ? new Set() : new Set(allPos)
+    );
+  }
+
+  const allPosSelected = posFilter && posFilter.size === allPos.length;
+
+  const filteredTokens = tokens && tokens.filter((t) => {
+    if (posFilter && !posFilter.has(t.pos)) return false;
+    if (filterBy === 'in-dict') return t.in_dictionary;
+    if (filterBy === 'not-in-dict') return !t.in_dictionary;
+    return true;
+  });
+
+  const sortedTokens = filteredTokens && [...filteredTokens].sort((a, b) =>
     sortBy === 'count'
       ? b.count - a.count || a.first_occurrence - b.first_occurrence
       : a.first_occurrence - b.first_occurrence
@@ -104,6 +136,38 @@ export function VocabPage() {
           >Count</button>
         </div>
 
+        <div class="vocab-filter-bar">
+          <span>Filter:</span>
+          <button
+            class="filter-toggle ${filterBy === 'all' ? 'active' : ''}"
+            onClick=${() => setFilterBy('all')}
+          >All</button>
+          <button
+            class="filter-toggle ${filterBy === 'in-dict' ? 'active' : ''}"
+            onClick=${() => setFilterBy('in-dict')}
+          >In Dict</button>
+          <button
+            class="filter-toggle ${filterBy === 'not-in-dict' ? 'active' : ''}"
+            onClick=${() => setFilterBy('not-in-dict')}
+          >Not in Dict</button>
+        </div>
+
+        <div class="vocab-filter-bar">
+          <span>Part-of-speech:</span>
+          <span class="vocab-pos-buttons">
+            <button
+              class="filter-toggle-all ${allPosSelected ? 'active' : ''}"
+              onClick=${toggleAllPos}
+            >All</button>
+            ${allPos.map((pos) => html`
+              <button
+                class="filter-toggle ${posFilter && posFilter.has(pos) ? 'active' : ''}"
+                onClick=${() => togglePos(pos)}
+              >${pos}</button>
+            `)}
+          </span>
+        </div>
+
         <table class="vocab-table">
           <thead>
             <tr>
@@ -132,7 +196,7 @@ export function VocabPage() {
                         type="button"
                         class="status-toggle ${s} ${current === s ? 'active' : ''}"
                         onClick=${() => setStatus(t.lemma, t.reading, s)}
-                      >${s}</button>
+                      >${STATUS_LABELS[s]}</button>
                     `)}
                   </td>
                 </tr>
