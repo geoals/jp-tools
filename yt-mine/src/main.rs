@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use tracing::info;
@@ -64,12 +65,18 @@ async fn main() {
         info!(count = headwords.len(), "loaded headwords for dictionary-aware tokenization");
     }
 
-    let (downloader, transcriber, exporter, media_extractor, tokenizer): (
+    // Broader set including readings — いう matches 言う via reading
+    let dictionary_forms = jp_core::db::get_all_dictionary_forms(&pool)
+        .await
+        .expect("failed to load dictionary forms");
+
+    let (downloader, transcriber, exporter, media_extractor, tokenizer, dictionary_forms): (
         Arc<dyn AudioDownloader>,
         Arc<dyn Transcriber>,
         Arc<dyn AnkiExporter>,
         Arc<dyn MediaExtractor>,
         Arc<dyn Tokenizer>,
+        HashSet<String>,
     ) = if config.fake_api {
         info!("*** DEV MODE — using fake services (no external deps needed) ***");
         (
@@ -78,8 +85,10 @@ async fn main() {
             Arc::new(FakeAnkiExporter),
             Arc::new(FakeMediaExtractor),
             Arc::new(FakeTokenizer),
+            HashSet::new(),
         )
     } else {
+        // Tokenizer gets terms-only headwords for Mode C compound validation
         let tokenizer: Arc<dyn Tokenizer> = Arc::new(
             SudachiTokenizer::new(&config.sudachi_dict_path, headwords)
                 .expect("failed to initialize tokenizer"),
@@ -96,6 +105,7 @@ async fn main() {
             Arc::new(AnkiConnectExporter::new(config.anki_url, config.anki)),
             Arc::new(FfmpegMediaExtractor),
             tokenizer,
+            dictionary_forms,
         )
     };
 
@@ -116,6 +126,7 @@ async fn main() {
         exporter,
         media_extractor,
         tokenizer,
+        dictionary_forms: Arc::new(dictionary_forms),
         dictionaries,
         llm_definer,
         audio_dir: config.audio_dir,

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use axum::Router;
@@ -27,6 +28,7 @@ pub struct AppState {
     pub exporter: Arc<dyn AnkiExporter>,
     pub media_extractor: Arc<dyn MediaExtractor>,
     pub tokenizer: Arc<dyn Tokenizer>,
+    pub dictionary_forms: Arc<HashSet<String>>,
     pub dictionaries: Vec<Arc<Dictionary>>,
     pub llm_definer: Option<Arc<dyn LlmDefiner>>,
     pub audio_dir: String,

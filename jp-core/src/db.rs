@@ -36,6 +36,18 @@ pub async fn get_all_headwords(pool: &SqlitePool) -> Result<HashSet<String>, sql
     Ok(rows.into_iter().map(|(term,)| term).collect())
 }
 
+/// Load all distinct terms and readings from dictionary_entries.
+/// Broader than `get_all_headwords` — includes kana readings so that
+/// hiragana-only lemmas like いう match dictionary entry 言う (reading いう).
+pub async fn get_all_dictionary_forms(pool: &SqlitePool) -> Result<HashSet<String>, sqlx::Error> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT DISTINCT term FROM dictionary_entries UNION SELECT DISTINCT reading FROM dictionary_entries",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(form,)| form).collect())
+}
+
 pub async fn find_dictionary(
     pool: &SqlitePool,
     source_path: &str,

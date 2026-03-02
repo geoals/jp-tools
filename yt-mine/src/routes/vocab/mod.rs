@@ -4,7 +4,7 @@ use axum::extract::State;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
-use jp_core::tokenize::{is_content_word, Tokenizer};
+use jp_core::tokenize::Tokenizer;
 
 use crate::app::AppState;
 use crate::db::{self, VocabUpsert};
@@ -29,8 +29,11 @@ struct TokenResult {
     reading: String,
     pos: String,
     count: i64,
+    /// Position of first occurrence in the source text (0-indexed).
+    first_occurrence: usize,
     status: Option<VocabStatus>,
     in_db: bool,
+    in_dictionary: bool,
 }
 
 #[derive(Deserialize)]
@@ -72,6 +75,30 @@ fn contains_japanese(s: &str) -> bool {
     })
 }
 
+/// Sudachi treats potential forms as independent 下一段 verbs (出せる, 遊べる).
+/// Map them back to the godan root (出す, 遊ぶ) for dictionary lookup.
+fn godan_root(potential_form: &str) -> Option<String> {
+    const MAPPINGS: &[(&str, &str)] = &[
+        ("える", "う"),
+        ("ける", "く"),
+        ("げる", "ぐ"),
+        ("せる", "す"),
+        ("てる", "つ"),
+        ("ねる", "ぬ"),
+        ("べる", "ぶ"),
+        ("める", "む"),
+        ("れる", "る"),
+    ];
+    for (suffix, root) in MAPPINGS {
+        if let Some(stem) = potential_form.strip_suffix(suffix) {
+            if !stem.is_empty() {
+                return Some(format!("{stem}{root}"));
+            }
+        }
+    }
+    None
+}
+
 /// Get the dictionary-form reading by tokenizing the base form itself.
 fn base_form_reading(tokenizer: &dyn Tokenizer, base_form: &str) -> String {
     tokenizer
@@ -97,29 +124,51 @@ pub async fn tokenize_text(
         .tokenize(text)
         .map_err(|e| AppError::BadRequest(format!("tokenization failed: {e}")))?;
 
-    // Filter to content words, deduplicate by (base_form, reading), count occurrences
-    let mut counts: HashMap<(String, String), (String, i64)> = HashMap::new();
+    // Filter to content words, deduplicate by (base_form, reading), count occurrences.
+    // Track first_occurrence index to preserve original text order.
+    let mut counts: HashMap<(String, String), (String, i64, usize)> = HashMap::new();
     let mut base_readings: HashMap<String, String> = HashMap::new();
+    let mut next_index: usize = 0;
 
     for token in &all_tokens {
-        if !is_content_word(&token.pos) || !contains_japanese(&token.base_form) {
+        if token.pos == "補助記号"
+            || !contains_japanese(&token.base_form)
+            || token.base_form.contains(|c: char| c.is_ascii_digit())
+        {
             continue;
         }
 
+        // Normalize godan potential forms to root verb (出せる → 出す).
+        // Only when the form itself isn't a dictionary word — avoids collapsing
+        // ichidan/godan pairs like 開ける (ichidan) → 開く (godan).
+        let base_form = if token.pos == "動詞"
+            && !state.dictionary_forms.contains(&token.base_form)
+        {
+            godan_root(&token.base_form)
+                .filter(|root| state.dictionary_forms.contains(root))
+                .unwrap_or_else(|| token.base_form.clone())
+        } else {
+            token.base_form.clone()
+        };
+
         let reading = if is_inflecting(&token.pos) {
             base_readings
-                .entry(token.base_form.clone())
-                .or_insert_with(|| base_form_reading(&*state.tokenizer, &token.base_form))
+                .entry(base_form.clone())
+                .or_insert_with(|| base_form_reading(&*state.tokenizer, &base_form))
                 .clone()
         } else {
             token.reading.clone()
         };
 
-        let key = (token.base_form.clone(), reading);
+        let key = (base_form, reading);
         counts
             .entry(key)
-            .and_modify(|(_, c)| *c += 1)
-            .or_insert((token.pos.clone(), 1));
+            .and_modify(|(_, c, _)| *c += 1)
+            .or_insert_with(|| {
+                let idx = next_index;
+                next_index += 1;
+                (token.pos.clone(), 1, idx)
+            });
     }
 
     // Filter out blacklisted words
@@ -136,21 +185,24 @@ pub async fn tokenize_text(
 
     let mut tokens: Vec<TokenResult> = counts
         .into_iter()
-        .map(|((lemma, reading), (pos, count))| {
+        .map(|((lemma, reading), (pos, count, first_occurrence))| {
             let db_status = existing_map.get(&(lemma.clone(), reading.clone()));
+            let in_dictionary = state.dictionary_forms.contains(&lemma);
             TokenResult {
                 lemma,
                 reading,
                 pos,
                 count,
+                first_occurrence,
                 status: db_status.copied(),
                 in_db: db_status.is_some(),
+                in_dictionary,
             }
         })
         .collect();
 
-    // Sort for deterministic output: by lemma then reading
-    tokens.sort_by(|a, b| a.lemma.cmp(&b.lemma).then(a.reading.cmp(&b.reading)));
+    // Default sort: order of first occurrence in source text
+    tokens.sort_by_key(|t| t.first_occurrence);
 
     Ok(Json(TokenizeResponse { tokens }))
 }

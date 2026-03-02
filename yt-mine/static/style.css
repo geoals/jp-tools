@@ -602,6 +602,10 @@ a.timestamp:hover {
   background: hsl(210, 7%, 10%);
 }
 
+.vocab-table tr.not-in-dict {
+  opacity: 0.55;
+}
+
 .vocab-lemma {
   font-family: "Noto Sans JP", "Hiragino Sans", sans-serif;
   font-size: 1rem;
@@ -614,6 +618,12 @@ a.timestamp:hover {
 }
 
 .vocab-pos {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.vocab-dict {
+  text-align: center;
   color: var(--text-muted);
   font-size: 0.8rem;
 }
@@ -659,6 +669,36 @@ a.timestamp:hover {
   background: var(--danger-bg);
   color: var(--danger-text);
   border-color: var(--danger-border);
+}
+
+.vocab-sort-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.sort-toggle {
+  padding: 0.2rem 0.6rem;
+  font-size: 0.75rem;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.sort-toggle:hover {
+  background: var(--bg-surface);
+}
+
+.sort-toggle.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .vocab-submit {

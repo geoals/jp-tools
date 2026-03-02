@@ -8,6 +8,7 @@ export function VocabPage() {
   const [text, setText] = useState('');
   const [tokens, setTokens] = useState(null);
   const [statuses, setStatuses] = useState({});
+  const [sortBy, setSortBy] = useState('occurrence');
   const [tokenizing, setTokenizing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
@@ -62,6 +63,12 @@ export function VocabPage() {
     }
   }
 
+  const sortedTokens = tokens && [...tokens].sort((a, b) =>
+    sortBy === 'count'
+      ? b.count - a.count || a.first_occurrence - b.first_occurrence
+      : a.first_occurrence - b.first_occurrence
+  );
+
   return html`
     <div class="vocab-page">
       <h2>Vocabulary Calibration</h2>
@@ -84,26 +91,40 @@ export function VocabPage() {
       ${error && html`<p class="vocab-message vocab-error">${error}</p>`}
       ${result && html`<p class="vocab-message vocab-success">${result}</p>`}
 
-      ${tokens && html`
+      ${sortedTokens && html`
+        <div class="vocab-sort-bar">
+          <span>Sort by:</span>
+          <button
+            class="sort-toggle ${sortBy === 'occurrence' ? 'active' : ''}"
+            onClick=${() => setSortBy('occurrence')}
+          >Occurrence</button>
+          <button
+            class="sort-toggle ${sortBy === 'count' ? 'active' : ''}"
+            onClick=${() => setSortBy('count')}
+          >Count</button>
+        </div>
+
         <table class="vocab-table">
           <thead>
             <tr>
               <th>Word</th>
               <th>Reading</th>
               <th>POS</th>
+              <th>Dict</th>
               <th>Count</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody>
-            ${tokens.map((t) => {
+            ${sortedTokens.map((t) => {
               const key = `${t.lemma}\t${t.reading}`;
               const current = statuses[key] || 'seen';
               return html`
-                <tr class=${t.in_db ? 'in-db' : ''}>
+                <tr class="${t.in_db ? 'in-db' : ''} ${!t.in_dictionary ? 'not-in-dict' : ''}">
                   <td class="vocab-lemma">${t.lemma}</td>
                   <td class="vocab-reading">${t.reading}</td>
                   <td class="vocab-pos">${t.pos}</td>
+                  <td class="vocab-dict">${t.in_dictionary ? '\u2713' : '\u2014'}</td>
                   <td class="vocab-count">${t.count}</td>
                   <td class="vocab-status-cell">
                     ${STATUS_OPTIONS.map((s) => html`

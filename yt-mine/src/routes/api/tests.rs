@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use axum::http::StatusCode;
@@ -40,6 +41,7 @@ async fn test_app() -> (axum_test::TestServer, sqlx::SqlitePool) {
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(MockMediaExtractor::new()),
         tokenizer: Arc::new(mock_tokenizer()),
+        dictionary_forms: Arc::new(HashSet::new()),
         dictionaries: vec![],
         llm_definer: None,
         audio_dir: "/tmp".into(),
@@ -100,6 +102,7 @@ async fn submit_job_creates_and_returns_video_id() {
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(MockMediaExtractor::new()),
         tokenizer: Arc::new(mock_tokenizer()),
+        dictionary_forms: Arc::new(HashSet::new()),
         dictionaries: vec![],
         llm_definer: None,
         audio_dir: "/tmp".into(),
@@ -227,6 +230,7 @@ async fn preview_returns_json() {
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(MockMediaExtractor::new()),
         tokenizer: Arc::new(mock_tokenizer()),
+        dictionary_forms: Arc::new(HashSet::new()),
         dictionaries: vec![Arc::new(dict)],
         llm_definer: None,
         audio_dir: "/tmp".into(),
@@ -287,6 +291,7 @@ async fn llm_definition_returns_json() {
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(MockMediaExtractor::new()),
         tokenizer: Arc::new(mock_tokenizer()),
+        dictionary_forms: Arc::new(HashSet::new()),
         dictionaries: vec![],
         llm_definer: Some(Arc::new(definer)),
         audio_dir: "/tmp".into(),
@@ -374,6 +379,7 @@ async fn export_returns_count_and_ids() {
         exporter: Arc::new(exporter),
         media_extractor: Arc::new(media_extractor),
         tokenizer: Arc::new(mock_tokenizer()),
+        dictionary_forms: Arc::new(HashSet::new()),
         dictionaries: vec![],
         llm_definer: None,
         audio_dir: "/tmp".into(),
@@ -451,6 +457,7 @@ async fn test_app_with_media_dir(
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(media_extractor),
         tokenizer: Arc::new(mock_tokenizer()),
+        dictionary_forms: Arc::new(HashSet::new()),
         dictionaries: vec![],
         llm_definer: None,
         audio_dir: "/tmp".into(),

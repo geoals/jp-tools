@@ -65,30 +65,48 @@ impl Tokenizer for SudachiTokenizer {
             return Ok(morphemes.iter().map(&to_token).collect());
         }
 
-        // Mode C with dictionary validation: keep compounds that are real
-        // headwords, split the rest to Mode B sub-morphemes.
+        // Dictionary-validated splitting: C → B → A.
+        // Keep tokens that exist as dictionary headwords. Split unknown
+        // compounds progressively (C→B→A) until sub-tokens are recognized
+        // or we reach the finest granularity.
         let morphemes = tokenizer
             .tokenize(text, Mode::C, false)
             .map_err(|e| TokenizeError::Failed(e.to_string()))?;
 
-        let mut split_buf = morphemes.empty_clone();
+        let err = |e: sudachi::error::SudachiError| TokenizeError::Failed(e.to_string());
+        let mut buf_b = morphemes.empty_clone();
+        let mut buf_a = morphemes.empty_clone();
         let mut tokens = Vec::new();
 
         for m in morphemes.iter() {
             if self.headwords.contains(m.dictionary_form()) {
                 tokens.push(to_token(m));
-            } else {
-                split_buf.clear();
-                let did_split = m
-                    .split_into(Mode::B, &mut split_buf)
-                    .map_err(|e| TokenizeError::Failed(e.to_string()))?;
-                if did_split {
-                    for sub in split_buf.iter() {
+                continue;
+            }
+
+            buf_b.clear();
+            if !m.split_into(Mode::B, &mut buf_b).map_err(&err)? {
+                // Mode B didn't split — try Mode A directly
+                buf_a.clear();
+                if m.split_into(Mode::A, &mut buf_a).map_err(&err)? {
+                    tokens.extend(buf_a.iter().map(&to_token));
+                } else {
+                    tokens.push(to_token(m));
+                }
+                continue;
+            }
+
+            // Mode B split — check each sub-token
+            for sub in buf_b.iter() {
+                if self.headwords.contains(sub.dictionary_form()) {
+                    tokens.push(to_token(sub));
+                } else {
+                    buf_a.clear();
+                    if sub.split_into(Mode::A, &mut buf_a).map_err(&err)? {
+                        tokens.extend(buf_a.iter().map(&to_token));
+                    } else {
                         tokens.push(to_token(sub));
                     }
-                } else {
-                    // Already atomic — keep as-is
-                    tokens.push(to_token(m));
                 }
             }
         }
