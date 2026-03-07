@@ -205,6 +205,9 @@ export function VocabPage() {
           </tbody>
         </table>
 
+        ${sortedTokens.length < tokens.length && html`
+          <p class="helper-text">${tokens.length - sortedTokens.length} more words hidden by filters.</p>
+        `}
         <button
           class="vocab-submit"
           onClick=${handleSubmit}
