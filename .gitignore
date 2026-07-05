@@ -2,9 +2,15 @@
 yt-mine/target
 yt-mine/audio/
 yt-mine/media/
+/audio/
+/media/
+/manga-inbox/
+manga-ocr-service/.venv/
+manga-ocr-service/*.jpg
 *.db
 *.db-shm
 *.db-wal
 .env
 *.zip
 *.dic
+__pycache__/

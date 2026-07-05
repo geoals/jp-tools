@@ -1,0 +1,345 @@
+/* --- Queue page --- */
+
+.queue-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0.6rem 0 1rem;
+}
+
+.upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--bg);
+  border-radius: var(--radius);
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.upload-btn:hover {
+  background: var(--accent-hover);
+}
+
+.queue-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+
+.queue-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.4rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.queue-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.queue-item img {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--bg-hover);
+}
+
+.queue-item-name {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* --- Photo / crop page --- */
+
+.crop-container {
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+  touch-action: none;
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.crop-container img {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  border-radius: var(--radius);
+  pointer-events: none;
+}
+
+.crop-container.crop-disabled {
+  cursor: default;
+  opacity: 0.8;
+}
+
+.crop-rect {
+  position: absolute;
+  border: 2px solid var(--accent);
+  background: hsla(175, 50%, 48%, 0.15);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.photo-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin: 0.9rem 0;
+  justify-content: center;
+}
+
+button.secondary {
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+button.secondary:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.error-banner {
+  padding: 0.55rem 0.85rem;
+  margin: 0.75rem 0;
+  font-size: 0.85rem;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  color: var(--danger-text);
+  border-radius: var(--radius);
+}
+
+/* --- OCR result / sentences (mirrors yt-mine mining UI) --- */
+
+.sentence-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.sentence-list li {
+  padding: 0.5rem 0.7rem;
+  background: var(--bg-surface);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+}
+
+.sentence-list li.has-preview {
+  border-color: var(--border);
+}
+
+.sentence-tokens {
+  font-family:
+    "Noto Sans JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo",
+    sans-serif;
+  font-size: 1.15rem;
+  line-height: 1.8;
+}
+
+.token.content-word {
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0.05em 0.1em;
+  transition:
+    background 0.1s,
+    color 0.1s;
+}
+
+.token.content-word:hover {
+  background: var(--accent-dim);
+}
+
+.token.content-word.selected {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+/* --- Preview panel --- */
+
+.preview-panel {
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.7rem;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.preview-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.preview-word {
+  font-family: "Noto Sans JP", "Hiragino Sans", sans-serif;
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.preview-reading {
+  font-family: "Noto Sans JP", "Hiragino Sans", sans-serif;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.preview-pitch {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.preview-definitions {
+  font-size: 0.85rem;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.preview-definitions.preview-empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.dict-section {
+  background: var(--bg-surface);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.6rem;
+}
+
+.dict-title {
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 0.2rem;
+}
+
+.preview-definitions [data-content="attribution"],
+.preview-definitions [data-content="extra-info"] {
+  display: none;
+}
+
+.preview-definitions [data-class="tag"] {
+  font-size: 0.7rem;
+  color: var(--accent);
+  margin-right: 0.3rem;
+  margin-left: 0.3rem;
+}
+
+.preview-definitions ul {
+  list-style: none;
+  list-style-position: inside;
+  padding: 0;
+}
+
+.preview-definitions [data-content="glossary"] li::before {
+  content: "\00B7  ";
+  color: var(--text-muted);
+}
+
+.preview-definitions [data-content="forms"] ul {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.preview-definitions [data-content="forms"] [data-class="tag"] {
+  margin-right: 0;
+}
+
+.preview-definitions table {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  margin: 0.3rem 0;
+}
+
+.preview-definitions th,
+.preview-definitions td {
+  padding: 0.15rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.preview-definitions th {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.preview-definitions [data-content="forms-header-row"] th {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.preview-definitions [data-class="form-pri"] {
+  color: var(--accent);
+}
+
+.preview-definitions [data-class="form-out"] {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Sankoku ships black-on-transparent inline images — invert for dark bg */
+.dict-\4e9\7701\5802\56FD\8A9E\8F9E\5178-\7B2C\516B\7248-body img {
+  filter: invert(100%);
+}
+
+/* --- Export bar --- */
+
+.export-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin: 0.8rem 0 1.5rem;
+}
+
+.export-hint {
+  font-family: "Noto Sans JP", "Hiragino Sans", sans-serif;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Phone-width tweaks --- */
+
+@media (max-width: 600px) {
+  .queue-grid {
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  }
+
+  .sentence-tokens {
+    font-size: 1.25rem;
+  }
+}
