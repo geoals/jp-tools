@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-multipart
+manga-ocr
+# transformers 5.x cannot load manga-ocr's BertJapanese tokenizer
+transformers<5
+# manga-ocr's tokenizer needs these to load
+sentencepiece
+fugashi
+unidic-lite
