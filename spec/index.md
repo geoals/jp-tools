@@ -35,6 +35,7 @@ filtering are useless.
 - [Architecture](./architecture.md) — Technical stack, component overview, morphological analysis + LLM pipeline
 - [Open Questions](./open-questions.md) — Unresolved decisions and things to research
 - [Sentence Mining](./sentence-mining-yt.md) — YouTube sentence mining pipeline, MVP phases, and architecture
+- [Sentence Mining — Manga](./sentence-mining-manga.md) — physical manga mining: photo → crop → OCR → rich Anki card, sharing yt-mine's core
 
 ## Status
 
