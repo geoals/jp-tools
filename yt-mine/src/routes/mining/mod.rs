@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
-use jp_core::dictionary::Dictionary;
-use jp_core::tokenize::{Token, is_content_word};
+use jp_core::tokenize::is_content_word;
 
 use crate::app::AppState;
 use crate::db;
@@ -21,12 +18,6 @@ pub(crate) struct TokenView {
     pub(crate) surface: String,
     pub(crate) base_form: String,
     pub(crate) is_content_word: bool,
-}
-
-pub(crate) struct WordLookupResult {
-    pub(crate) definition_html: Option<String>,
-    pub(crate) reading: String,
-    pub(crate) pitch_num: Option<String>,
 }
 
 // --- Shared business logic ---
@@ -71,62 +62,6 @@ pub(crate) async fn build_sentence_views(
         })
         .collect();
     Ok((views, max_end))
-}
-
-pub(crate) async fn lookup_word(dictionaries: &[Arc<Dictionary>], word: &str) -> WordLookupResult {
-    let mut def_parts = Vec::new();
-    let mut reading = String::new();
-    let mut pitch_num = None;
-
-    for dict in dictionaries {
-        let entries = dict.lookup(word).await;
-        if let Some(entry) = entries.first() {
-            let joined = entry.definitions.join("; ");
-            def_parts.push(dict.wrap_definitions(&joined));
-            if reading.is_empty() && !entry.reading.is_empty() {
-                reading = entry.reading.clone();
-            }
-        }
-        if pitch_num.is_none() {
-            let pitch = dict.lookup_pitch(word).await;
-            if !pitch.is_empty() {
-                let nums: Vec<String> = pitch[0]
-                    .positions
-                    .iter()
-                    .map(|p| p.to_string())
-                    .collect();
-                pitch_num = Some(nums.join(","));
-            }
-        }
-    }
-
-    WordLookupResult {
-        definition_html: if def_parts.is_empty() {
-            None
-        } else {
-            Some(def_parts.join(""))
-        },
-        reading,
-        pitch_num,
-    }
-}
-
-/// Build sentence HTML with the target word's surface form(s) wrapped in `<b></b>`.
-pub(crate) fn bold_target_in_sentence(tokens: &[Token], target_base_form: &str) -> Option<String> {
-    if !tokens.iter().any(|t| t.base_form == target_base_form) {
-        return None;
-    }
-    let mut result = String::new();
-    for token in tokens {
-        if token.base_form == target_base_form {
-            result.push_str("<b>");
-            result.push_str(&token.surface);
-            result.push_str("</b>");
-        } else {
-            result.push_str(&token.surface);
-        }
-    }
-    Some(result)
 }
 
 pub(crate) fn format_seconds(secs: f64) -> String {

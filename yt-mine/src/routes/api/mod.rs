@@ -8,13 +8,12 @@ use serde::{Deserialize, Serialize};
 use tracing::warn;
 
 use jp_core::dictionary::format_furigana;
+use jp_mine_core::lookup::{bold_target_in_sentence, lookup_word};
 
 use crate::app::AppState;
 use crate::db;
 use crate::error::AppError;
-use crate::routes::mining::{
-    bold_target_in_sentence, build_sentence_views, lookup_word,
-};
+use crate::routes::mining::{build_sentence_views, format_seconds};
 use crate::services::export::ExportSentence;
 use crate::services::media::media_filenames;
 use crate::services::pipeline;
@@ -323,7 +322,9 @@ pub async fn export_sentences(
         .unwrap_or_else(|| job.youtube_url.clone());
 
     let mut export_sentences = Vec::with_capacity(sentences.len());
+    let mut exported_ids = Vec::with_capacity(sentences.len());
     for sentence in sentences {
+        exported_ids.push(sentence.id);
         let (screenshot_filename, audio_filename) =
             media_filenames(sentence.job_id, sentence.id);
         let screenshot_path = format!("{}/{screenshot_filename}", state.media_dir);
@@ -394,7 +395,8 @@ pub async fn export_sentences(
         });
 
         export_sentences.push(ExportSentence {
-            sentence,
+            source: format!("{source} ({})", format_seconds(sentence.start_time)),
+            sentence_text: sentence.text,
             screenshot_path: screenshot_result,
             audio_clip_path: audio_result,
             target_word,
@@ -406,13 +408,7 @@ pub async fn export_sentences(
         });
     }
 
-    let exported_ids: Vec<i64> = export_sentences.iter().map(|s| s.sentence.id).collect();
-
-    match state
-        .exporter
-        .export_sentences(export_sentences, source)
-        .await
-    {
+    match state.exporter.export_sentences(export_sentences).await {
         Ok(count) => Ok(Json(ExportResponse {
             count,
             exported_ids,

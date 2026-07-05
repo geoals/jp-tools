@@ -366,7 +366,7 @@ async fn export_returns_count_and_ids() {
     let mut exporter = MockAnkiExporter::new();
     exporter
         .expect_export_sentences()
-        .returning(|sentences, _source| {
+        .returning(|sentences| {
             let count = sentences.len();
             Box::pin(async move { Ok(count) })
         });

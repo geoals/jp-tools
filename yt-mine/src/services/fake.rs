@@ -166,15 +166,14 @@ impl AnkiExporter for FakeAnkiExporter {
     fn export_sentences(
         &self,
         sentences: Vec<ExportSentence>,
-        source: String,
     ) -> Pin<Box<dyn Future<Output = Result<usize, ExportError>> + Send>> {
         let count = sentences.len();
         Box::pin(async move {
             for es in &sentences {
                 info!(
-                    source = %source,
+                    source = %es.source,
                     word = ?es.target_word,
-                    text = %es.sentence.text,
+                    text = %es.sentence_text,
                     "[fake] would export sentence to Anki",
                 );
             }
@@ -249,25 +248,19 @@ mod tests {
 
     #[tokio::test]
     async fn fake_anki_exporter_returns_correct_count() {
-        use crate::models::Sentence;
-
         let exporter = FakeAnkiExporter;
         let sentences = vec![
             ExportSentence {
-                sentence: Sentence {
-                    id: 1, job_id: 1, text: "test".into(),
-                    start_time: 0.0, end_time: 1.0, created_at: "0".into(),
-                },
+                sentence_text: "test".into(),
+                source: "test (0:00)".into(),
                 screenshot_path: None, audio_clip_path: None,
                 target_word: Some("test".into()), definition: None,
                 vocab_furigana: None, vocab_pitch_num: None, sentence_html: None,
                 llm_definition: None,
             },
             ExportSentence {
-                sentence: Sentence {
-                    id: 2, job_id: 1, text: "test2".into(),
-                    start_time: 1.0, end_time: 2.0, created_at: "0".into(),
-                },
+                sentence_text: "test2".into(),
+                source: "test (0:01)".into(),
                 screenshot_path: None, audio_clip_path: None,
                 target_word: None, definition: None,
                 vocab_furigana: None, vocab_pitch_num: None, sentence_html: None,
@@ -275,7 +268,7 @@ mod tests {
             },
         ];
 
-        let count = exporter.export_sentences(sentences, "test".into()).await.unwrap();
+        let count = exporter.export_sentences(sentences).await.unwrap();
         assert_eq!(count, 2);
     }
 }

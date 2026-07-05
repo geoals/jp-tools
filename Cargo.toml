@@ -1,3 +1,3 @@
 [workspace]
 resolver = "3"
-members = ["jp-core", "yt-mine"]
+members = ["jp-core", "jp-mine-core", "yt-mine", "manga-mine"]
