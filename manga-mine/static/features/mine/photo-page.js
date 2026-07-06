@@ -4,6 +4,7 @@ import { photoUrl, ocrCrop, exportCard, markPhoto, fetchQueue, fetchSources } fr
 import { navigate } from '../../router.js';
 import { CropBox } from './crop-box.js';
 import { WordPreview } from './word-preview.js';
+import { exportsPending, exportError, queueVersion } from './state.js';
 
 export function PhotoPage({ name }) {
   const [rect, setRect] = useState(null);          // crop in displayed px
@@ -54,18 +55,20 @@ export function PhotoPage({ name }) {
     }
   }
 
-  async function runOcr() {
+  // Runs automatically when the crop drag is released
+  async function runOcr(box) {
     const el = containerRef.current;
-    if (!rect || !el) return;
+    const r = box || rect;
+    if (!r || !r.w || !el) return;
     setOcrLoading(true);
     setError(null);
     setSelection(null);
     try {
       const fractions = {
-        x: rect.x / el.clientWidth,
-        y: rect.y / el.clientHeight,
-        w: rect.w / el.clientWidth,
-        h: rect.h / el.clientHeight,
+        x: r.x / el.clientWidth,
+        y: r.y / el.clientHeight,
+        w: r.w / el.clientWidth,
+        h: r.h / el.clientHeight,
       };
       setOcr(await ocrCrop(name, fractions));
     } catch (e) {
@@ -83,20 +86,28 @@ export function PhotoPage({ name }) {
     }
   }
 
-  async function handleExport() {
+  // Fire-and-forget: move on immediately, let the Anki work (compress +
+  // media upload + addNote, ~1.5s to a phone) finish in the background.
+  // The photo is only deleted after the export succeeds, so a failure
+  // leaves it in the queue to redo.
+  function handleExport() {
     if (!selection) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const sentence = ocr.sentences[selection.sentenceIdx].text;
-      await exportCard(name, sentence, selection.word, source.trim() || null);
-      await markPhoto(name, 'processed');
-      await goNext();
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
-    }
+    const word = selection.word;
+    const sentence = ocr.sentences[selection.sentenceIdx].text;
+
+    exportsPending.value += 1;
+    exportCard(name, sentence, word, source.trim() || null)
+      .then(() => markPhoto(name, 'processed'))
+      .then(() => {
+        exportsPending.value -= 1;
+        queueVersion.value += 1;
+      })
+      .catch((e) => {
+        exportsPending.value -= 1;
+        exportError.value = `${word}: ${e.message}`;
+      });
+
+    goNext();
   }
 
   async function handleSkip() {
@@ -116,7 +127,7 @@ export function PhotoPage({ name }) {
     <div class="photo-page">
       <p class="helper-text">
         ${ocr == null
-          ? 'Drag a box around the text, then run OCR.'
+          ? (ocrLoading ? 'Reading…' : 'Drag a box around the text — OCR runs when you let go.')
           : 'Tap the word you want to mine.'}
       </p>
 
@@ -124,21 +135,20 @@ export function PhotoPage({ name }) {
         src=${photoUrl(name)}
         rect=${rect}
         setRect=${setRect}
+        onRelease=${runOcr}
         disabled=${ocrLoading || busy || ocr != null}
         containerRef=${containerRef}
       />
 
       <div class="photo-actions">
-        ${ocr == null
-          ? html`
-            <button onClick=${runOcr} disabled=${!rect || !rect.w || ocrLoading || busy}>
-              ${ocrLoading ? html`<span class="spinner"></span> Reading…` : 'Run OCR'}
-            </button>`
-          : html`
-            <button class="secondary" onClick=${() => { setOcr(null); setSelection(null); }} disabled=${busy}>
-              Re-crop
-            </button>`
-        }
+        ${ocrLoading && html`
+          <button disabled><span class="spinner"></span> Reading…</button>
+        `}
+        ${ocr != null && html`
+          <button class="secondary" onClick=${() => { setOcr(null); setSelection(null); }} disabled=${busy}>
+            Re-crop
+          </button>
+        `}
         <button class="secondary" onClick=${handleSkip} disabled=${busy || ocrLoading}>
           Skip photo
         </button>
@@ -194,7 +204,7 @@ export function PhotoPage({ name }) {
 
           <div class="export-bar">
             <button onClick=${handleExport} disabled=${!selection || busy}>
-              ${busy ? html`<span class="spinner"></span> Exporting…` : 'Export to Anki'}
+              Export to Anki
             </button>
             ${selection && html`
               <span class="export-hint">

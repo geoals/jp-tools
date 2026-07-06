@@ -5,8 +5,9 @@ import { useRef } from 'preact/hooks';
  * Drag-a-box crop overlay on top of the photo. Works with mouse and touch
  * (pointer events). `rect` is in displayed pixels relative to the container;
  * the parent converts to fractions when calling the OCR endpoint.
+ * `onRelease(rect)` fires when a drag ends with a usable box.
  */
-export function CropBox({ src, rect, setRect, disabled, containerRef }) {
+export function CropBox({ src, rect, setRect, onRelease, disabled, containerRef }) {
   const dragStart = useRef(null);
 
   function relPos(e) {
@@ -46,7 +47,16 @@ export function CropBox({ src, rect, setRect, disabled, containerRef }) {
     dragStart.current = null;
     if (Math.abs(p.x - s.x) < 8 || Math.abs(p.y - s.y) < 8) {
       setRect(null); // too small — treat as a tap that clears the box
+      return;
     }
+    const finalRect = {
+      x: Math.min(s.x, p.x),
+      y: Math.min(s.y, p.y),
+      w: Math.abs(p.x - s.x),
+      h: Math.abs(p.y - s.y),
+    };
+    setRect(finalRect);
+    if (onRelease) onRelease(finalRect);
   }
 
   return html`

@@ -2,6 +2,7 @@ import { html } from 'htm/preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { fetchQueue, uploadPhoto, thumbUrl } from '../../api.js';
 import { navigate } from '../../router.js';
+import { queueVersion } from './state.js';
 
 export function QueuePage() {
   const [photos, setPhotos] = useState(null);
@@ -19,7 +20,9 @@ export function QueuePage() {
     }
   }
 
-  useEffect(() => { refresh(); }, []);
+  // Re-fetch when a background export completes (the exported photo is
+  // deleted only once the export succeeds)
+  useEffect(() => { refresh(); }, [queueVersion.value]);
 
   async function handleFiles(e) {
     const files = Array.from(e.target.files || []);
