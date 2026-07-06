@@ -17,6 +17,7 @@ pub struct AnkiConfig {
     pub field_source: Option<String>,
     pub field_furigana: Option<String>,
     pub field_pitch_num: Option<String>,
+    pub field_frequency: Option<String>,
     pub field_llm_definition: Option<String>,
     /// Tags added to every exported note (set per application).
     pub tags: Vec<String>,
@@ -35,6 +36,7 @@ impl Default for AnkiConfig {
             field_source: Some("Document".into()),
             field_furigana: Some("VocabFurigana".into()),
             field_pitch_num: Some("VocabPitchNum".into()),
+            field_frequency: Some("Frequency".into()),
             field_llm_definition: Some("LLMDef".into()),
             tags: Vec::new(),
         }
@@ -91,6 +93,10 @@ impl AnkiConfig {
             field_pitch_num: anki_field(
                 "JP_TOOLS_ANKI_FIELD_PITCH_NUM",
                 defaults.field_pitch_num.as_deref().unwrap_or(""),
+            ),
+            field_frequency: anki_field(
+                "JP_TOOLS_ANKI_FIELD_FREQUENCY",
+                defaults.field_frequency.as_deref().unwrap_or(""),
             ),
             field_llm_definition: anki_field(
                 "JP_TOOLS_ANKI_FIELD_LLM_DEFINITION",

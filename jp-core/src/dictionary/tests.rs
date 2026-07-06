@@ -80,6 +80,69 @@ fn parse_pitch_bank_skips_malformed_entries() {
 }
 
 #[test]
+fn parse_freq_bank_bccwj_format() {
+    // BCCWJ (and most Kuuuube dicts): {"reading": ..., "frequency": N}
+    let json = r#"[
+        ["言う", "freq", {"reading": "いう", "frequency": 18}],
+        ["言う", "freq", {"reading": "いう", "frequency": 24}],
+        ["言う", "freq", {"reading": "ゆう", "frequency": 318}]
+    ]"#;
+    let entries = parse_freq_bank(json).unwrap();
+    assert_eq!(
+        entries,
+        vec![
+            ("言う".to_string(), 18),
+            ("言う".to_string(), 24),
+            ("言う".to_string(), 318),
+        ]
+    );
+}
+
+#[test]
+fn parse_freq_bank_format_variants() {
+    let json = r#"[
+        ["語一", "freq", 42],
+        ["語二", "freq", "43"],
+        ["語三", "freq", {"value": 44, "displayValue": "44㋕"}],
+        ["語四", "freq", {"reading": "ごし", "frequency": {"value": 45, "displayValue": "45"}}]
+    ]"#;
+    let entries = parse_freq_bank(json).unwrap();
+    assert_eq!(
+        entries,
+        vec![
+            ("語一".to_string(), 42),
+            ("語二".to_string(), 43),
+            ("語三".to_string(), 44),
+            ("語四".to_string(), 45),
+        ]
+    );
+}
+
+#[test]
+fn parse_freq_bank_skips_pitch_and_malformed_entries() {
+    let json = r#"[
+        ["飲む", "pitch", {"reading": "のむ", "pitches": [{"position": 1}]}],
+        ["食べる"],
+        ["bad", "freq", {"displayValue": "no number"}],
+        ["良い", "freq", 7]
+    ]"#;
+    let entries = parse_freq_bank(json).unwrap();
+    assert_eq!(entries, vec![("良い".to_string(), 7)]);
+}
+
+#[tokio::test]
+async fn lookup_frequency_returns_min_rank_per_term() {
+    let mut dict = Dictionary::from_entries(vec![]);
+    dict.set_freq(vec![
+        ("言う".to_string(), 24),
+        ("言う".to_string(), 18),
+        ("言う".to_string(), 318),
+    ]);
+    assert_eq!(dict.lookup_frequency("言う").await, Some(18));
+    assert_eq!(dict.lookup_frequency("missing").await, None);
+}
+
+#[test]
 fn extract_text_from_plain_string() {
     let v = Value::String("hello".into());
     assert_eq!(extract_text_from_content(&v), "hello");
@@ -319,8 +382,11 @@ async fn load_from_zip_parses_term_meta_bank_pitch() {
         zip.start_file("term_meta_bank_1.json", options).unwrap();
         std::io::Write::write_all(
             &mut zip,
-            r#"[["食べる", "pitch", {"reading": "たべる", "pitches": [{"position": 2}]}]]"#
-                .as_bytes(),
+            r#"[
+                ["食べる", "pitch", {"reading": "たべる", "pitches": [{"position": 2}]}],
+                ["食べる", "freq", {"reading": "たべる", "frequency": 500}]
+            ]"#
+            .as_bytes(),
         )
         .unwrap();
 
@@ -333,6 +399,7 @@ async fn load_from_zip_parses_term_meta_bank_pitch() {
     assert_eq!(pitch.len(), 1);
     assert_eq!(pitch[0].reading, "たべる");
     assert_eq!(pitch[0].positions, vec![2]);
+    assert_eq!(dict.lookup_frequency("食べる").await, Some(500));
 }
 
 #[tokio::test]

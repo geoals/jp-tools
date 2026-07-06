@@ -35,6 +35,8 @@ enum DictionaryStorage {
     InMemory {
         entries: HashMap<String, Vec<DictionaryEntry>>,
         pitch: HashMap<String, Vec<PitchEntry>>,
+        /// Best (lowest) frequency rank per term.
+        freq: HashMap<String, i64>,
     },
     Sqlite {
         pool: SqlitePool,
@@ -82,6 +84,18 @@ impl Dictionary {
             }
             DictionaryStorage::Sqlite { pool, dict_id } => {
                 crate::db::lookup_pitch_entries(pool, *dict_id, term)
+                    .await
+                    .unwrap_or_default()
+            }
+        }
+    }
+
+    /// Look up the best (lowest) frequency rank by exact headword match.
+    pub async fn lookup_frequency(&self, term: &str) -> Option<i64> {
+        match &self.storage {
+            DictionaryStorage::InMemory { freq, .. } => freq.get(term).copied(),
+            DictionaryStorage::Sqlite { pool, dict_id } => {
+                crate::db::lookup_frequency(pool, *dict_id, term)
                     .await
                     .unwrap_or_default()
             }
@@ -340,6 +354,50 @@ fn parse_pitch_entry(value: &Value) -> Option<(String, PitchEntry)> {
     ))
 }
 
+/// Parse frequency entries from a Yomitan `term_meta_bank_*.json` string.
+/// Each entry is a 3-element array: `[term, "freq", <data>]`.
+/// Non-freq entries (e.g. "pitch") are skipped, as are malformed entries.
+pub fn parse_freq_bank(json: &str) -> Result<Vec<(String, i64)>, DictionaryError> {
+    let value: Value =
+        serde_json::from_str(json).map_err(|e| DictionaryError::Load(e.to_string()))?;
+    let arr = value
+        .as_array()
+        .ok_or_else(|| DictionaryError::Load("freq bank is not an array".into()))?;
+
+    Ok(arr.iter().filter_map(|v| parse_freq_entry(v)).collect())
+}
+
+fn parse_freq_entry(value: &Value) -> Option<(String, i64)> {
+    let arr = value.as_array()?;
+    if arr.len() < 3 {
+        return None;
+    }
+    let term = arr[0].as_str()?;
+    let kind = arr[1].as_str()?;
+    if kind != "freq" {
+        return None;
+    }
+    let rank = freq_value(&arr[2])?;
+    Some((term.to_string(), rank))
+}
+
+/// Extract the numeric rank from a Yomitan freq data value. Handles the
+/// format variants in the wild: a bare number, a numeric string,
+/// `{"value": N, ...}`, and `{"reading": ..., "frequency": <any of these>}`.
+fn freq_value(value: &Value) -> Option<i64> {
+    match value {
+        Value::Number(n) => n.as_i64(),
+        Value::String(s) => s.trim().parse().ok(),
+        Value::Object(obj) => {
+            if let Some(v) = obj.get("value") {
+                return v.as_i64();
+            }
+            obj.get("frequency").and_then(freq_value)
+        }
+        _ => None,
+    }
+}
+
 /// Read a zip entry as a UTF-8 string, falling back to raw decompression
 /// (skipping CRC validation) if the normal read fails with "Invalid checksum".
 /// Some Yomitan zips (e.g. NHK pitch accent) have incorrect CRC values.
@@ -413,8 +471,12 @@ impl Dictionary {
         Self::load_from_reader(file)
     }
 
-    /// Parse only pitch data from a zip, for backfilling existing cached dicts.
-    fn load_pitch_from_zip(path: &Path) -> Result<Vec<(String, PitchEntry)>, DictionaryError> {
+    /// Parse only meta bank (pitch + frequency) data from a zip, for
+    /// backfilling existing cached dicts.
+    #[allow(clippy::type_complexity)]
+    fn load_meta_from_zip(
+        path: &Path,
+    ) -> Result<(Vec<(String, PitchEntry)>, Vec<(String, i64)>), DictionaryError> {
         let file = std::fs::File::open(path)
             .map_err(|e| DictionaryError::Load(format!("failed to open {}: {e}", path.display())))?;
         let mut archive = zip::ZipArchive::new(file)
@@ -433,12 +495,13 @@ impl Dictionary {
             .collect();
 
         let mut all_pitch = Vec::new();
+        let mut all_freq = Vec::new();
         for name in &meta_bank_names {
             let contents = read_zip_entry(&mut archive, name)?;
-            let pitch_entries = parse_pitch_bank(&contents)?;
-            all_pitch.extend(pitch_entries);
+            all_pitch.extend(parse_pitch_bank(&contents)?);
+            all_freq.extend(parse_freq_bank(&contents)?);
         }
-        Ok(all_pitch)
+        Ok((all_pitch, all_freq))
     }
 
     /// Load a Yomitan dictionary from any reader implementing `Read + Seek`.
@@ -474,21 +537,24 @@ impl Dictionary {
         }
 
         let mut all_pitch: Vec<(String, PitchEntry)> = Vec::new();
+        let mut all_freq: Vec<(String, i64)> = Vec::new();
         for name in &meta_bank_names {
             let contents = read_zip_entry(&mut archive, name)?;
-            let pitch_entries = parse_pitch_bank(&contents)?;
-            all_pitch.extend(pitch_entries);
+            all_pitch.extend(parse_pitch_bank(&contents)?);
+            all_freq.extend(parse_freq_bank(&contents)?);
         }
 
         info!(
             files = term_bank_names.len(),
             entries = all_entries.len(),
             pitch_entries = all_pitch.len(),
+            freq_entries = all_freq.len(),
             "loaded dictionary"
         );
         let mut dict = Self::from_entries(all_entries);
         dict.title = title;
         dict.set_pitch(all_pitch);
+        dict.set_freq(all_freq);
         Ok(dict)
     }
 }
@@ -507,6 +573,22 @@ impl Dictionary {
         *pitch = map;
     }
 
+    /// Populate frequency data from a list of `(term, rank)` pairs, keeping
+    /// the lowest (most common) rank per term.
+    /// Only valid for `InMemory`-backed dictionaries (used during zip parsing and tests).
+    pub fn set_freq(&mut self, entries: Vec<(String, i64)>) {
+        let DictionaryStorage::InMemory { ref mut freq, .. } = self.storage else {
+            panic!("set_freq called on Sqlite-backed dictionary");
+        };
+        let mut map: HashMap<String, i64> = HashMap::new();
+        for (term, rank) in entries {
+            map.entry(term)
+                .and_modify(|r| *r = (*r).min(rank))
+                .or_insert(rank);
+        }
+        *freq = map;
+    }
+
     /// Build a dictionary from a list of parsed entries.
     /// Title defaults to "Unknown"; `load_from_reader` overrides with the zip's index.json title.
     pub fn from_entries(entries: Vec<DictionaryEntry>) -> Self {
@@ -523,6 +605,7 @@ impl Dictionary {
             storage: DictionaryStorage::InMemory {
                 entries: map,
                 pitch: HashMap::new(),
+                freq: HashMap::new(),
             },
         }
     }
@@ -539,15 +622,24 @@ impl Dictionary {
         let path_str = path.to_string_lossy();
 
         if let Some((id, title)) = db::find_dictionary(pool, &path_str).await? {
-            // Handle existing cached dicts that were imported before pitch support:
-            // if pitch table is empty but the zip might have pitch data, re-parse it.
-            if !db::has_pitch_entries(pool, id).await? && path.exists() {
-                if let Ok(fresh_pitch) = Self::load_pitch_from_zip(path) {
-                    if !fresh_pitch.is_empty() {
+            // Handle existing cached dicts that were imported before pitch or
+            // frequency support: if either table is empty but the zip might
+            // have that data, re-parse its meta banks.
+            let needs_pitch = !db::has_pitch_entries(pool, id).await?;
+            let needs_freq = !db::has_frequency_entries(pool, id).await?;
+            if (needs_pitch || needs_freq) && path.exists() {
+                if let Ok((fresh_pitch, fresh_freq)) = Self::load_meta_from_zip(path) {
+                    if needs_pitch && !fresh_pitch.is_empty() {
                         let mut tx = pool.begin().await?;
                         db::insert_pitch_entries(&mut tx, id, &fresh_pitch).await?;
                         tx.commit().await?;
                         info!(title = %title, pitch = fresh_pitch.len(), "backfilled pitch data into cache");
+                    }
+                    if needs_freq && !fresh_freq.is_empty() {
+                        let mut tx = pool.begin().await?;
+                        db::insert_frequency_entries(&mut tx, id, &fresh_freq).await?;
+                        tx.commit().await?;
+                        info!(title = %title, freq = fresh_freq.len(), "backfilled frequency data into cache");
                     }
                 }
             }
@@ -558,7 +650,7 @@ impl Dictionary {
 
         // Not cached — load from zip and store in db atomically
         let dict = Self::load_from_zip(path)?;
-        let DictionaryStorage::InMemory { ref entries, ref pitch } = dict.storage else {
+        let DictionaryStorage::InMemory { ref entries, ref pitch, ref freq } = dict.storage else {
             unreachable!("load_from_zip always creates InMemory");
         };
         let entries_vec: Vec<DictionaryEntry> =
@@ -569,6 +661,8 @@ impl Dictionary {
                 entries.iter().map(move |e| (term.clone(), e.clone()))
             })
             .collect();
+        let freq_vec: Vec<(String, i64)> =
+            freq.iter().map(|(term, rank)| (term.clone(), *rank)).collect();
         let dict_id = db::import_dictionary(pool, &dict.title, &path_str, &entries_vec).await?;
 
         if !pitch_vec.is_empty() {
@@ -577,10 +671,17 @@ impl Dictionary {
             tx.commit().await?;
         }
 
+        if !freq_vec.is_empty() {
+            let mut tx = pool.begin().await?;
+            db::insert_frequency_entries(&mut tx, dict_id, &freq_vec).await?;
+            tx.commit().await?;
+        }
+
         info!(
             title = %dict.title,
             entries = entries_vec.len(),
             pitch = pitch_vec.len(),
+            freq = freq_vec.len(),
             "imported dictionary into cache"
         );
         Ok(Self::from_sqlite(pool.clone(), dict_id, dict.title))

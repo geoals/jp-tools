@@ -30,6 +30,8 @@ pub struct ExportSentence {
     pub vocab_furigana: Option<String>,
     /// Pitch accent downstep position(s), e.g. `"0"` or `"0,3"`.
     pub vocab_pitch_num: Option<String>,
+    /// Frequency rank of the target word (lower = more common), e.g. 2000.
+    pub vocab_frequency: Option<i64>,
     /// Sentence text with the target word wrapped in `<b></b>` for Anki display.
     pub sentence_html: Option<String>,
     /// LLM-generated definition/explanation of the target word.
@@ -60,6 +62,8 @@ pub struct NoteData {
     pub audio_clip_filename: Option<String>,
     pub vocab_furigana: String,
     pub vocab_pitch_num: String,
+    /// Frequency rank as a plain number string, empty when unknown.
+    pub vocab_frequency: String,
     pub llm_definition: String,
 }
 
@@ -107,6 +111,9 @@ pub fn build_add_note_request(n: &NoteData, config: &AnkiConfig) -> Value {
     if let Some(ref f) = config.field_pitch_num {
         fields.insert(f.clone(), json!(n.vocab_pitch_num));
     }
+    if let Some(ref f) = config.field_frequency {
+        fields.insert(f.clone(), json!(n.vocab_frequency));
+    }
     if let Some(ref f) = config.field_llm_definition {
         fields.insert(f.clone(), json!(n.llm_definition));
     }
@@ -146,6 +153,7 @@ fn build_create_model_request(config: &AnkiConfig) -> Value {
         config.field_source.as_deref(),
         config.field_furigana.as_deref(),
         config.field_pitch_num.as_deref(),
+        config.field_frequency.as_deref(),
         config.field_llm_definition.as_deref(),
     ]
     .into_iter()
@@ -420,6 +428,10 @@ impl AnkiExporter for AnkiConnectExporter {
                     audio_clip_filename,
                     vocab_furigana: es.vocab_furigana.clone().unwrap_or_default(),
                     vocab_pitch_num: es.vocab_pitch_num.clone().unwrap_or_default(),
+                    vocab_frequency: es
+                        .vocab_frequency
+                        .map(|f| f.to_string())
+                        .unwrap_or_default(),
                     llm_definition: es.llm_definition.clone().unwrap_or_default(),
                 };
 
@@ -465,6 +477,7 @@ mod tests {
             audio_clip_filename: Some("yt-mine_1_1.mp3".into()),
             vocab_furigana: "テスト".into(),
             vocab_pitch_num: "0".into(),
+            vocab_frequency: "2000".into(),
             llm_definition: "".into(),
         };
 
@@ -491,6 +504,7 @@ mod tests {
         assert_eq!(result_note["fields"]["VocabDef"], "test");
         assert_eq!(result_note["fields"]["VocabFurigana"], "テスト");
         assert_eq!(result_note["fields"]["VocabPitchNum"], "0");
+        assert_eq!(result_note["fields"]["Frequency"], "2000");
 
         // AnkiconnectAndroid requires the full options object
         let options = &result_note["options"];
@@ -513,6 +527,7 @@ mod tests {
             audio_clip_filename: None,
             vocab_furigana: "".into(),
             vocab_pitch_num: "".into(),
+            vocab_frequency: "".into(),
             llm_definition: "".into(),
         };
 
@@ -525,6 +540,7 @@ mod tests {
         assert_eq!(fields["VocabDef"], "");
         assert_eq!(fields["VocabFurigana"], "");
         assert_eq!(fields["VocabPitchNum"], "");
+        assert_eq!(fields["Frequency"], "");
     }
 
     #[test]
@@ -540,6 +556,7 @@ mod tests {
             field_source: None,
             field_furigana: None,
             field_pitch_num: None,
+            field_frequency: None,
             field_llm_definition: None,
             tags: vec![],
         };
@@ -553,6 +570,7 @@ mod tests {
             audio_clip_filename: Some("clip.mp3".into()),
             vocab_furigana: "テスト".into(),
             vocab_pitch_num: "".into(),
+            vocab_frequency: "500".into(),
             llm_definition: "llm def".into(),
         }];
 
@@ -567,6 +585,7 @@ mod tests {
         assert!(fields.get("Document").is_none());
         assert!(fields.get("VocabFurigana").is_none());
         assert!(fields.get("VocabPitchNum").is_none());
+        assert!(fields.get("Frequency").is_none());
         assert!(fields.get("LLMDef").is_none());
     }
 
@@ -583,6 +602,7 @@ mod tests {
             field_source: Some("Origin".into()),
             field_furigana: Some("Furigana".into()),
             field_pitch_num: Some("PitchNum".into()),
+            field_frequency: Some("FreqRank".into()),
             field_llm_definition: Some("AIDef".into()),
             tags: vec![],
         };
@@ -596,6 +616,7 @@ mod tests {
             audio_clip_filename: None,
             vocab_furigana: "語[ご]".into(),
             vocab_pitch_num: "1".into(),
+            vocab_frequency: "1234".into(),
             llm_definition: "ai definition".into(),
         }];
 
@@ -609,6 +630,7 @@ mod tests {
         assert_eq!(note["fields"]["Context"], "文");
         assert_eq!(note["fields"]["Furigana"], "語[ご]");
         assert_eq!(note["fields"]["PitchNum"], "1");
+        assert_eq!(note["fields"]["FreqRank"], "1234");
         assert_eq!(note["fields"]["AIDef"], "ai definition");
     }
 
@@ -636,6 +658,7 @@ mod tests {
             definition: None,
             vocab_furigana: None,
             vocab_pitch_num: None,
+            vocab_frequency: None,
             sentence_html: None,
             llm_definition: None,
         }];

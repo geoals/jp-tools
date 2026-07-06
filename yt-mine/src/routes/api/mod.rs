@@ -77,6 +77,7 @@ struct PreviewResponse {
     word: String,
     reading: String,
     pitch_num: Option<String>,
+    frequency: Option<i64>,
     definition_html: Option<String>,
 }
 
@@ -252,6 +253,7 @@ pub async fn word_preview(
         word: query.word,
         reading: result.reading,
         pitch_num: result.pitch_num,
+        frequency: result.frequency,
         definition_html: result.definition_html,
     })
     .into_response())
@@ -370,13 +372,19 @@ pub async fn export_sentences(
 
         let target_word = target_word_map.get(&sentence.id).cloned();
 
-        let (definition, vocab_furigana, vocab_pitch_num) = if let Some(word) = &target_word {
-            let result = lookup_word(&state.dictionaries, word).await;
-            let furigana = format_furigana(word, &result.reading);
-            (result.definition_html, Some(furigana), result.pitch_num)
-        } else {
-            (None, None, None)
-        };
+        let (definition, vocab_furigana, vocab_pitch_num, vocab_frequency) =
+            if let Some(word) = &target_word {
+                let result = lookup_word(&state.dictionaries, word).await;
+                let furigana = format_furigana(word, &result.reading);
+                (
+                    result.definition_html,
+                    Some(furigana),
+                    result.pitch_num,
+                    result.frequency,
+                )
+            } else {
+                (None, None, None, None)
+            };
 
         let mut llm_definition = None;
         if let (Some(word), Some(definer)) = (&target_word, &state.llm_definer) {
@@ -403,6 +411,7 @@ pub async fn export_sentences(
             definition,
             vocab_furigana,
             vocab_pitch_num,
+            vocab_frequency,
             sentence_html,
             llm_definition,
         });

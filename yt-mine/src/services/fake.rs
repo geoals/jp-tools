@@ -255,7 +255,7 @@ mod tests {
                 source: "test (0:00)".into(),
                 screenshot_path: None, audio_clip_path: None,
                 target_word: Some("test".into()), definition: None,
-                vocab_furigana: None, vocab_pitch_num: None, sentence_html: None,
+                vocab_furigana: None, vocab_pitch_num: None, vocab_frequency: None, sentence_html: None,
                 llm_definition: None,
             },
             ExportSentence {
@@ -263,7 +263,7 @@ mod tests {
                 source: "test (0:01)".into(),
                 screenshot_path: None, audio_clip_path: None,
                 target_word: None, definition: None,
-                vocab_furigana: None, vocab_pitch_num: None, sentence_html: None,
+                vocab_furigana: None, vocab_pitch_num: None, vocab_frequency: None, sentence_html: None,
                 llm_definition: None,
             },
         ];

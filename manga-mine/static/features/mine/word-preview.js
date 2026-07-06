@@ -24,6 +24,7 @@ export function WordPreview({ word }) {
         <span class="preview-word">${preview.word}</span>
         ${preview.reading && html`<span class="preview-reading">${preview.reading}</span>`}
         ${preview.pitch_num && html`<span class="preview-pitch">[${preview.pitch_num}]</span>`}
+        ${preview.frequency != null && html`<span class="preview-freq">${preview.frequency}</span>`}
       </div>
       ${preview.definition_html
         ? html`<div class="preview-definitions" dangerouslySetInnerHTML=${{ __html: preview.definition_html }}></div>`

@@ -211,6 +211,14 @@ a.timestamp:hover {
   color: var(--text-muted);
 }
 
+.preview-freq {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+}
+
 /* --- Preview: dictionary & LLM sections --- */
 
 .preview-definitions {

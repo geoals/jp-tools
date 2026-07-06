@@ -7,15 +7,19 @@ pub struct WordLookupResult {
     pub definition_html: Option<String>,
     pub reading: String,
     pub pitch_num: Option<String>,
+    /// Best (lowest) frequency rank across dictionaries, e.g. 2000 = the
+    /// 2000th most common word.
+    pub frequency: Option<i64>,
 }
 
 /// Look a word up across all configured dictionaries. Definitions from every
 /// dictionary that has the word are concatenated (each wrapped in its
-/// dictionary's styling); reading and pitch come from the first hit.
+/// dictionary's styling); reading, pitch and frequency come from the first hit.
 pub async fn lookup_word(dictionaries: &[Arc<Dictionary>], word: &str) -> WordLookupResult {
     let mut def_parts = Vec::new();
     let mut reading = String::new();
     let mut pitch_num = None;
+    let mut frequency = None;
 
     for dict in dictionaries {
         let entries = dict.lookup(word).await;
@@ -37,6 +41,9 @@ pub async fn lookup_word(dictionaries: &[Arc<Dictionary>], word: &str) -> WordLo
                 pitch_num = Some(nums.join(","));
             }
         }
+        if frequency.is_none() {
+            frequency = dict.lookup_frequency(word).await;
+        }
     }
 
     WordLookupResult {
@@ -47,6 +54,7 @@ pub async fn lookup_word(dictionaries: &[Arc<Dictionary>], word: &str) -> WordLo
         },
         reading,
         pitch_num,
+        frequency,
     }
 }
 

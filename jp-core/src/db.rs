@@ -6,12 +6,14 @@ use crate::dictionary::{DictionaryEntry, PitchEntry};
 
 const MIGRATION_DICT: &str = include_str!("../migrations/002_create_dictionary_tables.sql");
 const MIGRATION_PITCH: &str = include_str!("../migrations/003_create_pitch_tables.sql");
+const MIGRATION_FREQ: &str = include_str!("../migrations/004_create_frequency_tables.sql");
 
 /// Run dictionary-related migrations (idempotent).
 /// Call this during application startup after creating the pool.
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     sqlx::raw_sql(MIGRATION_DICT).execute(pool).await?;
     sqlx::raw_sql(MIGRATION_PITCH).execute(pool).await?;
+    sqlx::raw_sql(MIGRATION_FREQ).execute(pool).await?;
 
     // Replace old single-column indexes with composite ones
     sqlx::raw_sql(
@@ -172,6 +174,61 @@ pub async fn lookup_pitch_entries(
             PitchEntry { reading, positions }
         })
         .collect())
+}
+
+/// Insert frequency entries for a dictionary within a transaction.
+/// Batched multi-row inserts: frequency dictionaries can hold 1M+ entries
+/// (e.g. BCCWJ), and per-row round-trips make import take minutes.
+pub async fn insert_frequency_entries(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    dictionary_id: i64,
+    entries: &[(String, i64)],
+) -> Result<(), sqlx::Error> {
+    // 300 rows × 3 binds = 900 variables, safely under SQLite's limit
+    for chunk in entries.chunks(300) {
+        let placeholders = vec!["(?, ?, ?)"; chunk.len()].join(",");
+        let sql = format!(
+            "INSERT INTO dictionary_frequency (dictionary_id, term, frequency) VALUES {placeholders}"
+        );
+        let mut query = sqlx::query(&sql);
+        for (term, freq) in chunk {
+            query = query.bind(dictionary_id).bind(term).bind(freq);
+        }
+        query.execute(&mut **tx).await?;
+    }
+    Ok(())
+}
+
+/// Look up the best (lowest) frequency rank for a term.
+/// Frequency dicts often carry multiple entries per term (readings,
+/// short/long unit words); the minimum rank is the most common usage.
+pub async fn lookup_frequency(
+    pool: &SqlitePool,
+    dictionary_id: i64,
+    term: &str,
+) -> Result<Option<i64>, sqlx::Error> {
+    let row: (Option<i64>,) = sqlx::query_as(
+        "SELECT MIN(frequency) FROM dictionary_frequency WHERE dictionary_id = ? AND term = ?",
+    )
+    .bind(dictionary_id)
+    .bind(term)
+    .fetch_one(pool)
+    .await?;
+    Ok(row.0)
+}
+
+/// Check whether any frequency entries exist for a dictionary.
+pub async fn has_frequency_entries(
+    pool: &SqlitePool,
+    dictionary_id: i64,
+) -> Result<bool, sqlx::Error> {
+    let count: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM dictionary_frequency WHERE dictionary_id = ?",
+    )
+    .bind(dictionary_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(count.0 > 0)
 }
 
 /// Check whether any pitch entries exist for a dictionary.
