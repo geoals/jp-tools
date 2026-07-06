@@ -11,10 +11,15 @@ jp-core tokenization → target word tap → dictionary lookup → Anki export (
 ## Statelessness
 
 - **The inbox folder is the queue** — every image file in `JP_TOOLS_MANGA_INBOX`
-  is an un-mined photo. Mined/skipped = file move into `processed/` / `skipped/`
-  subfolders; re-mining = move the file back.
-- The finished card lives in Anki (image via `storeMediaFile`).
+  is an un-mined photo. Marking a photo mined/skipped **deletes** it (amends
+  ADR-010's file-move): the original lives in the phone gallery, the compressed
+  copy lives in Anki, so the server keeps nothing.
+- The finished card lives in Anki (image via `storeMediaFile`; the temp
+  compressed copy in `JP_TOOLS_MEDIA_DIR` is removed after export).
 - Crop coordinates and OCR text are transient — nothing outlives the request.
+- Remembered manga titles (the card's Document/source field) live in
+  `<inbox>/.sources.json`, most-recent-first; `GET /api/sources` serves them
+  and the UI preselects the latest.
 - The dictionary cache SQLite DB (`JP_TOOLS_DB_PATH`, default `yt-mine.db`) is
   shared with yt-mine; manga-mine only reads/imports dictionaries there.
 

@@ -86,6 +86,14 @@ pub struct ExportRequest {
     photo: String,
     sentence: String,
     target_word: Option<String>,
+    /// Manga title for the card's source/Document field. Falls back to the
+    /// photo filename stem when absent.
+    source: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct SourcesResponse {
+    sources: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -148,6 +156,31 @@ async fn photo_path(state: &AppState, name: &str) -> Result<PathBuf, AppError> {
         return Err(AppError::NotFound);
     }
     Ok(path)
+}
+
+/// Previously used manga titles, most recent first, persisted as a dotfile in
+/// the inbox (invisible to the queue listing). Filesystem-as-state (ADR-010).
+const SOURCES_FILE: &str = ".sources.json";
+const SOURCES_MAX: usize = 30;
+
+async fn read_sources(state: &AppState) -> Vec<String> {
+    let path = state.inbox_dir.join(SOURCES_FILE);
+    match tokio::fs::read_to_string(&path).await {
+        Ok(json) => serde_json::from_str(&json).unwrap_or_default(),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Move (or insert) a source name to the front of the remembered list.
+async fn remember_source(state: &AppState, name: &str) {
+    let mut sources = read_sources(state).await;
+    sources.retain(|s| s != name);
+    sources.insert(0, name.to_string());
+    sources.truncate(SOURCES_MAX);
+    let path = state.inbox_dir.join(SOURCES_FILE);
+    if let Err(e) = tokio::fs::write(&path, serde_json::to_string(&sources).unwrap_or_default()).await {
+        warn!(error = %e, "failed to persist sources list");
+    }
 }
 
 /// Infallible extractor for the client address — `None` when the server runs
@@ -379,6 +412,11 @@ pub async fn ocr_crop(
     Ok(Json(OcrResponse { text, sentences }).into_response())
 }
 
+pub async fn list_sources(State(state): State<AppState>) -> Result<Response, AppError> {
+    let sources = read_sources(&state).await;
+    Ok(Json(SourcesResponse { sources }).into_response())
+}
+
 pub async fn word_preview(
     State(state): State<AppState>,
     Query(query): Query<PreviewQuery>,
@@ -421,6 +459,13 @@ pub async fn export_card(
         .and_then(|s| s.to_str())
         .unwrap_or("photo")
         .to_string();
+    // Card source = manga title when given, photo name stem otherwise
+    let source = body
+        .source
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned);
     let millis = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())
@@ -449,8 +494,8 @@ pub async fn export_card(
 
     let export = ExportSentence {
         sentence_text,
-        source: stem,
-        screenshot_path: Some(image_path),
+        source: source.clone().unwrap_or(stem),
+        screenshot_path: Some(image_path.clone()),
         audio_clip_path: None,
         target_word,
         definition,
@@ -471,7 +516,16 @@ pub async fn export_card(
         };
 
     match exporter.export_sentences(vec![export]).await {
-        Ok(count) => Ok(Json(ExportResponse { count }).into_response()),
+        Ok(count) => {
+            if let Some(name) = &source {
+                remember_source(&state, name).await;
+            }
+            // The image now lives in Anki's media folder — drop the temp copy
+            if let Err(e) = tokio::fs::remove_file(&image_path).await {
+                warn!(error = %e, path = image_path, "failed to remove temp card image");
+            }
+            Ok(Json(ExportResponse { count }).into_response())
+        }
         Err(e) => {
             let raw = e.to_string();
             warn!(error = %raw, "export to Anki failed");
@@ -495,38 +549,24 @@ pub async fn export_card(
     }
 }
 
-/// Mined/skipped state is a file move (ADR-010): the photo leaves the inbox
-/// into `processed/` or `skipped/`. Re-mining = move the file back.
+/// Marking a photo mined or skipped deletes it — the original still lives in
+/// the phone's gallery and the compressed copy lives in Anki, so keeping
+/// full-quality photos on the server only grows the inbox (amends ADR-010's
+/// file-move with deletion; the queue-is-the-folder model is unchanged).
 pub async fn mark_photo(
     State(state): State<AppState>,
     Path(name): Path<String>,
     Json(body): Json<MarkRequest>,
 ) -> Result<Response, AppError> {
-    let subdir = match body.status.as_str() {
-        "processed" => "processed",
-        "skipped" => "skipped",
-        other => {
-            return Err(AppError::BadRequest(format!(
-                "invalid status '{other}' (expected 'processed' or 'skipped')"
-            )));
-        }
-    };
-
-    let src = photo_path(&state, &name).await?;
-    let dest_dir = state.inbox_dir.join(subdir);
-    tokio::fs::create_dir_all(&dest_dir).await?;
-
-    // Avoid clobbering a previously-mined photo with the same name
-    let mut dest = dest_dir.join(safe_name(&name)?);
-    let mut counter = 1;
-    while tokio::fs::try_exists(&dest).await.unwrap_or(false) {
-        let stem = FsPath::new(&name).file_stem().unwrap_or_default().to_string_lossy();
-        let ext = FsPath::new(&name).extension().unwrap_or_default().to_string_lossy();
-        dest = dest_dir.join(format!("{stem}-{counter}.{ext}"));
-        counter += 1;
+    if !matches!(body.status.as_str(), "processed" | "skipped") {
+        return Err(AppError::BadRequest(format!(
+            "invalid status '{}' (expected 'processed' or 'skipped')",
+            body.status
+        )));
     }
 
-    tokio::fs::rename(&src, &dest).await?;
+    let src = photo_path(&state, &name).await?;
+    tokio::fs::remove_file(&src).await?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 

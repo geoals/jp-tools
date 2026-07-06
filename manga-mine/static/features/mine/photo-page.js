@@ -1,6 +1,6 @@
 import { html } from 'htm/preact';
 import { useState, useRef, useEffect } from 'preact/hooks';
-import { photoUrl, ocrCrop, exportCard, markPhoto, fetchQueue } from '../../api.js';
+import { photoUrl, ocrCrop, exportCard, markPhoto, fetchQueue, fetchSources } from '../../api.js';
 import { navigate } from '../../router.js';
 import { CropBox } from './crop-box.js';
 import { WordPreview } from './word-preview.js';
@@ -12,8 +12,20 @@ export function PhotoPage({ name }) {
   const [selection, setSelection] = useState(null); // { sentenceIdx, word }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [source, setSource] = useState('');
+  const [knownSources, setKnownSources] = useState([]);
   const containerRef = useRef(null);
   const errorRef = useRef(null);
+
+  // Remembered manga titles; most recent is preselected
+  useEffect(() => {
+    fetchSources()
+      .then((data) => {
+        setKnownSources(data.sources);
+        if (data.sources.length > 0) setSource(data.sources[0]);
+      })
+      .catch(() => {});
+  }, []);
 
   // The user may be scrolled to the export bar when an error appears higher
   // up the page — bring it into view.
@@ -68,7 +80,7 @@ export function PhotoPage({ name }) {
     setError(null);
     try {
       const sentence = ocr.sentences[selection.sentenceIdx].text;
-      await exportCard(name, sentence, selection.word);
+      await exportCard(name, sentence, selection.word, source.trim() || null);
       await markPhoto(name, 'processed');
       await goNext();
     } catch (e) {
@@ -148,6 +160,21 @@ export function PhotoPage({ name }) {
               </li>
             `)}
           </ul>
+
+          <div class="source-row">
+            <label class="source-label" for="source-input">Source</label>
+            <input
+              id="source-input"
+              type="text"
+              list="source-suggestions"
+              placeholder="Manga title"
+              value=${source}
+              onInput=${(e) => setSource(e.target.value)}
+            />
+            <datalist id="source-suggestions">
+              ${knownSources.map((s) => html`<option key=${s} value=${s} />`)}
+            </datalist>
+          </div>
 
           <div class="export-bar">
             <button onClick=${handleExport} disabled=${!selection || busy}>

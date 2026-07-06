@@ -258,6 +258,48 @@ async fn export_sends_card_with_compressed_image() {
     response.assert_status_ok();
     let body: serde_json::Value = response.json();
     assert_eq!(body["count"], 1);
+
+    // Temp card image is cleaned up after a successful export
+    let leftovers = std::fs::read_dir(env._media.path()).unwrap().count();
+    assert_eq!(leftovers, 0);
+}
+
+#[tokio::test]
+async fn export_uses_source_and_remembers_it() {
+    let mut exporter = MockAnkiExporter::new();
+    exporter
+        .expect_export_sentences()
+        .withf(|sentences| sentences[0].source == "ダンジョン飯")
+        .returning(|sentences| {
+            let count = sentences.len();
+            Box::pin(async move { Ok(count) })
+        });
+
+    let env = build_env(MockOcrEngine::new(), Arc::new(exporter));
+    std::fs::write(env.inbox.path().join("panel.jpg"), test_jpeg_bytes(100, 100)).unwrap();
+
+    let response = env
+        .server
+        .post("/api/export")
+        .json(&serde_json::json!({
+            "photo": "panel.jpg",
+            "sentence": "お前は強い。",
+            "target_word": "強",
+            "source": "ダンジョン飯"
+        }))
+        .await;
+    response.assert_status_ok();
+
+    // Remembered and served most-recent-first
+    let response = env.server.get("/api/sources").await;
+    response.assert_status_ok();
+    let body: serde_json::Value = response.json();
+    assert_eq!(body["sources"], serde_json::json!(["ダンジョン飯"]));
+
+    // Sources dotfile does not appear in the queue
+    let response = env.server.get("/api/queue").await;
+    let body: serde_json::Value = response.json();
+    assert_eq!(body["photos"].as_array().unwrap().len(), 1);
 }
 
 #[tokio::test]
@@ -276,7 +318,7 @@ async fn export_requires_sentence() {
 // --- Mark processed/skipped ---
 
 #[tokio::test]
-async fn mark_moves_photo_out_of_queue() {
+async fn mark_deletes_photo() {
     let env = default_env();
     std::fs::write(env.inbox.path().join("done.jpg"), test_jpeg_bytes(10, 10)).unwrap();
 
@@ -288,7 +330,6 @@ async fn mark_moves_photo_out_of_queue() {
     response.assert_status(axum::http::StatusCode::NO_CONTENT);
 
     assert!(!env.inbox.path().join("done.jpg").exists());
-    assert!(env.inbox.path().join("processed/done.jpg").exists());
 
     // Queue no longer includes it
     let response = env.server.get("/api/queue").await;
@@ -310,7 +351,7 @@ async fn mark_rejects_unknown_status() {
 }
 
 #[tokio::test]
-async fn mark_skipped_moves_to_skipped_folder() {
+async fn mark_skipped_deletes_photo() {
     let env = default_env();
     std::fs::write(env.inbox.path().join("skip.jpg"), test_jpeg_bytes(10, 10)).unwrap();
 
@@ -320,5 +361,5 @@ async fn mark_skipped_moves_to_skipped_folder() {
         .json(&serde_json::json!({ "status": "skipped" }))
         .await;
     response.assert_status(axum::http::StatusCode::NO_CONTENT);
-    assert!(env.inbox.path().join("skipped/skip.jpg").exists());
+    assert!(!env.inbox.path().join("skip.jpg").exists());
 }

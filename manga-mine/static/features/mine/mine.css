@@ -314,6 +314,27 @@ button.secondary:hover {
   filter: invert(100%);
 }
 
+/* --- Source row --- */
+
+.source-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.8rem 0 0;
+}
+
+.source-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.source-row input {
+  flex: 1;
+  max-width: 320px;
+  font-family: "Noto Sans JP", "Hiragino Sans", sans-serif;
+}
+
 /* --- Export bar --- */
 
 .export-bar {

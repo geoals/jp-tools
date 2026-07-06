@@ -53,6 +53,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/photos/{name}/ocr", post(api::ocr_crop))
         .route("/api/photos/{name}/mark", post(api::mark_photo))
         .route("/api/preview", get(api::word_preview))
+        .route("/api/sources", get(api::list_sources))
         .route("/api/export", post(api::export_card))
         .nest_service("/static", ServeDir::new(STATIC_DIR))
         // Phone photos can be large (12MP JPEG ≈ 5–10 MB)

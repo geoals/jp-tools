@@ -44,11 +44,16 @@ export async function fetchPreview(word) {
   return res.json();
 }
 
-export async function exportCard(photo, sentence, targetWord) {
+export async function fetchSources() {
+  const res = await request(`${BASE}/sources`);
+  return res.json();
+}
+
+export async function exportCard(photo, sentence, targetWord, source) {
   const res = await fetch(`${BASE}/export`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ photo, sentence, target_word: targetWord }),
+    body: JSON.stringify({ photo, sentence, target_word: targetWord, source }),
   });
   if (!res.ok) {
     let message = 'Export failed';
