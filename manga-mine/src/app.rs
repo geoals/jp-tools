@@ -3,9 +3,12 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
+use axum::http::HeaderValue;
+use axum::http::header::CACHE_CONTROL;
 use axum::response::Html;
 use axum::routing::{get, post};
 use tower_http::services::ServeDir;
+use tower_http::set_header::SetResponseHeaderLayer;
 
 use jp_core::dictionary::Dictionary;
 use jp_core::tokenize::Tokenizer;
@@ -58,5 +61,12 @@ pub fn build_router(state: AppState) -> Router {
         .nest_service("/static", ServeDir::new(STATIC_DIR))
         // Phone photos can be large (12MP JPEG ≈ 5–10 MB)
         .layer(DefaultBodyLimit::max(50 * 1024 * 1024))
+        // Frontend has no build step / cache busting — force revalidation so
+        // browsers never serve stale modules. Photo/thumb handlers set their
+        // own max-age, which if_not_present leaves alone.
+        .layer(SetResponseHeaderLayer::if_not_present(
+            CACHE_CONTROL,
+            HeaderValue::from_static("no-cache"),
+        ))
         .with_state(state)
 }

@@ -16,6 +16,15 @@ export function PhotoPage({ name }) {
   const [knownSources, setKnownSources] = useState([]);
   const containerRef = useRef(null);
   const errorRef = useRef(null);
+  const resultRef = useRef(null);
+
+  // OCR result = crop locked in; bring the sentences to the top of the
+  // screen so the word list and definition have room without scrolling.
+  useEffect(() => {
+    if (ocr && resultRef.current) {
+      resultRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [ocr]);
 
   // Remembered manga titles; most recent is preselected
   useEffect(() => {
@@ -114,15 +123,22 @@ export function PhotoPage({ name }) {
       <${CropBox}
         src=${photoUrl(name)}
         rect=${rect}
-        setRect=${(r) => { setRect(r); setOcr(null); setSelection(null); }}
-        disabled=${ocrLoading || busy}
+        setRect=${setRect}
+        disabled=${ocrLoading || busy || ocr != null}
         containerRef=${containerRef}
       />
 
       <div class="photo-actions">
-        <button onClick=${runOcr} disabled=${!rect || !rect.w || ocrLoading || busy}>
-          ${ocrLoading ? html`<span class="spinner"></span> Reading…` : 'Run OCR'}
-        </button>
+        ${ocr == null
+          ? html`
+            <button onClick=${runOcr} disabled=${!rect || !rect.w || ocrLoading || busy}>
+              ${ocrLoading ? html`<span class="spinner"></span> Reading…` : 'Run OCR'}
+            </button>`
+          : html`
+            <button class="secondary" onClick=${() => { setOcr(null); setSelection(null); }} disabled=${busy}>
+              Re-crop
+            </button>`
+        }
         <button class="secondary" onClick=${handleSkip} disabled=${busy || ocrLoading}>
           Skip photo
         </button>
@@ -131,7 +147,7 @@ export function PhotoPage({ name }) {
       ${error && html`<div ref=${errorRef} class="error-banner">${error}</div>`}
 
       ${ocr && html`
-        <div class="ocr-result">
+        <div class="ocr-result" ref=${resultRef}>
           ${ocr.sentences.length === 0 && html`
             <p class="helper-text">No text recognized — try a tighter crop.</p>
           `}

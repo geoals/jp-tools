@@ -132,6 +132,14 @@ button.secondary:hover {
 
 /* --- OCR result / sentences (mirrors yt-mine mining UI) --- */
 
+.ocr-result {
+  scroll-margin-top: 0.4rem;
+  /* Reserve a viewport's worth of space so the auto-scroll can put the
+     sentences at the very top, with room below for the word preview to
+     expand without another scroll */
+  min-height: 92vh;
+}
+
 .sentence-list {
   list-style: none;
   display: flex;
