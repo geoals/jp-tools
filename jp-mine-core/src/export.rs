@@ -255,6 +255,10 @@ pub struct AnkiConnectExporter {
     pub anki_url: String,
     pub config: AnkiConfig,
     client: reqwest::Client,
+    /// Whether model/deck setup has already succeeded against this target —
+    /// it only needs to happen once per Anki instance, and skipping it saves
+    /// two round-trips per export (which dominate on slow LAN targets).
+    setup_done: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl AnkiConnectExporter {
@@ -266,6 +270,7 @@ impl AnkiConnectExporter {
                 .pool_max_idle_per_host(0)
                 .build()
                 .expect("failed to build HTTP client"),
+            setup_done: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 }
@@ -277,6 +282,7 @@ async fn send_anki_request(
     body: &Value,
 ) -> Result<Value, ExportError> {
     let action = body["action"].as_str().unwrap_or("?").to_owned();
+    let started = std::time::Instant::now();
     let response = client
         .post(url)
         .json(body)
@@ -288,6 +294,7 @@ async fn send_anki_request(
         .json()
         .await
         .map_err(|e| ExportError::Failed(format!("failed to parse '{action}' response: {e}")))?;
+    debug!(action, elapsed_ms = started.elapsed().as_millis() as u64, "anki request");
 
     // AnkiConnect may return errors as a string or as a non-null JSON value
     match body.get("error") {
@@ -329,42 +336,57 @@ impl AnkiExporter for AnkiConnectExporter {
         let anki_url = self.anki_url.clone();
         let config = self.config.clone();
         let count = sentences.len();
+        let setup_done = std::sync::Arc::clone(&self.setup_done);
 
         Box::pin(async move {
-            // Setup (model/deck creation) is best-effort: subset AnkiConnect
-            // implementations (AnkiconnectAndroid) don't support createModel/
-            // createDeck, and a synced collection already has both. Real
-            // problems still surface on addNote below.
-            match model_exists(&client, &anki_url, &config.model_name).await {
-                Ok(true) => {}
-                Ok(false) => {
-                    info!(model = %config.model_name, "model not found, creating fallback");
-                    if let Err(e) =
-                        send_anki_request(&client, &anki_url, &build_create_model_request(&config))
-                            .await
-                    {
-                        warn!(error = %e, "createModel failed, continuing");
+            let export_started = std::time::Instant::now();
+            let setup_started = std::time::Instant::now();
+            // Setup (model/deck creation) runs once per target and is
+            // best-effort: subset AnkiConnect implementations
+            // (AnkiconnectAndroid) don't support createModel/createDeck, and a
+            // synced collection already has both. Real problems still surface
+            // on addNote below.
+            if !setup_done.load(std::sync::atomic::Ordering::Relaxed) {
+                match model_exists(&client, &anki_url, &config.model_name).await {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        info!(model = %config.model_name, "model not found, creating fallback");
+                        if let Err(e) = send_anki_request(
+                            &client,
+                            &anki_url,
+                            &build_create_model_request(&config),
+                        )
+                        .await
+                        {
+                            warn!(error = %e, "createModel failed, continuing");
+                        }
                     }
+                    Err(e) => warn!(error = %e, "could not check models, continuing"),
                 }
-                Err(e) => warn!(error = %e, "could not check models, continuing"),
+
+                if let Err(e) = send_anki_request(
+                    &client,
+                    &anki_url,
+                    &build_create_deck_request(&config.deck_name),
+                )
+                .await
+                {
+                    warn!(error = %e, "createDeck failed, continuing (deck may already exist)");
+                }
+                setup_done.store(true, std::sync::atomic::Ordering::Relaxed);
             }
 
-            if let Err(e) = send_anki_request(
-                &client,
-                &anki_url,
-                &build_create_deck_request(&config.deck_name),
-            )
-            .await
-            {
-                warn!(error = %e, "createDeck failed, continuing (deck may already exist)");
-            }
+            let setup_ms = setup_started.elapsed().as_millis() as u64;
 
             // Per sentence: upload media, then add the note referencing the
             // *actual* stored filenames — AnkiConnect may rename on store
             // (AnkiconnectAndroid always does), and the response carries the
             // name that ended up in the media folder. addNote (singular) is
             // the lowest common denominator across AnkiConnect implementations.
+            let mut media_ms: u64 = 0;
+            let mut notes_ms: u64 = 0;
             for es in &sentences {
+                let media_started = std::time::Instant::now();
                 let mut screenshot_filename = None;
                 if config.field_image.is_some() {
                     if let Some(path) = &es.screenshot_path {
@@ -380,6 +402,8 @@ impl AnkiExporter for AnkiConnectExporter {
                             upload_media(&client, &anki_url, path, "clip.mp3").await?;
                     }
                 }
+                media_ms += media_started.elapsed().as_millis() as u64;
+                let note_started = std::time::Instant::now();
 
                 let note = NoteData {
                     sentence_text: es
@@ -402,8 +426,17 @@ impl AnkiExporter for AnkiConnectExporter {
                 let add_note_req = build_add_note_request(&note, &config);
                 debug!(request = %add_note_req, "sending addNote to AnkiConnect");
                 send_anki_request(&client, &anki_url, &add_note_req).await?;
+                notes_ms += note_started.elapsed().as_millis() as u64;
             }
 
+            info!(
+                setup_ms,
+                media_ms,
+                notes_ms,
+                total_ms = export_started.elapsed().as_millis() as u64,
+                count,
+                "anki export timing"
+            );
             Ok(count)
         })
     }

@@ -94,6 +94,7 @@ async fn main() {
         use_client_anki: config.use_client_anki && !config.fake_api,
         card_image_max_dim: config.card_image_max_dim,
         card_image_quality: config.card_image_quality,
+        client_anki_cache: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
     };
 
     let router = build_router(state);

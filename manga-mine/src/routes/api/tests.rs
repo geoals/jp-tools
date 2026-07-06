@@ -41,6 +41,7 @@ fn build_env(ocr: MockOcrEngine, exporter: Arc<dyn jp_mine_core::export::AnkiExp
         use_client_anki: false,
         card_image_max_dim: 1280,
         card_image_quality: 80,
+        client_anki_cache: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
     };
 
     TestEnv {

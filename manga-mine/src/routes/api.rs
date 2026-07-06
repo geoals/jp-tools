@@ -204,30 +204,21 @@ impl<S: Send + Sync> FromRequestParts<S> for ClientAddr {
 /// it so the card lands in the collection the user is actually holding.
 /// Probes `http://<client-ip>:8765` with a short timeout; loopback clients
 /// already hit the configured exporter.
-async fn client_anki_url(state: &AppState, client: Option<SocketAddr>) -> Option<String> {
-    if !state.use_client_anki {
-        return None;
-    }
-    let ip = client?.ip();
-    if ip.is_loopback() {
-        return None;
-    }
-    let url = match ip {
-        IpAddr::V4(v4) => format!("http://{v4}:8765"),
-        IpAddr::V6(v6) => format!("http://[{v6}]:8765"),
-    };
-
-    let http = reqwest::Client::builder()
+async fn client_anki_url(url: &str) -> bool {
+    let http = match reqwest::Client::builder()
         .timeout(std::time::Duration::from_millis(1500))
         .build()
-        .ok()?;
+    {
+        Ok(http) => http,
+        Err(_) => return false,
+    };
     let probe = serde_json::json!({ "action": "version", "version": 6 });
 
     // The first packet to a phone on Wi-Fi power-save can take >1s (ARP +
     // radio wake-up), so a single short attempt produces false negatives —
     // retry once.
     for attempt in 1..=2 {
-        match http.post(&url).json(&probe).send().await {
+        match http.post(url).json(&probe).send().await {
             Ok(response) => {
                 let is_anki = response
                     .json::<serde_json::Value>()
@@ -235,11 +226,10 @@ async fn client_anki_url(state: &AppState, client: Option<SocketAddr>) -> Option
                     .ok()
                     .and_then(|body| body.get("result").map(|r| !r.is_null()))
                     .unwrap_or(false);
-                if is_anki {
-                    return Some(url);
+                if !is_anki {
+                    info!(%url, "client responded on 8765 but is not AnkiConnect");
                 }
-                info!(%url, "client responded on 8765 but is not AnkiConnect");
-                return None;
+                return is_anki;
             }
             Err(e) => {
                 tracing::debug!(%url, attempt, error = %e, "client AnkiConnect probe attempt failed");
@@ -247,7 +237,57 @@ async fn client_anki_url(state: &AppState, client: Option<SocketAddr>) -> Option
         }
     }
     info!(%url, "no client AnkiConnect detected, using configured Anki URL");
-    None
+    false
+}
+
+/// TTL for cached client-AnkiConnect probe results.
+const CLIENT_ANKI_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// Resolve the exporter for this request: the client's own AnkiConnect when
+/// one is (or was recently) detected, the configured default otherwise.
+/// Detected exporters are cached per IP so repeat exports skip the probe and
+/// reuse the instance (keeping its one-time model/deck setup).
+async fn exporter_for_client(
+    state: &AppState,
+    client: Option<SocketAddr>,
+) -> Arc<dyn AnkiExporter> {
+    let default = || Arc::clone(&state.exporter);
+    if !state.use_client_anki {
+        return default();
+    }
+    let Some(ip) = client.map(|c| c.ip()).filter(|ip| !ip.is_loopback()) else {
+        return default();
+    };
+
+    let mut cache = state.client_anki_cache.lock().await;
+    if let Some(entry) = cache.get(&ip) {
+        if entry.checked_at.elapsed() < CLIENT_ANKI_TTL {
+            return entry.exporter.clone().unwrap_or_else(default);
+        }
+    }
+
+    let url = match ip {
+        IpAddr::V4(v4) => format!("http://{v4}:8765"),
+        IpAddr::V6(v6) => format!("http://[{v6}]:8765"),
+    };
+    let exporter: Option<Arc<dyn AnkiExporter>> = if client_anki_url(&url).await {
+        info!(%url, "using client AnkiConnect");
+        Some(Arc::new(AnkiConnectExporter::new(
+            url,
+            state.anki_config.clone(),
+        )))
+    } else {
+        None
+    };
+
+    cache.insert(
+        ip,
+        crate::app::ClientAnkiEntry {
+            checked_at: std::time::Instant::now(),
+            exporter: exporter.clone(),
+        },
+    );
+    exporter.unwrap_or_else(default)
 }
 
 fn tokenize_sentence(state: &AppState, text: &str) -> SentenceJson {
@@ -389,26 +429,42 @@ pub async fn ocr_crop(
     Path(name): Path<String>,
     Json(body): Json<OcrRequest>,
 ) -> Result<Response, AppError> {
+    let started = std::time::Instant::now();
     let path = photo_path(&state, &name).await?;
     let bytes = tokio::fs::read(&path).await?;
+    let read_ms = started.elapsed().as_millis() as u64;
 
+    let crop_started = std::time::Instant::now();
     let rect = CropRect { x: body.x, y: body.y, w: body.w, h: body.h };
     let crop = tokio::task::spawn_blocking(move || image_ops::crop_for_ocr(&bytes, rect))
         .await
         .map_err(|e| AppError::Image(format!("crop task failed: {e}")))?
         .map_err(|e| AppError::Image(e.to_string()))?;
+    let crop_ms = crop_started.elapsed().as_millis() as u64;
 
+    let ocr_started = std::time::Instant::now();
     let text = state
         .ocr
         .recognize(crop)
         .await
         .map_err(|e| AppError::Ocr(e.to_string()))?;
+    let ocr_ms = ocr_started.elapsed().as_millis() as u64;
 
+    let tokenize_started = std::time::Instant::now();
     let sentences = split_sentences(&text)
         .iter()
         .map(|s| tokenize_sentence(&state, s))
         .collect();
+    let tokenize_ms = tokenize_started.elapsed().as_millis() as u64;
 
+    info!(
+        read_ms,
+        crop_ms,
+        ocr_ms,
+        tokenize_ms,
+        total_ms = started.elapsed().as_millis() as u64,
+        "ocr timing"
+    );
     Ok(Json(OcrResponse { text, sentences }).into_response())
 }
 
@@ -438,6 +494,7 @@ pub async fn export_card(
     ClientAddr(client): ClientAddr,
     Json(body): Json<ExportRequest>,
 ) -> Result<Response, AppError> {
+    let started = std::time::Instant::now();
     let sentence_text = body.sentence.trim().to_string();
     if sentence_text.is_empty() {
         return Err(AppError::BadRequest("sentence is required".into()));
@@ -445,14 +502,18 @@ pub async fn export_card(
 
     let path = photo_path(&state, &body.photo).await?;
     let bytes = tokio::fs::read(&path).await?;
+    let read_ms = started.elapsed().as_millis() as u64;
 
     // Compress the whole photo for the card image
+    let compress_started = std::time::Instant::now();
     let (max_dim, quality) = (state.card_image_max_dim, state.card_image_quality);
     let compressed =
         tokio::task::spawn_blocking(move || image_ops::compress_photo(&bytes, max_dim, quality))
             .await
             .map_err(|e| AppError::Image(format!("compress task failed: {e}")))?
             .map_err(|e| AppError::Image(e.to_string()))?;
+    let compress_ms = compress_started.elapsed().as_millis() as u64;
+    let compressed_kb = compressed.len() as u64 / 1024;
 
     let stem = FsPath::new(&body.photo)
         .file_stem()
@@ -506,17 +567,22 @@ pub async fn export_card(
     };
 
     // Prefer the client's own AnkiConnect (phone) when it's up
-    let exporter: Arc<dyn AnkiExporter> =
-        match client_anki_url(&state, client).await {
-            Some(url) => {
-                info!(%url, "exporting to client AnkiConnect");
-                Arc::new(AnkiConnectExporter::new(url, state.anki_config.clone()))
-            }
-            None => Arc::clone(&state.exporter),
-        };
+    let probe_started = std::time::Instant::now();
+    let exporter = exporter_for_client(&state, client).await;
+    let probe_ms = probe_started.elapsed().as_millis() as u64;
 
+    let anki_started = std::time::Instant::now();
     match exporter.export_sentences(vec![export]).await {
         Ok(count) => {
+            info!(
+                read_ms,
+                compress_ms,
+                compressed_kb,
+                probe_ms,
+                anki_ms = anki_started.elapsed().as_millis() as u64,
+                total_ms = started.elapsed().as_millis() as u64,
+                "export timing"
+            );
             if let Some(name) = &source {
                 remember_source(&state, name).await;
             }

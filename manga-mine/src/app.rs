@@ -1,5 +1,10 @@
+use std::collections::HashMap;
+use std::net::IpAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
+
+use tokio::sync::Mutex;
 
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
@@ -39,6 +44,15 @@ pub struct AppState {
     /// Card image compression: longest side in pixels and JPEG quality.
     pub card_image_max_dim: u32,
     pub card_image_quality: u8,
+    /// Per-client-IP probe result cache: a found exporter is reused (keeping
+    /// its connection pool and one-time setup), a miss is not re-probed until
+    /// the TTL expires.
+    pub client_anki_cache: Arc<Mutex<HashMap<IpAddr, ClientAnkiEntry>>>,
+}
+
+pub struct ClientAnkiEntry {
+    pub checked_at: Instant,
+    pub exporter: Option<Arc<dyn AnkiExporter>>,
 }
 
 async fn spa_shell() -> Html<&'static str> {
