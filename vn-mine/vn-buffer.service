@@ -1,0 +1,12 @@
+[Unit]
+Description=VN mine audio ring buffer + clipboard line logger
+PartOf=graphical-session.target
+After=graphical-session.target pipewire.service
+
+[Service]
+ExecStart=%h/git/jp-tools/vn-mine/vn-buffer.sh run
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target
