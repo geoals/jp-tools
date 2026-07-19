@@ -114,7 +114,10 @@ Or as part of the stack: `scripts/start-all.sh`.
   lookup→card latency
 - `GET/PUT /api/settings` — `afk_secs`, `session_gap_secs`, `day_rollover_hour`,
   `goal_floor_mins`, `goal_target_mins`, `chars_per_page`, `current_work`,
-  `pace_start_date` (ISO date or "" — clips the finish-estimate pace window)
+  `pace_start_date` (ISO date or "" — clips the finish-estimate pace window;
+  no dashboard control, set it here after a reading break:
+  `curl -X PUT localhost:3200/api/settings -H 'Content-Type: application/json'
+  -d '{"pace_start_date": "2026-07-15"}'`)
 
 ### Counting lookups
 
