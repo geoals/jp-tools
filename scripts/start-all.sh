@@ -6,6 +6,12 @@
 #                                     services that are already running)
 #   scripts/start-all.sh status       show what is running
 #   scripts/start-all.sh stop         stop everything
+#   scripts/start-all.sh restart      restart everything, no prompts
+#
+# Any command takes service names to act on just those, e.g.
+#   scripts/start-all.sh restart read-stats
+#   scripts/start-all.sh stop yt-mine manga-mine
+# A named service is restarted without asking (naming it is the confirmation).
 #
 # Options (for start):
 #   -r, --restart    restart already-running services without asking
@@ -13,12 +19,12 @@
 #   --cpu            use the CPU whisper compose file instead of GPU
 #   --release        build/run the Rust servers in release mode
 #
-# Services managed:
-#   manga-ocr-service  uvicorn (.venv)                     :8200
-#   whisper-service    docker compose (gpu|cpu)            :8100
-#   yt-mine            cargo-built binary                  :3000
-#   manga-mine         cargo-built binary                  :3100
-#   read-stats         cargo-built binary                  :3200
+# Services managed (aliases in parens):
+#   manga-ocr-service  uvicorn (.venv)            :8200  (ocr)
+#   whisper-service    docker compose (gpu|cpu)   :8100  (whisper)
+#   yt-mine            cargo-built binary         :3000  (yt)
+#   manga-mine         cargo-built binary         :3100  (manga)
+#   read-stats         cargo-built binary         :3200  (stats)
 #
 # Logs for the native services go to logs/<name>.log; whisper logs live in
 # docker (docker logs -f whisper-service).
@@ -33,18 +39,50 @@ MODE="ask"          # ask | restart | keep
 WHISPER_FLAVOR="gpu"
 CARGO_PROFILE="debug"
 COMMAND="start"
+SELECTED=()         # empty = all services
+
+# Canonical service name for an argument, or empty if it isn't one.
+canonical_service() {
+  case "$1" in
+    manga-ocr-service|ocr)   echo "manga-ocr-service" ;;
+    whisper-service|whisper) echo "whisper-service" ;;
+    yt-mine|yt)              echo "yt-mine" ;;
+    manga-mine|manga)        echo "manga-mine" ;;
+    read-stats|stats)        echo "read-stats" ;;
+  esac
+}
 
 for arg in "$@"; do
   case "$arg" in
     start|stop|status) COMMAND="$arg" ;;
+    restart)           COMMAND="start"; MODE="restart" ;;
     -r|--restart)      MODE="restart" ;;
     -k|--keep)         MODE="keep" ;;
     --cpu)             WHISPER_FLAVOR="cpu" ;;
     --release)         CARGO_PROFILE="release" ;;
-    -h|--help)         sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "unknown argument: $arg (try --help)" >&2; exit 2 ;;
+    -h|--help)         awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' \
+                         "${BASH_SOURCE[0]}"; exit 0 ;;
+    *)
+      svc="$(canonical_service "$arg")"
+      if [[ -z "$svc" ]]; then
+        echo "unknown argument: $arg (try --help)" >&2; exit 2
+      fi
+      SELECTED+=("$svc") ;;
   esac
 done
+
+# Naming a service is itself the confirmation to restart it.
+if (( ${#SELECTED[@]} > 0 )) && [[ "$MODE" == "ask" ]]; then
+  MODE="restart"
+fi
+
+# True if a service should be acted on: no selection means all of them.
+selected() { # name
+  (( ${#SELECTED[@]} == 0 )) && return 0
+  local s
+  for s in "${SELECTED[@]}"; do [[ "$s" == "$1" ]] && return 0; done
+  return 1
+}
 
 WHISPER_COMPOSE="$REPO_ROOT/whisper-service/docker-compose.${WHISPER_FLAVOR}.yml"
 
@@ -209,10 +247,15 @@ start_rust() { # name port binary
 }
 
 build_rust() {
-  info "building yt-mine + manga-mine + read-stats ($CARGO_PROFILE)"
+  local pkgs=() names=() name
+  for name in yt-mine manga-mine read-stats; do
+    selected "$name" && { pkgs+=(-p "$name"); names+=("$name"); }
+  done
+  (( ${#pkgs[@]} == 0 )) && return 0
+  info "building ${names[*]} ($CARGO_PROFILE)"
   local flags=()
   [[ "$CARGO_PROFILE" == "release" ]] && flags+=(--release)
-  ( cd "$REPO_ROOT" && cargo build -p yt-mine -p manga-mine -p read-stats "${flags[@]}" )
+  ( cd "$REPO_ROOT" && cargo build "${pkgs[@]}" "${flags[@]}" )
 }
 
 # ---------------------------------------------------------------- commands --
@@ -234,31 +277,36 @@ print_status() {
 }
 
 stop_all() {
-  stop_port "read-stats" "$PORT_readstats"
-  stop_port "manga-mine" "$PORT_mangamine"
-  stop_port "yt-mine" "$PORT_ytmine"
-  stop_port "manga-ocr-service" "$PORT_ocr"
-  if whisper_running; then
+  selected "read-stats"        && stop_port "read-stats" "$PORT_readstats"
+  selected "manga-mine"        && stop_port "manga-mine" "$PORT_mangamine"
+  selected "yt-mine"           && stop_port "yt-mine" "$PORT_ytmine"
+  selected "manga-ocr-service" && stop_port "manga-ocr-service" "$PORT_ocr"
+  if selected "whisper-service" && whisper_running; then
     info "stopping whisper-service container"
     docker compose -f "$WHISPER_COMPOSE" down
   fi
-  ok "all services stopped"
+  if (( ${#SELECTED[@]} == 0 )); then
+    ok "all services stopped"
+  else
+    ok "stopped: ${SELECTED[*]}"
+  fi
 }
 
 start_all() {
   mkdir -p "$LOG_DIR"
   build_rust
-  start_whisper
-  start_ocr
-  start_rust "yt-mine" "$PORT_ytmine" "yt-mine"
-  start_rust "manga-mine" "$PORT_mangamine" "manga-mine"
-  start_rust "read-stats" "$PORT_readstats" "read-stats"
+  selected "whisper-service"   && start_whisper
+  selected "manga-ocr-service" && start_ocr
+  selected "yt-mine"    && start_rust "yt-mine" "$PORT_ytmine" "yt-mine"
+  selected "manga-mine" && start_rust "manga-mine" "$PORT_mangamine" "manga-mine"
+  selected "read-stats" && start_rust "read-stats" "$PORT_readstats" "read-stats"
   echo
   print_status
   echo
-  ok "yt-mine:     http://localhost:$PORT_ytmine"
-  ok "manga-mine:  http://localhost:$PORT_mangamine"
-  ok "read-stats:  http://localhost:$PORT_readstats"
+  selected "yt-mine"    && ok "yt-mine:     http://localhost:$PORT_ytmine"
+  selected "manga-mine" && ok "manga-mine:  http://localhost:$PORT_mangamine"
+  selected "read-stats" && ok "read-stats:  http://localhost:$PORT_readstats"
+  return 0
 }
 
 case "$COMMAND" in
