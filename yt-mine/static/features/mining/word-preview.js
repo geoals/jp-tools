@@ -11,19 +11,29 @@ export function WordPreview({ videoId, sentenceId, word }) {
   useEffect(() => {
     setPreview(null);
     setLlmDef(null);
-    setLlmLoading(true);
+    setLlmLoading(false);
 
-    // Abort previous LLM request
+    // Abort any in-flight LLM request from the previous word
     if (abortRef.current) abortRef.current.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+    abortRef.current = null;
 
     // Fetch dictionary preview
     fetchPreview(videoId, sentenceId, word)
       .then(setPreview)
       .catch(() => {});
 
-    // Fetch LLM definition (may take a while)
+    return () => {
+      if (abortRef.current) abortRef.current.abort();
+    };
+  }, [videoId, sentenceId, word]);
+
+  function requestLlmDefinition() {
+    if (llmLoading || llmDef) return;
+    setLlmLoading(true);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     fetchLlmDefinition(videoId, sentenceId, word, controller.signal)
       .then((data) => {
         setLlmDef(data.definition);
@@ -32,9 +42,7 @@ export function WordPreview({ videoId, sentenceId, word }) {
       .catch((err) => {
         if (err.name !== 'AbortError') setLlmLoading(false);
       });
-
-    return () => controller.abort();
-  }, [videoId, sentenceId, word]);
+  }
 
   return html`
     <div class="preview-panel">
@@ -55,7 +63,7 @@ export function WordPreview({ videoId, sentenceId, word }) {
           ? html`<span class="llm-spinner"></span>`
           : llmDef
             ? html`<div class="llm-definition">${llmDef}</div>`
-            : html`<div class="llm-definition llm-unavailable">AI definition unavailable</div>`
+            : html`<button type="button" class="llm-request-btn" onClick=${requestLlmDefinition}>Get AI definition</button>`
         }
       </div>
     </div>

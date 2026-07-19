@@ -339,9 +339,22 @@ a.timestamp:hover {
   color: var(--text);
 }
 
-.llm-definition.llm-unavailable {
+.llm-request-btn {
+  background: none;
+  border: 1px solid var(--border);
   color: var(--text-muted);
-  font-style: italic;
+  padding: 3px 8px;
+  font-size: 0.8rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    background 0.12s;
+}
+
+.llm-request-btn:hover {
+  color: var(--accent);
+  background: var(--bg-hover);
 }
 
 .sentence-list li.exported {
