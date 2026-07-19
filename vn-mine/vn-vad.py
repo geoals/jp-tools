@@ -2,6 +2,8 @@
 # Silero-VAD (v5 onnx) speech boundary detection for vn-capture.sh
 # Usage: vn-vad.py file.wav   (16 kHz mono s16 WAV)
 # Prints "FIRST_START LAST_END" in seconds, or "none" if no speech found.
+# With --segments: one "START END" line per speech segment, finer merging —
+# used by vn-trim.py to snap sentence cuts to real silence boundaries.
 # Env: VN_VAD_THRESHOLD (default 0.5), VN_VAD_MODEL (path to onnx model)
 
 import os
@@ -24,7 +26,11 @@ MERGE_GAP = 1.0      # merge speech segments separated by less than this
 
 
 def main():
-    with wave.open(sys.argv[1], "rb") as w:
+    seg_mode = "--segments" in sys.argv[1:]
+    wav_path = next(a for a in sys.argv[1:] if a != "--segments")
+    merge_gap = 0.15 if seg_mode else MERGE_GAP
+    min_speech = 0.1 if seg_mode else MIN_SPEECH
+    with wave.open(wav_path, "rb") as w:
         assert w.getframerate() == SR and w.getnchannels() == 1 and w.getsampwidth() == 2
         pcm = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
     audio = pcm.astype(np.float32) / 32768.0
@@ -56,14 +62,17 @@ def main():
 
     merged = []
     for s, e in segments:
-        if merged and s * frame - merged[-1][1] * frame < MERGE_GAP:
+        if merged and s * frame - merged[-1][1] * frame < merge_gap:
             merged[-1] = (merged[-1][0], e)
         else:
             merged.append((s, e))
-    merged = [(s, e) for s, e in merged if (e - s) * frame >= MIN_SPEECH]
+    merged = [(s, e) for s, e in merged if (e - s) * frame >= min_speech]
 
     if not merged:
         print("none")
+    elif seg_mode:
+        for s, e in merged:
+            print(f"{s * frame:.3f} {e * frame:.3f}")
     else:
         print(f"{merged[0][0] * frame:.3f} {merged[-1][1] * frame:.3f}")
 

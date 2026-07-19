@@ -11,6 +11,7 @@ manga-ocr-service/*.jpg
 *.db-shm
 *.db-wal
 .env
+/logs/
 *.zip
 *.dic
 __pycache__/

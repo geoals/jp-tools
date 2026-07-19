@@ -40,7 +40,7 @@ def health():
 
 
 @app.post("/transcribe")
-async def transcribe(audio: UploadFile = File(...)):
+async def transcribe(audio: UploadFile = File(...), words: bool = False):
     # Save uploaded audio to a temporary file
     suffix = os.path.splitext(audio.filename or "audio.wav")[1]
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -49,12 +49,15 @@ async def transcribe(audio: UploadFile = File(...)):
 
     def generate():
         try:
-            segments, _info = model.transcribe(tmp_path, language="ja", vad_filter=True)
+            segments, _info = model.transcribe(tmp_path, language="ja", vad_filter=True, word_timestamps=words)
             for segment in segments:
-                line = json.dumps(
-                    {"start": round(segment.start, 2), "end": round(segment.end, 2), "text": segment.text.strip()},
-                    ensure_ascii=False,
-                )
+                payload = {"start": round(segment.start, 2), "end": round(segment.end, 2), "text": segment.text.strip()}
+                if words:
+                    payload["words"] = [
+                        {"word": w.word, "start": round(w.start, 2), "end": round(w.end, 2)}
+                        for w in segment.words
+                    ]
+                line = json.dumps(payload, ensure_ascii=False)
                 yield line + "\n"
         finally:
             os.unlink(tmp_path)

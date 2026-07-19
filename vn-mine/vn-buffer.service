@@ -1,5 +1,5 @@
 [Unit]
-Description=VN mine audio ring buffer + clipboard line logger
+Description=VN mine audio ring buffer + Textractor WebSocket line logger
 PartOf=graphical-session.target
 After=graphical-session.target pipewire.service
 
