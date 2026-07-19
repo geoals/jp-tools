@@ -36,7 +36,9 @@ function Tooltip({ x, y, children }) {
 export function MinutesBarChart({ days, floorMins, targetMins }) {
   const [hover, setHover] = useState(null);
   const H = 230;
-  const m = { top: 16, right: 44, bottom: 24, left: 40 };
+  // Right margin holds the "goal 120" / "floor 60" labels — wide enough that
+  // three-digit goals don't run off the viewBox.
+  const m = { top: 16, right: 56, bottom: 24, left: 40 };
   const plotW = W - m.left - m.right;
   const plotH = H - m.top - m.bottom;
 
@@ -94,6 +96,9 @@ export function MinutesBarChart({ days, floorMins, targetMins }) {
   `;
 }
 
+/** Candidate y-axis steps for the speed chart, finest first. */
+const SPEED_STEPS = [500, 1000, 2000, 2500, 5000, 10000];
+
 /** Chars/hour trend over days with ≥10 min read. days: [{date, active_secs, chars}] */
 export function SpeedTrendChart({ days }) {
   const [hover, setHover] = useState(null);
@@ -110,14 +115,23 @@ export function SpeedTrendChart({ days }) {
     return html`<p class="chart-empty">Needs a few days with 10+ minutes read to draw a trend.</p>`;
   }
 
-  const yStep = 5000;
   const rawMax = Math.max(...points.map((p) => p.speed));
   const rawMin = Math.min(...points.map((p) => p.speed));
-  const yMax = niceCeil(rawMax * 1.05, yStep);
-  const yMin = Math.max(0, Math.floor((rawMin * 0.9) / yStep) * yStep);
+  // Pad the data range, then take the finest step that still keeps the axis to
+  // about five gridlines. A fixed 5k step collapsed to two lines whenever the
+  // spread was narrow — which is most of the time, since speed varies by
+  // hundreds of chars/h day to day, not thousands.
+  const pad = Math.max((rawMax - rawMin) * 0.25, 250);
+  const lo = Math.max(0, rawMin - pad);
+  const hi = rawMax + pad;
+  const yStep = SPEED_STEPS.find((s) => (hi - lo) / s <= 5) ?? 10000;
+  const yMax = Math.ceil(hi / yStep) * yStep;
+  const yMin = Math.max(0, Math.floor(lo / yStep) * yStep);
   const x = (i) => m.left + (days.length === 1 ? 0 : (i / (days.length - 1)) * plotW);
   const y = (v) => m.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
 
+  // A sub-1k step needs a decimal, or 12500 and 13000 both label as "13k".
+  const kLabel = (t) => `${(t / 1000).toFixed(yStep < 1000 ? 1 : 0)}k`;
   const ticks = [];
   for (let t = yMin; t <= yMax; t += yStep) ticks.push(t);
   const path = points.map((p, k) => `${k === 0 ? 'M' : 'L'}${x(p.i)},${y(p.speed)}`).join(' ');
@@ -129,7 +143,7 @@ export function SpeedTrendChart({ days }) {
       <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Reading speed trend, characters per hour">
         ${ticks.map((t) => html`
           <line x1=${m.left} x2=${W - m.right} y1=${y(t)} y2=${y(t)} class="gridline" />
-          <text x=${m.left - 6} y=${y(t) + 3} class="tick" text-anchor="end">${t / 1000}k</text>
+          <text x=${m.left - 6} y=${y(t) + 3} class="tick" text-anchor="end">${kLabel(t)}</text>
         `)}
         ${days.map((d, i) => i % labelEvery === 0 && html`
           <text x=${x(i)} y=${H - 8} class="tick" text-anchor="middle">${shortDate(d.date)}</text>

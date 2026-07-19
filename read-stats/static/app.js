@@ -55,6 +55,14 @@ function TodayCard({ summary }) {
     today.active_secs >= 600
       ? today.lookups / (today.active_secs / 3600)
       : null;
+  // Sub-values are built as strings so prettier can't reflow the markup and
+  // change the rendered spacing.
+  const lookupRate =
+    lookupsPerHour !== null ? `(${lookupsPerHour.toFixed(1)}/h)` : null;
+  const bestStretch =
+    today.focus.longest_stretch_secs > 0
+      ? `(${fmtMins(today.focus.longest_stretch_secs)} best)`
+      : null;
   return html`
     <div class="card">
       <h2>Today · ${today.date}</h2>
@@ -90,12 +98,6 @@ function TodayCard({ summary }) {
           </div>
         </div>
         <div class="tile">
-          <div class="label">VN / logged</div>
-          <div class="value">
-            ${fmtChars(today.vn.chars)} / ${fmtChars(today.manual.chars)}
-          </div>
-        </div>
-        <div class="tile">
           <div class="label">cards mined</div>
           <div class="value">${today.cards > 0 ? today.cards : "—"}</div>
         </div>
@@ -103,10 +105,7 @@ function TodayCard({ summary }) {
           <div class="label">lookups</div>
           <div class="value">
             ${today.lookups > 0 ? today.lookups.toLocaleString("en") : "—"}
-            ${lookupsPerHour !== null &&
-            html`<span class="value-sub"
-              >(${lookupsPerHour.toFixed(1)}/h)</span
-            >`}
+            ${lookupRate && html`<span class="value-sub">${lookupRate}</span>`}
           </div>
         </div>
         <div class="tile">
@@ -115,10 +114,8 @@ function TodayCard({ summary }) {
             ${today.focus.ratio !== null
               ? `${Math.round(today.focus.ratio * 100)}%`
               : "—"}
-            ${today.focus.longest_stretch_secs > 0 &&
-            html`<span class="value-sub"
-              >(${fmtMins(today.focus.longest_stretch_secs)} best)</span
-            >`}
+            ${bestStretch &&
+            html`<span class="value-sub">${bestStretch}</span>`}
           </div>
         </div>
       </div>
@@ -177,27 +174,126 @@ function workProgress(w, days, settings) {
   };
 }
 
+const WORK_STATUSES = ["reading", "queued", "finished", "dropped"];
+
+/** Set settings.current_work. Shared by the card's picker and the Library rows. */
+async function setCurrentWork(title) {
+  await api("/api/settings", {
+    method: "PUT",
+    body: { current_work: title },
+  });
+}
+
+/** Metadata editor for one work, used both to add a work and to edit one.
+ *
+ *  Editing an existing work PUTs by id so the title is never part of the
+ *  update — retitling via POST would upsert a second row rather than rename,
+ *  since the title is the join key lines are stamped with. Every field is
+ *  prefilled from current metadata; status especially, because it is always
+ *  sent and a blank select would silently reset a finished work to reading. */
+function WorkMetaForm({ work, onSaved, onCancel }) {
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const id = work?.meta?.id ?? null;
+
+  async function save(e) {
+    e.preventDefault();
+    const f = e.currentTarget;
+    const body = {
+      vndb_id: f.vndb.value.trim() || undefined,
+      total_chars: f.total.value ? Number(f.total.value) : undefined,
+      status: f.status.value,
+    };
+    setBusy(true);
+    setMsg(null);
+    try {
+      if (id !== null) {
+        await api(`/api/works/${id}`, { method: "PUT", body });
+      } else {
+        await api("/api/works", {
+          method: "POST",
+          body: { ...body, title: f.title.value.trim() },
+        });
+      }
+      setMsg({ ok: true, text: "saved ✓" });
+      onSaved();
+    } catch (err) {
+      setMsg({ ok: false, text: err.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return html`
+    <form class="log work-meta-form" onSubmit=${save}>
+      ${id === null &&
+      html`<div>
+        <label>title *</label
+        ><input
+          name="title"
+          type="text"
+          required
+          placeholder="アイヨクノエウスティア"
+        />
+      </div>`}
+      <div>
+        <label>total characters</label
+        ><input
+          name="total"
+          type="number"
+          min="0"
+          value=${work?.meta?.total_chars ?? ""}
+          placeholder="from jpdb"
+        />
+      </div>
+      <div>
+        <label>cover art</label
+        ><input name="vndb" type="text" placeholder="vndb link or id" />
+      </div>
+      <div>
+        <label>status</label>
+        <select name="status">
+          ${WORK_STATUSES.map(
+            (s) =>
+              html`<option value=${s} selected=${(work?.meta?.status ?? "reading") === s}>
+                ${s}
+              </option>`,
+          )}
+        </select>
+      </div>
+      <div class="actions">
+        <button type="submit" disabled=${busy}>${busy ? "…" : "save"}</button>
+        ${onCancel &&
+        html`<button type="button" class="ghost" onClick=${onCancel}>
+          cancel
+        </button>`}
+        ${msg &&
+        html`<span class="form-msg ${msg.ok ? "ok" : "error"}"
+          >${msg.text}</span
+        >`}
+      </div>
+    </form>
+  `;
+}
+
 function CurrentReading({ works, settings, days, onSaved }) {
   const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [metaMsg, setMetaMsg] = useState(null);
+  const [editing, setEditing] = useState(false);
 
-  const current = settings.current_work
-    ? works.find((w) => w.work === settings.current_work)
-    : null;
+  const title = settings.current_work;
+  const current = title ? works.find((w) => w.work === title) : null;
   const meta = current?.meta;
   const prog = workProgress(current, days, settings);
+  // A title that matches no work at all: usually a typo, or a work the
+  // tracker hasn't stamped any lines with yet. Worth saying out loud —
+  // silently rendering an empty card just looks broken.
+  const unmatched = title && !current;
 
-  async function setWork(e) {
+  async function pick(e) {
     e.preventDefault();
     setBusy(true);
-    setSaved(false);
     try {
-      await api("/api/settings", {
-        method: "PUT",
-        body: { current_work: e.currentTarget.work.value },
-      });
-      setSaved(true);
+      await setCurrentWork(e.currentTarget.work.value.trim());
       onSaved();
     } catch (err) {
       alert(err.message);
@@ -206,27 +302,15 @@ function CurrentReading({ works, settings, days, onSaved }) {
     }
   }
 
-  async function saveMeta(e) {
-    e.preventDefault();
-    const f = e.currentTarget;
-    const body = {
-      title: f.title.value.trim(),
-      vndb_id: f.vndb.value.trim() || undefined,
-      total_chars: f.total.value ? Number(f.total.value) : undefined,
-      status: f.status.value,
-    };
-    setMetaMsg(null);
-    try {
-      await api("/api/works", { method: "POST", body });
-      setMetaMsg({ ok: true, text: "saved ✓" });
-      onSaved();
-    } catch (err) {
-      setMetaMsg({ ok: false, text: err.message });
-    }
-  }
-
   return html`
     <div class="card">
+      <div class="card-head">
+        <h2>Currently reading</h2>
+        ${current &&
+        html`<button class="ghost" onClick=${() => setEditing((v) => !v)}>
+          ${editing ? "close" : "edit"}
+        </button>`}
+      </div>
       ${current &&
       prog &&
       html`
@@ -270,105 +354,160 @@ function CurrentReading({ works, settings, days, onSaved }) {
       ${current &&
       !prog &&
       html`
-        <div class="meta-hint">
-          No length for <strong>${current.work}</strong> yet — paste the jpdb
-          character count below (and a VNDB id if you want the cover).
+        <div class="current-work">
+          <div class="info">
+            <div class="title">${current.work}</div>
+            <div class="meta-hint">
+              ${fmtChars(current.chars)} read so far. No total length set — add
+              the jpdb character count with <strong>edit</strong> to get
+              progress, hours left and a finish date.
+            </div>
+          </div>
         </div>
       `}
-      <form class="now-reading" onSubmit=${setWork}>
-        <label for="now-reading-input">Now reading</label>
+      ${unmatched &&
+      html`
+        <div class="meta-hint">
+          Nothing tracked for <strong>${title}</strong> yet. If you have been
+          reading it, the title here has to match the one your tracker stamps
+          on lines exactly — pick from the list below instead of typing it.
+        </div>
+      `}
+      ${!title &&
+      html`<div class="meta-hint">
+        No work selected. Pick one below, or set one from the Library.
+      </div>`}
+      ${editing &&
+      html`<${WorkMetaForm}
+        work=${current}
+        onSaved=${onSaved}
+        onCancel=${() => setEditing(false)}
+      />`}
+      <form class="now-reading" onSubmit=${pick}>
+        <label for="now-reading-input">Switch to</label>
         <div class="now-reading-row">
           <input
             id="now-reading-input"
             name="work"
             type="text"
-            value=${settings.current_work}
-            placeholder="アイヨクノイウスティア"
+            list="known-works"
+            value=${title}
+            placeholder="pick a work, or type a new title"
           />
+          <datalist id="known-works">
+            ${works.map((w) => html`<option value=${w.work}></option>`)}
+          </datalist>
           <button type="submit" disabled=${busy}>${busy ? "…" : "set"}</button>
-          ${saved && html`<span class="form-msg ok">✓</span>`}
         </div>
       </form>
-      <details class="log meta-edit">
-        <summary>Set metadata</summary>
-        <form onSubmit=${saveMeta}>
-          <div>
-            <label>title *</label
-            ><input
-              name="title"
-              type="text"
-              required
-              value=${settings.current_work}
-            />
-          </div>
-          <div>
-            <label>total characters</label
-            ><input name="total" type="number" min="0" />
-          </div>
-          <div>
-            <label>vndb id or url</label
-            ><input name="vndb" type="text" placeholder="v3144" />
-          </div>
-          <div>
-            <label>status</label>
-            <select name="status">
-              <option value="reading">reading</option>
-              <option value="queued">queued</option>
-              <option value="finished">finished</option>
-              <option value="dropped">dropped</option>
-            </select>
-          </div>
-          <div class="actions">
-            <button type="submit">save</button>
-            ${metaMsg &&
-            html`<span class="form-msg ${metaMsg.ok ? "ok" : "error"}"
-              >${metaMsg.text}</span
-            >`}
-          </div>
-        </form>
-      </details>
     </div>
   `;
 }
 
-function WorksTable({ works }) {
-  if (!works.length) return null;
+/** The library is where works are managed: switch the current one, edit
+ *  metadata, add one you haven't started. The Currently-reading card stays
+ *  read-only status so the two don't compete. */
+function WorksTable({ works, settings, onSaved }) {
+  // Keyed by title rather than index so the open editor follows its row when
+  // the list re-sorts on refresh (it sorts by last_read).
+  const [editing, setEditing] = useState(null);
+  const [adding, setAdding] = useState(false);
+
+  async function makeCurrent(title) {
+    try {
+      await setCurrentWork(title);
+      onSaved();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
   return html`
     <div class="card">
-      <h2>Library</h2>
-      <table class="days">
-        <thead>
-          <tr>
-            <th>title</th>
-            <th>time</th>
-            <th>chars</th>
-            <th>progress</th>
-            <th>last read</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${works.slice(0, 10).map(
-            (w) => html`
+      <div class="card-head">
+        <h2>Library</h2>
+        <button class="ghost" onClick=${() => setAdding((v) => !v)}>
+          ${adding ? "close" : "add work"}
+        </button>
+      </div>
+      ${adding &&
+      html`<${WorkMetaForm}
+        work=${null}
+        onSaved=${() => {
+          setAdding(false);
+          onSaved();
+        }}
+        onCancel=${() => setAdding(false)}
+      />`}
+      ${works.length === 0
+        ? html`<div class="meta-hint">
+            No works yet — add one above, or just start reading and the tracker
+            will stamp lines with a title.
+          </div>`
+        : html`<table class="days">
+            <thead>
               <tr>
-                <td class="work-name">
-                  ${w.work ?? "(unlabeled)"}
-                  ${w.meta &&
-                  w.meta.status !== "reading" &&
-                  html` <span class="status-tag">${w.meta.status}</span>`}
-                </td>
-                <td>${w.active_secs > 0 ? fmtMins(w.active_secs) : "—"}</td>
-                <td>${w.chars > 0 ? w.chars.toLocaleString("en") : "—"}</td>
-                <td>
-                  ${w.meta?.total_chars
-                    ? `${Math.min(100, (w.chars / w.meta.total_chars) * 100).toFixed(0)}%`
-                    : "—"}
-                </td>
-                <td>${w.last_read ?? "—"}</td>
+                <th>title</th>
+                <th>time</th>
+                <th>chars</th>
+                <th>progress</th>
+                <th>last read</th>
+                <th></th>
               </tr>
-            `,
-          )}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              ${works.slice(0, 10).map((w) => {
+                const isCurrent = w.work === settings.current_work;
+                return html`
+                  <tr class=${isCurrent ? "row-current" : ""}>
+                    <td class="work-name">
+                      ${w.work ?? "(unlabeled)"}
+                      ${isCurrent && html`<span class="status-tag">current</span>`}
+                      ${w.meta &&
+                      w.meta.status !== "reading" &&
+                      html`<span class="status-tag">${w.meta.status}</span>`}
+                    </td>
+                    <td>${w.active_secs > 0 ? fmtMins(w.active_secs) : "—"}</td>
+                    <td>${w.chars > 0 ? w.chars.toLocaleString("en") : "—"}</td>
+                    <td>
+                      ${w.meta?.total_chars
+                        ? `${Math.min(100, (w.chars / w.meta.total_chars) * 100).toFixed(0)}%`
+                        : "—"}
+                    </td>
+                    <td>${w.last_read ?? "—"}</td>
+                    <td class="row-actions">
+                      ${!isCurrent &&
+                      w.work &&
+                      html`<button
+                        class="ghost"
+                        onClick=${() => makeCurrent(w.work)}
+                      >
+                        read
+                      </button>`}
+                      ${w.meta &&
+                      html`<button
+                        class="ghost"
+                        onClick=${() =>
+                          setEditing(editing === w.work ? null : w.work)}
+                      >
+                        ${editing === w.work ? "close" : "edit"}
+                      </button>`}
+                    </td>
+                  </tr>
+                  ${editing === w.work &&
+                  html`<tr>
+                    <td colspan="6" class="work-editor-cell">
+                      <${WorkMetaForm}
+                        work=${w}
+                        onSaved=${onSaved}
+                        onCancel=${() => setEditing(null)}
+                      />
+                    </td>
+                  </tr>`}
+                `;
+              })}
+            </tbody>
+          </table>`}
     </div>
   `;
 }
@@ -528,6 +667,11 @@ function AnkiCard({ anki, onRefresh, busy }) {
   const pct =
     anki.mined > 0 ? ((anki.reencountered / anki.mined) * 100).toFixed(0) : 0;
   const ageMins = Math.round((Date.now() / 1000 - anki.snapshot_ts) / 60);
+  // One string, not markup: line breaks between text and ${...} inside an
+  // element get collapsed by htm, so a prettier reflow eats the spaces.
+  const snapshotAge = `snapshot ${
+    ageMins < 60 ? `${ageMins} min` : `${Math.round(ageMins / 60)} h`
+  } ago`;
   return html`
     <div class="card">
       <h2>Anki · mined-word re-encounters</h2>
@@ -574,11 +718,7 @@ function AnkiCard({ anki, onRefresh, busy }) {
         </details>
       `}
       <div class="anki-footer">
-        <span
-          >snapshot
-          ${ageMins < 60 ? `${ageMins} min` : `${Math.round(ageMins / 60)} h`}
-          ago</span
-        >
+        <span>${snapshotAge}</span>
         <button class="pause-btn" onClick=${onRefresh} disabled=${busy}>
           ${busy ? "refreshing…" : "↻ refresh"}
         </button>
@@ -861,17 +1001,17 @@ function App() {
       />
     </div>
     <div class="card">
-      <h2>Reading speed · chars/hour, last 60 days</h2>
-      <${SpeedTrendChart} days=${days} />
+      <h2>Reading speed · chars/hour, last 30 days</h2>
+      <${SpeedTrendChart} days=${days.slice(-30)} />
     </div>
     <div class="card">
-      <h2>Lookups & cards · per hour read, last 60 days</h2>
-      <${RateTrendChart} days=${days} />
+      <h2>Lookups & cards · per hour read, last 30 days</h2>
+      <${RateTrendChart} days=${days.slice(-30)} />
     </div>
     <${SessionsToday} sessions=${sessions} />
     <${AnkiCard} anki=${anki} onRefresh=${refreshAnki} busy=${ankiBusy} />
     <${LookupsCard} lookups=${lookups} />
-    <${WorksTable} works=${works} />
+    <${WorksTable} works=${works} settings=${settings} onSaved=${load} />
     <${LogForm} onLogged=${load} />
     <${DaysTable} days=${days} todayDate=${summary.today.date} />
   `;
