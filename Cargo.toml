@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["jp-core", "jp-mine-core", "yt-mine", "manga-mine"]
+members = ["jp-core", "jp-mine-core", "yt-mine", "manga-mine", "read-stats"]
 
 # Image decode/encode in unoptimized debug builds costs seconds per photo;
 # optimize dependencies while keeping workspace crates fast to compile.
