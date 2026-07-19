@@ -24,3 +24,12 @@ cargo run -p manga-mine  # server on :3100
 
 - Commit straight to `master`. This is a solo repo — don't create a feature
   branch for a change unless asked.
+- In the Preact/htm SPAs (`read-stats`, `yt-mine`), never let literal text and
+  `${...}` straddle a line break inside an ``html`` `` template. htm collapses
+  the whitespace at the break, and prettier reflows markup there freely — that
+  combination silently rendered `snapshot 0 min ago` as `snapshot0 minago`.
+  Build the whole string in JS and interpolate it as one value:
+
+  ```js
+  const age = `snapshot ${mins} min ago`;   // then: <span>${age}</span>
+  ```
