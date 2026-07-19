@@ -1,5 +1,14 @@
 # jp-tools — Japanese Language Learning Toolkit
 
+> **Historical.** These documents are the original pre-implementation design
+> (single unified HTTP API, LinDera/MeCab tokenizer, calibration UI, a
+> `vocabulary` knowledge-state DB). What actually got built is different: four
+> independent services (`yt-mine`, `manga-mine`, `vn-mine`, `read-stats`)
+> sharing the `jp-core`/`jp-mine-core` library crates, tokenizing with Sudachi.
+> For current architecture and status, see the root [`CLAUDE.md`](../CLAUDE.md)
+> and each project's own `CLAUDE.md`/`README.md`. Kept here for the reasoning
+> behind early design decisions, not as a description of the current system.
+
 A personal toolkit for intermediate+ Japanese learners who consume native media
 (visual novels, YouTube, books) and want intelligent vocabulary tracking,
 contextual word explanations, and streamlined Anki card mining.
@@ -39,4 +48,5 @@ filtering are useless.
 
 ## Status
 
-**Phase: Specification** — Fleshing out requirements before any implementation.
+**Superseded.** This describes the pre-implementation plan, not the current
+system — see the historical note at the top of this document.

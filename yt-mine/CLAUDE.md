@@ -24,6 +24,10 @@ src/
     api/tests.rs    — JSON API route tests
     mining/mod.rs   — shared business logic (tokenize, lookup, format)
     mining/tests.rs — pure function tests
+    vocab/mod.rs    — vocab calibration API (tokenize text against the vocab
+                      table + dictionary, bulk known/unknown submission)
+    vocab/tests.rs  — vocab route tests
+  bin/tokenize.rs   — standalone CLI: tokenize text via Sudachi (debugging)
   services/
     pipeline.rs     — orchestrates download → transcribe → store
     download.rs     — AudioDownloader trait, YtDlpDownloader

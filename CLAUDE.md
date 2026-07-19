@@ -11,7 +11,7 @@ Cargo workspace for Japanese language learning tools.
 - `manga-ocr-service/` — Python FastAPI wrapper around kha-white's manga-ocr (port 8200)
 - `whisper-service/` — Python FastAPI transcription service for yt-mine (port 8100)
 - `spec/` — feature specs and roadmap
-- `scripts/start-all.sh` — start/stop/status for the full stack (whisper-service, manga-ocr-service, yt-mine, manga-mine) in one command; see `--help`
+- `scripts/start-all.sh` — start/stop/status for the full stack (whisper-service, manga-ocr-service, yt-mine, manga-mine, read-stats) in one command; see `--help`
 
 ```sh
 cargo build              # all members
