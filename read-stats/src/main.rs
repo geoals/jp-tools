@@ -19,11 +19,26 @@ async fn main() {
         .expect("failed to open stats database");
     info!(path = %config.db_path, "stats database ready");
 
-    let router = build_router(AppState { pool });
+    let router = build_router(AppState {
+        pool,
+        covers_dir: config.covers_dir.clone(),
+        http: reqwest::Client::new(),
+        anki_url: config.anki_url.clone(),
+        anki_deck: config.anki_deck.clone(),
+        anki_vocab_field: config.anki_vocab_field.clone(),
+        sudachi_dict_path: config.sudachi_dict_path.clone(),
+    });
 
     let listener = tokio::net::TcpListener::bind(&config.listen_addr)
         .await
         .expect("failed to bind listener");
     info!(addr = %config.listen_addr, "read-stats ready, listening");
-    axum::serve(listener, router).await.expect("server error");
+    // with_connect_info exposes the client address so the Anki refresh can
+    // probe the dashboard client (phone) for a local AnkiConnect first.
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    .expect("server error");
 }

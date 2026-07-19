@@ -11,6 +11,7 @@
   --baseline: #c3c2b7;
   --border: rgba(11, 11, 11, 0.10);
   --series-1: #2a78d6;
+  --series-2: #008300;
   --meter-track: #cde2fb;
   --good: #006300;
 }
@@ -26,6 +27,7 @@
     --baseline: #383835;
     --border: rgba(255, 255, 255, 0.10);
     --series-1: #3987e5;
+    --series-2: #008300;
     --meter-track: #0d366b;
     --good: #0ca30c;
   }
@@ -41,6 +43,7 @@
   --baseline: #383835;
   --border: rgba(255, 255, 255, 0.10);
   --series-1: #3987e5;
+  --series-2: #008300;
   --meter-track: #0d366b;
   --good: #0ca30c;
 }
@@ -178,6 +181,40 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
   stroke-width: 2;
 }
 
+/* Legend doubles as the series toggle. Colour follows the entity, so a hidden
+   series never repaints the one still showing. */
+.chart-legend {
+  display: flex;
+  gap: 14px;
+  margin: 0 0 4px 4px;
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.legend-item:hover { color: var(--text-primary); }
+.legend-item:focus-visible { outline: 2px solid var(--series-1); outline-offset: 1px; }
+.legend-off { color: var(--muted); }
+/* Hidden series keeps its hue but drains to an outline, so the swatch still
+   identifies it while reading as off. */
+.legend-off .legend-swatch { background: transparent !important; box-shadow: inset 0 0 0 2px currentColor; }
+.legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: none;
+}
+.tooltip-sub { color: var(--muted); }
+
 .chart-tooltip {
   position: absolute;
   transform: translateX(-50%);
@@ -192,6 +229,66 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 .chart-tooltip strong { color: var(--text-primary); font-weight: 500; }
+
+/* Currently reading */
+.current-work { display: flex; gap: 16px; margin-bottom: 14px; }
+.current-work .cover {
+  width: 92px;
+  height: auto;
+  align-self: flex-start;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.current-work .info { flex: 1; min-width: 0; }
+.current-work .title { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+.current-work .meter { margin: 8px 0 4px; }
+.progress-caption {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.meta-hint { color: var(--muted); font-size: 13px; margin: 6px 0 12px; }
+details.meta-edit { margin-top: 12px; }
+.status-tag {
+  color: var(--muted);
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 5px;
+  margin-left: 4px;
+}
+
+/* Anki re-encounters */
+.value-sub { font-size: 13px; font-weight: 400; color: var(--text-secondary); }
+.word-list-label { color: var(--muted); font-size: 12px; margin-top: 14px; }
+.word-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.chip {
+  background: var(--page);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 13px;
+}
+.chip b { color: var(--text-secondary); font-weight: 500; }
+/* Secondary fact on a chip (card age, outcome) — recedes so the word leads. */
+.chip-note { color: var(--muted); font-size: 12px; margin-left: 4px; }
+details.never-seen { margin-top: 12px; }
+details.never-seen summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 13px;
+  user-select: none;
+}
+.anki-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
 
 /* Now reading */
 .now-reading label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }

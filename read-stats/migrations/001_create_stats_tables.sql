@@ -6,7 +6,7 @@
 CREATE TABLE IF NOT EXISTS lines (
     id     INTEGER PRIMARY KEY,
     ts     REAL    NOT NULL,          -- epoch seconds
-    chars  INTEGER NOT NULL,          -- whitespace-stripped codepoints (recomputable from text)
+    chars  INTEGER NOT NULL,          -- counted codepoints, punctuation excluded (see charcount.rs; recomputable from text)
     text   TEXT,
     source TEXT    NOT NULL DEFAULT 'vn',
     work   TEXT                      -- stamped from the current_work setting at capture

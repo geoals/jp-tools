@@ -39,6 +39,27 @@ WS_URL = os.environ.get("VN_WS_URL", "ws://localhost:6677")
 # only Japanese text marks a voiceline; ignore stray latin/punctuation hooks
 JP = re.compile(r"[぀-ヿ一-鿿]")
 
+# Character counting matches texthooker-ui's isNotJapaneseRegex (an allowlist,
+# so punctuation and brackets don't count) — otherwise read-stats reports a
+# chars/h noticeably above what the texthooker shows for the same reading.
+# Keep in sync with read-stats/src/charcount.rs.
+_COUNTED = (
+    "0-9A-Za-z"
+    "○◯"  # ○ ◯
+    "々-〇〻"  # 々 〆 〇 〻
+    "ぁ-ゖゝ-ゞ"  # ぁ-ゖ ゝ ゞ
+    "ァ-ヺー"  # ァ-ヺ ー
+    "０-９Ａ-Ｚａ-ｚ"  # ０-９ Ａ-Ｚ ａ-ｚ
+    "ｦ-ﾝ"  # ｦ-ﾝ halfwidth katakana
+    "⺀-⺙⺛-⻳⼀-⿕"  # \p{Radical}
+    "㐀-䶿一-鿿"  # \p{Unified_Ideograph}
+    "﨎-﨏﨑﨓-﨔﨟﨡﨣-﨤﨧-﨩"
+    "\U00020000-\U0002a6df\U0002a700-\U0002b81d\U0002b820-\U0002cead"
+    "\U0002ceb0-\U0002ebe0\U0002ebf0-\U0002ee5d"
+    "\U00030000-\U0003134a\U00031350-\U00033479"
+)
+NOT_COUNTED = re.compile(f"[^{_COUNTED}]")
+
 STATS_DB = os.environ.get("JP_TOOLS_STATS_DB_PATH") or os.path.expanduser(
     "~/.local/share/jp-stats/stats.db"
 )
@@ -108,7 +129,7 @@ class StatsSink:
         if self.db is None:
             return
         try:
-            chars = len(re.sub(r"\s", "", text))
+            chars = len(NOT_COUNTED.sub("", text))
             # Title set via the dashboard's "now reading" field; read per line
             # so a change applies immediately without restarting the daemon.
             row = self.db.execute(

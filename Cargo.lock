@@ -2393,6 +2393,8 @@ dependencies = [
  "axum",
  "chrono",
  "dotenvy",
+ "jp-core",
+ "reqwest",
  "serde",
  "serde_json",
  "sqlx",

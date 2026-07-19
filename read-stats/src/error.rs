@@ -9,6 +9,8 @@ pub enum AppError {
     BadRequest(String),
     #[error("not found")]
     NotFound,
+    #[error("{0}")]
+    Upstream(String),
 }
 
 impl IntoResponse for AppError {
@@ -17,6 +19,7 @@ impl IntoResponse for AppError {
             AppError::Db(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             AppError::NotFound => StatusCode::NOT_FOUND,
+            AppError::Upstream(_) => StatusCode::BAD_GATEWAY,
         };
         if status == StatusCode::INTERNAL_SERVER_ERROR {
             tracing::error!(error = %self, "request failed");

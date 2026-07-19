@@ -4,6 +4,10 @@ use sqlx::{Row, SqlitePool};
 use crate::stats::LineEvent;
 
 const MIGRATION: &str = include_str!("../migrations/001_create_stats_tables.sql");
+const MIGRATION_WORKS: &str = include_str!("../migrations/002_create_works.sql");
+const MIGRATION_ANKI: &str = include_str!("../migrations/003_create_anki_tables.sql");
+const MIGRATION_LOOKUPS: &str = include_str!("../migrations/004_create_lookups.sql");
+const MIGRATION_LOOKUP_IDX: &str = include_str!("../migrations/005_create_lookup_indexes.sql");
 
 pub async fn create_pool(db_path: &str) -> Result<SqlitePool, sqlx::Error> {
     let opts = SqliteConnectOptions::new()
@@ -19,6 +23,10 @@ pub async fn create_pool(db_path: &str) -> Result<SqlitePool, sqlx::Error> {
         .execute(&pool)
         .await?;
     sqlx::raw_sql(MIGRATION).execute(&pool).await?;
+    sqlx::raw_sql(MIGRATION_WORKS).execute(&pool).await?;
+    sqlx::raw_sql(MIGRATION_ANKI).execute(&pool).await?;
+    sqlx::raw_sql(MIGRATION_LOOKUPS).execute(&pool).await?;
+    sqlx::raw_sql(MIGRATION_LOOKUP_IDX).execute(&pool).await?;
 
     // ALTER TABLE ADD COLUMN has no IF NOT EXISTS in SQLite — DBs created
     // before the work column need it added.
@@ -27,7 +35,59 @@ pub async fn create_pool(db_path: &str) -> Result<SqlitePool, sqlx::Error> {
             .execute(&pool)
             .await?;
     }
+    // works briefly stored VNDB metadata; it's cover-only now.
+    for col in ["vndb_id", "length_minutes"] {
+        if has_column(&pool, "works", col).await? {
+            sqlx::raw_sql(&format!("ALTER TABLE works DROP COLUMN {col}"))
+                .execute(&pool)
+                .await?;
+        }
+    }
+    recount_line_chars(&pool).await?;
     Ok(pool)
+}
+
+/// Bring `lines.chars` in line with `charcount::count_chars`, which excludes
+/// punctuation; rows written under the old rule counted every non-whitespace
+/// codepoint, inflating chars/h relative to texthooker-ui.
+///
+/// Deliberately unconditional rather than watermarked: vn-ws-logger.py writes
+/// this column too, so a logger still running the old rule (it can't be
+/// restarted while Textractor is attached) keeps producing rows that need
+/// fixing. Only differing rows are written, so once both sides agree this is a
+/// read-only scan.
+async fn recount_line_chars(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    let rows = sqlx::query("SELECT id, chars, text FROM lines WHERE text IS NOT NULL")
+        .fetch_all(pool)
+        .await?;
+    let updates: Vec<(i64, i64)> = rows
+        .iter()
+        .filter_map(|r| {
+            let text: String = r.get("text");
+            let recounted = crate::charcount::count_chars(&text);
+            (recounted != r.get::<i64, _>("chars")).then(|| (r.get("id"), recounted))
+        })
+        .collect();
+
+    if updates.is_empty() {
+        return Ok(());
+    }
+    let mut tx = pool.begin().await?;
+    for (id, chars) in &updates {
+        sqlx::query("UPDATE lines SET chars = ? WHERE id = ?")
+            .bind(chars)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+
+    tracing::info!(
+        scanned = rows.len(),
+        updated = updates.len(),
+        "recounted line chars (punctuation excluded)"
+    );
+    Ok(())
 }
 
 async fn has_column(pool: &SqlitePool, table: &str, column: &str) -> Result<bool, sqlx::Error> {
@@ -56,18 +116,26 @@ pub struct Settings {
     pub chars_per_page: f64,
     /// Title stamped onto incoming hooked lines (set from the dashboard).
     pub current_work: String,
+    /// Days before this ISO date are excluded from the finish-date pace
+    /// window (set after a reading break so old zero days don't drag the
+    /// estimate). Empty = no cutoff.
+    pub pace_start_date: String,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Settings {
-            afk_secs: 20.0,
+            // 30s ≈ p90 of measured lookup gaps (median 24s, tight cluster to
+            // ~32s): keeps a genuine lookup whole while truncating the tail
+            // where a lookup turned into a distraction.
+            afk_secs: 30.0,
             session_gap_secs: 600.0,
             day_rollover_hour: 4,
             goal_floor_mins: 60,
             goal_target_mins: 120,
             chars_per_page: 550.0,
             current_work: String::new(),
+            pace_start_date: String::new(),
         }
     }
 }
@@ -80,6 +148,7 @@ pub const SETTING_KEYS: &[&str] = &[
     "goal_target_mins",
     "chars_per_page",
     "current_work",
+    "pace_start_date",
 ];
 
 pub async fn load_settings(pool: &SqlitePool) -> Result<Settings, sqlx::Error> {
@@ -108,6 +177,7 @@ pub async fn load_settings(pool: &SqlitePool) -> Result<Settings, sqlx::Error> {
                 settings.chars_per_page = value.parse().unwrap_or(settings.chars_per_page)
             }
             "current_work" => settings.current_work = value,
+            "pace_start_date" => settings.pace_start_date = value,
             _ => {}
         }
     }
@@ -273,4 +343,324 @@ pub async fn delete_session(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Er
         .execute(pool)
         .await?;
     Ok(result.rows_affected() > 0)
+}
+
+pub const WORK_STATUSES: &[&str] = &["reading", "queued", "finished", "dropped"];
+
+#[derive(Debug, serde::Serialize)]
+pub struct Work {
+    pub id: i64,
+    pub title: String,
+    pub total_chars: Option<i64>,
+    pub cover_path: Option<String>,
+    pub status: String,
+    pub queue_pos: Option<i64>,
+}
+
+const WORK_COLS: &str = "id, title, total_chars, cover_path, status, queue_pos";
+
+fn work_from_row(r: &sqlx::sqlite::SqliteRow) -> Work {
+    Work {
+        id: r.get("id"),
+        title: r.get("title"),
+        total_chars: r.get("total_chars"),
+        cover_path: r.get("cover_path"),
+        status: r.get("status"),
+        queue_pos: r.get("queue_pos"),
+    }
+}
+
+pub async fn fetch_works_meta(pool: &SqlitePool) -> Result<Vec<Work>, sqlx::Error> {
+    let rows = sqlx::query(&format!("SELECT {WORK_COLS} FROM works ORDER BY id"))
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.iter().map(work_from_row).collect())
+}
+
+pub async fn fetch_work(pool: &SqlitePool, id: i64) -> Result<Option<Work>, sqlx::Error> {
+    let row = sqlx::query(&format!("SELECT {WORK_COLS} FROM works WHERE id = ?"))
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.as_ref().map(work_from_row))
+}
+
+/// Get-or-create a work row by its exact title (the lines/sessions join key).
+pub async fn upsert_work(pool: &SqlitePool, title: &str) -> Result<Work, sqlx::Error> {
+    sqlx::query("INSERT INTO works (title) VALUES (?) ON CONFLICT(title) DO NOTHING")
+        .bind(title)
+        .execute(pool)
+        .await?;
+    let row = sqlx::query(&format!("SELECT {WORK_COLS} FROM works WHERE title = ?"))
+        .bind(title)
+        .fetch_one(pool)
+        .await?;
+    Ok(work_from_row(&row))
+}
+
+pub async fn set_work_cover(
+    pool: &SqlitePool,
+    id: i64,
+    cover_path: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE works SET cover_path = ? WHERE id = ?")
+        .bind(cover_path)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn set_work_total_chars(
+    pool: &SqlitePool,
+    id: i64,
+    total_chars: Option<i64>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE works SET total_chars = ? WHERE id = ?")
+        .bind(total_chars)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn set_work_status(pool: &SqlitePool, id: i64, status: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE works SET status = ? WHERE id = ?")
+        .bind(status)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn set_work_queue_pos(
+    pool: &SqlitePool,
+    id: i64,
+    queue_pos: Option<i64>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE works SET queue_pos = ? WHERE id = ?")
+        .bind(queue_pos)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn delete_work(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query("DELETE FROM works WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected() > 0)
+}
+
+/// Read one settings row that isn't part of the user-facing Settings struct
+/// (snapshot timestamps, ingest watermark).
+pub async fn get_setting_raw(pool: &SqlitePool, key: &str) -> Result<Option<String>, sqlx::Error> {
+    Ok(sqlx::query("SELECT value FROM settings WHERE key = ?")
+        .bind(key)
+        .fetch_optional(pool)
+        .await?
+        .map(|r| r.get("value")))
+}
+
+#[derive(Debug, Clone)]
+pub struct AnkiNote {
+    /// Anki note id — also the note's creation time in epoch milliseconds.
+    pub note_id: i64,
+    pub vocab: String,
+}
+
+/// Replace the deck snapshot wholesale (it mirrors, never owns, the deck).
+pub async fn replace_anki_notes(pool: &SqlitePool, notes: &[AnkiNote]) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("DELETE FROM anki_notes").execute(&mut *tx).await?;
+    for n in notes {
+        sqlx::query("INSERT OR REPLACE INTO anki_notes (note_id, vocab) VALUES (?, ?)")
+            .bind(n.note_id)
+            .bind(&n.vocab)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await
+}
+
+pub async fn fetch_anki_notes(pool: &SqlitePool) -> Result<Vec<AnkiNote>, sqlx::Error> {
+    let rows = sqlx::query("SELECT note_id, vocab FROM anki_notes ORDER BY note_id")
+        .fetch_all(pool)
+        .await?;
+    Ok(rows
+        .iter()
+        .map(|r| AnkiNote {
+            note_id: r.get("note_id"),
+            vocab: r.get("vocab"),
+        })
+        .collect())
+}
+
+pub async fn fetch_anki_note_ids(pool: &SqlitePool) -> Result<Vec<i64>, sqlx::Error> {
+    let rows = sqlx::query("SELECT note_id FROM anki_notes ORDER BY note_id")
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.iter().map(|r| r.get("note_id")).collect())
+}
+
+#[derive(Debug)]
+pub struct IngestLine {
+    pub id: i64,
+    pub ts: f64,
+    pub text: String,
+}
+
+pub async fn fetch_lines_after(
+    pool: &SqlitePool,
+    after_id: i64,
+) -> Result<Vec<IngestLine>, sqlx::Error> {
+    let rows = sqlx::query("SELECT id, ts, text FROM lines WHERE id > ? AND text IS NOT NULL ORDER BY id")
+        .bind(after_id)
+        .fetch_all(pool)
+        .await?;
+    Ok(rows
+        .iter()
+        .map(|r| IngestLine {
+            id: r.get("id"),
+            ts: r.get("ts"),
+            text: r.get("text"),
+        })
+        .collect())
+}
+
+pub async fn add_word_day_counts(
+    pool: &SqlitePool,
+    counts: &[(String, String, i64)], // (lemma, date, count)
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    for (lemma, date, count) in counts {
+        sqlx::query(
+            "INSERT INTO word_days (lemma, date, count) VALUES (?, ?, ?)
+             ON CONFLICT(lemma, date) DO UPDATE SET count = count + excluded.count",
+        )
+        .bind(lemma)
+        .bind(date)
+        .bind(count)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await
+}
+
+/// Record one Yomitan lookup, unless the same term was already recorded within
+/// `dedupe_secs`. One popup display can fire several AnkiConnect requests (a
+/// duplicate check per definition entry), and paging through a popup re-fires
+/// them; collapsing by term over a short window makes one popup one lookup.
+///
+/// Returns whether a row was written.
+pub async fn insert_lookup(
+    pool: &SqlitePool,
+    ts: f64,
+    term: &str,
+    work: Option<&str>,
+    dedupe_secs: f64,
+) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        "INSERT INTO lookups (ts, term, work)
+         SELECT ?, ?, ?
+         WHERE NOT EXISTS (
+             SELECT 1 FROM lookups WHERE term = ? AND ts > ?
+         )",
+    )
+    .bind(ts)
+    .bind(term)
+    .bind(work)
+    .bind(term)
+    .bind(ts - dedupe_secs)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() > 0)
+}
+
+/// Lookup timestamps in a window, oldest first.
+pub async fn fetch_lookup_events(
+    pool: &SqlitePool,
+    from_ts: f64,
+    to_ts: f64,
+) -> Result<Vec<f64>, sqlx::Error> {
+    let rows = sqlx::query("SELECT ts FROM lookups WHERE ts >= ? AND ts < ? ORDER BY ts")
+        .bind(from_ts)
+        .bind(to_ts)
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.iter().map(|r| r.get("ts")).collect())
+}
+
+/// One distinct looked-up term, with the earliest mined card carrying it (if
+/// any). `note_id` is epoch milliseconds, so comparing it against `first_ts`
+/// tells mined-because-of-this-lookup apart from already-had-a-card.
+#[derive(Debug)]
+pub struct LookupTerm {
+    pub term: String,
+    pub times: i64,
+    pub first_ts: f64,
+    pub last_ts: f64,
+    pub note_id: Option<i64>,
+    /// Latest lookup at or before the card's creation — the one that actually
+    /// led to mining. Measuring from `first_ts` instead would report days for a
+    /// word looked up long before it was finally carded.
+    pub mine_from_ts: Option<f64>,
+}
+
+pub async fn fetch_lookup_terms(pool: &SqlitePool) -> Result<Vec<LookupTerm>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT t.term, t.times, t.first_ts, t.last_ts,
+                (SELECT MIN(a.note_id) FROM anki_notes a WHERE a.vocab = t.term) AS note_id,
+                (SELECT MAX(l.ts) FROM lookups l
+                 WHERE l.term = t.term
+                   AND l.ts <= (SELECT MIN(a.note_id) FROM anki_notes a WHERE a.vocab = t.term) / 1000.0
+                ) AS mine_from_ts
+         FROM (
+             SELECT term, COUNT(*) AS times, MIN(ts) AS first_ts, MAX(ts) AS last_ts
+             FROM lookups
+             WHERE term IS NOT NULL AND term <> ''
+             GROUP BY term
+         ) t",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| LookupTerm {
+            term: r.get("term"),
+            times: r.get("times"),
+            first_ts: r.get("first_ts"),
+            last_ts: r.get("last_ts"),
+            note_id: r.get("note_id"),
+            mine_from_ts: r.get("mine_from_ts"),
+        })
+        .collect())
+}
+
+#[derive(Debug)]
+pub struct WordDayHit {
+    pub lemma: String,
+    pub date: String,
+    pub count: i64,
+}
+
+/// All word-day rows whose lemma matches a mined vocab entry.
+pub async fn fetch_mined_word_days(pool: &SqlitePool) -> Result<Vec<WordDayHit>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT w.lemma, w.date, w.count FROM word_days w
+         WHERE EXISTS (SELECT 1 FROM anki_notes a WHERE a.vocab = w.lemma)
+         ORDER BY w.date",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| WordDayHit {
+            lemma: r.get("lemma"),
+            date: r.get("date"),
+            count: r.get("count"),
+        })
+        .collect())
 }

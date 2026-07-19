@@ -7,6 +7,7 @@ use sqlx::SqlitePool;
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 
+use crate::ankiproxy;
 use crate::routes::api;
 
 const SPA_HTML: &str = include_str!("../templates/spa.html");
@@ -15,6 +16,12 @@ const STATIC_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
 #[derive(Clone)]
 pub struct AppState {
     pub pool: SqlitePool,
+    pub covers_dir: std::path::PathBuf,
+    pub http: reqwest::Client,
+    pub anki_url: String,
+    pub anki_deck: String,
+    pub anki_vocab_field: String,
+    pub sudachi_dict_path: std::path::PathBuf,
 }
 
 async fn spa_shell() -> Html<&'static str> {
@@ -31,11 +38,24 @@ pub fn build_router(state: AppState) -> Router {
             get(api::list_sessions).post(api::create_session),
         )
         .route("/api/sessions/{id}", delete(api::delete_session))
-        .route("/api/works", get(api::works))
+        .route("/api/works", get(api::works).post(api::upsert_work))
+        .route(
+            "/api/works/{id}",
+            axum::routing::put(api::update_work).delete(api::delete_work),
+        )
+        .nest_service("/covers", ServeDir::new(state.covers_dir.clone()))
         .route("/api/pause", axum::routing::post(api::toggle_pause))
+        .route("/api/anki/refresh", axum::routing::post(api::anki_refresh))
+        .route("/api/anki/summary", get(api::anki_summary))
+        .route("/api/lookups/summary", get(api::lookups_summary))
         .route(
             "/api/settings",
             get(api::get_settings).put(api::put_settings),
+        )
+        // Yomitan's AnkiConnect endpoint: forwards to Anki, counts lookups.
+        .route(
+            "/anki-proxy",
+            axum::routing::post(ankiproxy::proxy).options(ankiproxy::preflight),
         )
         .nest_service("/static", ServeDir::new(STATIC_DIR))
         // Frontend has no build step / cache busting — force revalidation so
