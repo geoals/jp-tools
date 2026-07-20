@@ -29,17 +29,119 @@ pub struct DayBucket {
     pub active_secs: f64,
 }
 
+/// How much of each inter-line gap counts as reading.
+///
+/// The gap after a line is the time spent reading it, but only some of that
+/// time is necessarily *yours* — you may have walked away mid-line. A flat cap
+/// was the old answer: credit `min(gap, afk_secs)`. That is right for a gap of
+/// 35 seconds and fiction for one of seven minutes, and it charged both the
+/// same half-minute, which quietly inflated active time by 22 minutes on
+/// 2026-07-19 and deflated that day's speed by 11%.
+///
+/// So credit what can be *shown*. A lookup or a mined card at time `t` proves
+/// you were at the keyboard at `t`, and past the last such proof the line is
+/// worth what it would take to read at your uninterrupted pace. Anything
+/// beyond that is absence and earns nothing.
+pub struct Presence<'a> {
+    /// Sorted proofs of presence — lookup and card timestamps, merged.
+    marks: &'a [f64],
+    /// Chars per second over gaps that needed no adjustment in the first place.
+    /// `None` when the stream is too sparse to establish one, in which case
+    /// every line falls back to the flat cap.
+    pace: Option<f64>,
+    afk_secs: f64,
+}
+
+impl<'a> Presence<'a> {
+    /// `marks` must be sorted. Pace is measured over evidence-free gaps at or
+    /// under the cap — the ones nobody disputes — so it never depends on the
+    /// credit it goes on to compute.
+    pub fn new(lines: &[LineEvent], marks: &'a [f64], afk_secs: f64) -> Self {
+        let (mut chars, mut secs) = (0i64, 0.0);
+        for (k, line) in lines.iter().enumerate() {
+            let Some(next) = lines.get(k + 1) else { continue };
+            let gap = next.ts - line.ts;
+            if gap > 0.0 && gap <= afk_secs && !has_mark(marks, line.ts, next.ts) {
+                chars += line.chars;
+                secs += gap;
+            }
+        }
+        let pace = (secs > 0.0 && chars > 0).then(|| chars as f64 / secs);
+        Self { marks, pace, afk_secs }
+    }
+
+    /// Credit for the `gap` seconds following `line`. Never exceeds the gap.
+    ///
+    /// A gap inside the cap is credited whole, exactly as it always was. Most
+    /// reading lives here and nothing about it is in doubt — and it *must* pass
+    /// through untouched, because pricing every gap at what its line was
+    /// "worth" would clip each above-average gap down to average while leaving
+    /// the below-average ones alone. That is a systematic shortening dressed up
+    /// as a correction; it cost 2026-07-19 42 minutes when only 18 of them were
+    /// really absence.
+    ///
+    /// Past the cap the two cases diverge:
+    ///
+    /// *Evidence in the gap.* The clock restarts at the last proof of presence
+    /// and runs a fresh `afk_secs` from there. A lookup is not instantaneous —
+    /// reading the definition is what comes *after* the event fires — so the
+    /// grace has to be the same one any line gets. This is what stops a
+    /// 45-second dictionary detour being truncated to a flat 30.
+    ///
+    /// *Nothing in the gap.* Only the line itself can be claimed, at your
+    /// uninterrupted pace. A 15-character line earns about four seconds whether
+    /// the gap ran 35 seconds or seven minutes; the rest is absence, and the
+    /// flat cap paid out half a minute for it regardless.
+    pub fn credit(&self, line: &LineEvent, gap: f64) -> f64 {
+        if gap <= self.afk_secs {
+            return gap;
+        }
+        match last_mark(self.marks, line.ts, line.ts + gap) {
+            Some(ts) => gap.min(ts - line.ts + self.afk_secs),
+            None => self.worth(line),
+        }
+    }
+
+    /// What `line` should have taken to read, uninterrupted. Falls back to the
+    /// flat cap when the stream is too sparse to have established a pace.
+    fn worth(&self, line: &LineEvent) -> f64 {
+        match self.pace {
+            Some(p) => (line.chars as f64 / p).min(self.afk_secs),
+            None => self.afk_secs,
+        }
+    }
+}
+
+/// Merge lookup and card timestamps into one sorted evidence stream.
+pub fn presence_marks(lookups: &[f64], cards: &[f64]) -> Vec<f64> {
+    let mut out = Vec::with_capacity(lookups.len() + cards.len());
+    out.extend_from_slice(lookups);
+    out.extend_from_slice(cards);
+    out.sort_by(f64::total_cmp);
+    out
+}
+
+/// Latest mark in `[from, to)`, if any. `marks` is sorted.
+fn last_mark(marks: &[f64], from: f64, to: f64) -> Option<f64> {
+    let end = marks.partition_point(|&ts| ts < to);
+    marks[..end].last().copied().filter(|&ts| ts >= from)
+}
+
 /// Split a time-ordered line stream into sessions and derive active reading
-/// time. Each inter-line gap credits reading time capped at `afk_secs` (a
-/// longer gap means the reader walked away mid-session); a gap above
+/// time. Each inter-line gap credits reading time per `presence`; a gap above
 /// `session_gap_secs` closes the session. A lone line yields a session with
 /// zero active time — credit comes from gaps, not line count.
-pub fn derive_sessions(lines: &[LineEvent], afk_secs: f64, session_gap_secs: f64) -> Vec<Session> {
+pub fn derive_sessions(
+    lines: &[LineEvent],
+    presence: &Presence,
+    session_gap_secs: f64,
+) -> Vec<Session> {
     let mut out: Vec<Session> = Vec::new();
-    for line in lines {
+    for (k, line) in lines.iter().enumerate() {
         match out.last_mut() {
             Some(s) if line.ts - s.end_ts <= session_gap_secs => {
-                s.active_secs += (line.ts - s.end_ts).min(afk_secs);
+                let prev = &lines[k - 1];
+                s.active_secs += presence.credit(prev, line.ts - prev.ts);
                 s.end_ts = line.ts;
                 s.chars += line.chars;
                 s.lines += 1;
@@ -72,28 +174,28 @@ pub fn day_start_ts(date: NaiveDate, rollover_hour: i64, tz_offset_secs: i64) ->
 
 /// Aggregate a time-ordered line stream into per-day char/active-time totals.
 /// Chars go to the day of their line; gap credit goes to the day of the gap's
-/// *later* line (same capping rules as `derive_sessions`).
+/// *later* line (same crediting rules as `derive_sessions`).
 pub fn aggregate_line_days(
     lines: &[LineEvent],
-    afk_secs: f64,
+    presence: &Presence,
     session_gap_secs: f64,
     rollover_hour: i64,
     tz_offset_secs: i64,
 ) -> BTreeMap<NaiveDate, DayBucket> {
     let mut out: BTreeMap<NaiveDate, DayBucket> = BTreeMap::new();
-    let mut prev_ts: Option<f64> = None;
+    let mut prev: Option<LineEvent> = None;
     for line in lines {
         let day = out
             .entry(date_key(line.ts, rollover_hour, tz_offset_secs))
             .or_default();
         day.chars += line.chars;
-        if let Some(prev) = prev_ts {
-            let gap = line.ts - prev;
+        if let Some(prev) = prev {
+            let gap = line.ts - prev.ts;
             if gap > 0.0 && gap <= session_gap_secs {
-                day.active_secs += gap.min(afk_secs);
+                day.active_secs += presence.credit(&prev, gap);
             }
         }
-        prev_ts = Some(line.ts);
+        prev = Some(*line);
     }
     out
 }
@@ -176,11 +278,11 @@ fn spread_credit(
     }
 }
 
-/// Whether any lookup timestamp falls in `[from, to)`. `lookups` is sorted, so
-/// this is a binary search rather than a scan per gap.
-fn gap_has_lookup(lookups: &[f64], from: f64, to: f64) -> bool {
-    let at = lookups.partition_point(|&ts| ts < from);
-    lookups.get(at).is_some_and(|&ts| ts < to)
+/// Whether any timestamp falls in `[from, to)`. The slice is sorted, so this is
+/// a binary search rather than a scan per gap.
+fn has_mark(marks: &[f64], from: f64, to: f64) -> bool {
+    let at = marks.partition_point(|&ts| ts < from);
+    marks.get(at).is_some_and(|&ts| ts < to)
 }
 
 /// Slice a time-ordered line stream into per-bucket chars and active time.
@@ -198,12 +300,13 @@ fn gap_has_lookup(lookups: &[f64], from: f64, to: f64) -> bool {
 ///
 /// `lookups` (sorted) labels each gap that contains one, so the caller can
 /// separate speed on the text from speed including the cost of looking words
-/// up. Note the afk cap truncates a long lookup, so the labelled time is a
-/// lower bound on what a lookup actually cost.
+/// up. `presence` decides how much of each gap is credited at all — a lookup
+/// late in a long gap now proves you were still there, so a 45-second detour
+/// is no longer truncated to the flat 30 the old cap imposed.
 pub fn bucket_lines(
     lines: &[LineEvent],
     lookups: &[f64],
-    afk_secs: f64,
+    presence: &Presence,
     session_gap_secs: f64,
     bucket_secs: f64,
 ) -> Vec<Bucket> {
@@ -222,7 +325,7 @@ pub fn bucket_lines(
         if let Some(next) = lines.get(k + 1) {
             let gap = next.ts - line.ts;
             if gap > 0.0 && gap <= session_gap_secs {
-                let is_lookup = gap_has_lookup(lookups, line.ts, next.ts);
+                let is_lookup = has_mark(lookups, line.ts, next.ts);
                 // These characters were read across this gap, so they follow
                 // the gap's own classification.
                 let bucket = out
@@ -237,7 +340,7 @@ pub fn bucket_lines(
                     &mut out,
                     session,
                     line.ts,
-                    gap.min(afk_secs),
+                    presence.credit(line, gap),
                     bucket_secs,
                     is_lookup,
                 );
@@ -525,13 +628,17 @@ mod tests {
     #[test]
     fn sessions_split_on_gap_and_cap_afk() {
         let lines = [ev(0.0, 10), ev(30.0, 20), ev(330.0, 5), ev(1000.0, 7)];
-        // afk cap 120s, session gap 600s: the 300s gap stays in-session but
-        // credits only 120s; the 670s gap starts a new session.
-        let sessions = derive_sessions(&lines, 120.0, 600.0);
+        // afk cap 120s, session gap 600s: the 300s gap stays in-session but is
+        // not credited whole; the 670s gap starts a new session.
+        let sessions = derive_sessions(&lines, &Presence::new(&lines, &[], 120.0), 600.0);
         assert_eq!(sessions.len(), 2);
         assert_eq!(sessions[0].chars, 35);
         assert_eq!(sessions[0].lines, 3);
-        assert_eq!(sessions[0].active_secs, 30.0 + 120.0);
+        // Pace comes from the one undisputed gap: 10 chars in 30s. The second
+        // line's 20 chars are therefore worth 60s, and that is what its 300s
+        // gap earns — the remaining four minutes are absence. The old flat cap
+        // would have credited 120s here on no evidence at all.
+        assert_eq!(sessions[0].active_secs, 30.0 + 60.0);
         assert_eq!(sessions[0].end_ts, 330.0);
         assert_eq!(sessions[1].chars, 7);
         assert_eq!(sessions[1].active_secs, 0.0);
@@ -543,7 +650,7 @@ mod tests {
         // 30s credited for reading them must land in the same bucket, even
         // though the *next* line is two minutes later.
         let lines = [ev(0.0, 100), ev(90.0, 40)];
-        let b = bucket_lines(&lines, &[], 30.0, 600.0, 60.0);
+        let b = bucket_lines(&lines, &[], &Presence::new(&lines, &[], 30.0), 600.0, 60.0);
         assert_eq!(b.len(), 2, "60s and 120s buckets, zero-filled between");
         assert_eq!((b[0].chars, b[0].active_secs), (100, 30.0));
         assert_eq!(b[1].chars, 40, "second line's bucket");
@@ -555,7 +662,7 @@ mod tests {
         // A 20s gap starting 10s before the boundary: 10s each side, not 20 on
         // one. Total credit is preserved.
         let lines = [ev(50.0, 10), ev(70.0, 10)];
-        let b = bucket_lines(&lines, &[], 30.0, 600.0, 60.0);
+        let b = bucket_lines(&lines, &[], &Presence::new(&lines, &[], 30.0), 600.0, 60.0);
         assert_eq!(b[0].active_secs, 10.0);
         assert_eq!(b[1].active_secs, 10.0);
         let total: f64 = b.iter().map(|x| x.active_secs).sum();
@@ -567,7 +674,7 @@ mod tests {
         // A 5-min lull (under the 600s session gap) fills; a 20-min break
         // starts a new session and leaves no buckets in between.
         let lines = [ev(0.0, 10), ev(300.0, 10), ev(1600.0, 10)];
-        let b = bucket_lines(&lines, &[], 30.0, 600.0, 60.0);
+        let b = bucket_lines(&lines, &[], &Presence::new(&lines, &[], 30.0), 600.0, 60.0);
         let s0: Vec<_> = b.iter().filter(|x| x.session == 0).collect();
         assert_eq!(s0.len(), 6, "minutes 0..5 all present");
         assert!(s0[1..5].iter().all(|x| x.chars == 0), "lull is zero-filled");
@@ -593,8 +700,8 @@ mod tests {
                 line
             })
             .collect();
-        let b = bucket_lines(&lines, &[], 30.0, 600.0, 60.0);
-        let sessions = derive_sessions(&lines, 30.0, 600.0);
+        let b = bucket_lines(&lines, &[], &Presence::new(&lines, &[], 30.0), 600.0, 60.0);
+        let sessions = derive_sessions(&lines, &Presence::new(&lines, &[], 30.0), 600.0);
         let bucket_chars: i64 = b.iter().map(|x| x.chars).sum();
         let session_chars: i64 = sessions.iter().map(|s| s.chars).sum();
         assert_eq!(bucket_chars, session_chars);
@@ -609,7 +716,7 @@ mod tests {
         // lookup is long (24s), which is where the penalty actually lives —
         // in the measured stream, lookup gaps run a median 21s against 3s.
         let lines = [ev(0.0, 100), ev(4.0, 100), ev(8.0, 100), ev(32.0, 100)];
-        let b = bucket_lines(&lines, &[10.0], 30.0, 600.0, 6000.0);
+        let b = bucket_lines(&lines, &[10.0], &Presence::new(&lines, &[10.0], 30.0), 600.0, 6000.0);
         assert_eq!(b.len(), 1, "all inside one bucket");
         assert_eq!(b[0].active_secs, 32.0);
         assert_eq!(b[0].lookup_secs, 24.0, "only the gap containing the lookup");
@@ -634,7 +741,7 @@ mod tests {
         // the line and only 20s was the dictionary detour. Charging the whole
         // 24s to "looking words up" would overstate it by a fifth.
         let lines = [ev(0.0, 100), ev(4.0, 100), ev(8.0, 100), ev(32.0, 100)];
-        let b = bucket_lines(&lines, &[10.0], 30.0, 600.0, 6000.0);
+        let b = bucket_lines(&lines, &[10.0], &Presence::new(&lines, &[10.0], 30.0), 600.0, 6000.0);
         let x = &b[0];
         assert_eq!((x.clean_chars, x.lookup_chars), (200, 100));
 
@@ -652,7 +759,7 @@ mod tests {
         // rates must agree. A formula that removed the seconds but kept the
         // characters would report a gap here where there is none.
         let lines = [ev(0.0, 100), ev(20.0, 100), ev(40.0, 100)];
-        let b = bucket_lines(&lines, &[25.0], 30.0, 600.0, 6000.0);
+        let b = bucket_lines(&lines, &[25.0], &Presence::new(&lines, &[25.0], 30.0), 600.0, 6000.0);
         let clean_secs = b[0].active_secs - b[0].lookup_secs;
         let raw = b[0].clean_chars as f64 / (clean_secs / 3600.0);
         // Effective over the chars that actually have time attributed to them —
@@ -683,7 +790,7 @@ mod tests {
             })
             .collect();
         let lookups: Vec<f64> = (0..40).map(|i| i as f64 * 37.0 + 1.0).collect();
-        let b = bucket_lines(&lines, &lookups, 30.0, 600.0, 60.0);
+        let b = bucket_lines(&lines, &lookups, &Presence::new(&lines, &lookups, 30.0), 600.0, 60.0);
 
         let sum = |f: fn(&Bucket) -> i64| b.iter().map(f).sum::<i64>();
         // A line ends its session when nothing follows it within the gap.
@@ -708,7 +815,7 @@ mod tests {
         let lines: Vec<_> = (0..21).map(|i| ev(i as f64 * 20.0, 100)).collect();
         // A lookup in every gap except the first.
         let lookups: Vec<f64> = (1..20).map(|i| i as f64 * 20.0 + 5.0).collect();
-        let b = bucket_lines(&lines, &lookups, 30.0, 600.0, 6000.0);
+        let b = bucket_lines(&lines, &lookups, &Presence::new(&lines, &lookups, 30.0), 600.0, 6000.0);
         let bucket = &b[0];
 
         let clean_secs = bucket.active_secs - bucket.lookup_secs;
@@ -729,21 +836,76 @@ mod tests {
 
     #[test]
     fn lookup_time_never_exceeds_active_time() {
-        // A lookup in a gap far longer than the afk cap: the label can only
-        // cover credited time, so subtracting it can never go negative.
+        // A lookup in a gap far longer than the cap: the label can only cover
+        // credited time, so subtracting it can never go negative.
         let lines = [ev(0.0, 50), ev(300.0, 50)];
-        let b = bucket_lines(&lines, &[150.0], 30.0, 600.0, 600.0);
+        let b = bucket_lines(&lines, &[150.0], &Presence::new(&lines, &[150.0], 30.0), 600.0, 600.0);
         let total_active: f64 = b.iter().map(|x| x.active_secs).sum();
         let total_lookup: f64 = b.iter().map(|x| x.lookup_secs).sum();
-        assert_eq!(total_active, 30.0, "afk cap truncates the 300s gap");
-        assert_eq!(total_lookup, 30.0, "the whole credited gap was a lookup");
-        assert!(total_lookup <= total_active);
+        // Present at 150s, so the credit runs to 180 — the flat cap paid 30 for
+        // the same evidence, throwing away two and a half minutes it could see.
+        assert_eq!(total_active, 180.0);
+        assert_eq!(total_lookup, 180.0, "the whole credited gap was a lookup");
+        assert!(total_lookup <= total_active, "the label is time, not extra time");
+    }
+
+    #[test]
+    fn walking_away_earns_the_line_and_nothing_more() {
+        // Steady 4s lines establish 25 chars/s, then a seven-minute absence
+        // after a 100-char line. That line was worth 4 seconds; the other
+        // 416 are absence and must not reach the clock. The flat cap credited
+        // a blanket 30s to every such gap, which on 2026-07-19 alone put 22
+        // minutes of phantom reading on the day and cost 11% of its speed.
+        let lines = [ev(0.0, 100), ev(4.0, 100), ev(8.0, 100), ev(428.0, 100)];
+        let p = Presence::new(&lines, &[], 30.0);
+        let b = bucket_lines(&lines, &[], &p, 600.0, 6000.0);
+        assert_eq!(b[0].active_secs, 12.0, "4 + 4 + the 4 the last line was worth");
+
+        // The cap still bounds a line nobody can price: an enormous line in an
+        // enormous gap cannot claim more than the grace.
+        assert_eq!(p.credit(&ev(0.0, 100_000), 900.0), 30.0);
+        // And a gap shorter than the line's worth is credited whole — the rule
+        // never invents time, it only declines to.
+        assert_eq!(p.credit(&ev(0.0, 100), 2.0), 2.0);
+    }
+
+    #[test]
+    fn ordinary_gaps_are_never_repriced() {
+        // Gaps within the cap vary either side of the line's "worth" by their
+        // nature — that spread *is* the reading. Pricing each at its worth
+        // would clip every long one and keep every short one, shortening the
+        // day by a quarter while claiming to remove absence. Total credited
+        // time across sub-cap gaps must equal the wall clock they span.
+        let lines: Vec<_> = (0..40)
+            .scan(0.0, |t, i| {
+                let line = ev(*t, 20 + (i % 13) * 5);
+                *t += 2.0 + (i % 9) as f64 * 3.0; // 2..26s, all inside the cap
+                Some(line)
+            })
+            .collect();
+        let p = Presence::new(&lines, &[], 30.0);
+        let credited: f64 = lines
+            .windows(2)
+            .map(|w| p.credit(&w[0], w[1].ts - w[0].ts))
+            .sum();
+        let wall = lines.last().unwrap().ts - lines[0].ts;
+        assert_eq!(credited, wall, "no sub-cap gap may be shortened");
+    }
+
+    #[test]
+    fn presence_survives_a_stream_with_no_measurable_pace() {
+        // Every gap is over the cap, so there is nothing to derive a pace from.
+        // Rather than divide by zero or credit nothing, fall back to the flat
+        // cap — the old behaviour, which is the right thing to degrade to.
+        let lines = [ev(0.0, 100), ev(200.0, 100), ev(400.0, 100)];
+        let p = Presence::new(&lines, &[], 30.0);
+        assert_eq!(p.credit(&lines[0], 200.0), 30.0);
     }
 
     #[test]
     fn events_land_in_their_bucket_and_outsiders_are_dropped() {
         let lines = [ev(0.0, 10), ev(30.0, 10), ev(90.0, 10)];
-        let mut b = bucket_lines(&lines, &[], 30.0, 600.0, 60.0);
+        let mut b = bucket_lines(&lines, &[], &Presence::new(&lines, &[], 30.0), 600.0, 60.0);
         // 10s and 40s → bucket 0; 95s → bucket 1; 9000s → no session, dropped.
         add_events(&mut b, &[10.0, 40.0, 95.0, 9000.0], 60.0, EventKind::Lookup);
         assert_eq!(b[0].lookups, 2);
@@ -778,12 +940,15 @@ mod tests {
         let d2 = day_start_ts(NaiveDate::from_ymd_opt(2026, 7, 19).unwrap(), 0, offset);
         // one line late on day 1, one early on day 2, 60s apart across midnight
         let lines = [ev(d2 - 30.0, 10), ev(d2 + 30.0, 20), ev(d2 + 90.0, 5)];
-        let days = aggregate_line_days(&lines, 120.0, 600.0, 0, offset);
+        let days = aggregate_line_days(&lines, &Presence::new(&lines, &[], 120.0), 600.0, 0, offset);
         let day1 = days[&NaiveDate::from_ymd_opt(2026, 7, 18).unwrap()];
         let day2 = days[&NaiveDate::from_ymd_opt(2026, 7, 19).unwrap()];
         assert_eq!(day1.chars, 10);
         assert_eq!(day1.active_secs, 0.0);
         assert_eq!(day2.chars, 25);
+        // Both gaps sit inside the 120s cap, so both are credited whole — the
+        // point of this test is which day they land on, and undisputed gaps are
+        // never repriced.
         assert_eq!(day2.active_secs, 120.0);
         assert!(d1 < d2);
     }

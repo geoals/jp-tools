@@ -23,6 +23,28 @@ fn now_ts() -> f64 {
         .as_secs_f64()
 }
 
+/// Sorted proofs that the reader was at the keyboard over `[from, to)`:
+/// dictionary lookups and mined cards, with paused spans excluded the same way
+/// the lines are. `stats::Presence` credits gap time against these.
+async fn presence_marks(
+    state: &AppState,
+    pauses: &[stats::PauseInterval],
+    from: f64,
+    to: f64,
+) -> Result<Vec<f64>, AppError> {
+    let lookups = db::fetch_lookup_events(&state.pool, from, to).await?;
+    // Note ids are epoch milliseconds, so they double as card creation times.
+    let cards: Vec<f64> = db::fetch_anki_note_ids(&state.pool)
+        .await?
+        .iter()
+        .map(|id| *id as f64 / 1000.0)
+        .filter(|ts| *ts >= from && *ts < to)
+        .collect();
+    let mut marks = stats::presence_marks(&lookups, &cards);
+    marks.retain(|ts| !stats::is_paused(*ts, pauses));
+    Ok(marks)
+}
+
 /// Per-day totals for both sources over the whole history.
 async fn day_maps(
     state: &AppState,
@@ -35,12 +57,15 @@ async fn day_maps(
     ),
     AppError,
 > {
+    #[allow(clippy::items_after_statements)]
     let pauses = db::fetch_pauses(&state.pool).await?;
     let mut lines = db::fetch_line_events(&state.pool, 0.0, f64::MAX).await?;
     lines.retain(|l| !stats::is_paused(l.ts, &pauses));
+    let marks = presence_marks(&state, &pauses, 0.0, f64::MAX).await?;
+    let presence = stats::Presence::new(&lines, &marks, settings.afk_secs);
     let vn = stats::aggregate_line_days(
         &lines,
-        settings.afk_secs,
+        &presence,
         settings.session_gap_secs,
         settings.day_rollover_hour,
         tz,
@@ -238,7 +263,9 @@ pub async fn list_sessions(
     let pauses = db::fetch_pauses(&state.pool).await?;
     let mut lines = db::fetch_line_events(&state.pool, day_start - 21600.0, day_end + 21600.0).await?;
     lines.retain(|l| !stats::is_paused(l.ts, &pauses));
-    let derived: Vec<_> = stats::derive_sessions(&lines, settings.afk_secs, settings.session_gap_secs)
+    let marks = presence_marks(&state, &pauses, day_start - 21600.0, day_end + 21600.0).await?;
+    let presence = stats::Presence::new(&lines, &marks, settings.afk_secs);
+    let derived: Vec<_> = stats::derive_sessions(&lines, &presence, settings.session_gap_secs)
         .into_iter()
         .filter(|s| stats::date_key(s.start_ts, settings.day_rollover_hour, tz) == date)
         .collect();
@@ -323,10 +350,13 @@ pub async fn day_timeline(
         db::fetch_lookup_events(&state.pool, day_start - 21600.0, day_end + 21600.0).await?;
     lookups.retain(|ts| !stats::is_paused(*ts, &pauses));
 
+    let marks = presence_marks(&state, &pauses, day_start - 21600.0, day_end + 21600.0).await?;
+    let presence = stats::Presence::new(&lines, &marks, settings.afk_secs);
+
     let mut buckets = stats::bucket_lines(
         &lines,
         &lookups,
-        settings.afk_secs,
+        &presence,
         settings.session_gap_secs,
         bucket_secs,
     );
@@ -344,12 +374,8 @@ pub async fn day_timeline(
     stats::add_events(&mut buckets, &cards, bucket_secs, stats::EventKind::Card);
 
     // Session spans, so the client can label the bands it draws between.
-    let sessions: Vec<Value> = stats::derive_sessions(
-        &lines,
-        settings.afk_secs,
-        settings.session_gap_secs,
-    )
-    .into_iter()
+    let sessions: Vec<Value> = stats::derive_sessions(&lines, &presence, settings.session_gap_secs)
+        .into_iter()
     .filter(|s| stats::date_key(s.start_ts, settings.day_rollover_hour, tz) == date)
     .map(|s| {
         let (start, end) = (s.start_ts, s.end_ts);

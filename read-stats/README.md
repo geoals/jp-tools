@@ -277,10 +277,40 @@ of real lookup overhead** — a median 14.1s per gap, at 1.3 lookups per gap. Th
 chars/h tax is unaffected by this correction, being a ratio of rates that
 already accounts for characters read during lookups.
 
-The afk cap truncates any gap at `afk_secs`, so a 90-second dictionary detour
-only ever charges 30 and the tax is a slight floor — but only slight. That same
-day, 17 of 1220 gaps (1.4%) ran past the cap, discarding 3.8 minutes; 16 of the
-17 were lookup gaps, which is the cap doing precisely the job it was set for.
+### What counts as being there
+
+A gap inside `afk_secs` is credited whole — that is ordinary reading and none of
+it is in doubt. Past the cap, the question is whether you were still at the
+keyboard, and the answer comes from evidence rather than a flat rate:
+
+- **A lookup or a mined card in the gap** proves you were present when it fired,
+  so the clock restarts there and runs a fresh `afk_secs`. A lookup is not
+  instantaneous — reading the definition happens *after* the event — so a
+  45-second detour is credited 45, not truncated to 30 the way the old flat cap
+  did it.
+- **Nothing in the gap** means only the line itself can be claimed, priced at
+  your uninterrupted pace. A 15-character line earns about four seconds whether
+  you were gone 35 seconds or seven minutes.
+
+The flat cap this replaced paid a blanket 30 seconds into *every* over-cap gap.
+On 2026-07-19 that was 44 absences, 22 minutes of reading that never happened,
+and an 11% understatement of that day's speed. The rule cuts both ways: 07-19
+loses 12 minutes, but 07-20 — a lookup-heavy day with barely any absence —
+*gains* 3, because the extension credits detours the cap used to shear off. The
+two days' speeds converge from 12,121/13,467 to 13,028/13,160, which is the
+point: the metric should measure reading, not how often you remembered to hit
+pause.
+
+Two guards worth knowing about. Sub-cap gaps are never repriced
+(`ordinary_gaps_are_never_repriced`) — pricing each gap at what its line was
+"worth" would clip every above-average gap to average and leave the
+below-average ones, shortening a day by a quarter while calling it a
+correction. And a stream too sparse to establish a pace falls back to the flat
+cap, which is the right thing to degrade to.
+
+You should not have to think about the afk timer, and with this you don't:
+walking away costs nothing and is never credited, so the pause button is now a
+convenience rather than something the numbers depend on.
 
 Two panels rather than one overlay, because chars/hour runs in the thousands and
 events/hour in the tens: one plot would need two y-scales, and where two scales
