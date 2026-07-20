@@ -110,10 +110,19 @@ pub struct Bucket {
     /// drawing a slope through a dinner break.
     pub session: usize,
     pub chars: i64,
+    /// Characters whose *own* gap contained no lookup — i.e. read at
+    /// uninterrupted pace. Pairs with `active_secs - lookup_secs`.
+    ///
+    /// Speed on the text itself has to drop both sides together. Dividing all
+    /// `chars` by non-lookup time only would credit characters read *during* a
+    /// lookup to the time that remains, and in a dense lookup burst the
+    /// denominator collapses while the numerator doesn't — which reported
+    /// 30k chars/h for reading that was actually running at 12k.
+    pub clean_chars: i64,
     pub active_secs: f64,
     /// The part of `active_secs` spent inside a gap that contained a Yomitan
     /// lookup. Always ≤ `active_secs`: it is a *label* on credited time, not
-    /// extra time. Subtracting it gives speed on the text itself.
+    /// extra time.
     pub lookup_secs: f64,
     pub lookups: i64,
     pub cards: i64,
@@ -124,6 +133,7 @@ fn empty_bucket(session: usize, idx: i64, bucket_secs: f64) -> Bucket {
         t: idx as f64 * bucket_secs,
         session,
         chars: 0,
+        clean_chars: 0,
         active_secs: 0.0,
         lookup_secs: 0.0,
         lookups: 0,
@@ -205,13 +215,21 @@ pub fn bucket_lines(
         if let Some(next) = lines.get(k + 1) {
             let gap = next.ts - line.ts;
             if gap > 0.0 && gap <= session_gap_secs {
+                let is_lookup = gap_has_lookup(lookups, line.ts, next.ts);
+                // These characters were read across this gap, so they belong
+                // to the clean side only when the gap itself was clean.
+                if !is_lookup {
+                    out.entry((session, idx))
+                        .or_insert_with(|| empty_bucket(session, idx, bucket_secs))
+                        .clean_chars += line.chars;
+                }
                 spread_credit(
                     &mut out,
                     session,
                     line.ts,
                     gap.min(afk_secs),
                     bucket_secs,
-                    gap_has_lookup(lookups, line.ts, next.ts),
+                    is_lookup,
                 );
             }
         }
@@ -570,19 +588,69 @@ mod tests {
 
     #[test]
     fn lookup_gaps_label_the_time_they_consumed() {
-        // Four lines, 20s apart. A lookup sits in the second gap only, so 20 of
-        // the 60 credited seconds are lookup time — and the chars are unchanged,
-        // which is exactly what makes raw speed exceed effective speed.
-        let lines = [ev(0.0, 100), ev(20.0, 100), ev(40.0, 100), ev(60.0, 100)];
-        let b = bucket_lines(&lines, &[25.0], 30.0, 600.0, 600.0);
-        assert_eq!(b.len(), 1, "all inside one 10-minute bucket");
-        assert_eq!(b[0].active_secs, 60.0);
-        assert_eq!(b[0].lookup_secs, 20.0, "only the gap containing the lookup");
+        // Realistic shape: clean gaps are short (4s) and the gap holding a
+        // lookup is long (24s), which is where the penalty actually lives —
+        // in the measured stream, lookup gaps run a median 21s against 3s.
+        let lines = [ev(0.0, 100), ev(4.0, 100), ev(8.0, 100), ev(32.0, 100)];
+        let b = bucket_lines(&lines, &[10.0], 30.0, 600.0, 6000.0);
+        assert_eq!(b.len(), 1, "all inside one bucket");
+        assert_eq!(b[0].active_secs, 32.0);
+        assert_eq!(b[0].lookup_secs, 24.0, "only the gap containing the lookup");
+
+        // The 100 chars read across the lookup gap drop out of the clean side
+        // along with their 24 seconds; the final line has no gap, so its chars
+        // count toward the total but toward neither rate's denominator.
+        assert_eq!(b[0].chars, 400);
+        assert_eq!(b[0].clean_chars, 200);
 
         let effective = b[0].chars as f64 / (b[0].active_secs / 3600.0);
-        let raw = b[0].chars as f64 / ((b[0].active_secs - b[0].lookup_secs) / 3600.0);
-        assert_eq!(effective, 24000.0);
-        assert_eq!(raw, 36000.0, "same chars, lookup seconds removed");
+        let raw = b[0].clean_chars as f64 / ((b[0].active_secs - b[0].lookup_secs) / 3600.0);
+        assert_eq!(effective, 45000.0);
+        assert_eq!(raw, 90000.0, "clean chars over clean seconds");
+        assert!(raw > effective, "a long lookup gap drags the measured rate down");
+    }
+
+    #[test]
+    fn raw_speed_matches_effective_when_lookups_cost_nothing() {
+        // Same chars in the same time whether or not a lookup happened: the two
+        // rates must agree. A formula that removed the seconds but kept the
+        // characters would report a gap here where there is none.
+        let lines = [ev(0.0, 100), ev(20.0, 100), ev(40.0, 100)];
+        let b = bucket_lines(&lines, &[25.0], 30.0, 600.0, 6000.0);
+        let clean_secs = b[0].active_secs - b[0].lookup_secs;
+        let raw = b[0].clean_chars as f64 / (clean_secs / 3600.0);
+        // Effective over the chars that actually have time attributed to them.
+        let timed_chars = b[0].chars - 100; // the trailing line has no gap
+        let effective = timed_chars as f64 / (b[0].active_secs / 3600.0);
+        assert_eq!(raw, effective, "no penalty in, no penalty out");
+    }
+
+    #[test]
+    fn raw_speed_cannot_explode_in_a_lookup_burst() {
+        // The bug this guards: dividing *all* chars by only the non-lookup
+        // seconds. Here every gap but one contains a lookup, so that denominator
+        // is tiny while the numerator is not — the old formula reported a wild
+        // multiple of the true pace. Clean-over-clean stays put.
+        let lines: Vec<_> = (0..21).map(|i| ev(i as f64 * 20.0, 100)).collect();
+        // A lookup in every gap except the first.
+        let lookups: Vec<f64> = (1..20).map(|i| i as f64 * 20.0 + 5.0).collect();
+        let b = bucket_lines(&lines, &lookups, 30.0, 600.0, 6000.0);
+        let bucket = &b[0];
+
+        let clean_secs = bucket.active_secs - bucket.lookup_secs;
+        assert_eq!(clean_secs, 20.0, "only the first gap is clean");
+        assert_eq!(bucket.clean_chars, 100, "and only its line's chars");
+
+        let effective = bucket.chars as f64 / (bucket.active_secs / 3600.0);
+        let raw = bucket.clean_chars as f64 / (clean_secs / 3600.0);
+        let bugged = bucket.chars as f64 / (clean_secs / 3600.0);
+
+        assert_eq!(raw, 18000.0);
+        assert_eq!(bugged, 378_000.0, "what the old formula produced");
+        assert!(
+            raw < effective * 2.0,
+            "raw {raw} must stay in the neighbourhood of effective {effective}"
+        );
     }
 
     #[test]

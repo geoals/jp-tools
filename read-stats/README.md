@@ -237,15 +237,28 @@ lookups/h and cards/h below, on a shared clock axis. A slider sets the smoothing
 window (1–45 min) and a date picker walks back through history.
 
 **The speed panel carries two lines.** *As read* is `chars / active_secs` — what
-actually happened. *Lookups removed* is `chars / (active_secs − lookup_secs)` —
-the same characters with the seconds that went into looking words up taken out
-of the denominator. The shaded gap between them is the **lookup tax**, read
-straight off the chars/hour axis, with the whole-day figure stated in words
-below the chart.
+actually happened. *Lookups removed* is `clean_chars / (active_secs −
+lookup_secs)`: reading speed over the gaps that contained no lookup. The shaded
+gap between them is the **lookup tax**, read straight off the chars/hour axis,
+with the whole-day figure stated in words below the chart.
 
-A gap counts as lookup time when a `lookups` row falls inside it. Since the afk
-cap truncates any gap at `afk_secs`, a 90-second dictionary detour only ever
-charges 30 — **the tax shown is a floor, not the full cost.**
+**Both sides of that ratio have to drop together.** A line's characters were
+read across the gap that follows it, so when that gap held a lookup the
+characters leave the numerator along with their seconds (`clean_chars` exists
+for exactly this). Dividing *all* chars by only the non-lookup seconds instead
+credits characters read during a lookup to the time that remains — and in a
+dense lookup burst the denominator collapses while the numerator doesn't. That
+bug reported 30k chars/h for reading that was really running at 12k;
+`raw_speed_cannot_explode_in_a_lookup_burst` pins it.
+
+A gap counts as lookup time when a `lookups` row falls inside it. The
+separation is sharp enough to trust: over 2026-07-20's 1220 in-session gaps,
+those holding a lookup ran a median 21.3s against 3.1s for those that didn't.
+
+The afk cap truncates any gap at `afk_secs`, so a 90-second dictionary detour
+only ever charges 30 and the tax is a slight floor — but only slight. That same
+day, 17 of 1220 gaps (1.4%) ran past the cap, discarding 3.8 minutes; 16 of the
+17 were lookup gaps, which is the cap doing precisely the job it was set for.
 
 Two panels rather than one overlay, because chars/hour runs in the thousands and
 events/hour in the tens: one plot would need two y-scales, and where two scales

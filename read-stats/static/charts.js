@@ -343,12 +343,13 @@ function clockHM(ts) {
 function smoothBuckets(buckets, win) {
   const half = Math.floor(win / 2);
   return buckets.map((b, i) => {
-    let chars = 0, active = 0, lookup = 0, lookups = 0, cards = 0;
+    let chars = 0, cleanChars = 0, active = 0, lookup = 0, lookups = 0, cards = 0;
     const lo = Math.max(0, i - half);
     const hi = Math.min(buckets.length - 1, i + half);
     for (let j = lo; j <= hi; j += 1) {
       if (buckets[j].session !== b.session) continue;
       chars += buckets[j].chars;
+      cleanChars += buckets[j].clean_chars;
       active += buckets[j].active_secs;
       lookup += buckets[j].lookup_secs;
       lookups += buckets[j].lookups;
@@ -356,9 +357,10 @@ function smoothBuckets(buckets, win) {
     }
     const hours = active / 3600;
     const ok = active >= DAY_MIN_ACTIVE_SECS;
-    // Speed on the text itself: the same characters, with the seconds that went
-    // into lookups taken out of the denominator. Needs enough non-lookup time
-    // left to divide by — a window that was *all* lookup has no raw speed.
+    // Speed on the text itself. Both sides drop together: characters read
+    // across a lookup gap leave the numerator along with their seconds. Keeping
+    // them while removing the seconds is what made a dense lookup burst report
+    // 30k chars/h for reading that was really running at 12k.
     const textHours = (active - lookup) / 3600;
     return {
       t: b.t,
@@ -366,8 +368,9 @@ function smoothBuckets(buckets, win) {
       winChars: chars,
       winActive: active,
       winLookup: lookup,
+      winCleanChars: cleanChars,
       speed: ok ? chars / hours : null,
-      raw: ok && textHours > DAY_MIN_ACTIVE_SECS / 3600 ? chars / textHours : null,
+      raw: ok && textHours > DAY_MIN_ACTIVE_SECS / 3600 ? cleanChars / textHours : null,
       lookups: ok ? lookups / hours : null,
       cards: ok ? cards / hours : null,
     };
@@ -488,8 +491,9 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
   const totActive = buckets.reduce((a, b) => a + b.active_secs, 0);
   const totLookup = buckets.reduce((a, b) => a + b.lookup_secs, 0);
   const totChars = buckets.reduce((a, b) => a + b.chars, 0);
+  const totClean = buckets.reduce((a, b) => a + b.clean_chars, 0);
   const dayEffective = totChars / (totActive / 3600);
-  const dayRaw = totActive > totLookup ? totChars / ((totActive - totLookup) / 3600) : null;
+  const dayRaw = totActive > totLookup ? totClean / ((totActive - totLookup) / 3600) : null;
 
   // Hour gridlines, or half-hour when the day is short enough to need them.
   const spanHours = (t1 - t0) / 3600;
@@ -631,7 +635,7 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
         ${`Whole day: ${Math.round(dayEffective).toLocaleString('en')} chars/h as read, ${Math.round(dayRaw).toLocaleString('en')} without lookups — a lookup tax of ${Math.round(dayRaw - dayEffective).toLocaleString('en')} chars/h (${Math.round(((dayRaw - dayEffective) / dayRaw) * 100)}%), over ${Math.round(totLookup / 60)} min spent looking words up.`}
         ${' '}
         <span class="tooltip-sub">
-          The 30s afk cap truncates long lookups, so this is a floor.
+          A lookup running past the 30s afk cap is only ever charged 30s, so this is a slight floor.
         </span>
       </p>
     `}
