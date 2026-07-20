@@ -146,6 +146,8 @@ Or as part of the stack: `scripts/start-all.sh`.
   `?backlog=` lines (40) on open, or resumes after `?after=<id>` /
   `Last-Event-ID` so a reconnecting phone doesn't replay or skip
 - `GET  /api/reader/state` — `{paused, current_work, capture_available}`
+- `GET  /api/vn/windows` — open window titles (via xdotool, Wine/Qt/IME
+  scaffolding filtered out), offered as a picker for the `vn_window` setting
 - `POST /api/vn/capture` — run `vn-capture.sh` (see `JP_TOOLS_VN_CAPTURE_SH`)
   and return its result. A capture that fails for an ordinary reason (stale
   line, Anki closed) is `200 {"ok": false, "error": ...}`; only an unrunnable

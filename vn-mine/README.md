@@ -98,7 +98,12 @@ switching outputs).
   focus here.) Requires `xdotool` and ImageMagick's `import`; Wine/Proton
   windows are XWayland, so this works under a Wayland session even though
   `xdotool getactivewindow` does not. Unset, unmatched, or missing tools fall
-  back to the active window and say so in the result.
+  back to the active window and say so in the result. **Unset, it falls back to
+  read-stats' `vn_window` setting** (read straight from the stats DB), so the
+  hotkey and the `#read` mine button share one place to configure this — set it
+  from the dashboard's *Currently reading* card, which offers a picker of open
+  windows. Configuring it in two places is how you end up with one of them
+  silently capturing the wrong window after a VN switch.
 - `VN_MAX_LEN` (default 20) — max seconds considered after the line appears.
 - `VN_VAD_THRESHOLD` (default 0.5) — raise if BGM vocals leak in, lower if
   quiet lines get cut.

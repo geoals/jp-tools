@@ -205,6 +205,42 @@ pub async fn vn_capture(State(state): State<AppState>) -> Result<Json<Value>, Ap
     Ok(Json(parsed))
 }
 
+/// Candidate window titles for the `vn_window` setting.
+///
+/// The VN's window title can't be guessed from the work title (`素晴らしき日々`
+/// vs `素晴らしき日々～不連続存在～`) and changes with every game, so the
+/// dashboard offers a list to pick from rather than a blank text box.
+pub async fn vn_windows() -> Result<Json<Value>, AppError> {
+    let out = tokio::process::Command::new("xdotool")
+        .args(["search", "--name", ".", "getwindowname", "%@"])
+        .output()
+        .await
+        .map_err(|e| AppError::Upstream(format!("xdotool unavailable: {e}")))?;
+
+    let mut names: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|n| !n.is_empty() && !is_helper_window(n))
+        .map(str::to_string)
+        .collect();
+    names.sort();
+    names.dedup();
+    Ok(Json(json!({ "windows": names })))
+}
+
+/// Wine/Qt/IME scaffolding that is never the VN. Everything else is offered,
+/// since guessing which of the real windows is the game is the user's call.
+fn is_helper_window(name: &str) -> bool {
+    const NOISE: &[&str] = &[
+        "Default IME",
+        "Input",
+        "xsettingsd",
+        "Chromium clipboard",
+        "Fcitx5 Input Window",
+    ];
+    NOISE.contains(&name) || name.starts_with("Qt Selection Owner")
+}
+
 /// Everything the reader needs on open, in one round trip.
 pub async fn reader_state(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     let settings = db::load_settings(&state.pool).await?;

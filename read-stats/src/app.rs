@@ -57,6 +57,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/lines/stream", get(reader::lines_stream))
         .route("/api/reader/state", get(reader::reader_state))
         .route("/api/vn/capture", axum::routing::post(reader::vn_capture))
+        .route("/api/vn/windows", get(reader::vn_windows))
         // Yomitan's AnkiConnect endpoint: forwards to Anki, counts lookups.
         .route(
             "/anki-proxy",

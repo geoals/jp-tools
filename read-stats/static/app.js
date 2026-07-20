@@ -302,6 +302,16 @@ function WorkMetaForm({ work, onSaved, onCancel }) {
 function CurrentReading({ works, settings, days, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [winBusy, setWinBusy] = useState(false);
+  const [windows, setWindows] = useState([]);
+
+  // Fetched once on mount rather than with the 60s refresh: it shells out to
+  // xdotool, and the window list only changes when you launch a different VN.
+  useEffect(() => {
+    api("/api/vn/windows")
+      .then((r) => setWindows(r.windows || []))
+      .catch(() => setWindows([]));
+  }, []);
 
   const title = settings.current_work;
   const current = title ? works.find((w) => w.work === title) : null;
@@ -322,6 +332,22 @@ function CurrentReading({ works, settings, days, onSaved }) {
       alert(err.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function saveWindow(e) {
+    e.preventDefault();
+    setWinBusy(true);
+    try {
+      await api("/api/settings", {
+        method: "PUT",
+        body: { vn_window: e.currentTarget.vnwindow.value.trim() },
+      });
+      onSaved();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setWinBusy(false);
     }
   }
 
@@ -427,8 +453,41 @@ function CurrentReading({ works, settings, days, onSaved }) {
           <button type="submit" disabled=${busy}>${busy ? "…" : "set"}</button>
         </div>
       </form>
+      <form class="now-reading" onSubmit=${saveWindow}>
+        <label for="vn-window-input">VN window</label>
+        <div class="now-reading-row">
+          <input
+            id="vn-window-input"
+            name="vnwindow"
+            type="text"
+            list="open-windows"
+            value=${settings.vn_window}
+            placeholder="pick the VN's window"
+          />
+          <datalist id="open-windows">
+            ${windows.map((w) => html`<option value=${w}></option>`)}
+          </datalist>
+          <button type="submit" disabled=${winBusy}>
+            ${winBusy ? "…" : "set"}
+          </button>
+        </div>
+        <div class="meta-hint">${vnWindowHint(settings, windows)}</div>
+      </form>
     </div>
   `;
+}
+
+/** Why this box exists, and whether what's in it currently matches a real
+ *  window — a stale title still mines, it just screenshots the wrong thing. */
+function vnWindowHint(settings, windows) {
+  const set = settings.vn_window;
+  if (!set) {
+    return "Not set — the mine button screenshots whatever has focus, which is the browser when you mine from this machine. Pick the VN's window above.";
+  }
+  const matches = windows.some((w) => w.includes(set));
+  return matches
+    ? `Screenshots match "${set}". Update it when you switch VNs.`
+    : `No open window matches "${set}" — captures will fall back to the focused window. Re-pick it if you have switched VNs.`;
 }
 
 /** The library is where works are managed: switch the current one, edit

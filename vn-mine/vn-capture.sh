@@ -33,6 +33,16 @@ TRIM_SCRIPT="$SCRIPT_DIR/vn-trim.py"
 VN_WINDOW="${VN_WINDOW:-}"
 SHOT_NOTE=""
 
+# Unset, fall back to read-stats' `vn_window` setting, so the hotkey and the
+# #read mine button read the same config — otherwise switching VNs means
+# remembering to update two places, and the one you forget silently captures
+# the wrong window. Read-only: the logger writes to this DB concurrently.
+STATS_DB="${JP_TOOLS_STATS_DB_PATH:-$HOME/.local/share/jp-stats/stats.db}"
+if [ -z "$VN_WINDOW" ] && command -v sqlite3 &>/dev/null && [ -f "$STATS_DB" ]; then
+  VN_WINDOW=$(sqlite3 -readonly "$STATS_DB" \
+    "SELECT value FROM settings WHERE key = 'vn_window'" 2>/dev/null)
+fi
+
 TMP=$(mktemp -d "$RUNDIR/cap.XXXXXX" 2>/dev/null) || TMP=$(mktemp -d)
 
 die() {
