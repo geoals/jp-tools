@@ -27,6 +27,7 @@ async fn main() {
         anki_deck: config.anki_deck.clone(),
         anki_vocab_field: config.anki_vocab_field.clone(),
         sudachi_dict_path: config.sudachi_dict_path.clone(),
+        vn_capture_script: config.vn_capture_script.clone(),
     });
 
     let listener = tokio::net::TcpListener::bind(&config.listen_addr)

@@ -77,6 +77,35 @@ toggleable lookups/h vs cards/h trend.
   words. `word_days` is deck-independent, so words mined later still match
   past reading.
 
+## Reading from a phone (`/#read`)
+
+`#read` is a live feed of the lines Textractor hooks, meant for reading a VN on
+the PC while the phone does the looking-up. The setup:
+
+- **Sunshine** on the PC + **Moonlight** on the phone streams the VN. Put the
+  two in Android split-screen — Moonlight above, Firefox on `#read` below — so
+  the lines are always visible and there is no app-switching per lookup.
+- **Yomitan in Firefox Android** scans the lines. Point its *Server address* at
+  `http://<pc-ip>:3200/anki-proxy` exactly as on the desktop, so phone lookups
+  are counted too and cards land in the **PC's** Anki.
+- **⛏ mine last line** runs `vn-mine/vn-capture.sh` on the PC, attaching the
+  voiceline audio and a screenshot to the note Yomitan just added, and reports
+  the outcome on the page instead of via `notify-send` on a desktop nobody is
+  looking at.
+
+Cards must land in the PC's collection, not the phone's, because that is what
+`vn-capture.sh` attaches media to — so the proxy forwards to `JP_TOOLS_ANKI_URL`
+unconditionally, deliberately *not* preferring the requesting client the way
+manga-mine's export does.
+
+Input from Moonlight goes to the VN, so the VN keeps desktop focus throughout
+and the usual "click back to the VN window first" caveat doesn't apply. The
+5-minute ring-buffer limit still does: mine before advancing.
+
+The line feed is read from the `lines` table that `vn-ws-logger.py` already
+writes, not from Textractor's WebSocket — its plugin can crash Textractor when a
+client disconnects abortively, so a second WS client would be a risk for nothing.
+
 ## Run
 
 ```sh
@@ -104,6 +133,15 @@ Or as part of the stack: `scripts/start-all.sh`.
   stored; empty string removes the cover; `total_chars: 0` clears; status ∈
   reading/queued/finished/dropped
 - `PUT  /api/works/{id}` / `DELETE /api/works/{id}` — same fields by id / remove
+- `GET  /api/lines/stream` — SSE, one event per hooked line, `data` being
+  `{id, ts, chars, text}` and the event id being the line id. Sends the last
+  `?backlog=` lines (40) on open, or resumes after `?after=<id>` /
+  `Last-Event-ID` so a reconnecting phone doesn't replay or skip
+- `GET  /api/reader/state` — `{paused, current_work, capture_available}`
+- `POST /api/vn/capture` — run `vn-capture.sh` (see `JP_TOOLS_VN_CAPTURE_SH`)
+  and return its result. A capture that fails for an ordinary reason (stale
+  line, Anki closed) is `200 {"ok": false, "error": ...}`; only an unrunnable
+  or unparseable script is a 5xx
 - `POST /api/pause` — toggle an open-ended pause interval
 - `POST /api/anki/refresh` — probe AnkiConnect (client IP, then fallback),
   snapshot the deck, tokenize new lines
@@ -191,6 +229,10 @@ curl -X POST localhost:3200/api/sessions -H 'Content-Type: application/json' \
   when the dashboard client has none; `JP_TOOLS_ANKI_DECK` (`Japanese`),
   `JP_TOOLS_ANKI_FIELD_VOCAB` (`VocabKanji`)
 - `JP_TOOLS_SUDACHI_DICT_PATH` (default `system_full.dic` in the working dir)
+- `JP_TOOLS_VN_CAPTURE_SH` (default `../vn-mine/vn-capture.sh` relative to the
+  crate) — what `#read`'s mine button runs. It needs the desktop session's
+  environment (`spectacle` screenshots the active window), so read-stats has to
+  be started from within the session, as `scripts/start-all.sh` does.
 
 ## Extending to new sources
 

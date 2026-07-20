@@ -420,3 +420,119 @@ table.days td {
   color: var(--text-secondary);
 }
 table.days tr.today td { color: var(--text-primary); font-weight: 500; }
+
+/* ── Reading view (#read) ────────────────────────────────────────────────
+   Sized for a phone in split-screen beside a Moonlight stream: fixed to the
+   viewport so #app's dashboard padding doesn't apply, lines scrolling between
+   a thin status bar and a thumb-sized action row. */
+.reader {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--page);
+}
+
+.reader-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex: none;
+}
+.reader-back {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 16px;
+  padding: 0 4px;
+}
+/* The work title takes the slack and truncates; the status and buttons after
+   it must never be pushed off a narrow screen. */
+.reader-work {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.reader-live { color: var(--muted); }
+.reader-live.on { color: var(--good); }
+
+.reader-lines {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 14px 16px;
+  /* Yomitan needs a real selection to scan; browsers otherwise treat a
+     long-press in a scroller as the start of a drag. */
+  user-select: text;
+  -webkit-user-select: text;
+}
+.reader-line {
+  margin: 0 0 0.75em;
+  line-height: 1.75;
+  font-family: 'Noto Sans JP', 'IBM Plex Sans', sans-serif;
+  color: var(--text-primary);
+}
+/* The newest line is the one being read — the rest is context behind it. */
+.reader-line:last-child { color: var(--text-primary); }
+.reader-line:not(:last-child) { color: var(--text-secondary); }
+.reader-empty {
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  margin-top: 24px;
+}
+
+.reader-toast {
+  flex: none;
+  padding: 8px 14px;
+  font-size: 13px;
+  border-top: 1px solid var(--border);
+}
+.reader-toast.ok { color: var(--good); }
+.reader-toast.err { color: var(--text-primary); background: rgba(200, 60, 60, 0.14); }
+
+.reader-actions {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  /* Clear of the Android gesture bar when this is the bottom split pane. */
+  padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--surface-1);
+}
+.reader-actions button {
+  font: inherit;
+  border-radius: 8px;
+  cursor: pointer;
+  /* Comfortable thumb target — this gets pressed once per mined card. */
+  min-height: 44px;
+}
+.reader-pause {
+  flex: none;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.reader-pause.paused {
+  background: var(--series-1);
+  border-color: transparent;
+  color: #fff;
+}
+.reader-mine {
+  flex: 1;
+  border: none;
+  background: var(--series-1);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+}
+.reader-mine:disabled { opacity: 0.5; cursor: default; }

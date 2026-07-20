@@ -7,6 +7,9 @@
 # Requires: vn-buffer.service running, curl, jq, spectacle, ffmpeg
 # Env: VN_DRY=1        build the clip + screenshot but skip Anki, keep files
 #                      (also skips the sentence trim — it needs the note)
+#      VN_JSON=1       print a JSON result object instead of notifying the
+#                      desktop — for read-stats' reader view, where the person
+#                      pressing the button is on their phone
 #      VN_MAX_LEN=20   max seconds of audio considered after the line appears
 #      VN_WHISPER_URL  whisper-service for sentence trim (default :8100)
 
@@ -28,8 +31,15 @@ TRIM_SCRIPT="$SCRIPT_DIR/vn-trim.py"
 TMP=$(mktemp -d "$RUNDIR/cap.XXXXXX" 2>/dev/null) || TMP=$(mktemp -d)
 
 die() {
-  echo "Error: $1"
-  notify-send -u critical "❌ VN Mine" "$1"
+  if [ -n "$VN_JSON" ]; then
+    # jq is checked for below, but this runs before that — fall back to a
+    # hand-built object so the caller always gets a parseable failure.
+    jq -nc --arg error "$1" '{ok: false, error: $error}' 2>/dev/null ||
+      printf '{"ok":false,"error":"vn-capture failed early (is jq installed?)"}\n'
+  else
+    echo "Error: $1"
+    notify-send -u critical "❌ VN Mine" "$1"
+  fi
   [ -z "$VN_DRY" ] && rm -rf "$TMP"
   exit 1
 }
@@ -98,11 +108,13 @@ if [ -x "$VAD_PYTHON" ] && [ -f "$VAD_SCRIPT" ]; then
   VAD_OUT=$("$VAD_PYTHON" "$VAD_SCRIPT" "$TMP/vad.wav" 2>"$TMP/vad.err")
   if [ "$VAD_OUT" == "none" ]; then
     TRIM_NOTE=" (⚠ no speech detected — kept full window)"
-    notify-send -u critical "⚠️ VN Mine" "No speech detected in the ${MAX_LEN}s after the hooked line — attaching the full window anyway.
+    # In JSON mode the warning rides back on the result instead: nobody is
+    # looking at this desktop.
+    [ -z "$VN_JSON" ] && notify-send -u critical "⚠️ VN Mine" "No speech detected in the ${MAX_LEN}s after the hooked line — attaching the full window anyway.
 Wrong audio output, or did the line hook long after the voice played?"
   elif [ -z "$VAD_OUT" ]; then
     TRIM_NOTE=" (⚠ VAD failed — kept full window)"
-    notify-send -u critical "⚠️ VN Mine" "VAD script failed — attaching the untrimmed window.
+    [ -z "$VN_JSON" ] && notify-send -u critical "⚠️ VN Mine" "VAD script failed — attaching the untrimmed window.
 $(tail -n 1 "$TMP/vad.err" 2>/dev/null)"
   else
     read -r SPEECH_START SPEECH_END <<<"$VAD_OUT"
@@ -176,7 +188,9 @@ fi
 AUDIO_FILE="recording_${TIMESTAMP}.ogg"
 ffmpeg -nostdin -loglevel error -f s16le -ar 48000 -ac 2 -i "$TMP/clip.raw" \
   -c:a libvorbis -q:a 3 "$TMP/$AUDIO_FILE" -y || die "ffmpeg encoding failed"
-DURATION=$(awk -v b="$(stat -c %s "$TMP/clip.raw")" -v bps="$BPS" 'BEGIN{printf "%.1f", b/bps}')
+# LC_ALL=C: a comma-decimal locale would print "2,4" here, which is not valid
+# JSON for the VN_JSON result below.
+DURATION=$(LC_ALL=C awk -v b="$(stat -c %s "$TMP/clip.raw")" -v bps="$BPS" 'BEGIN{printf "%.1f", b/bps}')
 
 if [ -n "$VN_DRY" ]; then
   echo "DRY RUN — no Anki upload"
@@ -224,6 +238,12 @@ if echo "$UPDATE_RESULT" | jq -e '.error != null' >/dev/null; then
 fi
 
 rm -rf "$TMP"
-echo "✅ Added ${DURATION}s audio + screenshot to note $NOTE_ID"
-notify-send "✅ VN Mine" "${DURATION}s audio + screenshot added$TRIM_NOTE
+if [ -n "$VN_JSON" ]; then
+  jq -nc --argjson note_id "$NOTE_ID" --argjson duration "$DURATION" \
+    --arg note "$TRIM_NOTE" --arg line "$LINE_TEXT" \
+    '{ok: true, note_id: $note_id, duration: $duration, note: ($note | ltrimstr(" ")), line: $line}'
+else
+  echo "✅ Added ${DURATION}s audio + screenshot to note $NOTE_ID"
+  notify-send "✅ VN Mine" "${DURATION}s audio + screenshot added$TRIM_NOTE
 $LINE_TEXT"
+fi

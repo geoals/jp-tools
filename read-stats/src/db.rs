@@ -193,6 +193,68 @@ pub async fn save_setting(pool: &SqlitePool, key: &str, value: &str) -> Result<(
     Ok(())
 }
 
+/// A hooked line as the reader view shows it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ReaderLine {
+    pub id: i64,
+    pub ts: f64,
+    pub chars: i64,
+    pub text: String,
+}
+
+/// Lines newer than `after_id`, oldest first. The reader's SSE loop calls this
+/// on a short interval, so it stays a bounded index range scan.
+pub async fn fetch_lines_after_id(
+    pool: &SqlitePool,
+    after_id: i64,
+    limit: i64,
+) -> Result<Vec<ReaderLine>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT id, ts, chars, text FROM lines
+         WHERE id > ? AND text IS NOT NULL ORDER BY id LIMIT ?",
+    )
+    .bind(after_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.iter().map(reader_line).collect())
+}
+
+/// The newest `limit` lines, oldest first — the backlog a reader gets on open
+/// so the screen isn't blank until the next line is hooked.
+pub async fn fetch_recent_lines(
+    pool: &SqlitePool,
+    limit: i64,
+) -> Result<Vec<ReaderLine>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT id, ts, chars, text FROM lines
+         WHERE text IS NOT NULL ORDER BY id DESC LIMIT ?",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    let mut lines: Vec<ReaderLine> = rows.iter().map(reader_line).collect();
+    lines.reverse();
+    Ok(lines)
+}
+
+fn reader_line(r: &sqlx::sqlite::SqliteRow) -> ReaderLine {
+    ReaderLine {
+        id: r.get("id"),
+        ts: r.get("ts"),
+        chars: r.get("chars"),
+        text: r.get::<Option<String>, _>("text").unwrap_or_default(),
+    }
+}
+
+/// Highest line id currently stored, or 0 when the table is empty.
+pub async fn max_line_id(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
+    let row = sqlx::query("SELECT COALESCE(MAX(id), 0) AS max_id FROM lines")
+        .fetch_one(pool)
+        .await?;
+    Ok(row.get("max_id"))
+}
+
 pub async fn fetch_line_events(
     pool: &SqlitePool,
     from_ts: f64,
@@ -265,10 +327,12 @@ pub async fn toggle_pause(pool: &SqlitePool, now: f64) -> Result<bool, sqlx::Err
 }
 
 pub async fn is_pause_open(pool: &SqlitePool) -> Result<bool, sqlx::Error> {
-    Ok(sqlx::query("SELECT id FROM pauses WHERE end_ts IS NULL LIMIT 1")
-        .fetch_optional(pool)
-        .await?
-        .is_some())
+    Ok(
+        sqlx::query("SELECT id FROM pauses WHERE end_ts IS NULL LIMIT 1")
+            .fetch_optional(pool)
+            .await?
+            .is_some(),
+    )
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -516,10 +580,11 @@ pub async fn fetch_lines_after(
     pool: &SqlitePool,
     after_id: i64,
 ) -> Result<Vec<IngestLine>, sqlx::Error> {
-    let rows = sqlx::query("SELECT id, ts, text FROM lines WHERE id > ? AND text IS NOT NULL ORDER BY id")
-        .bind(after_id)
-        .fetch_all(pool)
-        .await?;
+    let rows =
+        sqlx::query("SELECT id, ts, text FROM lines WHERE id > ? AND text IS NOT NULL ORDER BY id")
+            .bind(after_id)
+            .fetch_all(pool)
+            .await?;
     Ok(rows
         .iter()
         .map(|r| IngestLine {

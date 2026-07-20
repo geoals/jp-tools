@@ -61,6 +61,10 @@ Read the line → look things up → create the Anki card → **press the hotkey
 before advancing** (a new hooked line becomes "the last line"). Click back to
 the VN window first so the screenshot captures it.
 
+Reading from a phone instead? read-stats' `#read` view shows the same line feed
+over the LAN and has a mine button that runs this script — the VN never loses
+desktop focus that way, so the "click back first" step disappears.
+
 The voiceline anchor is the moment Textractor hooks the line (a re-hook of the
 line still on screen — a double-fire — does not move it). The audio must still
 be in the ring, so press the hotkey within ~5 minutes of the line playing. If
@@ -76,6 +80,11 @@ switching outputs).
   mitigate this, but a hard kill still bypasses that.
 - `VN_WS_URL` (default `ws://localhost:6677`) — Textractor WebSocket server.
 - `VN_DRY=1 ./vn-capture.sh` — build clip + screenshot, skip Anki, keep files.
+- `VN_JSON=1 ./vn-capture.sh` — print a result object
+  (`{ok, note_id, duration, note, line}` or `{ok: false, error}`) on stdout and
+  suppress every `notify-send`. This is how read-stats' `#read` view runs the
+  script when you mine from your phone, where a desktop notification would go
+  unseen; see `read-stats/README.md`.
 - `VN_MAX_LEN` (default 20) — max seconds considered after the line appears.
 - `VN_VAD_THRESHOLD` (default 0.5) — raise if BGM vocals leak in, lower if
   quiet lines get cut.

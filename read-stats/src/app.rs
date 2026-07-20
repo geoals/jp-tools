@@ -8,7 +8,7 @@ use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 
 use crate::ankiproxy;
-use crate::routes::api;
+use crate::routes::{api, reader};
 
 const SPA_HTML: &str = include_str!("../templates/spa.html");
 const STATIC_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
@@ -22,6 +22,7 @@ pub struct AppState {
     pub anki_deck: String,
     pub anki_vocab_field: String,
     pub sudachi_dict_path: std::path::PathBuf,
+    pub vn_capture_script: std::path::PathBuf,
 }
 
 async fn spa_shell() -> Html<&'static str> {
@@ -52,6 +53,10 @@ pub fn build_router(state: AppState) -> Router {
             "/api/settings",
             get(api::get_settings).put(api::put_settings),
         )
+        // Reading view (phone): live line feed + the mine trigger.
+        .route("/api/lines/stream", get(reader::lines_stream))
+        .route("/api/reader/state", get(reader::reader_state))
+        .route("/api/vn/capture", axum::routing::post(reader::vn_capture))
         // Yomitan's AnkiConnect endpoint: forwards to Anki, counts lookups.
         .route(
             "/anki-proxy",

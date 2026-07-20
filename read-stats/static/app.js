@@ -2,6 +2,7 @@ import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { html } from "htm/preact";
 import { api } from "./api.js";
+import { Reader } from "./reader.js";
 import {
   GoalMeter,
   MinutesBarChart,
@@ -990,6 +991,9 @@ function App() {
     <header>
       <h1>read-stats</h1>
       <div class="header-right">
+        <a class="pause-btn" href="#read" title="Live line feed + mine button">
+          📖 read
+        </a>
         <button
           class="pause-btn ${summary.paused ? "paused" : ""}"
           onClick=${togglePause}
@@ -1043,4 +1047,21 @@ function App() {
   `;
 }
 
-render(html`<${App} />`, document.getElementById("app"));
+/** Which of the two views the URL is asking for. The reader is a separate
+ *  branch rather than a section of the dashboard so that opening it unmounts
+ *  App entirely — no 60s aggregate polling running behind a reading session. */
+function useHashRoute() {
+  const [hash, setHash] = useState(() => location.hash);
+  useEffect(() => {
+    const onChange = () => setHash(location.hash);
+    addEventListener("hashchange", onChange);
+    return () => removeEventListener("hashchange", onChange);
+  }, []);
+  return hash;
+}
+
+function Root() {
+  return useHashRoute() === "#read" ? html`<${Reader} />` : html`<${App} />`;
+}
+
+render(html`<${Root} />`, document.getElementById("app"));
