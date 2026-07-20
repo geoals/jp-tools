@@ -120,6 +120,10 @@ pub struct Settings {
     /// window (set after a reading break so old zero days don't drag the
     /// estimate). Empty = no cutoff.
     pub pace_start_date: String,
+    /// Substring of the VN window's title, passed to vn-capture.sh as
+    /// VN_WINDOW so it screenshots the VN by id rather than whatever has
+    /// focus. Empty = capture the focused window (the old behaviour).
+    pub vn_window: String,
 }
 
 impl Default for Settings {
@@ -136,6 +140,7 @@ impl Default for Settings {
             chars_per_page: 550.0,
             current_work: String::new(),
             pace_start_date: String::new(),
+            vn_window: String::new(),
         }
     }
 }
@@ -149,6 +154,7 @@ pub const SETTING_KEYS: &[&str] = &[
     "chars_per_page",
     "current_work",
     "pace_start_date",
+    "vn_window",
 ];
 
 pub async fn load_settings(pool: &SqlitePool) -> Result<Settings, sqlx::Error> {
@@ -178,6 +184,7 @@ pub async fn load_settings(pool: &SqlitePool) -> Result<Settings, sqlx::Error> {
             }
             "current_work" => settings.current_work = value,
             "pace_start_date" => settings.pace_start_date = value,
+            "vn_window" => settings.vn_window = value,
             _ => {}
         }
     }

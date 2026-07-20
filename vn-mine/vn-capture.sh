@@ -12,6 +12,9 @@
 #                      pressing the button is on their phone
 #      VN_MAX_LEN=20   max seconds of audio considered after the line appears
 #      VN_WHISPER_URL  whisper-service for sentence trim (default :8100)
+#      VN_WINDOW       name (substring) of the VN's window — capture it by id
+#                      instead of whatever has focus. Needed when mining from
+#                      read-stats' #read page, where the browser is focused.
 
 RUNDIR="${VN_RUNDIR:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/vn-mine}"
 SEGDIR="$RUNDIR/seg"
@@ -27,6 +30,8 @@ SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 VAD_PYTHON="$HOME/.local/share/vn-mine/venv/bin/python"
 VAD_SCRIPT="$SCRIPT_DIR/vn-vad.py"
 TRIM_SCRIPT="$SCRIPT_DIR/vn-trim.py"
+VN_WINDOW="${VN_WINDOW:-}"
+SHOT_NOTE=""
 
 TMP=$(mktemp -d "$RUNDIR/cap.XXXXXX" 2>/dev/null) || TMP=$(mktemp -d)
 
@@ -59,9 +64,34 @@ LINE_TS=${LAST_LINE%%$'\t'*}
 LINE_TEXT=${LAST_LINE#*$'\t'}
 
 # === SCREENSHOT (capture the window state at the moment of the press) ===
+# `spectacle -a` grabs whatever has focus, which is only the VN when the hotkey
+# was pressed with the VN focused. Mining from read-stats' #read page focuses
+# the browser instead — on the phone that's a different machine so the VN keeps
+# focus, but from a browser on this PC it would capture the browser.
+#
+# VN_WINDOW sidesteps focus entirely: find the VN's window by name and grab it
+# by id. Wine/Proton windows are XWayland, so xdotool can still address them
+# under a Wayland session even though `xdotool getactivewindow` can't. Any
+# failure falls through to the old active-window path rather than dying — a
+# wrong screenshot is recoverable, a lost voiceline is not.
 SCREENSHOT_FILE="screenshot_${TIMESTAMP}.png"
-spectacle -bneo "$TMP/$SCREENSHOT_FILE" -a
-[ -f "$TMP/$SCREENSHOT_FILE" ] || die "Failed to take screenshot"
+VN_WID=""
+if [ -n "$VN_WINDOW" ]; then
+  if command -v xdotool &>/dev/null && command -v import &>/dev/null; then
+    VN_WID=$(xdotool search --name "$VN_WINDOW" 2>/dev/null | head -n 1)
+    [ -n "$VN_WID" ] && import -window "$VN_WID" "$TMP/$SCREENSHOT_FILE" 2>/dev/null
+    if [ ! -s "$TMP/$SCREENSHOT_FILE" ]; then
+      SHOT_NOTE=" (⚠ no window matching '$VN_WINDOW' — captured the focused window)"
+    fi
+  else
+    SHOT_NOTE=" (⚠ VN_WINDOW set but xdotool/import missing — captured the focused window)"
+  fi
+fi
+if [ ! -s "$TMP/$SCREENSHOT_FILE" ]; then
+  rm -f "$TMP/$SCREENSHOT_FILE"
+  spectacle -bneo "$TMP/$SCREENSHOT_FILE" -a
+fi
+[ -s "$TMP/$SCREENSHOT_FILE" ] || die "Failed to take screenshot"
 
 # Snapshot the ring: fractional mtime + size per segment, oldest first
 SEG_SNAPSHOT=$(find "$SEGDIR" -name 'seg*.wav' -printf '%T@ %s %p\n' 2>/dev/null | sort -n)
@@ -192,11 +222,14 @@ ffmpeg -nostdin -loglevel error -f s16le -ar 48000 -ac 2 -i "$TMP/clip.raw" \
 # JSON for the VN_JSON result below.
 DURATION=$(LC_ALL=C awk -v b="$(stat -c %s "$TMP/clip.raw")" -v bps="$BPS" 'BEGIN{printf "%.1f", b/bps}')
 
+# Everything worth telling the user about this capture, in one string.
+NOTE="$TRIM_NOTE$SHOT_NOTE"
+
 if [ -n "$VN_DRY" ]; then
   echo "DRY RUN — no Anki upload"
   echo "Line:      $LINE_TEXT"
   echo "Audio:     $TMP/$AUDIO_FILE (${DURATION}s)$TRIM_NOTE"
-  echo "Image:     $TMP/$SCREENSHOT_FILE"
+  echo "Image:     $TMP/$SCREENSHOT_FILE${VN_WID:+ (window $VN_WID)}$SHOT_NOTE"
   exit 0
 fi
 
@@ -240,10 +273,10 @@ fi
 rm -rf "$TMP"
 if [ -n "$VN_JSON" ]; then
   jq -nc --argjson note_id "$NOTE_ID" --argjson duration "$DURATION" \
-    --arg note "$TRIM_NOTE" --arg line "$LINE_TEXT" \
+    --arg note "$NOTE" --arg line "$LINE_TEXT" \
     '{ok: true, note_id: $note_id, duration: $duration, note: ($note | ltrimstr(" ")), line: $line}'
 else
   echo "✅ Added ${DURATION}s audio + screenshot to note $NOTE_ID"
-  notify-send "✅ VN Mine" "${DURATION}s audio + screenshot added$TRIM_NOTE
+  notify-send "✅ VN Mine" "${DURATION}s audio + screenshot added$NOTE
 $LINE_TEXT"
 fi

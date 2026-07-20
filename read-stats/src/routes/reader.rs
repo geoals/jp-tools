@@ -141,9 +141,23 @@ pub async fn vn_capture(State(state): State<AppState>) -> Result<Json<Value>, Ap
         )));
     }
 
-    let run = tokio::process::Command::new(&script)
-        .env("VN_JSON", "1")
-        .output();
+    // Which window to screenshot. Without it the script grabs whatever has
+    // focus — correct when mining from the phone (the VN never loses focus on
+    // this machine), wrong from a browser on this machine, which is what would
+    // be focused at the moment the button was pressed.
+    let vn_window = db::load_settings(&state.pool)
+        .await
+        .map(|s| s.vn_window)
+        .unwrap_or_default();
+
+    let mut cmd = tokio::process::Command::new(&script);
+    cmd.env("VN_JSON", "1");
+    // Left unset when empty so a VN_WINDOW inherited from the environment
+    // still applies.
+    if !vn_window.is_empty() {
+        cmd.env("VN_WINDOW", &vn_window);
+    }
+    let run = cmd.output();
     let out = match tokio::time::timeout(CAPTURE_TIMEOUT, run).await {
         Ok(Ok(out)) => out,
         Ok(Err(e)) => {

@@ -160,6 +160,10 @@ Or as part of the stack: `scripts/start-all.sh`.
   lookup→card latency
 - `GET/PUT /api/settings` — `afk_secs`, `session_gap_secs`, `day_rollover_hour`,
   `goal_floor_mins`, `goal_target_mins`, `chars_per_page`, `current_work`,
+  `vn_window` (substring of the VN window's title, passed to vn-capture.sh as
+  `VN_WINDOW` so the mine button screenshots the VN rather than the focused
+  window — required to mine from `#read` in a browser on the PC itself; set it
+  when you switch VNs, no restart needed),
   `pace_start_date` (ISO date or "" — clips the finish-estimate pace window;
   no dashboard control, set it here after a reading break:
   `curl -X PUT localhost:3200/api/settings -H 'Content-Type: application/json'

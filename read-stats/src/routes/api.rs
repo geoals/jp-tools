@@ -734,7 +734,7 @@ pub async fn put_settings(
         if !db::SETTING_KEYS.contains(&key.as_str()) {
             return Err(AppError::BadRequest(format!("unknown setting: {key}")));
         }
-        let stored = if key == "current_work" || key == "pace_start_date" {
+        let stored = if key == "current_work" || key == "pace_start_date" || key == "vn_window" {
             let Some(s) = value.as_str() else {
                 return Err(AppError::BadRequest(format!("{key} must be a string")));
             };

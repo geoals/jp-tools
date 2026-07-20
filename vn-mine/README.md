@@ -65,6 +65,10 @@ Reading from a phone instead? read-stats' `#read` view shows the same line feed
 over the LAN and has a mine button that runs this script — the VN never loses
 desktop focus that way, so the "click back first" step disappears.
 
+Set `VN_WINDOW` (or read-stats' `vn_window` setting) and the "click back first"
+step disappears on the desktop too: the screenshot then targets the VN window
+directly instead of whatever happens to be focused.
+
 The voiceline anchor is the moment Textractor hooks the line (a re-hook of the
 line still on screen — a double-fire — does not move it). The audio must still
 be in the ring, so press the hotkey within ~5 minutes of the line playing. If
@@ -85,6 +89,16 @@ switching outputs).
   suppress every `notify-send`. This is how read-stats' `#read` view runs the
   script when you mine from your phone, where a desktop notification would go
   unseen; see `read-stats/README.md`.
+- `VN_WINDOW` — substring of the VN window's title (e.g. `素晴らしき日々`).
+  When set, the screenshot is taken of *that window by id* rather than of
+  whatever has focus, so it stays correct no matter what was focused when the
+  capture fired. Needed to mine from read-stats' `#read` page in a browser on
+  this machine — the browser is focused at that moment, so the default would
+  capture the browser. (From a phone it doesn't matter: the VN never loses
+  focus here.) Requires `xdotool` and ImageMagick's `import`; Wine/Proton
+  windows are XWayland, so this works under a Wayland session even though
+  `xdotool getactivewindow` does not. Unset, unmatched, or missing tools fall
+  back to the active window and say so in the result.
 - `VN_MAX_LEN` (default 20) — max seconds considered after the line appears.
 - `VN_VAD_THRESHOLD` (default 0.5) — raise if BGM vocals leak in, lower if
   quiet lines get cut.
