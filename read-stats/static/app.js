@@ -27,15 +27,26 @@ function fmtChars(n) {
 /** Mean chars/day over the trailing 7 *complete* days (today excluded — it
  *  would drag the average down all morning), zero days included, clipped to
  *  the pace_start_date cutoff so a reading break doesn't pollute the window.
- *  Falls back to today's partial data when the window is otherwise empty. */
+ *  Falls back to today's partial data when the window is otherwise empty.
+ *
+ *  Returns the window alongside the mean so the finish estimate can explain
+ *  itself in a tooltip. */
 function paceCharsPerDay(days, settings) {
   let win = days.slice(-8, -1);
   if (settings.pace_start_date) {
     win = win.filter((d) => d.date >= settings.pace_start_date);
   }
-  if (!win.length) win = days.slice(-1);
-  if (!win.length) return 0;
-  return win.reduce((a, d) => a + d.chars, 0) / win.length;
+  let partial = false;
+  if (!win.length) {
+    win = days.slice(-1);
+    partial = true;
+  }
+  if (!win.length) return { pace: 0, days: 0, partial: false };
+  return {
+    pace: win.reduce((a, d) => a + d.chars, 0) / win.length,
+    days: win.length,
+    partial,
+  };
 }
 
 function fmtFinishDate(daysLeft) {
@@ -164,13 +175,24 @@ function workProgress(w, days, settings) {
   const workSpeed =
     w.active_secs >= 600 ? w.chars / (w.active_secs / 3600) : null;
   const remaining = Math.max(0, total - w.chars);
-  const pace = paceCharsPerDay(days, settings);
+  const { pace, days: paceDays, partial } = paceCharsPerDay(days, settings);
+  const window = partial
+    ? "today so far (no complete day in the window yet)"
+    : `the last ${paceDays} complete day${paceDays === 1 ? "" : "s"}, today excluded`;
+  const cutoff = settings.pace_start_date
+    ? ` Days before ${settings.pace_start_date} are excluded.`
+    : "";
   return {
     pct: Math.min(100, (w.chars / total) * 100),
     caption: `${fmtChars(w.chars)} / ${fmtChars(total)} chars`,
     remaining,
     hoursLeft: workSpeed ? remaining / workSpeed : null,
     finish: pace > 0 && remaining > 0 ? fmtFinishDate(remaining / pace) : null,
+    finishHint:
+      pace > 0 && remaining > 0
+        ? `${fmtChars(remaining)} chars left ÷ ${fmtChars(Math.round(pace))} chars/day, ` +
+          `your average across all works over ${window} (zero days counted).${cutoff}`
+        : null,
   };
 }
 
@@ -343,7 +365,11 @@ function CurrentReading({ works, settings, days, onSaved }) {
                     : "—"}
                 </div>
               </div>
-              <div class="tile">
+              <div
+                class=${prog.finishHint ? "tile has-hint" : "tile"}
+                title=${prog.finishHint ??
+                "No estimate: needs both a remaining count and a non-zero recent pace."}
+              >
                 <div class="label">finish</div>
                 <div class="value">${prog.finish ?? "—"}</div>
               </div>

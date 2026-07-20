@@ -155,6 +155,9 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
 .tile { min-width: 110px; }
 .tile .label { color: var(--muted); font-size: 12px; }
 .tile .value { font-size: 18px; font-weight: 600; }
+/* Tiles that carry an explanatory title= tooltip. */
+.tile.has-hint { cursor: help; }
+.tile.has-hint .label { border-bottom: 1px dotted var(--muted); display: inline-block; }
 
 /* Charts */
 .chart-wrap { position: relative; }
