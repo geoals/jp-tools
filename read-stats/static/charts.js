@@ -35,7 +35,7 @@ function Tooltip({ x, y, children }) {
 /** Daily reading minutes with goal reference lines. days: [{date, active_secs, chars}] */
 export function MinutesBarChart({ days, floorMins, targetMins }) {
   const [hover, setHover] = useState(null);
-  const H = 230;
+  const H = 300;
   // Right margin holds the "goal 120" / "floor 60" labels — wide enough that
   // three-digit goals don't run off the viewBox.
   const m = { top: 16, right: 56, bottom: 24, left: 40 };
@@ -102,7 +102,7 @@ const SPEED_STEPS = [500, 1000, 2000, 2500, 5000, 10000];
 /** Chars/hour trend over days with ≥10 min read. days: [{date, active_secs, chars}] */
 export function SpeedTrendChart({ days }) {
   const [hover, setHover] = useState(null);
-  const H = 210;
+  const H = 280;
   const m = { top: 16, right: 56, bottom: 24, left: 44 };
   const plotW = W - m.left - m.right;
   const plotH = H - m.top - m.bottom;
@@ -206,7 +206,7 @@ function rateStep(max) {
 export function RateTrendChart({ days }) {
   const [hover, setHover] = useState(null);
   const [off, setOff] = useState({});
-  const H = 210;
+  const H = 280;
   const m = { top: 16, right: 64, bottom: 24, left: 44 };
   const plotW = W - m.left - m.right;
   const plotH = H - m.top - m.bottom;
@@ -432,10 +432,10 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
   const [overlay, setOverlay] = useState(false);
 
   // Right margin holds the two direct labels on the speed panel.
-  const m = { top: 14, right: 82, bottom: 26, left: 48 };
-  const aH = 132;   // speed panel
-  const gap = 28;
-  const bH = 92;    // rate panel
+  const m = { top: 16, right: 82, bottom: 30, left: 48 };
+  const aH = 220;   // speed panel
+  const gap = 34;
+  const bH = 150;   // rate panel
   const H = m.top + aH + gap + bH + m.bottom;
   const plotW = W - m.left - m.right;
   const aTop = m.top;
@@ -461,9 +461,9 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
     </p>`;
   }
   const raws = pts.map((p) => p.raw).filter((v) => v !== null);
-  const speedAxis = niceTicks(Math.max(...speeds, ...raws) * 1.1, 4);
+  const speedAxis = niceTicks(Math.max(...speeds, ...raws) * 1.1, 6);
   const rateVals = shown.flatMap((s) => pts.map((p) => p[s.key]).filter((v) => v !== null));
-  const rateAxis = niceTicks(Math.max(...rateVals, 1) * 1.05, 4);
+  const rateAxis = niceTicks(Math.max(...rateVals, 1) * 1.05, 5);
 
   const yA = (v) => aTop + aH - (v / speedAxis.top) * aH;
   const yB = (v) => bTop + bH - (v / rateAxis.top) * bH;
