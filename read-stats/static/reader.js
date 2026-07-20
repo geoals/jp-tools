@@ -144,9 +144,13 @@ export function Reader() {
     ? "Waiting for the next hooked line…"
     : "Not connected — is read-stats reachable?";
   const captureOff = state && state.capture_available === false;
+  // Deliberately loud. Pause doesn't auto-resume (a skip-pause has to survive
+  // lines flying past), so the only thing standing between a forgotten pause
+  // and an evening of uncounted reading is noticing it.
+  const pausedBanner = "⏸ PAUSED — nothing is counting. Tap to resume.";
 
   return html`
-    <div class="reader">
+    <div class="reader ${paused ? "is-paused" : ""}">
       <div class="reader-bar">
         <a class="reader-back" href="#" title="Back to the dashboard">←</a>
         <span class="reader-work">${work}</span>
@@ -154,6 +158,10 @@ export function Reader() {
         <button class="ghost" onClick=${() => bumpFont(-2)}>A−</button>
         <button class="ghost" onClick=${() => bumpFont(2)}>A+</button>
       </div>
+      ${paused &&
+      html`<button class="reader-paused" onClick=${togglePause}>
+        ${pausedBanner}
+      </button>`}
       <div
         class="reader-lines"
         ref=${listRef}
