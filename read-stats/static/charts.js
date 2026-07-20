@@ -343,13 +343,14 @@ function clockHM(ts) {
 function smoothBuckets(buckets, win) {
   const half = Math.floor(win / 2);
   return buckets.map((b, i) => {
-    let chars = 0, cleanChars = 0, active = 0, lookup = 0, lookups = 0, cards = 0;
+    let chars = 0, cleanChars = 0, lookupChars = 0, active = 0, lookup = 0, lookups = 0, cards = 0;
     const lo = Math.max(0, i - half);
     const hi = Math.min(buckets.length - 1, i + half);
     for (let j = lo; j <= hi; j += 1) {
       if (buckets[j].session !== b.session) continue;
       chars += buckets[j].chars;
       cleanChars += buckets[j].clean_chars;
+      lookupChars += buckets[j].lookup_chars;
       active += buckets[j].active_secs;
       lookup += buckets[j].lookup_secs;
       lookups += buckets[j].lookups;
@@ -369,12 +370,30 @@ function smoothBuckets(buckets, win) {
       winActive: active,
       winLookup: lookup,
       winCleanChars: cleanChars,
+      // Time actually lost to the dictionary: the lookup gaps minus what the
+      // lines inside them would have cost at clean pace.
+      winOverhead: lookupOverhead(cleanChars, active - lookup, lookupChars, lookup),
       speed: ok ? chars / hours : null,
       raw: ok && textHours > DAY_MIN_ACTIVE_SECS / 3600 ? cleanChars / textHours : null,
       lookups: ok ? lookups / hours : null,
       cards: ok ? cards / hours : null,
     };
   });
+}
+
+/**
+ * Seconds genuinely lost to looking words up, given a window's clean and
+ * lookup halves.
+ *
+ * A gap holding a lookup holds the line's reading too, so the whole gap is not
+ * dictionary time. Price those characters at the window's uninterrupted pace
+ * and subtract: on 2026-07-20 that turned "31 min looking words up" into 21.5,
+ * the other 9 being reading that would have happened regardless.
+ */
+function lookupOverhead(cleanChars, cleanSecs, lookupChars, lookupSecs) {
+  if (cleanSecs <= 0 || cleanChars <= 0) return lookupSecs;
+  const baseline = lookupChars / (cleanChars / cleanSecs);
+  return Math.max(0, lookupSecs - baseline);
 }
 
 /** Split points into drawable runs, breaking on a null value or a new session. */
@@ -492,6 +511,8 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
   const totLookup = buckets.reduce((a, b) => a + b.lookup_secs, 0);
   const totChars = buckets.reduce((a, b) => a + b.chars, 0);
   const totClean = buckets.reduce((a, b) => a + b.clean_chars, 0);
+  const totLookupChars = buckets.reduce((a, b) => a + b.lookup_chars, 0);
+  const dayOverhead = lookupOverhead(totClean, totActive - totLookup, totLookupChars, totLookup);
   const dayEffective = totChars / (totActive / 3600);
   const dayRaw = totActive > totLookup ? totClean / ((totActive - totLookup) / 3600) : null;
 
@@ -623,7 +644,7 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
                   ${s.label.replace('/h', '')}: ${hp[s.key].toFixed(1)}/h<br />
                 `)}
                 <span class="tooltip-sub">
-                  ${`${hp.winChars.toLocaleString('en')} chars · ${Math.round(hp.winActive / 60)} min read · ${Math.round(hp.winLookup / 60)} min of it lookups`}
+                  ${`${hp.winChars.toLocaleString('en')} chars · ${Math.round(hp.winActive / 60)} min read · ${Math.round(hp.winOverhead / 6) / 10} min lost to lookups`}
                 </span>
               `}
         <//>
@@ -632,7 +653,9 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
     ${legend}
     ${dayRaw !== null && html`
       <p class="chart-note">
-        ${`Whole day: ${Math.round(dayEffective).toLocaleString('en')} chars/h as read, ${Math.round(dayRaw).toLocaleString('en')} without lookups — a lookup tax of ${Math.round(dayRaw - dayEffective).toLocaleString('en')} chars/h (${Math.round(((dayRaw - dayEffective) / dayRaw) * 100)}%), over ${Math.round(totLookup / 60)} min spent looking words up.`}
+        ${`Whole day: ${Math.round(dayEffective).toLocaleString('en')} chars/h as read, ${Math.round(dayRaw).toLocaleString('en')} without lookups — a lookup tax of ${Math.round(dayRaw - dayEffective).toLocaleString('en')} chars/h (${Math.round(((dayRaw - dayEffective) / dayRaw) * 100)}%).`}
+        ${' '}
+        ${`Lookups cost about ${Math.round(dayOverhead / 60)} min: ${Math.round(totLookup / 60)} min sat in gaps holding one, but ${Math.round((totLookup - dayOverhead) / 60)} min of that was reading the line itself.`}
         ${' '}
         <span class="tooltip-sub">
           A lookup running past the 30s afk cap is only ever charged 30s, so this is a slight floor.

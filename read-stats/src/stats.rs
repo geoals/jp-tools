@@ -119,6 +119,12 @@ pub struct Bucket {
     /// denominator collapses while the numerator doesn't — which reported
     /// 30k chars/h for reading that was actually running at 12k.
     pub clean_chars: i64,
+    /// Characters whose own gap *did* contain a lookup. With `clean_chars`
+    /// these price the reading embedded in lookup gaps: a gap holds both the
+    /// line's reading and the dictionary detour, so charging the whole gap to
+    /// "looking words up" overstates it by whatever that line would have cost
+    /// at clean pace.
+    pub lookup_chars: i64,
     pub active_secs: f64,
     /// The part of `active_secs` spent inside a gap that contained a Yomitan
     /// lookup. Always ≤ `active_secs`: it is a *label* on credited time, not
@@ -134,6 +140,7 @@ fn empty_bucket(session: usize, idx: i64, bucket_secs: f64) -> Bucket {
         session,
         chars: 0,
         clean_chars: 0,
+        lookup_chars: 0,
         active_secs: 0.0,
         lookup_secs: 0.0,
         lookups: 0,
@@ -216,12 +223,15 @@ pub fn bucket_lines(
             let gap = next.ts - line.ts;
             if gap > 0.0 && gap <= session_gap_secs {
                 let is_lookup = gap_has_lookup(lookups, line.ts, next.ts);
-                // These characters were read across this gap, so they belong
-                // to the clean side only when the gap itself was clean.
-                if !is_lookup {
-                    out.entry((session, idx))
-                        .or_insert_with(|| empty_bucket(session, idx, bucket_secs))
-                        .clean_chars += line.chars;
+                // These characters were read across this gap, so they follow
+                // the gap's own classification.
+                let bucket = out
+                    .entry((session, idx))
+                    .or_insert_with(|| empty_bucket(session, idx, bucket_secs));
+                if is_lookup {
+                    bucket.lookup_chars += line.chars;
+                } else {
+                    bucket.clean_chars += line.chars;
                 }
                 spread_credit(
                     &mut out,
@@ -608,6 +618,25 @@ mod tests {
         assert_eq!(effective, 45000.0);
         assert_eq!(raw, 90000.0, "clean chars over clean seconds");
         assert!(raw > effective, "a long lookup gap drags the measured rate down");
+    }
+
+    #[test]
+    fn lookup_overhead_excludes_the_reading_inside_the_gap() {
+        // Clean gaps establish the pace: 100 chars per 4s = 25 chars/s. The
+        // lookup gap runs 24s and carries 100 chars, so 4s of it was reading
+        // the line and only 20s was the dictionary detour. Charging the whole
+        // 24s to "looking words up" would overstate it by a fifth.
+        let lines = [ev(0.0, 100), ev(4.0, 100), ev(8.0, 100), ev(32.0, 100)];
+        let b = bucket_lines(&lines, &[10.0], 30.0, 600.0, 6000.0);
+        let x = &b[0];
+        assert_eq!((x.clean_chars, x.lookup_chars), (200, 100));
+
+        let clean_rate = x.clean_chars as f64 / (x.active_secs - x.lookup_secs);
+        assert_eq!(clean_rate, 25.0, "chars per second at uninterrupted pace");
+
+        let baseline = x.lookup_chars as f64 / clean_rate;
+        assert_eq!(baseline, 4.0, "the reading embedded in the lookup gap");
+        assert_eq!(x.lookup_secs - baseline, 20.0, "actual lookup overhead");
     }
 
     #[test]

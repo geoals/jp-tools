@@ -255,6 +255,15 @@ A gap counts as lookup time when a `lookups` row falls inside it. The
 separation is sharp enough to trust: over 2026-07-20's 1220 in-session gaps,
 those holding a lookup ran a median 21.3s against 3.1s for those that didn't.
 
+**Time lost to lookups is not the same as time inside lookup gaps.** Such a gap
+holds the line's reading *and* the dictionary detour, so the note under the
+chart prices the characters in those gaps (`lookup_chars`) at the window's
+uninterrupted pace and subtracts. On 2026-07-20: 30.8 min sat in lookup gaps,
+9.2 min of it was reading that would have happened anyway, leaving **21.5 min
+of real lookup overhead** — a median 14.1s per gap, at 1.3 lookups per gap. The
+chars/h tax is unaffected by this correction, being a ratio of rates that
+already accounts for characters read during lookups.
+
 The afk cap truncates any gap at `afk_secs`, so a 90-second dictionary detour
 only ever charges 30 and the tax is a slight floor — but only slight. That same
 day, 17 of 1220 gaps (1.4%) ran past the cap, discarding 3.8 minutes; 16 of the
