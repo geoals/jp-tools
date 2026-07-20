@@ -27,10 +27,17 @@ use crate::app::AppState;
 use crate::db;
 use crate::error::AppError;
 
-/// How often the stream checks for new lines. Fast enough that a line lands on
-/// the phone as it's spoken, cheap enough to ignore: an indexed range scan
-/// that returns nothing between lines.
-const POLL_INTERVAL: Duration = Duration::from_millis(250);
+/// How often the stream checks for new lines, which is the whole of the
+/// pipeline's controllable latency: vn-ws-logger.py commits in autocommit mode
+/// the moment Textractor hooks a line, and the LAN hop is sub-millisecond. A
+/// poll of N ms therefore costs a uniform 0..N delay — 250ms measured a mean of
+/// 108ms, which reads as perceptibly behind the voice.
+///
+/// 30ms puts the mean at ~15ms, below the threshold where the line looks like
+/// it lags the VN. The cost is ~33 queries/sec per connected reader, each an
+/// index seek past the end of `lines` returning nothing — WAL readers don't
+/// block the logger's writes, so this is not a contention risk either.
+const POLL_INTERVAL: Duration = Duration::from_millis(30);
 
 /// Lines shown on open when the client isn't resuming.
 const DEFAULT_BACKLOG: i64 = 40;
