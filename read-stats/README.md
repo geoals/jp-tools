@@ -93,6 +93,14 @@ the PC while the phone does the looking-up. The setup:
   the outcome on the page instead of via `notify-send` on a desktop nobody is
   looking at.
 
+While the reader is open the **page title is set to `current_work`**, not
+"read-stats". Yomitan's `{document-title}` marker is what fills the note's
+Document field, so the tab title is what a mined card records as its source —
+it has to be the VN. `current_work` is re-read every 20s, so switching works on
+the dashboard takes effect without reloading the reader. If no work is set the
+title is left alone, and cards will be stamped "read-stats" — set the work
+first.
+
 Cards must land in the PC's collection, not the phone's, because that is what
 `vn-capture.sh` attaches media to — so the proxy forwards to `JP_TOOLS_ANKI_URL`
 unconditionally, deliberately *not* preferring the requesting client the way
