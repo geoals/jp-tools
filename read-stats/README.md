@@ -39,14 +39,23 @@ view that prices the lookup tax against reading speed.
   collapse into one lookup (a single popup fires several). See *Counting
   lookups* below.
 - **Focus measures how continuous the reading was**, not how much of it there
-  was (`stats.rs::aggregate_focus_days`). Active time caps each gap at
-  `afk_secs`, which is precisely what hides fragmentation — so focus keeps the
-  *uncapped* span beside it and reports `active / span`. 100% means every gap
-  was a normal reading beat; 60% means two fifths of your at-desk time went
-  somewhere else. Gaps over `session_gap_secs` are excluded (that's leaving, not
-  being distracted); gaps over 60s count as interruptions and break the
-  longest-stretch run. Needs the line stream, so manually logged sessions have
-  no focus figure.
+  was (`stats.rs::aggregate_focus_days`). Credited time hides fragmentation by
+  design, so focus keeps the *uncapped* span beside it and reports
+  `active / span`. 100% means every gap was reading; 60% means two fifths of
+  your at-desk time went somewhere else. Gaps over `session_gap_secs` are
+  excluded (that's leaving, not being distracted); a gap over 60s counts as an
+  interruption and breaks the longest-stretch run **only if nothing in it proves
+  you were there**. Needs the line stream, so manually logged sessions have no
+  focus figure.
+
+  Both halves of that have to use the same `Presence` rule the rest of the app
+  does, and for a while they didn't. On 2026-07-20 focus read 97.3% with a
+  52-minute longest stretch; all 17 gaps behind the missing 2.7% held lookups,
+  and the one "interruption" splitting the stretch was a 93-second sentence
+  worked through with four of them. Corrected: **99.6%, one unbroken stretch of
+  98.5 minutes, zero interruptions** — which is what the reading actually was.
+  A metric that counts using a dictionary as losing focus is measuring the
+  wrong thing.
 - **Pause** (`POST /api/pause` toggle, dashboard button, or bind
   `jp-stats-pause.sh` to a hotkey) for skipping scenes / replaying read text:
   lines are still captured raw but derivation ignores those inside a pause
@@ -300,6 +309,12 @@ loses 12 minutes, but 07-20 — a lookup-heavy day with barely any absence —
 two days' speeds converge from 12,121/13,467 to 13,028/13,160, which is the
 point: the metric should measure reading, not how often you remembered to hit
 pause.
+
+Pace comes from `stats::measure_pace` over **all history**, never the slice a
+request happened to fetch. It is a property of the reader, and deriving it
+per-endpoint had the dashboard measuring it across every day and the timeline
+across one, so the same day's active minutes differed depending on which page
+you opened.
 
 Two guards worth knowing about. Sub-cap gaps are never repriced
 (`ordinary_gaps_are_never_repriced`) — pricing each gap at what its line was

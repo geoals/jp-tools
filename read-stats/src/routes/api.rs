@@ -45,6 +45,23 @@ async fn presence_marks(
     Ok(marks)
 }
 
+/// The one window every endpoint prices absence against: all of history.
+///
+/// Pace is a property of the reader, not of the slice a request happened to
+/// fetch. Deriving it per-request had the dashboard measuring it over all days
+/// and the timeline over one, so the same day's active minutes differed
+/// depending on which page you were looking at.
+async fn reader_pace(
+    state: &AppState,
+    settings: &Settings,
+    pauses: &[stats::PauseInterval],
+) -> Result<Option<f64>, AppError> {
+    let mut lines = db::fetch_line_events(&state.pool, 0.0, f64::MAX).await?;
+    lines.retain(|l| !stats::is_paused(l.ts, pauses));
+    let marks = presence_marks(state, pauses, 0.0, f64::MAX).await?;
+    Ok(stats::measure_pace(&lines, &marks, settings.afk_secs))
+}
+
 /// Per-day totals for both sources over the whole history.
 async fn day_maps(
     state: &AppState,
@@ -57,12 +74,12 @@ async fn day_maps(
     ),
     AppError,
 > {
-    #[allow(clippy::items_after_statements)]
     let pauses = db::fetch_pauses(&state.pool).await?;
     let mut lines = db::fetch_line_events(&state.pool, 0.0, f64::MAX).await?;
     lines.retain(|l| !stats::is_paused(l.ts, &pauses));
-    let marks = presence_marks(&state, &pauses, 0.0, f64::MAX).await?;
-    let presence = stats::Presence::new(&lines, &marks, settings.afk_secs);
+    let marks = presence_marks(state, &pauses, 0.0, f64::MAX).await?;
+    let pace = stats::measure_pace(&lines, &marks, settings.afk_secs);
+    let presence = stats::Presence::new(&marks, pace, settings.afk_secs);
     let vn = stats::aggregate_line_days(
         &lines,
         &presence,
@@ -104,9 +121,12 @@ async fn focus_days(
     let pauses = db::fetch_pauses(&state.pool).await?;
     let mut lines = db::fetch_line_events(&state.pool, 0.0, f64::MAX).await?;
     lines.retain(|l| !stats::is_paused(l.ts, &pauses));
+    let marks = presence_marks(state, &pauses, 0.0, f64::MAX).await?;
+    let pace = stats::measure_pace(&lines, &marks, settings.afk_secs);
+    let presence = stats::Presence::new(&marks, pace, settings.afk_secs);
     Ok(stats::aggregate_focus_days(
         &lines,
-        settings.afk_secs,
+        &presence,
         settings.session_gap_secs,
         settings.day_rollover_hour,
         tz,
@@ -264,7 +284,13 @@ pub async fn list_sessions(
     let mut lines = db::fetch_line_events(&state.pool, day_start - 21600.0, day_end + 21600.0).await?;
     lines.retain(|l| !stats::is_paused(l.ts, &pauses));
     let marks = presence_marks(&state, &pauses, day_start - 21600.0, day_end + 21600.0).await?;
-    let presence = stats::Presence::new(&lines, &marks, settings.afk_secs);
+    // Pace over all history, not this day's slice, so the dashboard and the
+    // timeline price the same day's absence identically.
+    let presence = stats::Presence::new(
+        &marks,
+        reader_pace(&state, &settings, &pauses).await?,
+        settings.afk_secs,
+    );
     let derived: Vec<_> = stats::derive_sessions(&lines, &presence, settings.session_gap_secs)
         .into_iter()
         .filter(|s| stats::date_key(s.start_ts, settings.day_rollover_hour, tz) == date)
@@ -351,7 +377,13 @@ pub async fn day_timeline(
     lookups.retain(|ts| !stats::is_paused(*ts, &pauses));
 
     let marks = presence_marks(&state, &pauses, day_start - 21600.0, day_end + 21600.0).await?;
-    let presence = stats::Presence::new(&lines, &marks, settings.afk_secs);
+    // Pace over all history, not this day's slice, so the dashboard and the
+    // timeline price the same day's absence identically.
+    let presence = stats::Presence::new(
+        &marks,
+        reader_pace(&state, &settings, &pauses).await?,
+        settings.afk_secs,
+    );
 
     let mut buckets = stats::bucket_lines(
         &lines,
