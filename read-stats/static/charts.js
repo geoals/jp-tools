@@ -363,6 +363,12 @@ function smoothBuckets(buckets, win) {
     // them while removing the seconds is what made a dense lookup burst report
     // 30k chars/h for reading that was really running at 12k.
     const textHours = (active - lookup) / 3600;
+    // The two speeds have to be rates over the *same* characters, or the tax
+    // between them is part accounting artefact. A session's trailing line has
+    // no following gap, so it contributed no seconds to `active` — leaving it
+    // in the effective numerator is free characters, and inflating effective
+    // understates the tax. `clean + lookup` is exactly the timed chars.
+    const timedChars = cleanChars + lookupChars;
     return {
       t: b.t,
       session: b.session,
@@ -373,7 +379,7 @@ function smoothBuckets(buckets, win) {
       // Time actually lost to the dictionary: the lookup gaps minus what the
       // lines inside them would have cost at clean pace.
       winOverhead: lookupOverhead(cleanChars, active - lookup, lookupChars, lookup),
-      speed: ok ? chars / hours : null,
+      speed: ok ? timedChars / hours : null,
       raw: ok && textHours > DAY_MIN_ACTIVE_SECS / 3600 ? cleanChars / textHours : null,
       lookups: ok ? lookups / hours : null,
       cards: ok ? cards / hours : null,
@@ -389,6 +395,12 @@ function smoothBuckets(buckets, win) {
  * dictionary time. Price those characters at the window's uninterrupted pace
  * and subtract: on 2026-07-20 that turned "31 min looking words up" into 21.5,
  * the other 9 being reading that would have happened regardless.
+ *
+ * With no clean gaps in the window there is no pace to price them at, so the
+ * whole of the lookup gaps is returned — knowingly an overstatement, since some
+ * of it was still reading. That is the one window where the correction above
+ * can't be applied, and it only arises when smoothing is tight enough for a
+ * window to be nothing but lookups.
  */
 function lookupOverhead(cleanChars, cleanSecs, lookupChars, lookupSecs) {
   if (cleanSecs <= 0 || cleanChars <= 0) return lookupSecs;
@@ -509,11 +521,13 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
   // Day-level tax, stated as a number rather than left to the eye.
   const totActive = buckets.reduce((a, b) => a + b.active_secs, 0);
   const totLookup = buckets.reduce((a, b) => a + b.lookup_secs, 0);
-  const totChars = buckets.reduce((a, b) => a + b.chars, 0);
   const totClean = buckets.reduce((a, b) => a + b.clean_chars, 0);
   const totLookupChars = buckets.reduce((a, b) => a + b.lookup_chars, 0);
   const dayOverhead = lookupOverhead(totClean, totActive - totLookup, totLookupChars, totLookup);
-  const dayEffective = totChars / (totActive / 3600);
+  // Timed chars, not all chars — see `smoothBuckets`. Each session's trailing
+  // line has chars but no credited seconds, and counting it here only would
+  // make the tax a comparison between two different character sets.
+  const dayEffective = (totClean + totLookupChars) / (totActive / 3600);
   const dayRaw = totActive > totLookup ? totClean / ((totActive - totLookup) / 3600) : null;
 
   // Hour gridlines, or half-hour when the day is short enough to need them.

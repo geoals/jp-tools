@@ -265,15 +265,22 @@ pub fn bucket_lines(
 /// Add point events (lookup or card timestamps) to the buckets holding them.
 /// Events outside every session are dropped: with no reading time around them
 /// there is no per-hour rate they could belong to.
+///
+/// A bucket index identifies a bucket uniquely only while `bucket_secs` stays
+/// at or below the session gap — two sessions are separated by more than that
+/// gap, and two instants more than one bucket width apart cannot share a
+/// bucket. Callers must hold to that (`day_timeline` clamps for it); the map is
+/// keyed by session as well so that violating it misplaces events in a
+/// bucket-sized way rather than dropping a whole session's worth into another.
 pub fn add_events(buckets: &mut [Bucket], events: &[f64], bucket_secs: f64, field: EventKind) {
-    let by_idx: BTreeMap<i64, usize> = buckets
+    let by_idx: BTreeMap<(i64, usize), usize> = buckets
         .iter()
         .enumerate()
-        .map(|(pos, b)| ((b.t / bucket_secs).round() as i64, pos))
+        .map(|(pos, b)| (((b.t / bucket_secs).round() as i64, b.session), pos))
         .collect();
     for &ts in events {
         let idx = (ts / bucket_secs).floor() as i64;
-        if let Some(&pos) = by_idx.get(&idx) {
+        if let Some((_, &pos)) = by_idx.range((idx, usize::MIN)..=(idx, usize::MAX)).next() {
             match field {
                 EventKind::Lookup => buckets[pos].lookups += 1,
                 EventKind::Card => buckets[pos].cards += 1,
@@ -648,10 +655,48 @@ mod tests {
         let b = bucket_lines(&lines, &[25.0], 30.0, 600.0, 6000.0);
         let clean_secs = b[0].active_secs - b[0].lookup_secs;
         let raw = b[0].clean_chars as f64 / (clean_secs / 3600.0);
-        // Effective over the chars that actually have time attributed to them.
-        let timed_chars = b[0].chars - 100; // the trailing line has no gap
+        // Effective over the chars that actually have time attributed to them —
+        // which is `clean + lookup`, the trailing line having no gap. Using all
+        // `chars` here would divide three lines' characters by two lines' time
+        // and report a tax the other way round.
+        let timed_chars = b[0].clean_chars + b[0].lookup_chars;
+        assert_eq!(timed_chars, b[0].chars - 100, "the trailing line is excluded");
         let effective = timed_chars as f64 / (b[0].active_secs / 3600.0);
         assert_eq!(raw, effective, "no penalty in, no penalty out");
+    }
+
+    #[test]
+    fn every_char_is_clean_lookup_or_trailing() {
+        // The invariant the two speeds rest on: `clean + lookup` is exactly the
+        // set of characters that has seconds attributed to it, and what's left
+        // over is one line per session — the one with no gap after it.
+        let mut ts = 0.0;
+        let lines: Vec<_> = (0..120)
+            .map(|i| {
+                let line = ev(ts, 20 + i % 11);
+                ts += match i % 23 {
+                    22 => 900.0, // session break
+                    11 => 120.0, // over the afk cap
+                    _ => 3.0 + (i % 5) as f64 * 4.0,
+                };
+                line
+            })
+            .collect();
+        let lookups: Vec<f64> = (0..40).map(|i| i as f64 * 37.0 + 1.0).collect();
+        let b = bucket_lines(&lines, &lookups, 30.0, 600.0, 60.0);
+
+        let sum = |f: fn(&Bucket) -> i64| b.iter().map(f).sum::<i64>();
+        // A line ends its session when nothing follows it within the gap.
+        let trailing: i64 = lines
+            .iter()
+            .enumerate()
+            .filter(|(k, l)| lines.get(k + 1).is_none_or(|n| n.ts - l.ts > 600.0))
+            .map(|(_, l)| l.chars)
+            .sum();
+
+        assert_eq!(sum(|x| x.clean_chars) + sum(|x| x.lookup_chars) + trailing, sum(|x| x.chars));
+        assert!(sum(|x| x.lookup_chars) > 0, "the fixture must exercise both sides");
+        assert!(sum(|x| x.clean_chars) > 0);
     }
 
     #[test]

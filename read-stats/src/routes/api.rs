@@ -300,8 +300,11 @@ pub async fn day_timeline(
         None => stats::date_key(now_ts(), settings.day_rollover_hour, tz),
     };
     // 15s floor: below that a bucket rarely holds a whole line and the curve is
-    // quantization noise. 1h ceiling: past that it isn't a day curve any more.
-    let bucket_secs = params.bucket_secs.unwrap_or(60.0).clamp(15.0, 3600.0);
+    // quantization noise. 1h ceiling: past that it isn't a day curve any more —
+    // and never above the session gap, or two sessions could share a bucket
+    // index and `add_events` would have no way to tell them apart.
+    let bucket_ceiling = 3600.0_f64.min(settings.session_gap_secs).max(15.0);
+    let bucket_secs = params.bucket_secs.unwrap_or(60.0).clamp(15.0, bucket_ceiling);
 
     let day_start = stats::day_start_ts(date, settings.day_rollover_hour, tz);
     let day_end = day_start + 86400.0;

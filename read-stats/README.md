@@ -236,9 +236,13 @@ The *Day detail* card zooms one day down to the minute: reading speed on top,
 lookups/h and cards/h below, on a shared clock axis. A slider sets the smoothing
 window (1–45 min) and a date picker walks back through history.
 
-**The speed panel carries two lines.** *As read* is `chars / active_secs` — what
-actually happened. *Lookups removed* is `clean_chars / (active_secs −
-lookup_secs)`: reading speed over the gaps that contained no lookup. The shaded
+**The speed panel carries two lines.** *As read* is `(clean_chars +
+lookup_chars) / active_secs` — what actually happened. *Lookups removed* is
+`clean_chars / (active_secs − lookup_secs)`: reading speed over the gaps that
+contained no lookup. Both are rates over characters that have seconds
+attributed to them, which is why the numerator isn't plain `chars`: a session's
+trailing line has no gap after it and so cost no credited time, and leaving it
+in one side of the comparison only would understate the tax. The shaded
 gap between them is the **lookup tax**, read straight off the chars/hour axis,
 with the whole-day figure stated in words below the chart.
 
@@ -254,6 +258,15 @@ bug reported 30k chars/h for reading that was really running at 12k;
 A gap counts as lookup time when a `lookups` row falls inside it. The
 separation is sharp enough to trust: over 2026-07-20's 1220 in-session gaps,
 those holding a lookup ran a median 21.3s against 3.1s for those that didn't.
+
+The classification is nonetheless all-or-nothing per gap, which **biases the
+tax upward**: a gap is long for reasons other than the dictionary too — a
+stretch, a re-read, a stray thought — and the longer it runs, the likelier it
+is to also catch a lookup and be billed whole. Two things bound how much of the
+20% this could be. The `lookup_chars` subtraction above already removes the
+reading inside those gaps, and an 18-second spread between the two medians is
+far more than idle-catching alone would produce at 7% of gaps. Treat the figure
+as good to a couple of points, not to the decimal.
 
 **Time lost to lookups is not the same as time inside lookup gaps.** Such a gap
 holds the line's reading *and* the dictionary detour, so the note under the
