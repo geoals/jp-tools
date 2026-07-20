@@ -98,6 +98,168 @@ pub fn aggregate_line_days(
     out
 }
 
+/// One fixed-width slice of a day's reading. Deliberately finer than anything
+/// worth plotting: the client smooths these to whatever granularity it's asked
+/// for, so moving the smoothing control never refetches.
+#[derive(Debug, Clone, Serialize)]
+pub struct Bucket {
+    /// Bucket start, epoch seconds.
+    pub t: f64,
+    /// Index of the session this bucket belongs to. Buckets never span
+    /// sessions, so the client can break the line between them instead of
+    /// drawing a slope through a dinner break.
+    pub session: usize,
+    pub chars: i64,
+    pub active_secs: f64,
+    /// The part of `active_secs` spent inside a gap that contained a Yomitan
+    /// lookup. Always ≤ `active_secs`: it is a *label* on credited time, not
+    /// extra time. Subtracting it gives speed on the text itself.
+    pub lookup_secs: f64,
+    pub lookups: i64,
+    pub cards: i64,
+}
+
+fn empty_bucket(session: usize, idx: i64, bucket_secs: f64) -> Bucket {
+    Bucket {
+        t: idx as f64 * bucket_secs,
+        session,
+        chars: 0,
+        active_secs: 0.0,
+        lookup_secs: 0.0,
+        lookups: 0,
+        cards: 0,
+    }
+}
+
+/// Spread `dur` seconds of reading credit starting at `start` across the
+/// buckets it covers, so a credit straddling a boundary lands on both sides
+/// instead of being dumped whole into one.
+fn spread_credit(
+    out: &mut BTreeMap<(usize, i64), Bucket>,
+    session: usize,
+    start: f64,
+    dur: f64,
+    bucket_secs: f64,
+    is_lookup: bool,
+) {
+    let end = start + dur;
+    let mut t = start;
+    while t < end {
+        let idx = (t / bucket_secs).floor() as i64;
+        let boundary = (idx + 1) as f64 * bucket_secs;
+        let chunk = boundary.min(end) - t;
+        let bucket = out
+            .entry((session, idx))
+            .or_insert_with(|| empty_bucket(session, idx, bucket_secs));
+        bucket.active_secs += chunk;
+        if is_lookup {
+            bucket.lookup_secs += chunk;
+        }
+        t = boundary;
+    }
+}
+
+/// Whether any lookup timestamp falls in `[from, to)`. `lookups` is sorted, so
+/// this is a binary search rather than a scan per gap.
+fn gap_has_lookup(lookups: &[f64], from: f64, to: f64) -> bool {
+    let at = lookups.partition_point(|&ts| ts < from);
+    lookups.get(at).is_some_and(|&ts| ts < to)
+}
+
+/// Slice a time-ordered line stream into per-bucket chars and active time.
+///
+/// Time is credited to the interval *after* each line — `[ts, ts + min(gap,
+/// afk)]` — not to the following line's bucket the way the per-day aggregates
+/// do it. The gap after a line is the time spent reading that line, so this is
+/// what puts a line's characters and the seconds they cost in the same bucket.
+/// At day granularity the difference is invisible; at one minute it's the
+/// difference between a speed curve and noise.
+///
+/// Buckets are zero-filled within each session: a minute inside a session with
+/// no lines is real (a pause, a lookup that ran long), and dropping it would
+/// silently compress the time axis.
+///
+/// `lookups` (sorted) labels each gap that contains one, so the caller can
+/// separate speed on the text from speed including the cost of looking words
+/// up. Note the afk cap truncates a long lookup, so the labelled time is a
+/// lower bound on what a lookup actually cost.
+pub fn bucket_lines(
+    lines: &[LineEvent],
+    lookups: &[f64],
+    afk_secs: f64,
+    session_gap_secs: f64,
+    bucket_secs: f64,
+) -> Vec<Bucket> {
+    let mut out: BTreeMap<(usize, i64), Bucket> = BTreeMap::new();
+    let mut session = 0usize;
+
+    for (k, line) in lines.iter().enumerate() {
+        if k > 0 && line.ts - lines[k - 1].ts > session_gap_secs {
+            session += 1;
+        }
+        let idx = (line.ts / bucket_secs).floor() as i64;
+        out.entry((session, idx))
+            .or_insert_with(|| empty_bucket(session, idx, bucket_secs))
+            .chars += line.chars;
+
+        if let Some(next) = lines.get(k + 1) {
+            let gap = next.ts - line.ts;
+            if gap > 0.0 && gap <= session_gap_secs {
+                spread_credit(
+                    &mut out,
+                    session,
+                    line.ts,
+                    gap.min(afk_secs),
+                    bucket_secs,
+                    gap_has_lookup(lookups, line.ts, next.ts),
+                );
+            }
+        }
+    }
+
+    // Zero-fill each session's interior.
+    let mut filled: Vec<Bucket> = Vec::new();
+    let mut prev: Option<(usize, i64)> = None;
+    for (&(session, idx), bucket) in &out {
+        if let Some((prev_session, prev_idx)) = prev
+            && prev_session == session
+        {
+            for gap_idx in (prev_idx + 1)..idx {
+                filled.push(empty_bucket(session, gap_idx, bucket_secs));
+            }
+        }
+        filled.push(bucket.clone());
+        prev = Some((session, idx));
+    }
+    filled
+}
+
+/// Add point events (lookup or card timestamps) to the buckets holding them.
+/// Events outside every session are dropped: with no reading time around them
+/// there is no per-hour rate they could belong to.
+pub fn add_events(buckets: &mut [Bucket], events: &[f64], bucket_secs: f64, field: EventKind) {
+    let by_idx: BTreeMap<i64, usize> = buckets
+        .iter()
+        .enumerate()
+        .map(|(pos, b)| ((b.t / bucket_secs).round() as i64, pos))
+        .collect();
+    for &ts in events {
+        let idx = (ts / bucket_secs).floor() as i64;
+        if let Some(&pos) = by_idx.get(&idx) {
+            match field {
+                EventKind::Lookup => buckets[pos].lookups += 1,
+                EventKind::Card => buckets[pos].cards += 1,
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum EventKind {
+    Lookup,
+    Card,
+}
+
 #[derive(Debug, Clone)]
 pub struct WorkLine {
     pub ts: f64,
@@ -338,6 +500,113 @@ mod tests {
         assert_eq!(sessions[0].end_ts, 330.0);
         assert_eq!(sessions[1].chars, 7);
         assert_eq!(sessions[1].active_secs, 0.0);
+    }
+
+    #[test]
+    fn buckets_align_chars_with_the_time_they_cost() {
+        // Two lines 90s apart, afk cap 30: the first line's 100 chars and the
+        // 30s credited for reading them must land in the same bucket, even
+        // though the *next* line is two minutes later.
+        let lines = [ev(0.0, 100), ev(90.0, 40)];
+        let b = bucket_lines(&lines, &[], 30.0, 600.0, 60.0);
+        assert_eq!(b.len(), 2, "60s and 120s buckets, zero-filled between");
+        assert_eq!((b[0].chars, b[0].active_secs), (100, 30.0));
+        assert_eq!(b[1].chars, 40, "second line's bucket");
+        assert_eq!(b[1].active_secs, 0.0, "no line after it to credit a gap");
+    }
+
+    #[test]
+    fn bucket_credit_splits_across_a_boundary() {
+        // A 20s gap starting 10s before the boundary: 10s each side, not 20 on
+        // one. Total credit is preserved.
+        let lines = [ev(50.0, 10), ev(70.0, 10)];
+        let b = bucket_lines(&lines, &[], 30.0, 600.0, 60.0);
+        assert_eq!(b[0].active_secs, 10.0);
+        assert_eq!(b[1].active_secs, 10.0);
+        let total: f64 = b.iter().map(|x| x.active_secs).sum();
+        assert_eq!(total, 20.0);
+    }
+
+    #[test]
+    fn buckets_zero_fill_inside_a_session_but_not_between() {
+        // A 5-min lull (under the 600s session gap) fills; a 20-min break
+        // starts a new session and leaves no buckets in between.
+        let lines = [ev(0.0, 10), ev(300.0, 10), ev(1600.0, 10)];
+        let b = bucket_lines(&lines, &[], 30.0, 600.0, 60.0);
+        let s0: Vec<_> = b.iter().filter(|x| x.session == 0).collect();
+        assert_eq!(s0.len(), 6, "minutes 0..5 all present");
+        assert!(s0[1..5].iter().all(|x| x.chars == 0), "lull is zero-filled");
+        assert_eq!(b.iter().filter(|x| x.session == 1).count(), 1);
+        assert_eq!(b.len(), 7, "nothing drawn across the break");
+    }
+
+    #[test]
+    fn bucket_totals_match_session_totals() {
+        // Whatever the bucketing does to placement, it must not create or lose
+        // chars or seconds relative to the session derivation.
+        // Varying gaps, including some over the afk cap and two over the
+        // session gap, so every branch of both derivations is exercised.
+        let mut ts = 0.0;
+        let lines: Vec<_> = (0..200)
+            .map(|i| {
+                let line = ev(ts, 20 + i % 11);
+                ts += match i % 17 {
+                    16 => 900.0, // session break
+                    13 => 120.0, // over the afk cap
+                    _ => 4.0 + (i % 7) as f64 * 3.0,
+                };
+                line
+            })
+            .collect();
+        let b = bucket_lines(&lines, &[], 30.0, 600.0, 60.0);
+        let sessions = derive_sessions(&lines, 30.0, 600.0);
+        let bucket_chars: i64 = b.iter().map(|x| x.chars).sum();
+        let session_chars: i64 = sessions.iter().map(|s| s.chars).sum();
+        assert_eq!(bucket_chars, session_chars);
+        let bucket_secs: f64 = b.iter().map(|x| x.active_secs).sum();
+        let session_secs: f64 = sessions.iter().map(|s| s.active_secs).sum();
+        assert!((bucket_secs - session_secs).abs() < 1e-6);
+    }
+
+    #[test]
+    fn lookup_gaps_label_the_time_they_consumed() {
+        // Four lines, 20s apart. A lookup sits in the second gap only, so 20 of
+        // the 60 credited seconds are lookup time — and the chars are unchanged,
+        // which is exactly what makes raw speed exceed effective speed.
+        let lines = [ev(0.0, 100), ev(20.0, 100), ev(40.0, 100), ev(60.0, 100)];
+        let b = bucket_lines(&lines, &[25.0], 30.0, 600.0, 600.0);
+        assert_eq!(b.len(), 1, "all inside one 10-minute bucket");
+        assert_eq!(b[0].active_secs, 60.0);
+        assert_eq!(b[0].lookup_secs, 20.0, "only the gap containing the lookup");
+
+        let effective = b[0].chars as f64 / (b[0].active_secs / 3600.0);
+        let raw = b[0].chars as f64 / ((b[0].active_secs - b[0].lookup_secs) / 3600.0);
+        assert_eq!(effective, 24000.0);
+        assert_eq!(raw, 36000.0, "same chars, lookup seconds removed");
+    }
+
+    #[test]
+    fn lookup_time_never_exceeds_active_time() {
+        // A lookup in a gap far longer than the afk cap: the label can only
+        // cover credited time, so subtracting it can never go negative.
+        let lines = [ev(0.0, 50), ev(300.0, 50)];
+        let b = bucket_lines(&lines, &[150.0], 30.0, 600.0, 600.0);
+        let total_active: f64 = b.iter().map(|x| x.active_secs).sum();
+        let total_lookup: f64 = b.iter().map(|x| x.lookup_secs).sum();
+        assert_eq!(total_active, 30.0, "afk cap truncates the 300s gap");
+        assert_eq!(total_lookup, 30.0, "the whole credited gap was a lookup");
+        assert!(total_lookup <= total_active);
+    }
+
+    #[test]
+    fn events_land_in_their_bucket_and_outsiders_are_dropped() {
+        let lines = [ev(0.0, 10), ev(30.0, 10), ev(90.0, 10)];
+        let mut b = bucket_lines(&lines, &[], 30.0, 600.0, 60.0);
+        // 10s and 40s → bucket 0; 95s → bucket 1; 9000s → no session, dropped.
+        add_events(&mut b, &[10.0, 40.0, 95.0, 9000.0], 60.0, EventKind::Lookup);
+        assert_eq!(b[0].lookups, 2);
+        assert_eq!(b[1].lookups, 1);
+        assert_eq!(b.iter().map(|x| x.lookups).sum::<i64>(), 3);
     }
 
     #[test]

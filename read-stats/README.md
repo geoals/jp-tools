@@ -3,8 +3,9 @@
 Automatic daily reading tracker: characters read and active reading time,
 derived from the raw line stream `vn-mine/vn-ws-logger.py` already captures —
 no manual copying, no counters to reset. Dashboard with goal meter (floor /
-target minutes), streak, daily-minutes chart, a chars/hour trend, and a
-toggleable lookups/h vs cards/h trend.
+target minutes), streak, daily-minutes chart, a chars/hour trend, a
+toggleable lookups/h vs cards/h trend, and a minute-resolution *Day detail*
+view that prices the lookup tax against reading speed.
 
 ## How it works
 
@@ -129,6 +130,11 @@ Or as part of the stack: `scripts/start-all.sh`.
 - `GET  /api/days?days=60` — zero-filled per-day totals, oldest first
 - `POST /anki-proxy` — AnkiConnect pass-through that counts Yomitan lookups;
   point Yomitan's server address here (see *Counting lookups*)
+- `GET  /api/day/timeline?date=2026-07-19&bucket_secs=60` — one day sliced into
+  fine buckets (`{t, session, chars, active_secs, lookup_secs, lookups, cards}`)
+  plus the day's session spans. Smoothing is deliberately *not* done here: the
+  buckets are finer than anything worth plotting and the client rolls them up,
+  so the dashboard's granularity slider never re-queries. See *Day detail*
 - `GET  /api/sessions?date=2026-07-19` — derived VN sessions + manual sessions
 - `POST /api/sessions` — `{date?, start_ts?, minutes, chars? | pages?, work?, source?, note?}`
 - `DELETE /api/sessions/{id}`
@@ -223,6 +229,46 @@ the legend. Days under 10 minutes read are omitted: the per-hour denominator is
 too small to mean anything. Minutes read deliberately stays in its own chart
 rather than being overlaid here, since a second y-scale would imply a
 correlation the data doesn't contain.
+
+### Day detail
+
+The *Day detail* card zooms one day down to the minute: reading speed on top,
+lookups/h and cards/h below, on a shared clock axis. A slider sets the smoothing
+window (1–45 min) and a date picker walks back through history.
+
+**The speed panel carries two lines.** *As read* is `chars / active_secs` — what
+actually happened. *Lookups removed* is `chars / (active_secs − lookup_secs)` —
+the same characters with the seconds that went into looking words up taken out
+of the denominator. The shaded gap between them is the **lookup tax**, read
+straight off the chars/hour axis, with the whole-day figure stated in words
+below the chart.
+
+A gap counts as lookup time when a `lookups` row falls inside it. Since the afk
+cap truncates any gap at `afk_secs`, a 90-second dictionary detour only ever
+charges 30 — **the tax shown is a floor, not the full cost.**
+
+Two panels rather than one overlay, because chars/hour runs in the thousands and
+events/hour in the tens: one plot would need two y-scales, and where two scales
+line up is a choice, not a fact. Stacked on a shared x-axis with a shared
+crosshair, a speed dip and a lookup spike land in the same vertical slice and
+the comparison stays the reader's. The **⇕ overlay shape** toggle does draw the
+rate curves into the speed panel for timing comparison, each normalised 0→its
+own max by a fixed rule — which makes co-movement obvious and amplitude
+meaningless, so magnitude stays with the lower panel and the tooltip, both of
+which report real per-hour values.
+
+Bucketing places time differently from the per-day aggregates, on purpose. A
+gap's credit goes to the interval *after* its line (`[ts, ts + min(gap, afk)]`)
+rather than to the following line's bucket, because the gap after a line is the
+time spent reading that line — that is what puts a line's characters and the
+seconds they cost in the same bucket. At day granularity the difference is
+invisible; at one minute it is the difference between a speed curve and noise.
+Totals are unaffected either way (`bucket_totals_match_session_totals`).
+
+Lookups and cards falling outside every session are dropped from the buckets —
+with no reading time around them there is no per-hour rate they belong to — so
+the card's event counts can sit a little under the day totals on
+`/api/days`.
 
 ### Importing spreadsheet history
 

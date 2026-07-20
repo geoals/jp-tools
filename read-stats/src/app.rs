@@ -39,6 +39,7 @@ pub fn build_router(state: AppState) -> Router {
             get(api::list_sessions).post(api::create_session),
         )
         .route("/api/sessions/{id}", delete(api::delete_session))
+        .route("/api/day/timeline", get(api::day_timeline))
         .route("/api/works", get(api::works).post(api::upsert_work))
         .route(
             "/api/works/{id}",

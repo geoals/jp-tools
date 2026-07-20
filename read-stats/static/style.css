@@ -12,6 +12,7 @@
   --border: rgba(11, 11, 11, 0.10);
   --series-1: #2a78d6;
   --series-2: #008300;
+  --series-3: #db2777;
   --meter-track: #cde2fb;
   --good: #006300;
   --warn: #b3261e;
@@ -29,6 +30,7 @@
     --border: rgba(255, 255, 255, 0.10);
     --series-1: #3987e5;
     --series-2: #008300;
+    --series-3: #e0407f;
     --meter-track: #0d366b;
     --good: #0ca30c;
     --warn: #cf3b31;
@@ -46,6 +48,7 @@
   --border: rgba(255, 255, 255, 0.10);
   --series-1: #3987e5;
   --series-2: #008300;
+  --series-3: #e0407f;
   --meter-track: #0d366b;
   --good: #0ca30c;
   --warn: #cf3b31;
@@ -220,6 +223,84 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
   flex: none;
 }
 .tooltip-sub { color: var(--muted); }
+
+/* Day detail ------------------------------------------------------------- */
+
+.panel-title { fill: var(--muted); font-size: 11px; }
+.chart-note {
+  margin: 6px 4px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+/* Reading speed owns slot 3 everywhere it appears, so lookups (slot 1) and
+   cards (slot 2) keep their hues when speed shares a panel with them. */
+.trend-line-speed { stroke: var(--series-3); }
+.trend-dot-speed { fill: var(--series-3); }
+/* The counterfactual speed: same hue as the measured line (one measure, two
+   conditions), dashed because it is a "would have been", not a reading. */
+.trend-line-raw { stroke-dasharray: 5 3; opacity: 0.75; }
+/* Gap between the two speeds = the lookup tax. Tinted, not outlined, so it
+   reads as the area it is rather than a third series. */
+.tax-band { fill: var(--series-3); opacity: 0.14; stroke: none; }
+/* Shape-only overlay: deliberately recessive, since its amplitude is
+   normalised and carries no magnitude. */
+.overlay-line {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-dasharray: 2 3;
+  opacity: 0.45;
+  stroke-linejoin: round;
+}
+/* Legend entries that label a line style rather than toggle a series. */
+.legend-static { cursor: default; }
+.legend-line {
+  width: 14px;
+  height: 0;
+  border-radius: 0;
+  border-top: 2px solid var(--series-3);
+}
+.legend-line-dashed { border-top-style: dashed; }
+.legend-off .legend-line { background: transparent !important; box-shadow: none; }
+
+/* Controls above the day-detail chart. */
+.day-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.day-controls input[type="date"] {
+  font: inherit;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+.day-nav {
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font: inherit;
+}
+.day-nav:hover:not(:disabled) { color: var(--text-primary); }
+.day-nav:disabled { opacity: 0.4; cursor: default; }
+.smooth-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.smooth-control input[type="range"] { width: 130px; accent-color: var(--series-1); }
+.smooth-value { font-variant-numeric: tabular-nums; min-width: 46px; }
 
 .chart-tooltip {
   position: absolute;

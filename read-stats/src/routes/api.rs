@@ -275,6 +275,103 @@ pub async fn list_sessions(
 }
 
 #[derive(Deserialize)]
+pub struct TimelineParams {
+    date: Option<String>,
+    bucket_secs: Option<f64>,
+}
+
+/// Intra-day reading curve: fine-grained buckets of chars, active time,
+/// lookups and mined cards for one day.
+///
+/// The buckets are deliberately finer than anything worth plotting (one minute
+/// by default). Smoothing is the client's job, so dragging the granularity
+/// control is instant and never re-queries — which also means it can't perturb
+/// a reading session that's still in progress.
+pub async fn day_timeline(
+    State(state): State<AppState>,
+    Query(params): Query<TimelineParams>,
+) -> Result<Json<Value>, AppError> {
+    let settings = db::load_settings(&state.pool).await?;
+    let tz = tz_offset_secs();
+    let date = match params.date {
+        Some(s) => s
+            .parse::<NaiveDate>()
+            .map_err(|_| AppError::BadRequest(format!("bad date: {s}")))?,
+        None => stats::date_key(now_ts(), settings.day_rollover_hour, tz),
+    };
+    // 15s floor: below that a bucket rarely holds a whole line and the curve is
+    // quantization noise. 1h ceiling: past that it isn't a day curve any more.
+    let bucket_secs = params.bucket_secs.unwrap_or(60.0).clamp(15.0, 3600.0);
+
+    let day_start = stats::day_start_ts(date, settings.day_rollover_hour, tz);
+    let day_end = day_start + 86400.0;
+
+    // Pad the fetch so a session straddling the rollover derives with its real
+    // neighbours, then keep only the buckets belonging to the requested day.
+    let pauses = db::fetch_pauses(&state.pool).await?;
+    let mut lines =
+        db::fetch_line_events(&state.pool, day_start - 21600.0, day_end + 21600.0).await?;
+    lines.retain(|l| !stats::is_paused(l.ts, &pauses));
+
+    // Fetched over the same padded window as the lines: a gap is labelled a
+    // lookup gap by the lookups inside it, so a lookup just before the day
+    // boundary still has to be visible to classify the gap it sits in.
+    let mut lookups: Vec<f64> =
+        db::fetch_lookup_events(&state.pool, day_start - 21600.0, day_end + 21600.0).await?;
+    lookups.retain(|ts| !stats::is_paused(*ts, &pauses));
+
+    let mut buckets = stats::bucket_lines(
+        &lines,
+        &lookups,
+        settings.afk_secs,
+        settings.session_gap_secs,
+        bucket_secs,
+    );
+    buckets.retain(|b| b.t >= day_start && b.t < day_end);
+
+    stats::add_events(&mut buckets, &lookups, bucket_secs, stats::EventKind::Lookup);
+
+    // Note ids are epoch milliseconds, so they double as card creation times.
+    let note_ids = db::fetch_anki_note_ids(&state.pool).await?;
+    let cards: Vec<f64> = note_ids
+        .iter()
+        .map(|id| *id as f64 / 1000.0)
+        .filter(|ts| *ts >= day_start && *ts < day_end)
+        .collect();
+    stats::add_events(&mut buckets, &cards, bucket_secs, stats::EventKind::Card);
+
+    // Session spans, so the client can label the bands it draws between.
+    let sessions: Vec<Value> = stats::derive_sessions(
+        &lines,
+        settings.afk_secs,
+        settings.session_gap_secs,
+    )
+    .into_iter()
+    .filter(|s| stats::date_key(s.start_ts, settings.day_rollover_hour, tz) == date)
+    .map(|s| {
+        let (start, end) = (s.start_ts, s.end_ts);
+        json!({
+            "start_ts": start,
+            "end_ts": end,
+            "chars": s.chars,
+            "active_secs": s.active_secs,
+            "lines": s.lines,
+            "lookups": lookups.iter().filter(|ts| **ts >= start && **ts <= end).count(),
+            "cards": cards_in_window(&note_ids, start, end),
+        })
+    })
+    .collect();
+
+    Ok(Json(json!({
+        "date": date.to_string(),
+        "bucket_secs": bucket_secs,
+        "day_start": day_start,
+        "sessions": sessions,
+        "buckets": buckets,
+    })))
+}
+
+#[derive(Deserialize)]
 pub struct CreateSession {
     /// Day the session belongs to (defaults to today); ignored when start_ts given.
     pub date: Option<String>,
