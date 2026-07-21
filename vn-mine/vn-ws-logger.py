@@ -60,6 +60,18 @@ _COUNTED = (
 )
 NOT_COUNTED = re.compile(f"[^{_COUNTED}]")
 
+# A hook pointed at the wrong address dumps whole memory regions instead of
+# dialogue: engine paths, UI strings, Shift-JIS-misread bytes. Those rows are
+# still written (the raw stream stays intact and this undoes), but flagged
+# discarded so no read path counts them — same flag the reader's clear button
+# sets. Length alone separates the two cleanly: real lines observed so far top
+# out around 90 chars, the garbage bursts start above 3000, and normalize()
+# truncates at 4000. Deliberately NOT filtering on control characters — VNs use
+# them as text markup (Subahibi puts \x05 at the head of narration lines and
+# \x04 mid-clause), so presence of them says nothing about whether a line is
+# real reading.
+MAX_READING_CHARS = 500
+
 STATS_DB = os.environ.get("JP_TOOLS_STATS_DB_PATH") or os.path.expanduser(
     "~/.local/share/jp-stats/stats.db"
 )
@@ -73,7 +85,8 @@ CREATE TABLE IF NOT EXISTS lines (
     chars  INTEGER NOT NULL,
     text   TEXT,
     source TEXT    NOT NULL DEFAULT 'vn',
-    work   TEXT
+    work   TEXT,
+    discarded INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_lines_ts ON lines(ts);
 CREATE TABLE IF NOT EXISTS sessions (
@@ -116,10 +129,14 @@ class StatsSink:
             self.db.execute("PRAGMA journal_mode=WAL")
             self.db.execute("PRAGMA busy_timeout=5000")
             self.db.executescript(STATS_SCHEMA)
-            try:
-                self.db.execute("ALTER TABLE lines ADD COLUMN work TEXT")
-            except sqlite3.OperationalError:
-                pass  # column already exists
+            for column in (
+                "work TEXT",
+                "discarded INTEGER NOT NULL DEFAULT 0",
+            ):
+                try:
+                    self.db.execute(f"ALTER TABLE lines ADD COLUMN {column}")
+                except sqlite3.OperationalError:
+                    pass  # column already exists
             log(f"stats sink: {STATS_DB}")
         except (OSError, sqlite3.Error) as e:
             log(f"stats sink unavailable ({e}) — reading stats disabled")
@@ -136,9 +153,13 @@ class StatsSink:
                 "SELECT value FROM settings WHERE key = 'current_work'"
             ).fetchone()
             work = row[0] if row and row[0] else None
+            discarded = len(text) > MAX_READING_CHARS
+            if discarded:
+                log(f"garbage hook: {len(text)} chars, flagged discarded")
             self.db.execute(
-                "INSERT INTO lines (ts, chars, text, source, work) VALUES (?, ?, ?, 'vn', ?)",
-                (ts, chars, text, work),
+                "INSERT INTO lines (ts, chars, text, source, work, discarded)"
+                " VALUES (?, ?, ?, 'vn', ?, ?)",
+                (ts, chars, text, work, int(discarded)),
             )
             self.errors = 0
         except sqlite3.Error as e:
