@@ -4,8 +4,9 @@ Automatic daily reading tracker: characters read and active reading time,
 derived from the raw line stream `vn-mine/vn-ws-logger.py` already captures —
 no manual copying, no counters to reset. Dashboard with goal meter (floor /
 target minutes), streak, daily-minutes chart, a chars/hour trend, a
-toggleable lookups/h vs cards/h trend, and a minute-resolution *Day detail*
-view that prices the lookup tax against reading speed.
+toggleable lookups/h vs cards/h trend, a minute-resolution *Day detail*
+view that prices the lookup tax against reading speed, and a *Dialogue vs
+narration* card that splits the reading on 「」.
 
 ## How it works
 
@@ -30,6 +31,23 @@ view that prices the lookup tax against reading speed.
   - a gap over `session_gap_secs` (600) closes the session;
   - days roll over at `day_rollover_hour` (04:00) — late-night reading counts
     toward the evening's day.
+- **Dialogue is separated from narration by bracket depth** (`dialogue.rs`).
+  Japanese marks speech with 「…」 (and 『…』 nested or for titles), so the
+  distinction is already in the hooked text and costs nothing to derive. The
+  split is per *character*, not per line, so `「そうか」と彼は言った` is three
+  dialogue characters and six narration; that makes it an exact partition of
+  `count_chars`, which is what lets the share be quoted against the same
+  totals everything else uses. Only corner brackets count — “…” is used for
+  emphasis and for quoting a phrase rather than a speaker, and （…） is usually
+  inner monologue.
+
+  Bracket depth **carries across lines**: a long speech is hooked as several
+  text boxes, so its 「 opens on one row and closes on a later one. Resetting
+  per line would file every continuation as narration. It is dropped across a
+  gap over `dialogue::CARRY_GAP_SECS` (300), which is far past any real
+  continuation, so one dropped 」 can't recolor a whole session as speech.
+
+  See *Dialogue vs narration* below for what the numbers say.
 - **Yomitan lookups are counted by proxying AnkiConnect** (`ankiproxy.rs`).
   Yomitan checks Anki for duplicates every time it shows a definition popup, so
   with its server address pointed at `/anki-proxy` each popup becomes a row in
@@ -175,6 +193,9 @@ Or as part of the stack: `scripts/start-all.sh`.
 - `GET  /api/lookups/summary` — lookup outcomes per distinct term (mined /
   already-carded / never carded), repeat-lookup list, leech list, median
   lookup→card latency
+- `GET  /api/dialogue/summary?days=60` — the 「」 split: `today` and per-`day`
+  character shares, plus `overall` with speed, clean speed and lookups/1k for
+  each side. See *Dialogue vs narration*
 - `GET/PUT /api/settings` — `afk_secs`, `session_gap_secs`, `day_rollover_hour`,
   `goal_floor_mins`, `goal_target_mins`, `chars_per_page`, `current_work`,
   `vn_window` (substring of the VN window's title, passed to vn-capture.sh as
@@ -349,6 +370,49 @@ Lookups and cards falling outside every session are dropped from the buckets —
 with no reading time around them there is no per-hour rate they belong to — so
 the card's event counts can sit a little under the day totals on
 `/api/days`.
+
+### Dialogue vs narration
+
+The card answers three questions off one classification: what share of the
+reading was people talking, whether speech and prose read at different speeds,
+and which of the two carries more unknown words.
+
+On 素晴らしき日々 the answer is lopsided, and consistently so:
+
+| | share of chars | chars/hour | lookups per 1k |
+|---|---|---|---|
+| dialogue | 70% | 14,300 | 2.0 |
+| narration | 30% | 11,100 | 4.2 |
+
+Narration reads about a fifth slower and needs **twice** the lookups per
+character. That is the useful finding: the prose, not the speech, is where the
+difficulty sits — so a work's difficulty is better predicted by how
+narration-heavy it is than by its overall lookup rate, and a slow day may just
+have been a description-heavy scene rather than a bad one.
+
+**The share and the speeds are counted over different lines, deliberately.**
+
+- *Share* is over every classified character, mixed lines included. It is
+  asking what the text consisted of, so it cannot skip any of it.
+- *Speed* and *lookups/1k* are over lines that were **wholly** one kind
+  (`Side::timed_chars`). A gap is one undivided span of time: whatever was
+  spent on `「そうか」と彼は言った` cannot be split into a dialogue part and a
+  narration part afterwards, and charging it whole to the majority side would
+  bias the comparison by exactly the quantity being compared. Mixed lines are
+  dropped from both halves instead — 30 lines in 5183 on the current corpus.
+
+Never divide one against the other; they are different populations.
+
+Both speeds also come in a **lookups-removed** form (`clean_speed`), computed
+the same way the day timeline does it: the characters read across a lookup gap
+leave the numerator along with the seconds they cost. Dividing all of a side's
+characters by only its uninterrupted seconds is the same unbounded inflation
+`raw_speed_cannot_explode_in_a_lookup_burst` pins for the timeline.
+
+Days with no line stream — manual sessions, or history imported before text was
+kept — report a `null` share rather than 0%. "No text to split" is not "all
+narration", and counting those rows would have dragged every old day's share
+toward prose.
 
 ### Importing spreadsheet history
 

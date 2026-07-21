@@ -224,6 +224,45 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
 }
 .tooltip-sub { color: var(--muted); }
 
+/* Dialogue vs narration ---------------------------------------------------
+   Dialogue takes slot 1 and narration slot 2 — a categorical pair, validated
+   for CVD separation against both surfaces. Every bar carries a text label and
+   its own value, so identity and magnitude never rest on colour alone. */
+.split-bar {
+  display: flex;
+  gap: 2px; /* surface gap between segments, per the mark spec */
+  height: 14px;
+  margin: 12px 0 6px;
+}
+.split-seg { border-radius: 3px; min-width: 3px; }
+.split-caption {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.split-caption .legend-swatch { display: inline-block; margin-right: 6px; vertical-align: baseline; }
+
+.compare { margin-top: 16px; }
+.compare-title { color: var(--muted); font-size: 12px; margin-bottom: 7px; }
+.compare-row {
+  display: grid;
+  grid-template-columns: 72px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 5px;
+  font-size: 13px;
+}
+.compare-name { color: var(--text-secondary); }
+.compare-track { background: var(--grid); border-radius: 3px; height: 10px; }
+.compare-fill { display: block; height: 100%; border-radius: 3px; min-width: 2px; }
+.compare-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.compare-unit { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
 /* Day detail ------------------------------------------------------------- */
 
 .panel-title { fill: var(--muted); font-size: 11px; }

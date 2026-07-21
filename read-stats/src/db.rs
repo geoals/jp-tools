@@ -267,16 +267,46 @@ pub async fn fetch_line_events(
     from_ts: f64,
     to_ts: f64,
 ) -> Result<Vec<LineEvent>, sqlx::Error> {
-    let rows = sqlx::query("SELECT ts, chars FROM lines WHERE ts >= ? AND ts < ? ORDER BY ts")
+    let rows = sqlx::query("SELECT ts, chars, text FROM lines WHERE ts >= ? AND ts < ? ORDER BY ts")
         .bind(from_ts)
         .bind(to_ts)
         .fetch_all(pool)
         .await?;
+
+    // One scanner across the whole stream: a speech broken over several text
+    // boxes leaves its 「 open on the first row, so depth has to carry. It is
+    // dropped across a break too long for that to be what happened — see
+    // `dialogue::CARRY_GAP_SECS`.
+    let mut scanner = crate::dialogue::Scanner::new();
+    let mut prev_ts: Option<f64> = None;
     Ok(rows
         .iter()
-        .map(|r| LineEvent {
-            ts: r.get("ts"),
-            chars: r.get("chars"),
+        .map(|r| {
+            let ts: f64 = r.get("ts");
+            let chars: i64 = r.get("chars");
+            let text: Option<String> = r.get("text");
+            if prev_ts.is_some_and(|p| ts - p > crate::dialogue::CARRY_GAP_SECS) {
+                scanner.reset();
+            }
+            prev_ts = Some(ts);
+            match text {
+                Some(text) => {
+                    let split = scanner.scan(&text);
+                    LineEvent {
+                        ts,
+                        chars,
+                        // `chars` is authoritative (startup recounts it), so
+                        // clamp rather than let a stale disagreement make
+                        // narration negative.
+                        dialogue_chars: split.dialogue.min(chars),
+                        classified: true,
+                    }
+                }
+                None => {
+                    scanner.reset();
+                    LineEvent { ts, chars, dialogue_chars: 0, classified: false }
+                }
+            }
         })
         .collect())
 }

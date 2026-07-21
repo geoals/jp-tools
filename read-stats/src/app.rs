@@ -50,6 +50,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/anki/refresh", axum::routing::post(api::anki_refresh))
         .route("/api/anki/summary", get(api::anki_summary))
         .route("/api/lookups/summary", get(api::lookups_summary))
+        .route("/api/dialogue/summary", get(api::dialogue_summary))
         .route(
             "/api/settings",
             get(api::get_settings).put(api::put_settings),

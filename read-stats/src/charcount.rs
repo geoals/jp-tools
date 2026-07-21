@@ -12,7 +12,7 @@
 //! punctuation share of the text (~10-20% for VN prose).
 
 /// True for codepoints texthooker-ui keeps.
-fn is_counted(c: char) -> bool {
+pub fn is_counted(c: char) -> bool {
     matches!(c,
         '0'..='9' | 'A'..='Z' | 'a'..='z'    // the /i flag makes A-Z cover a-z
         | '\u{25CB}' | '\u{25EF}'            // ○ ◯

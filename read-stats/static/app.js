@@ -1017,6 +1017,147 @@ function LookupsCard({ lookups }) {
   `;
 }
 
+/* Dialogue vs narration ----------------------------------------------------
+
+   Japanese marks speech with 「」, so the split is already in the raw text and
+   costs nothing to derive. Two measures, two categories — and the measures are
+   in different units (chars/hour against lookups per 1000 chars), so they get a
+   bar group each rather than one plot with two scales. Each group is scaled to
+   its own max, which is what makes the *comparison* legible; the absolute
+   number sits at the end of every bar so the scaling can't mislead. */
+
+const DIALOGUE_COLOR = "var(--series-1)";
+const NARRATION_COLOR = "var(--series-2)";
+
+function CompareBars({ title, unit, rows, format }) {
+  const max = Math.max(...rows.map((r) => r.value));
+  return html`
+    <div class="compare">
+      <div class="compare-title">${title}</div>
+      ${rows.map(
+        (r) => html`
+          <div class="compare-row">
+            <span class="compare-name">${r.label}</span>
+            <span class="compare-track">
+              <span
+                class="compare-fill"
+                style=${`width:${max > 0 ? (r.value / max) * 100 : 0}%;background:${r.color}`}
+              ></span>
+            </span>
+            <span class="compare-value">${format(r.value)}</span>
+          </div>
+        `,
+      )}
+      <div class="compare-unit">${unit}</div>
+    </div>
+  `;
+}
+
+/** The comparison in words. Derived rather than written out, so it stays true
+    if the two ever swap places — which is the interesting case, not a bug. */
+function dialogueVerdict(d, n) {
+  if (!d.speed || !n.speed) return null;
+  const slower = n.speed < d.speed ? "narration" : "dialogue";
+  const faster = slower === "narration" ? "dialogue" : "narration";
+  const slowPct = Math.round(
+    (1 - Math.min(d.speed, n.speed) / Math.max(d.speed, n.speed)) * 100,
+  );
+  const speedPart = `${slower} reads ${slowPct}% slower than ${faster}`;
+
+  if (d.lookups_per_1k === null || n.lookups_per_1k === null) {
+    return `${speedPart[0].toUpperCase()}${speedPart.slice(1)}.`;
+  }
+  const denser = n.lookups_per_1k > d.lookups_per_1k ? "narration" : "dialogue";
+  const ratio = (
+    Math.max(d.lookups_per_1k, n.lookups_per_1k) /
+    Math.min(d.lookups_per_1k, n.lookups_per_1k)
+  ).toFixed(1);
+  const lookupPart = `takes ${ratio}× the lookups per character`;
+
+  // The two measures usually agree — the slower half is the denser one — and
+  // when they do the card can say which half is simply harder. When they part
+  // company that is the finding, so don't paper over it with one clause.
+  return denser === slower
+    ? `${slower === "narration" ? "Prose" : "Speech"} is the harder half: ${speedPart} and ${lookupPart}.`
+    : `${speedPart[0].toUpperCase()}${speedPart.slice(1)}, yet ${denser} ${lookupPart} — the slower half is not the one with more unknown words.`;
+}
+
+function DialogueCard({ dialogue }) {
+  if (!dialogue || dialogue.overall.share === null) {
+    return html`
+      <div class="card">
+        <h2>Dialogue vs narration</h2>
+        <p class="chart-empty">
+          Nothing classified yet — this reads 「」 out of the stored line text,
+          so it fills in as the logger captures lines.
+        </p>
+      </div>
+    `;
+  }
+  const { dialogue: d, narration: n, share } = dialogue.overall;
+  const dPct = Math.round(share * 100);
+  const today = dialogue.today;
+
+  // Pre-built strings: htm collapses whitespace where literal text meets an
+  // ${...} across a line break (see CLAUDE.md).
+  const dLabel = `dialogue ${dPct}%`;
+  const nLabel = `narration ${100 - dPct}%`;
+  const todayLabel =
+    today.share === null
+      ? "nothing hooked today yet — split on 「」 in the line text"
+      : `today ${Math.round(today.share * 100)}% dialogue · split on 「」 in the line text`;
+
+  const verdict = dialogueVerdict(d, n);
+
+  return html`
+    <div class="card">
+      <h2>Dialogue vs narration</h2>
+
+      <div class="split-bar">
+        <span
+          class="split-seg"
+          style=${`width:${dPct}%;background:${DIALOGUE_COLOR}`}
+        ></span>
+        <span
+          class="split-seg"
+          style=${`width:${100 - dPct}%;background:${NARRATION_COLOR}`}
+        ></span>
+      </div>
+      <div class="split-caption">
+        <span><span class="legend-swatch" style=${`background:${DIALOGUE_COLOR}`}></span>${dLabel}</span>
+        <span><span class="legend-swatch" style=${`background:${NARRATION_COLOR}`}></span>${nLabel}</span>
+      </div>
+      <div class="meta-hint">${todayLabel}</div>
+
+      <${CompareBars}
+        title="reading speed"
+        unit="chars/hour, over lines that were wholly one or the other"
+        format=${(v) => Math.round(v).toLocaleString("en")}
+        rows=${[
+          { label: "dialogue", value: d.speed, color: DIALOGUE_COLOR },
+          { label: "narration", value: n.speed, color: NARRATION_COLOR },
+        ]}
+      />
+
+      ${d.lookups_per_1k !== null &&
+      n.lookups_per_1k !== null &&
+      html`
+        <${CompareBars}
+          title="unknown-word rate"
+          unit="lookups per 1000 characters"
+          format=${(v) => v.toFixed(2)}
+          rows=${[
+            { label: "dialogue", value: d.lookups_per_1k, color: DIALOGUE_COLOR },
+            { label: "narration", value: n.lookups_per_1k, color: NARRATION_COLOR },
+          ]}
+        />
+      `}
+
+      ${verdict && html`<p class="chart-note">${verdict}</p>`}
+    </div>
+  `;
+}
+
 function DaysTable({ days, todayDate }) {
   const recent = days.slice(-14).reverse();
   return html`
@@ -1078,12 +1219,13 @@ function App() {
   const [sessions, setSessions] = useState(null);
   const [anki, setAnki] = useState(null);
   const [lookups, setLookups] = useState(null);
+  const [dialogue, setDialogue] = useState(null);
   const [ankiBusy, setAnkiBusy] = useState(false);
   const [error, setError] = useState(null);
 
   async function load() {
     try {
-      const [s, d, w, cfg, sess, ank, lk] = await Promise.all([
+      const [s, d, w, cfg, sess, ank, lk, dlg] = await Promise.all([
         api("/api/summary"),
         api("/api/days?days=60"),
         api("/api/works"),
@@ -1091,6 +1233,7 @@ function App() {
         api("/api/sessions"),
         api("/api/anki/summary"),
         api("/api/lookups/summary"),
+        api("/api/dialogue/summary?days=60"),
       ]);
       setSummary(s);
       setDays(d);
@@ -1099,6 +1242,7 @@ function App() {
       setSessions(sess);
       setAnki(ank);
       setLookups(lk);
+      setDialogue(dlg);
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -1195,6 +1339,7 @@ function App() {
     <${SessionsToday} sessions=${sessions} />
     <${AnkiCard} anki=${anki} onRefresh=${refreshAnki} busy=${ankiBusy} />
     <${LookupsCard} lookups=${lookups} />
+    <${DialogueCard} dialogue=${dialogue} />
     <${WorksTable} works=${works} settings=${settings} onSaved=${load} />
     <${LogForm} onLogged=${load} />
     <${DaysTable} days=${days} todayDate=${summary.today.date} />

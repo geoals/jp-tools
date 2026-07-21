@@ -258,6 +258,87 @@ pub async fn days(
     Ok(Json(json!(out)))
 }
 
+fn side_json(s: &stats::Side) -> Value {
+    json!({
+        "chars": s.chars,
+        "timed_chars": s.timed_chars,
+        "timed_secs": s.timed_secs,
+        "lines": s.lines,
+        "speed": s.speed(),
+        "clean_speed": s.clean_speed(),
+        "lookups": s.lookups,
+        "lookups_per_1k": s.lookups_per_1k(),
+    })
+}
+
+/// How much of the reading was people talking, and whether speech and prose
+/// read at different speeds.
+///
+/// Over all history *and* per day: the whole-history figures are the ones with
+/// enough characters behind them to compare speeds, while the per-day share
+/// tracks what the reading actually consisted of, which swings with the scene.
+pub async fn dialogue_summary(
+    State(state): State<AppState>,
+    Query(params): Query<DaysParams>,
+) -> Result<Json<Value>, AppError> {
+    let n = params.days.unwrap_or(30).clamp(1, 3650);
+    let settings = db::load_settings(&state.pool).await?;
+    let tz = tz_offset_secs();
+    let today = stats::date_key(now_ts(), settings.day_rollover_hour, tz);
+
+    let pauses = db::fetch_pauses(&state.pool).await?;
+    let mut lines = db::fetch_line_events(&state.pool, 0.0, f64::MAX).await?;
+    lines.retain(|l| !stats::is_paused(l.ts, &pauses));
+    let mut lookups = db::fetch_lookup_events(&state.pool, 0.0, f64::MAX).await?;
+    lookups.retain(|ts| !stats::is_paused(*ts, &pauses));
+    let marks = presence_marks(&state, &pauses, 0.0, f64::MAX).await?;
+    let pace = reader_pace(&state, &settings, &pauses).await?;
+    let presence = stats::Presence::new(&marks, pace, settings.afk_secs);
+
+    let by_day = stats::aggregate_dialogue_days(
+        &lines,
+        &lookups,
+        &presence,
+        settings.session_gap_secs,
+        settings.day_rollover_hour,
+        tz,
+    );
+
+    let mut overall = stats::DialogueDay::default();
+    for day in by_day.values() {
+        overall.add(day);
+    }
+
+    // Zero-filled like /api/days, but a day with no classified text reports a
+    // null share rather than 0% — "no text to split" is not "all narration".
+    let mut days = Vec::with_capacity(n as usize);
+    for i in (0..n).rev() {
+        let date = today - chrono::Duration::days(i);
+        let d = by_day.get(&date).copied().unwrap_or_default();
+        days.push(json!({
+            "date": date.to_string(),
+            "dialogue_chars": d.dialogue.chars,
+            "narration_chars": d.narration.chars,
+            "share": d.share(),
+        }));
+    }
+
+    let today_day = by_day.get(&today).copied().unwrap_or_default();
+    Ok(Json(json!({
+        "today": {
+            "dialogue_chars": today_day.dialogue.chars,
+            "narration_chars": today_day.narration.chars,
+            "share": today_day.share(),
+        },
+        "overall": {
+            "share": overall.share(),
+            "dialogue": side_json(&overall.dialogue),
+            "narration": side_json(&overall.narration),
+        },
+        "days": days,
+    })))
+}
+
 #[derive(Deserialize)]
 pub struct SessionsParams {
     date: Option<String>,
