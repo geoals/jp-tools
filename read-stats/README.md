@@ -3,7 +3,8 @@
 Automatic daily reading tracker: characters read and active reading time,
 derived from the raw line stream `vn-mine/vn-ws-logger.py` already captures —
 no manual copying, no counters to reset. Dashboard with goal meter (floor /
-target minutes), streak, daily-minutes chart, a chars/hour trend, a
+target minutes), streak, a daily bar chart switchable between minutes and
+characters and stackable by dialogue, a chars/hour trend, a
 toggleable lookups/h vs cards/h trend, a minute-resolution *Day detail*
 view that prices the lookup tax against reading speed, and a *Dialogue vs
 narration* card that splits the reading on 「」.
@@ -402,6 +403,21 @@ have been a description-heavy scene rather than a bad one.
   dropped from both halves instead — 30 lines in 5183 on the current corpus.
 
 Never divide one against the other; they are different populations.
+
+**The daily bar chart takes the same split**, over two independent switches:
+minutes or characters, stacked by dialogue or not. Minutes and characters share
+one chart with a switch rather than getting two, because they are the same
+question in the two units it has — and they are never overlaid, which would
+need a second y-scale. Reading speed *is* the relationship between them and
+already has its own chart.
+
+The stack has a third segment, **no line text**, and it is a real category
+rather than a rounding bucket: manually logged sessions (physical books, or
+imported history) have no hooked text to classify, so those days are legitimately
+all remainder. It is drawn in muted ink rather than a fourth hue because it is
+the absence of the measurement, not a third kind of reading. The parts are never
+rescaled to fill the bar — a bar's height is the day's real total in both modes,
+so toggling the split changes what a bar is made of and never how tall it is.
 
 Both speeds also come in a **lookups-removed** form (`clean_speed`), computed
 the same way the day timeline does it: the characters read across a lookup gap

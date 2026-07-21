@@ -224,6 +224,50 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
 }
 .tooltip-sub { color: var(--muted); }
 
+/* Card header with controls on the right ---------------------------------- */
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.card-head h2 { margin-bottom: 10px; }
+.card-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.segment {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.segment:hover { color: var(--text-primary); }
+.segment-on { background: var(--meter-track); color: var(--text-primary); }
+.segment:focus-visible { outline: 2px solid var(--series-1); outline-offset: -2px; }
+
+.toggle-btn {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.toggle-btn:hover { color: var(--text-primary); }
+.toggle-on { background: var(--meter-track); color: var(--text-primary); }
+.toggle-btn:focus-visible { outline: 2px solid var(--series-1); outline-offset: -2px; }
+
 /* Dialogue vs narration ---------------------------------------------------
    Dialogue takes slot 1 and narration slot 2 — a categorical pair, validated
    for CVD separation against both surfaces. Every bar carries a text label and

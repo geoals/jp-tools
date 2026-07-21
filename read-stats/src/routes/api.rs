@@ -315,6 +315,14 @@ pub async fn dialogue_summary(
             "date": date.to_string(),
             "dialogue_chars": d.dialogue.chars,
             "narration_chars": d.narration.chars,
+            // Seconds credited to gaps after lines of each kind. These do not
+            // add up to the day's active time and are not meant to: manual
+            // sessions have no text, and mixed lines are unattributable. The
+            // daily chart stacks them under a remainder segment rather than
+            // rescaling, so the shortfall stays visible instead of being
+            // silently spread across the two.
+            "dialogue_secs": d.dialogue.timed_secs,
+            "narration_secs": d.narration.timed_secs,
             "share": d.share(),
         }));
     }

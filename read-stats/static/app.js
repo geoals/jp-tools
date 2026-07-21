@@ -5,8 +5,8 @@ import { api } from "./api.js";
 import { Reader } from "./reader.js";
 import {
   GoalMeter,
+  DailyBarChart,
   DayTimelineChart,
-  MinutesBarChart,
   ProgressBar,
   RateTrendChart,
   SpeedTrendChart,
@@ -132,6 +132,80 @@ function TodayCard({ summary }) {
           </div>
         </div>
       </div>
+    </div>
+  `;
+}
+
+/** A row of mutually exclusive choices, styled as one segmented control. */
+function SegmentedControl({ value, options, onChange, label }) {
+  return html`
+    <div class="segmented" role="group" aria-label=${label}>
+      ${options.map(
+        (o) => html`
+          <button
+            type="button"
+            class=${o.value === value ? "segment segment-on" : "segment"}
+            aria-pressed=${o.value === value}
+            onClick=${() => onChange(o.value)}
+          >
+            ${o.label}
+          </button>
+        `,
+      )}
+    </div>
+  `;
+}
+
+/* The daily bar chart, over two independent choices: which measure (time or
+   characters) and whether to stack it by dialogue.
+
+   Minutes and characters get one chart with a switch rather than two charts,
+   because they are the same question — how much reading happened — asked in
+   the two units it has. They are deliberately never overlaid: that would need
+   a second y-scale, and where two scales line up is a choice rather than a
+   fact. Reading speed is exactly the relationship between them and already
+   has its own chart. */
+function DailyChartCard({ days, dialogue, floorMins, targetMins }) {
+  const [metric, setMetric] = useState("minutes");
+  const [split, setSplit] = useState(false);
+
+  const byDate = {};
+  for (const d of dialogue?.days ?? []) byDate[d.date] = d;
+
+  const heading = metric === "minutes" ? "Daily minutes" : "Daily characters";
+  const title = `${heading} · last 30 days`;
+  return html`
+    <div class="card">
+      <div class="card-head">
+        <h2>${title}</h2>
+        <div class="card-controls">
+          <${SegmentedControl}
+            label="Measure"
+            value=${metric}
+            onChange=${setMetric}
+            options=${[
+              { value: "minutes", label: "minutes" },
+              { value: "chars", label: "chars" },
+            ]}
+          />
+          <button
+            type="button"
+            class=${split ? "toggle-btn toggle-on" : "toggle-btn"}
+            aria-pressed=${split}
+            onClick=${() => setSplit(!split)}
+          >
+            ⬓ split by dialogue
+          </button>
+        </div>
+      </div>
+      <${DailyBarChart}
+        days=${days.slice(-30)}
+        dialogueByDate=${byDate}
+        metric=${metric}
+        split=${split}
+        floorMins=${floorMins}
+        targetMins=${targetMins}
+      />
     </div>
   `;
 }
@@ -1319,14 +1393,12 @@ function App() {
       onSaved=${load}
     />
     <${WeekTiles} days=${days} />
-    <div class="card">
-      <h2>Daily minutes · last 30 days</h2>
-      <${MinutesBarChart}
-        days=${days.slice(-30)}
-        floorMins=${summary.goal.floor_mins}
-        targetMins=${summary.goal.target_mins}
-      />
-    </div>
+    <${DailyChartCard}
+      days=${days}
+      dialogue=${dialogue}
+      floorMins=${summary.goal.floor_mins}
+      targetMins=${summary.goal.target_mins}
+    />
     <div class="card">
       <h2>Reading speed · chars/hour, last 30 days</h2>
       <${SpeedTrendChart} days=${days.slice(-30)} />
