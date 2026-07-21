@@ -31,10 +31,9 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
 /// Load all distinct headwords from dictionary_entries.
 /// Used at startup to build the set for dictionary-aware tokenization.
 pub async fn get_all_headwords(pool: &SqlitePool) -> Result<HashSet<String>, sqlx::Error> {
-    let rows: Vec<(String,)> =
-        sqlx::query_as("SELECT DISTINCT term FROM dictionary_entries")
-            .fetch_all(pool)
-            .await?;
+    let rows: Vec<(String,)> = sqlx::query_as("SELECT DISTINCT term FROM dictionary_entries")
+        .fetch_all(pool)
+        .await?;
     Ok(rows.into_iter().map(|(term,)| term).collect())
 }
 
@@ -73,18 +72,17 @@ pub async fn import_dictionary(
 ) -> Result<i64, sqlx::Error> {
     let mut tx = pool.begin().await?;
 
-    let row = sqlx::query(
-        "INSERT INTO dictionaries (title, source_path) VALUES (?, ?) RETURNING id",
-    )
-    .bind(title)
-    .bind(source_path)
-    .fetch_one(&mut *tx)
-    .await?;
+    let row =
+        sqlx::query("INSERT INTO dictionaries (title, source_path) VALUES (?, ?) RETURNING id")
+            .bind(title)
+            .bind(source_path)
+            .fetch_one(&mut *tx)
+            .await?;
     let dict_id: i64 = row.get("id");
 
     for entry in entries {
-        let definitions_json = serde_json::to_string(&entry.definitions)
-            .unwrap_or_else(|_| "[]".into());
+        let definitions_json =
+            serde_json::to_string(&entry.definitions).unwrap_or_else(|_| "[]".into());
         sqlx::query(
             "INSERT INTO dictionary_entries (dictionary_id, term, reading, score, definitions_json) VALUES (?, ?, ?, ?, ?)",
         )
@@ -118,8 +116,7 @@ pub async fn lookup_dictionary_entries(
         .into_iter()
         .map(|r| {
             let json_str: String = r.get("definitions_json");
-            let definitions: Vec<String> =
-                serde_json::from_str(&json_str).unwrap_or_default();
+            let definitions: Vec<String> = serde_json::from_str(&json_str).unwrap_or_default();
             DictionaryEntry {
                 term: r.get("term"),
                 reading: r.get("reading"),
@@ -222,25 +219,20 @@ pub async fn has_frequency_entries(
     pool: &SqlitePool,
     dictionary_id: i64,
 ) -> Result<bool, sqlx::Error> {
-    let count: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM dictionary_frequency WHERE dictionary_id = ?",
-    )
-    .bind(dictionary_id)
-    .fetch_one(pool)
-    .await?;
+    let count: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM dictionary_frequency WHERE dictionary_id = ?")
+            .bind(dictionary_id)
+            .fetch_one(pool)
+            .await?;
     Ok(count.0 > 0)
 }
 
 /// Check whether any pitch entries exist for a dictionary.
-pub async fn has_pitch_entries(
-    pool: &SqlitePool,
-    dictionary_id: i64,
-) -> Result<bool, sqlx::Error> {
-    let count: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM dictionary_pitch WHERE dictionary_id = ?",
-    )
-    .bind(dictionary_id)
-    .fetch_one(pool)
-    .await?;
+pub async fn has_pitch_entries(pool: &SqlitePool, dictionary_id: i64) -> Result<bool, sqlx::Error> {
+    let count: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM dictionary_pitch WHERE dictionary_id = ?")
+            .bind(dictionary_id)
+            .fetch_one(pool)
+            .await?;
     Ok(count.0 > 0)
 }

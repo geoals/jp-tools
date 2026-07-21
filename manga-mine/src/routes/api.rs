@@ -179,7 +179,9 @@ async fn remember_source(state: &AppState, name: &str) {
     sources.insert(0, name.to_string());
     sources.truncate(SOURCES_MAX);
     let path = state.inbox_dir.join(SOURCES_FILE);
-    if let Err(e) = tokio::fs::write(&path, serde_json::to_string(&sources).unwrap_or_default()).await {
+    if let Err(e) =
+        tokio::fs::write(&path, serde_json::to_string(&sources).unwrap_or_default()).await
+    {
         warn!(error = %e, "failed to persist sources list");
     }
 }
@@ -359,7 +361,11 @@ pub async fn upload_photo(
             .and_then(|f| f.to_str())
             .unwrap_or("photo.jpg")
             .replace(['/', '\\'], "_");
-        let base = if is_image_file(&base) { base } else { format!("{base}.jpg") };
+        let base = if is_image_file(&base) {
+            base
+        } else {
+            format!("{base}.jpg")
+        };
 
         let data = field
             .bytes()
@@ -372,9 +378,18 @@ pub async fn upload_photo(
         // Avoid clobbering an existing queue item with the same name
         let mut name = base.clone();
         let mut counter = 1;
-        while tokio::fs::try_exists(state.inbox_dir.join(&name)).await.unwrap_or(false) {
-            let stem = FsPath::new(&base).file_stem().unwrap_or_default().to_string_lossy();
-            let ext = FsPath::new(&base).extension().unwrap_or_default().to_string_lossy();
+        while tokio::fs::try_exists(state.inbox_dir.join(&name))
+            .await
+            .unwrap_or(false)
+        {
+            let stem = FsPath::new(&base)
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy();
+            let ext = FsPath::new(&base)
+                .extension()
+                .unwrap_or_default()
+                .to_string_lossy();
             name = format!("{stem}-{counter}.{ext}");
             counter += 1;
         }
@@ -436,7 +451,12 @@ pub async fn ocr_crop(
     let read_ms = started.elapsed().as_millis() as u64;
 
     let crop_started = std::time::Instant::now();
-    let rect = CropRect { x: body.x, y: body.y, w: body.w, h: body.h };
+    let rect = CropRect {
+        x: body.x,
+        y: body.y,
+        w: body.w,
+        h: body.h,
+    };
     let crop = tokio::task::spawn_blocking(move || image_ops::crop_for_ocr(&bytes, rect))
         .await
         .map_err(|e| AppError::Image(format!("crop task failed: {e}")))?
@@ -617,7 +637,9 @@ pub async fn export_card(
             };
             Ok((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ExportErrorResponse { error: message.into() }),
+                Json(ExportErrorResponse {
+                    error: message.into(),
+                }),
             )
                 .into_response())
         }

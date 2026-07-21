@@ -75,7 +75,9 @@ impl Transcriber for RemoteTranscriber {
                 .send()
                 .await
                 .map_err(|e| {
-                    TranscribeError::Failed(format!("failed to send request to whisper service: {e}"))
+                    TranscribeError::Failed(format!(
+                        "failed to send request to whisper service: {e}"
+                    ))
                 })?;
 
             if !response.status().is_success() {
@@ -106,12 +108,9 @@ impl Transcriber for RemoteTranscriber {
                         continue;
                     }
 
-                    let segment: TranscriptSegment =
-                        serde_json::from_str(&line).map_err(|e| {
-                            TranscribeError::Failed(format!(
-                                "failed to parse NDJSON segment: {e}"
-                            ))
-                        })?;
+                    let segment: TranscriptSegment = serde_json::from_str(&line).map_err(|e| {
+                        TranscribeError::Failed(format!("failed to parse NDJSON segment: {e}"))
+                    })?;
 
                     segments.push(segment.clone());
                     if let Some(cb) = &on_progress {
@@ -123,12 +122,9 @@ impl Transcriber for RemoteTranscriber {
             // Handle any remaining data in buffer (last line may lack trailing newline)
             let remaining = buffer.trim();
             if !remaining.is_empty() {
-                let segment: TranscriptSegment =
-                    serde_json::from_str(remaining).map_err(|e| {
-                        TranscribeError::Failed(format!(
-                            "failed to parse final NDJSON segment: {e}"
-                        ))
-                    })?;
+                let segment: TranscriptSegment = serde_json::from_str(remaining).map_err(|e| {
+                    TranscribeError::Failed(format!("failed to parse final NDJSON segment: {e}"))
+                })?;
                 segments.push(segment.clone());
                 if let Some(cb) = &on_progress {
                     cb(segment, segments.len());

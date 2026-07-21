@@ -105,7 +105,13 @@ pub async fn fetch_deck_vocab(
     deck: &str,
     vocab_field: &str,
 ) -> Result<Vec<AnkiNote>, AppError> {
-    let ids_val = call(client, url, "findNotes", json!({ "query": format!("deck:\"{deck}\"") })).await?;
+    let ids_val = call(
+        client,
+        url,
+        "findNotes",
+        json!({ "query": format!("deck:\"{deck}\"") }),
+    )
+    .await?;
     let ids: Vec<i64> = ids_val
         .as_array()
         .ok_or_else(|| AppError::Upstream("unexpected findNotes response".into()))?
@@ -120,7 +126,9 @@ pub async fn fetch_deck_vocab(
             .as_array()
             .ok_or_else(|| AppError::Upstream("unexpected notesInfo response".into()))?;
         for note in arr {
-            let Some(id) = note["noteId"].as_i64() else { continue };
+            let Some(id) = note["noteId"].as_i64() else {
+                continue;
+            };
             let vocab = clean_field(note["fields"][vocab_field]["value"].as_str().unwrap_or(""));
             if !vocab.is_empty() {
                 notes.push(AnkiNote { note_id: id, vocab });
@@ -136,13 +144,22 @@ mod tests {
 
     #[test]
     fn candidates_prefer_client_then_fallback() {
-        let urls = candidate_urls(Some("192.168.1.7".parse().unwrap()), "http://localhost:8765");
-        assert_eq!(urls, vec!["http://192.168.1.7:8765", "http://localhost:8765"]);
+        let urls = candidate_urls(
+            Some("192.168.1.7".parse().unwrap()),
+            "http://localhost:8765",
+        );
+        assert_eq!(
+            urls,
+            vec!["http://192.168.1.7:8765", "http://localhost:8765"]
+        );
         // loopback client collapses into the fallback alone
         let urls = candidate_urls(Some("127.0.0.1".parse().unwrap()), "http://localhost:8765");
         assert_eq!(urls, vec!["http://localhost:8765"]);
         // client that IS the fallback isn't probed twice
-        let urls = candidate_urls(Some("192.168.1.7".parse().unwrap()), "http://192.168.1.7:8765");
+        let urls = candidate_urls(
+            Some("192.168.1.7".parse().unwrap()),
+            "http://192.168.1.7:8765",
+        );
         assert_eq!(urls, vec!["http://192.168.1.7:8765"]);
     }
 

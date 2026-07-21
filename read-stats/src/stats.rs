@@ -85,7 +85,11 @@ impl<'a> Presence<'a> {
     /// happened to fetch made the dashboard (all history) and the timeline (one
     /// day) disagree about the same day.
     pub fn new(marks: &'a [f64], pace: Option<f64>, afk_secs: f64) -> Self {
-        Self { marks, pace, afk_secs }
+        Self {
+            marks,
+            pace,
+            afk_secs,
+        }
     }
 
     /// Credit for the `gap` seconds following `line`. Never exceeds the gap.
@@ -146,7 +150,9 @@ impl<'a> Presence<'a> {
 pub fn measure_pace(lines: &[LineEvent], marks: &[f64], afk_secs: f64) -> Option<f64> {
     let (mut chars, mut secs) = (0i64, 0.0);
     for (k, line) in lines.iter().enumerate() {
-        let Some(next) = lines.get(k + 1) else { continue };
+        let Some(next) = lines.get(k + 1) else {
+            continue;
+        };
         let gap = next.ts - line.ts;
         if gap > 0.0 && gap <= afk_secs && !has_mark(marks, line.ts, next.ts) {
             chars += line.chars;
@@ -812,8 +818,15 @@ mod tests {
             .values()
             .next()
             .unwrap();
-        assert_eq!(day.active_secs, day.span_secs, "every second was accounted for");
-        assert_eq!(day.ratio(), Some(1.0), "a dictionary detour is not a distraction");
+        assert_eq!(
+            day.active_secs, day.span_secs,
+            "every second was accounted for"
+        );
+        assert_eq!(
+            day.ratio(),
+            Some(1.0),
+            "a dictionary detour is not a distraction"
+        );
         // And it doesn't break the run either, though it is over INTERRUPTION_SECS.
         assert_eq!(day.interruptions, 0);
         assert_eq!(day.longest_stretch_secs, 690.0, "one unbroken stretch");
@@ -827,17 +840,26 @@ mod tests {
             .values()
             .next()
             .unwrap();
-        assert!(day.ratio().unwrap() < 0.6, "unexplained absence still shows");
+        assert!(
+            day.ratio().unwrap() < 0.6,
+            "unexplained absence still shows"
+        );
     }
 
     #[test]
     fn focus_ratio_separates_steady_from_fragmented() {
         // Steady: 20 lines, 5s apart. Every gap is a normal reading beat.
         let steady: Vec<_> = (0..20).map(|i| ev(i as f64 * 5.0, 30)).collect();
-        let day = *aggregate_focus_days(&steady, &Presence::new(&[], measure_pace(&steady, &[], 20.0), 20.0), 600.0, 4, 0)
-            .values()
-            .next()
-            .unwrap();
+        let day = *aggregate_focus_days(
+            &steady,
+            &Presence::new(&[], measure_pace(&steady, &[], 20.0), 20.0),
+            600.0,
+            4,
+            0,
+        )
+        .values()
+        .next()
+        .unwrap();
         assert_eq!(day.active_secs, day.span_secs, "no gap exceeded the cap");
         assert_eq!(day.interruptions, 0);
         assert_eq!(day.longest_stretch_secs, 95.0);
@@ -849,17 +871,26 @@ mod tests {
             frag.push(ev(ts, 30));
             ts += if i % 4 == 3 { 300.0 } else { 5.0 };
         }
-        let day = *aggregate_focus_days(&frag, &Presence::new(&[], measure_pace(&frag, &[], 20.0), 20.0), 600.0, 4, 0)
-            .values()
-            .next()
-            .unwrap();
+        let day = *aggregate_focus_days(
+            &frag,
+            &Presence::new(&[], measure_pace(&frag, &[], 20.0), 20.0),
+            600.0,
+            4,
+            0,
+        )
+        .values()
+        .next()
+        .unwrap();
         // 4, not 5: the last increment trails the final line, so it never
         // becomes a gap between two lines.
         assert_eq!(day.interruptions, 4, "each 300s gap is one interruption");
         // Span carries the full 300s detours; active credits only 20s of each.
         assert!(day.span_secs > day.active_secs * 3.0);
         assert!(day.ratio().unwrap() < 0.3);
-        assert_eq!(day.longest_stretch_secs, 15.0, "interruptions break the run");
+        assert_eq!(
+            day.longest_stretch_secs, 15.0,
+            "interruptions break the run"
+        );
     }
 
     #[test]
@@ -867,7 +898,13 @@ mod tests {
         // A 30-minute break is leaving, not a distraction: it must not count as
         // an interruption or inflate the span.
         let lines = [ev(0.0, 10), ev(5.0, 10), ev(1805.0, 10), ev(1810.0, 10)];
-        let days = aggregate_focus_days(&lines, &Presence::new(&[], measure_pace(&lines, &[], 20.0), 20.0), 600.0, 4, 0);
+        let days = aggregate_focus_days(
+            &lines,
+            &Presence::new(&[], measure_pace(&lines, &[], 20.0), 20.0),
+            600.0,
+            4,
+            0,
+        );
         let total: f64 = days.values().map(|d| d.span_secs).sum();
         let interruptions: i64 = days.values().map(|d| d.interruptions).sum();
         assert_eq!(total, 10.0, "only the two in-session gaps count");
@@ -877,10 +914,16 @@ mod tests {
     #[test]
     fn focus_ratio_needs_enough_span() {
         let short = [ev(0.0, 10), ev(5.0, 10)];
-        let day = *aggregate_focus_days(&short, &Presence::new(&[], measure_pace(&short, &[], 20.0), 20.0), 600.0, 4, 0)
-            .values()
-            .next()
-            .unwrap();
+        let day = *aggregate_focus_days(
+            &short,
+            &Presence::new(&[], measure_pace(&short, &[], 20.0), 20.0),
+            600.0,
+            4,
+            0,
+        )
+        .values()
+        .next()
+        .unwrap();
         assert_eq!(day.ratio(), None, "5s of span can't support a ratio");
     }
 
@@ -889,7 +932,11 @@ mod tests {
         let lines = [ev(0.0, 10), ev(30.0, 20), ev(330.0, 5), ev(1000.0, 7)];
         // afk cap 120s, session gap 600s: the 300s gap stays in-session but is
         // not credited whole; the 670s gap starts a new session.
-        let sessions = derive_sessions(&lines, &Presence::new(&[], measure_pace(&lines, &[], 120.0), 120.0), 600.0);
+        let sessions = derive_sessions(
+            &lines,
+            &Presence::new(&[], measure_pace(&lines, &[], 120.0), 120.0),
+            600.0,
+        );
         assert_eq!(sessions.len(), 2);
         assert_eq!(sessions[0].chars, 35);
         assert_eq!(sessions[0].lines, 3);
@@ -909,7 +956,13 @@ mod tests {
         // 30s credited for reading them must land in the same bucket, even
         // though the *next* line is two minutes later.
         let lines = [ev(0.0, 100), ev(90.0, 40)];
-        let b = bucket_lines(&lines, &[], &Presence::new(&[], measure_pace(&lines, &[], 30.0), 30.0), 600.0, 60.0);
+        let b = bucket_lines(
+            &lines,
+            &[],
+            &Presence::new(&[], measure_pace(&lines, &[], 30.0), 30.0),
+            600.0,
+            60.0,
+        );
         assert_eq!(b.len(), 2, "60s and 120s buckets, zero-filled between");
         assert_eq!((b[0].chars, b[0].active_secs), (100, 30.0));
         assert_eq!(b[1].chars, 40, "second line's bucket");
@@ -921,7 +974,13 @@ mod tests {
         // A 20s gap starting 10s before the boundary: 10s each side, not 20 on
         // one. Total credit is preserved.
         let lines = [ev(50.0, 10), ev(70.0, 10)];
-        let b = bucket_lines(&lines, &[], &Presence::new(&[], measure_pace(&lines, &[], 30.0), 30.0), 600.0, 60.0);
+        let b = bucket_lines(
+            &lines,
+            &[],
+            &Presence::new(&[], measure_pace(&lines, &[], 30.0), 30.0),
+            600.0,
+            60.0,
+        );
         assert_eq!(b[0].active_secs, 10.0);
         assert_eq!(b[1].active_secs, 10.0);
         let total: f64 = b.iter().map(|x| x.active_secs).sum();
@@ -933,7 +992,13 @@ mod tests {
         // A 5-min lull (under the 600s session gap) fills; a 20-min break
         // starts a new session and leaves no buckets in between.
         let lines = [ev(0.0, 10), ev(300.0, 10), ev(1600.0, 10)];
-        let b = bucket_lines(&lines, &[], &Presence::new(&[], measure_pace(&lines, &[], 30.0), 30.0), 600.0, 60.0);
+        let b = bucket_lines(
+            &lines,
+            &[],
+            &Presence::new(&[], measure_pace(&lines, &[], 30.0), 30.0),
+            600.0,
+            60.0,
+        );
         let s0: Vec<_> = b.iter().filter(|x| x.session == 0).collect();
         assert_eq!(s0.len(), 6, "minutes 0..5 all present");
         assert!(s0[1..5].iter().all(|x| x.chars == 0), "lull is zero-filled");
@@ -959,8 +1024,18 @@ mod tests {
                 line
             })
             .collect();
-        let b = bucket_lines(&lines, &[], &Presence::new(&[], measure_pace(&lines, &[], 30.0), 30.0), 600.0, 60.0);
-        let sessions = derive_sessions(&lines, &Presence::new(&[], measure_pace(&lines, &[], 30.0), 30.0), 600.0);
+        let b = bucket_lines(
+            &lines,
+            &[],
+            &Presence::new(&[], measure_pace(&lines, &[], 30.0), 30.0),
+            600.0,
+            60.0,
+        );
+        let sessions = derive_sessions(
+            &lines,
+            &Presence::new(&[], measure_pace(&lines, &[], 30.0), 30.0),
+            600.0,
+        );
         let bucket_chars: i64 = b.iter().map(|x| x.chars).sum();
         let session_chars: i64 = sessions.iter().map(|s| s.chars).sum();
         assert_eq!(bucket_chars, session_chars);
@@ -975,7 +1050,13 @@ mod tests {
         // lookup is long (24s), which is where the penalty actually lives —
         // in the measured stream, lookup gaps run a median 21s against 3s.
         let lines = [ev(0.0, 100), ev(4.0, 100), ev(8.0, 100), ev(32.0, 100)];
-        let b = bucket_lines(&lines, &[10.0], &Presence::new(&[10.0], measure_pace(&lines, &[10.0], 30.0), 30.0), 600.0, 6000.0);
+        let b = bucket_lines(
+            &lines,
+            &[10.0],
+            &Presence::new(&[10.0], measure_pace(&lines, &[10.0], 30.0), 30.0),
+            600.0,
+            6000.0,
+        );
         assert_eq!(b.len(), 1, "all inside one bucket");
         assert_eq!(b[0].active_secs, 32.0);
         assert_eq!(b[0].lookup_secs, 24.0, "only the gap containing the lookup");
@@ -990,7 +1071,10 @@ mod tests {
         let raw = b[0].clean_chars as f64 / ((b[0].active_secs - b[0].lookup_secs) / 3600.0);
         assert_eq!(effective, 45000.0);
         assert_eq!(raw, 90000.0, "clean chars over clean seconds");
-        assert!(raw > effective, "a long lookup gap drags the measured rate down");
+        assert!(
+            raw > effective,
+            "a long lookup gap drags the measured rate down"
+        );
     }
 
     #[test]
@@ -1000,7 +1084,13 @@ mod tests {
         // the line and only 20s was the dictionary detour. Charging the whole
         // 24s to "looking words up" would overstate it by a fifth.
         let lines = [ev(0.0, 100), ev(4.0, 100), ev(8.0, 100), ev(32.0, 100)];
-        let b = bucket_lines(&lines, &[10.0], &Presence::new(&[10.0], measure_pace(&lines, &[10.0], 30.0), 30.0), 600.0, 6000.0);
+        let b = bucket_lines(
+            &lines,
+            &[10.0],
+            &Presence::new(&[10.0], measure_pace(&lines, &[10.0], 30.0), 30.0),
+            600.0,
+            6000.0,
+        );
         let x = &b[0];
         assert_eq!((x.clean_chars, x.lookup_chars), (200, 100));
 
@@ -1018,7 +1108,13 @@ mod tests {
         // rates must agree. A formula that removed the seconds but kept the
         // characters would report a gap here where there is none.
         let lines = [ev(0.0, 100), ev(20.0, 100), ev(40.0, 100)];
-        let b = bucket_lines(&lines, &[25.0], &Presence::new(&[25.0], measure_pace(&lines, &[25.0], 30.0), 30.0), 600.0, 6000.0);
+        let b = bucket_lines(
+            &lines,
+            &[25.0],
+            &Presence::new(&[25.0], measure_pace(&lines, &[25.0], 30.0), 30.0),
+            600.0,
+            6000.0,
+        );
         let clean_secs = b[0].active_secs - b[0].lookup_secs;
         let raw = b[0].clean_chars as f64 / (clean_secs / 3600.0);
         // Effective over the chars that actually have time attributed to them —
@@ -1026,7 +1122,11 @@ mod tests {
         // `chars` here would divide three lines' characters by two lines' time
         // and report a tax the other way round.
         let timed_chars = b[0].clean_chars + b[0].lookup_chars;
-        assert_eq!(timed_chars, b[0].chars - 100, "the trailing line is excluded");
+        assert_eq!(
+            timed_chars,
+            b[0].chars - 100,
+            "the trailing line is excluded"
+        );
         let effective = timed_chars as f64 / (b[0].active_secs / 3600.0);
         assert_eq!(raw, effective, "no penalty in, no penalty out");
     }
@@ -1049,7 +1149,13 @@ mod tests {
             })
             .collect();
         let lookups: Vec<f64> = (0..40).map(|i| i as f64 * 37.0 + 1.0).collect();
-        let b = bucket_lines(&lines, &lookups, &Presence::new(&lookups, measure_pace(&lines, &lookups, 30.0), 30.0), 600.0, 60.0);
+        let b = bucket_lines(
+            &lines,
+            &lookups,
+            &Presence::new(&lookups, measure_pace(&lines, &lookups, 30.0), 30.0),
+            600.0,
+            60.0,
+        );
 
         let sum = |f: fn(&Bucket) -> i64| b.iter().map(f).sum::<i64>();
         // A line ends its session when nothing follows it within the gap.
@@ -1060,8 +1166,14 @@ mod tests {
             .map(|(_, l)| l.chars)
             .sum();
 
-        assert_eq!(sum(|x| x.clean_chars) + sum(|x| x.lookup_chars) + trailing, sum(|x| x.chars));
-        assert!(sum(|x| x.lookup_chars) > 0, "the fixture must exercise both sides");
+        assert_eq!(
+            sum(|x| x.clean_chars) + sum(|x| x.lookup_chars) + trailing,
+            sum(|x| x.chars)
+        );
+        assert!(
+            sum(|x| x.lookup_chars) > 0,
+            "the fixture must exercise both sides"
+        );
         assert!(sum(|x| x.clean_chars) > 0);
     }
 
@@ -1074,7 +1186,13 @@ mod tests {
         let lines: Vec<_> = (0..21).map(|i| ev(i as f64 * 20.0, 100)).collect();
         // A lookup in every gap except the first.
         let lookups: Vec<f64> = (1..20).map(|i| i as f64 * 20.0 + 5.0).collect();
-        let b = bucket_lines(&lines, &lookups, &Presence::new(&lookups, measure_pace(&lines, &lookups, 30.0), 30.0), 600.0, 6000.0);
+        let b = bucket_lines(
+            &lines,
+            &lookups,
+            &Presence::new(&lookups, measure_pace(&lines, &lookups, 30.0), 30.0),
+            600.0,
+            6000.0,
+        );
         let bucket = &b[0];
 
         let clean_secs = bucket.active_secs - bucket.lookup_secs;
@@ -1098,14 +1216,23 @@ mod tests {
         // A lookup in a gap far longer than the cap: the label can only cover
         // credited time, so subtracting it can never go negative.
         let lines = [ev(0.0, 50), ev(300.0, 50)];
-        let b = bucket_lines(&lines, &[150.0], &Presence::new(&[150.0], measure_pace(&lines, &[150.0], 30.0), 30.0), 600.0, 600.0);
+        let b = bucket_lines(
+            &lines,
+            &[150.0],
+            &Presence::new(&[150.0], measure_pace(&lines, &[150.0], 30.0), 30.0),
+            600.0,
+            600.0,
+        );
         let total_active: f64 = b.iter().map(|x| x.active_secs).sum();
         let total_lookup: f64 = b.iter().map(|x| x.lookup_secs).sum();
         // Present at 150s, so the credit runs to 180 — the flat cap paid 30 for
         // the same evidence, throwing away two and a half minutes it could see.
         assert_eq!(total_active, 180.0);
         assert_eq!(total_lookup, 180.0, "the whole credited gap was a lookup");
-        assert!(total_lookup <= total_active, "the label is time, not extra time");
+        assert!(
+            total_lookup <= total_active,
+            "the label is time, not extra time"
+        );
     }
 
     #[test]
@@ -1118,7 +1245,10 @@ mod tests {
         let lines = [ev(0.0, 100), ev(4.0, 100), ev(8.0, 100), ev(428.0, 100)];
         let p = Presence::new(&[], measure_pace(&lines, &[], 30.0), 30.0);
         let b = bucket_lines(&lines, &[], &p, 600.0, 6000.0);
-        assert_eq!(b[0].active_secs, 12.0, "4 + 4 + the 4 the last line was worth");
+        assert_eq!(
+            b[0].active_secs, 12.0,
+            "4 + 4 + the 4 the last line was worth"
+        );
 
         // The cap still bounds a line nobody can price: an enormous line in an
         // enormous gap cannot claim more than the grace.
@@ -1164,7 +1294,13 @@ mod tests {
     #[test]
     fn events_land_in_their_bucket_and_outsiders_are_dropped() {
         let lines = [ev(0.0, 10), ev(30.0, 10), ev(90.0, 10)];
-        let mut b = bucket_lines(&lines, &[], &Presence::new(&[], measure_pace(&lines, &[], 30.0), 30.0), 600.0, 60.0);
+        let mut b = bucket_lines(
+            &lines,
+            &[],
+            &Presence::new(&[], measure_pace(&lines, &[], 30.0), 30.0),
+            600.0,
+            60.0,
+        );
         // 10s and 40s → bucket 0; 95s → bucket 1; 9000s → no session, dropped.
         add_events(&mut b, &[10.0, 40.0, 95.0, 9000.0], 60.0, EventKind::Lookup);
         assert_eq!(b[0].lookups, 2);
@@ -1199,7 +1335,13 @@ mod tests {
         let d2 = day_start_ts(NaiveDate::from_ymd_opt(2026, 7, 19).unwrap(), 0, offset);
         // one line late on day 1, one early on day 2, 60s apart across midnight
         let lines = [ev(d2 - 30.0, 10), ev(d2 + 30.0, 20), ev(d2 + 90.0, 5)];
-        let days = aggregate_line_days(&lines, &Presence::new(&[], measure_pace(&lines, &[], 120.0), 120.0), 600.0, 0, offset);
+        let days = aggregate_line_days(
+            &lines,
+            &Presence::new(&[], measure_pace(&lines, &[], 120.0), 120.0),
+            600.0,
+            0,
+            offset,
+        );
         let day1 = days[&NaiveDate::from_ymd_opt(2026, 7, 18).unwrap()];
         let day2 = days[&NaiveDate::from_ymd_opt(2026, 7, 19).unwrap()];
         assert_eq!(day1.chars, 10);
@@ -1215,8 +1357,14 @@ mod tests {
     #[test]
     fn paused_intervals_cover_lines() {
         let pauses = [
-            PauseInterval { start_ts: 100.0, end_ts: Some(200.0) },
-            PauseInterval { start_ts: 500.0, end_ts: None },
+            PauseInterval {
+                start_ts: 100.0,
+                end_ts: Some(200.0),
+            },
+            PauseInterval {
+                start_ts: 500.0,
+                end_ts: None,
+            },
         ];
         assert!(!is_paused(50.0, &pauses));
         assert!(is_paused(100.0, &pauses));

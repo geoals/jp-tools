@@ -18,10 +18,19 @@ fn main() {
         SudachiTokenizer::new(&dict_path, HashSet::new()).expect("failed to initialize tokenizer");
     let tokens = tokenizer.tokenize(&text).expect("tokenization failed");
 
-    println!("{:<14} {:<14} {:<14} {}", "surface", "base_form", "reading", "pos");
+    println!(
+        "{:<14} {:<14} {:<14} {}",
+        "surface", "base_form", "reading", "pos"
+    );
     println!("{}", "-".repeat(60));
 
-    for Token { surface, base_form, reading, pos } in &tokens {
+    for Token {
+        surface,
+        base_form,
+        reading,
+        pos,
+    } in &tokens
+    {
         println!("{:<14} {:<14} {:<14} {}", surface, base_form, reading, pos);
     }
 }

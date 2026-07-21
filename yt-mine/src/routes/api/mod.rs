@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
@@ -319,16 +319,13 @@ pub async fn export_sentences(
         .await?
         .ok_or(AppError::NotFound)?;
 
-    let source = job
-        .video_title
-        .unwrap_or_else(|| job.youtube_url.clone());
+    let source = job.video_title.unwrap_or_else(|| job.youtube_url.clone());
 
     let mut export_sentences = Vec::with_capacity(sentences.len());
     let mut exported_ids = Vec::with_capacity(sentences.len());
     for sentence in sentences {
         exported_ids.push(sentence.id);
-        let (screenshot_filename, audio_filename) =
-            media_filenames(sentence.job_id, sentence.id);
+        let (screenshot_filename, audio_filename) = media_filenames(sentence.job_id, sentence.id);
         let screenshot_path = format!("{}/{screenshot_filename}", state.media_dir);
         let audio_clip_path = format!("{}/{audio_filename}", state.media_dir);
 
@@ -473,7 +470,12 @@ pub async fn sentence_audio(
 
         state
             .media_extractor
-            .extract_audio_clip(&audio_path, sentence.start_time, sentence.end_time, &clip_path)
+            .extract_audio_clip(
+                &audio_path,
+                sentence.start_time,
+                sentence.end_time,
+                &clip_path,
+            )
             .await
             .map_err(|e| AppError::Media(e.to_string()))?;
     }
@@ -482,18 +484,12 @@ pub async fn sentence_audio(
         .await
         .map_err(|e| AppError::Media(format!("failed to read audio clip: {e}")))?;
 
-    Ok((
-        [(axum::http::header::CONTENT_TYPE, "audio/mpeg")],
-        bytes,
-    )
-        .into_response())
+    Ok(([(axum::http::header::CONTENT_TYPE, "audio/mpeg")], bytes).into_response())
 }
 
 // --- Helpers ---
 
-fn sentence_to_json(
-    view: crate::routes::mining::SentenceView,
-) -> SentenceJson {
+fn sentence_to_json(view: crate::routes::mining::SentenceView) -> SentenceJson {
     SentenceJson {
         id: view.id,
         timestamp: view.timestamp,

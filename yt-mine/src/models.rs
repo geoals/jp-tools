@@ -123,7 +123,11 @@ mod tests {
 
     #[test]
     fn vocab_status_roundtrip() {
-        let statuses = [VocabStatus::Seen, VocabStatus::Known, VocabStatus::Blacklisted];
+        let statuses = [
+            VocabStatus::Seen,
+            VocabStatus::Known,
+            VocabStatus::Blacklisted,
+        ];
         for status in &statuses {
             let s = status.as_str();
             let parsed = VocabStatus::from_str(s).unwrap();

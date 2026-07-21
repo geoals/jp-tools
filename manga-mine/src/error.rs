@@ -30,11 +30,17 @@ impl IntoResponse for AppError {
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             AppError::Io(e) => {
                 error!(error = %e, "io error");
-                (StatusCode::INTERNAL_SERVER_ERROR, "internal server error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal server error".to_string(),
+                )
             }
             AppError::Image(e) => {
                 error!(error = %e, "image error");
-                (StatusCode::INTERNAL_SERVER_ERROR, "image processing failed".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "image processing failed".to_string(),
+                )
             }
             AppError::Ocr(e) => {
                 error!(error = %e, "ocr error");
@@ -45,7 +51,10 @@ impl IntoResponse for AppError {
             }
             AppError::Export(e) => {
                 error!(error = %e, "export error");
-                (StatusCode::INTERNAL_SERVER_ERROR, "export failed".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "export failed".to_string(),
+                )
             }
         };
 

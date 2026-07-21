@@ -25,10 +25,7 @@ pub async fn process_job(
         .await
         .ok();
 
-    let download_result = match downloader
-        .download(youtube_url, audio_dir)
-        .await
-    {
+    let download_result = match downloader.download(youtube_url, audio_dir).await {
         Ok(result) => result,
         Err(e) => {
             error!(job_id, error = %e, "download failed");
@@ -77,9 +74,14 @@ pub async fn process_job(
         Ok(segments) => segments,
         Err(e) => {
             error!(job_id, error = %e, "transcription failed");
-            db::update_job_status(&pool, job_id, &JobStatus::Error, Some("Transcription failed."))
-                .await
-                .ok();
+            db::update_job_status(
+                &pool,
+                job_id,
+                &JobStatus::Error,
+                Some("Transcription failed."),
+            )
+            .await
+            .ok();
             return;
         }
     };
@@ -110,9 +112,13 @@ mod tests {
     #[tokio::test]
     async fn happy_path_downloads_transcribes_and_stores() {
         let pool = test_pool().await;
-        let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
-            .await
-            .unwrap();
+        let job_id = db::create_job(
+            &pool,
+            "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            "dQw4w9WgXcQ",
+        )
+        .await
+        .unwrap();
 
         let mut downloader = MockAudioDownloader::new();
         downloader.expect_download().returning(|_, _| {
@@ -130,8 +136,16 @@ mod tests {
         transcriber.expect_transcribe().returning(|_, on_progress| {
             Box::pin(async move {
                 let segments = vec![
-                    TranscriptSegment { start: 0.0, end: 3.0, text: "Hello".into() },
-                    TranscriptSegment { start: 3.0, end: 6.0, text: "World".into() },
+                    TranscriptSegment {
+                        start: 0.0,
+                        end: 3.0,
+                        text: "Hello".into(),
+                    },
+                    TranscriptSegment {
+                        start: 3.0,
+                        end: 6.0,
+                        text: "World".into(),
+                    },
                 ];
                 if let Some(cb) = &on_progress {
                     for (i, seg) in segments.iter().enumerate() {
@@ -166,9 +180,13 @@ mod tests {
     #[tokio::test]
     async fn download_failure_sets_error_status() {
         let pool = test_pool().await;
-        let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
-            .await
-            .unwrap();
+        let job_id = db::create_job(
+            &pool,
+            "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            "dQw4w9WgXcQ",
+        )
+        .await
+        .unwrap();
 
         let mut downloader = MockAudioDownloader::new();
         downloader.expect_download().returning(|_, _| {
@@ -199,9 +217,13 @@ mod tests {
     #[tokio::test]
     async fn transcription_failure_sets_error_but_keeps_download_info() {
         let pool = test_pool().await;
-        let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
-            .await
-            .unwrap();
+        let job_id = db::create_job(
+            &pool,
+            "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            "dQw4w9WgXcQ",
+        )
+        .await
+        .unwrap();
 
         let mut downloader = MockAudioDownloader::new();
         downloader.expect_download().returning(|_, _| {

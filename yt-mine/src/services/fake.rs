@@ -75,16 +75,56 @@ impl Transcriber for FakeTranscriber {
 
 fn fake_segments() -> Vec<TranscriptSegment> {
     vec![
-        TranscriptSegment { start: 0.0,  end: 3.5,  text: "皆さん、こんにちは。今日は日本語の勉強法についてお話しします。".into() },
-        TranscriptSegment { start: 3.5,  end: 7.2,  text: "まず最初に、毎日少しずつ練習することが大切です。".into() },
-        TranscriptSegment { start: 7.2,  end: 11.0, text: "新しい単語を覚えるときは、文脈の中で学ぶのが効果的です。".into() },
-        TranscriptSegment { start: 11.0, end: 15.3, text: "例えば、好きなアニメや映画を日本語で見ることをお勧めします。".into() },
-        TranscriptSegment { start: 15.3, end: 19.8, text: "字幕を使って、聞き取れなかった部分を確認しましょう。".into() },
-        TranscriptSegment { start: 19.8, end: 24.1, text: "文法は難しいと感じるかもしれませんが、パターンを見つけると楽になります。".into() },
-        TranscriptSegment { start: 24.1, end: 28.5, text: "漢字の勉強も忘れないでください。読めると世界が広がります。".into() },
-        TranscriptSegment { start: 28.5, end: 32.0, text: "最後に、間違いを恐れずにたくさん話してみてください。".into() },
-        TranscriptSegment { start: 32.0, end: 36.2, text: "日本人の友達を作ると、会話の練習になりますよ。".into() },
-        TranscriptSegment { start: 36.2, end: 40.0, text: "それでは、頑張ってください。応援しています。".into() },
+        TranscriptSegment {
+            start: 0.0,
+            end: 3.5,
+            text: "皆さん、こんにちは。今日は日本語の勉強法についてお話しします。".into(),
+        },
+        TranscriptSegment {
+            start: 3.5,
+            end: 7.2,
+            text: "まず最初に、毎日少しずつ練習することが大切です。".into(),
+        },
+        TranscriptSegment {
+            start: 7.2,
+            end: 11.0,
+            text: "新しい単語を覚えるときは、文脈の中で学ぶのが効果的です。".into(),
+        },
+        TranscriptSegment {
+            start: 11.0,
+            end: 15.3,
+            text: "例えば、好きなアニメや映画を日本語で見ることをお勧めします。".into(),
+        },
+        TranscriptSegment {
+            start: 15.3,
+            end: 19.8,
+            text: "字幕を使って、聞き取れなかった部分を確認しましょう。".into(),
+        },
+        TranscriptSegment {
+            start: 19.8,
+            end: 24.1,
+            text: "文法は難しいと感じるかもしれませんが、パターンを見つけると楽になります。".into(),
+        },
+        TranscriptSegment {
+            start: 24.1,
+            end: 28.5,
+            text: "漢字の勉強も忘れないでください。読めると世界が広がります。".into(),
+        },
+        TranscriptSegment {
+            start: 28.5,
+            end: 32.0,
+            text: "最後に、間違いを恐れずにたくさん話してみてください。".into(),
+        },
+        TranscriptSegment {
+            start: 32.0,
+            end: 36.2,
+            text: "日本人の友達を作ると、会話の練習になりますよ。".into(),
+        },
+        TranscriptSegment {
+            start: 36.2,
+            end: 40.0,
+            text: "それでは、頑張ってください。応援しています。".into(),
+        },
     ]
 }
 
@@ -190,7 +230,13 @@ mod tests {
     async fn fake_downloader_creates_placeholder_files() {
         let dir = tempfile::tempdir().unwrap();
         let dl = FakeDownloader;
-        let result = dl.download("https://youtu.be/test".into(), dir.path().to_str().unwrap().into()).await.unwrap();
+        let result = dl
+            .download(
+                "https://youtu.be/test".into(),
+                dir.path().to_str().unwrap().into(),
+            )
+            .await
+            .unwrap();
         assert!(std::path::Path::new(&result.audio_path).exists());
         assert!(std::path::Path::new(&result.video_path).exists());
         assert!(result.video_title.contains("Dev"));
@@ -242,7 +288,10 @@ mod tests {
     #[tokio::test]
     async fn fake_llm_definer_returns_placeholder() {
         let definer = FakeLlmDefiner;
-        let result = definer.define("食べる", "毎日ラーメンを食べる").await.unwrap();
+        let result = definer
+            .define("食べる", "毎日ラーメンを食べる")
+            .await
+            .unwrap();
         assert_eq!(result, "[LLM definition for 食べる]");
     }
 
@@ -253,17 +302,27 @@ mod tests {
             ExportSentence {
                 sentence_text: "test".into(),
                 source: "test (0:00)".into(),
-                screenshot_path: None, audio_clip_path: None,
-                target_word: Some("test".into()), definition: None,
-                vocab_furigana: None, vocab_pitch_num: None, vocab_frequency: None, sentence_html: None,
+                screenshot_path: None,
+                audio_clip_path: None,
+                target_word: Some("test".into()),
+                definition: None,
+                vocab_furigana: None,
+                vocab_pitch_num: None,
+                vocab_frequency: None,
+                sentence_html: None,
                 llm_definition: None,
             },
             ExportSentence {
                 sentence_text: "test2".into(),
                 source: "test (0:01)".into(),
-                screenshot_path: None, audio_clip_path: None,
-                target_word: None, definition: None,
-                vocab_furigana: None, vocab_pitch_num: None, vocab_frequency: None, sentence_html: None,
+                screenshot_path: None,
+                audio_clip_path: None,
+                target_word: None,
+                definition: None,
+                vocab_furigana: None,
+                vocab_pitch_num: None,
+                vocab_frequency: None,
+                sentence_html: None,
                 llm_definition: None,
             },
         ];

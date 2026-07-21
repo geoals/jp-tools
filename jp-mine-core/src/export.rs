@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use tokio::fs;
 use tracing::{debug, info, warn};
 
@@ -291,18 +291,19 @@ async fn send_anki_request(
 ) -> Result<Value, ExportError> {
     let action = body["action"].as_str().unwrap_or("?").to_owned();
     let started = std::time::Instant::now();
-    let response = client
-        .post(url)
-        .json(body)
-        .send()
-        .await
-        .map_err(|e| ExportError::Failed(format!("AnkiConnect request '{action}' failed: {e:?}")))?;
+    let response = client.post(url).json(body).send().await.map_err(|e| {
+        ExportError::Failed(format!("AnkiConnect request '{action}' failed: {e:?}"))
+    })?;
 
     let body: Value = response
         .json()
         .await
         .map_err(|e| ExportError::Failed(format!("failed to parse '{action}' response: {e}")))?;
-    debug!(action, elapsed_ms = started.elapsed().as_millis() as u64, "anki request");
+    debug!(
+        action,
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "anki request"
+    );
 
     // AnkiConnect may return errors as a string or as a non-null JSON value
     match body.get("error") {

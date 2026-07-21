@@ -138,9 +138,7 @@ impl AudioDownloader for YtDlpDownloader {
             // yt-dlp prints in execution order: info-extraction fields (duration, title)
             // before post-processing fields (after_move:filepath).
             // Duration may be "NA" for live streams — parse failure is fine.
-            let video_duration = lines
-                .next()
-                .and_then(|s| s.parse::<f64>().ok());
+            let video_duration = lines.next().and_then(|s| s.parse::<f64>().ok());
 
             let video_title = lines
                 .next()
@@ -261,7 +259,9 @@ mod tests {
     #[test]
     fn extract_video_id_with_extra_params() {
         assert_eq!(
-            extract_video_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf"),
+            extract_video_id(
+                "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf"
+            ),
             Some("dQw4w9WgXcQ".into()),
         );
     }

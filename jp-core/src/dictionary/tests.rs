@@ -1,5 +1,5 @@
+use super::html::{camel_to_kebab, html_escape, render_style, structured_content_to_html};
 use super::*;
-use super::html::{html_escape, camel_to_kebab, render_style, structured_content_to_html};
 
 // --- format_furigana ---
 
@@ -203,7 +203,10 @@ fn parse_definitions_structured_content() {
         "type": "structured-content",
         "content": {"tag": "span", "content": "structured def"}
     }]);
-    assert_eq!(parse_definitions(&v, &HashMap::new()), vec!["<span>structured def</span>"]);
+    assert_eq!(
+        parse_definitions(&v, &HashMap::new()),
+        vec!["<span>structured def</span>"]
+    );
 }
 
 #[test]
@@ -433,7 +436,10 @@ fn css_slug_simple_name() {
 
 #[test]
 fn css_slug_strips_non_alphanumeric() {
-    assert_eq!(css_slug("Jitendex.org [2024-12-29]"), "jitendex-org-2024-12-29");
+    assert_eq!(
+        css_slug("Jitendex.org [2024-12-29]"),
+        "jitendex-org-2024-12-29"
+    );
 }
 
 #[test]
@@ -581,13 +587,19 @@ fn sc_html_plain_string() {
 #[test]
 fn sc_html_string_is_escaped() {
     let v = serde_json::json!("a < b & c > d");
-    assert_eq!(structured_content_to_html(&v, &HashMap::new()), "a &lt; b &amp; c &gt; d");
+    assert_eq!(
+        structured_content_to_html(&v, &HashMap::new()),
+        "a &lt; b &amp; c &gt; d"
+    );
 }
 
 #[test]
 fn sc_html_array_concatenates_children() {
     let v = serde_json::json!(["hello", " ", "world"]);
-    assert_eq!(structured_content_to_html(&v, &HashMap::new()), "hello world");
+    assert_eq!(
+        structured_content_to_html(&v, &HashMap::new()),
+        "hello world"
+    );
 }
 
 #[test]
@@ -606,7 +618,10 @@ fn sc_html_img_tag_unknown_path_skipped() {
 #[test]
 fn sc_html_img_tag_renders_with_data_uri() {
     let mut images = HashMap::new();
-    images.insert("accent.svg".to_string(), "data:image/svg+xml;base64,PHN2Zz4=".to_string());
+    images.insert(
+        "accent.svg".to_string(),
+        "data:image/svg+xml;base64,PHN2Zz4=".to_string(),
+    );
     let v = serde_json::json!({"tag": "img", "path": "accent.svg"});
     assert_eq!(
         structured_content_to_html(&v, &images),
@@ -617,7 +632,10 @@ fn sc_html_img_tag_renders_with_data_uri() {
 #[test]
 fn sc_html_img_tag_with_dimensions() {
     let mut images = HashMap::new();
-    images.insert("icon.svg".to_string(), "data:image/svg+xml;base64,PHN2Zz4=".to_string());
+    images.insert(
+        "icon.svg".to_string(),
+        "data:image/svg+xml;base64,PHN2Zz4=".to_string(),
+    );
     let v = serde_json::json!({
         "tag": "img",
         "path": "icon.svg",
@@ -634,7 +652,10 @@ fn sc_html_img_tag_with_dimensions() {
 #[test]
 fn sc_html_img_tag_dimensions_default_units() {
     let mut images = HashMap::new();
-    images.insert("icon.svg".to_string(), "data:image/svg+xml;base64,PHN2Zz4=".to_string());
+    images.insert(
+        "icon.svg".to_string(),
+        "data:image/svg+xml;base64,PHN2Zz4=".to_string(),
+    );
     let v = serde_json::json!({
         "tag": "img",
         "path": "icon.svg",
@@ -651,7 +672,10 @@ fn sc_html_img_tag_dimensions_default_units() {
 #[test]
 fn sc_html_simple_span() {
     let v = serde_json::json!({"tag": "span", "content": "text"});
-    assert_eq!(structured_content_to_html(&v, &HashMap::new()), "<span>text</span>");
+    assert_eq!(
+        structured_content_to_html(&v, &HashMap::new()),
+        "<span>text</span>"
+    );
 }
 
 #[test]
@@ -749,7 +773,10 @@ fn sc_html_object_without_tag_recurses_content() {
 #[test]
 fn sc_html_empty_tag_no_content() {
     let v = serde_json::json!({"tag": "span"});
-    assert_eq!(structured_content_to_html(&v, &HashMap::new()), "<span></span>");
+    assert_eq!(
+        structured_content_to_html(&v, &HashMap::new()),
+        "<span></span>"
+    );
 }
 
 #[test]
@@ -892,9 +919,8 @@ async fn load_from_zip_embeds_images_in_structured_content() {
     let dict = Dictionary::load_from_reader(buf).unwrap();
     let entries = dict.lookup("テスト").await;
     assert_eq!(entries.len(), 1);
-    let expected_img = format!(
-        r#"<img src="data:image/svg+xml;base64,{svg_b64}" style="width:1em;height:1em">"#
-    );
+    let expected_img =
+        format!(r#"<img src="data:image/svg+xml;base64,{svg_b64}" style="width:1em;height:1em">"#);
     assert_eq!(
         entries[0].definitions[0],
         format!("<div>definition {expected_img}</div>")

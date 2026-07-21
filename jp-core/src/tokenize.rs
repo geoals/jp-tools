@@ -34,12 +34,16 @@ pub struct SudachiTokenizer {
 impl SudachiTokenizer {
     pub fn new(dict_path: &Path, headwords: HashSet<String>) -> Result<Self, TokenizeError> {
         let abs_path = std::fs::canonicalize(dict_path).map_err(|e| {
-            TokenizeError::Failed(format!("dictionary not found at {}: {e}", dict_path.display()))
+            TokenizeError::Failed(format!(
+                "dictionary not found at {}: {e}",
+                dict_path.display()
+            ))
         })?;
         let config = Config::new(None, None, Some(abs_path))
             .map_err(|e| TokenizeError::Failed(format!("failed to load Sudachi config: {e}")))?;
-        let dict = JapaneseDictionary::from_cfg(&config)
-            .map_err(|e| TokenizeError::Failed(format!("failed to load Sudachi dictionary: {e}")))?;
+        let dict = JapaneseDictionary::from_cfg(&config).map_err(|e| {
+            TokenizeError::Failed(format!("failed to load Sudachi dictionary: {e}"))
+        })?;
         Ok(Self {
             dict: Arc::new(dict),
             headwords,
@@ -115,14 +119,10 @@ impl Tokenizer for SudachiTokenizer {
     }
 }
 
-
 /// Returns true if the part-of-speech tag represents a content word
 /// (noun, verb, adjective, adjectival noun, adverb).
 pub fn is_content_word(pos: &str) -> bool {
-    matches!(
-        pos,
-        "名詞" | "動詞" | "形容詞" | "形状詞" | "副詞"
-    )
+    matches!(pos, "名詞" | "動詞" | "形容詞" | "形状詞" | "副詞")
 }
 
 #[cfg(test)]
@@ -198,5 +198,4 @@ mod tests {
         assert_eq!(iku.pos, "動詞");
         assert_eq!(iku.base_form, "行く");
     }
-
 }

@@ -21,8 +21,8 @@ async fn main() {
     // Ensure directories exist
     std::fs::create_dir_all(&config.inbox_dir).expect("failed to create inbox directory");
     std::fs::create_dir_all(&config.media_dir).expect("failed to create media directory");
-    let inbox_dir = std::fs::canonicalize(&config.inbox_dir)
-        .expect("failed to resolve inbox directory");
+    let inbox_dir =
+        std::fs::canonicalize(&config.inbox_dir).expect("failed to resolve inbox directory");
     let media_dir = std::fs::canonicalize(&config.media_dir)
         .expect("failed to resolve media directory")
         .to_string_lossy()
@@ -55,14 +55,19 @@ async fn main() {
             dictionaries.push(Arc::new(dict));
         }
         if dictionaries.is_empty() {
-            info!("no dictionaries configured (set JP_TOOLS_DICTIONARY_PATHS to enable definitions)");
+            info!(
+                "no dictionaries configured (set JP_TOOLS_DICTIONARY_PATHS to enable definitions)"
+            );
         }
 
         let headwords = jp_core::db::get_all_headwords(&pool)
             .await
             .expect("failed to load headwords");
         if !headwords.is_empty() {
-            info!(count = headwords.len(), "loaded headwords for dictionary-aware tokenization");
+            info!(
+                count = headwords.len(),
+                "loaded headwords for dictionary-aware tokenization"
+            );
         }
 
         let tokenizer: Arc<dyn Tokenizer> = Arc::new(

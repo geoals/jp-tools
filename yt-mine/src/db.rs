@@ -497,7 +497,13 @@ mod tests {
     async fn create_and_get_job() {
         let pool = test_pool().await;
 
-        let id = create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ").await.unwrap();
+        let id = create_job(
+            &pool,
+            "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            "dQw4w9WgXcQ",
+        )
+        .await
+        .unwrap();
         let job = get_job(&pool, id).await.unwrap().unwrap();
 
         assert_eq!(job.youtube_url, "https://youtube.com/watch?v=dQw4w9WgXcQ");
@@ -524,9 +530,13 @@ mod tests {
     #[tokio::test]
     async fn get_job_by_video_id_finds_done_job() {
         let pool = test_pool().await;
-        let id = create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
-            .await
-            .unwrap();
+        let id = create_job(
+            &pool,
+            "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            "dQw4w9WgXcQ",
+        )
+        .await
+        .unwrap();
         update_job_status(&pool, id, &JobStatus::Done, None)
             .await
             .unwrap();
@@ -544,16 +554,24 @@ mod tests {
         let pool = test_pool().await;
 
         // Create an error job, then a done job
-        let err_id = create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
-            .await
-            .unwrap();
+        let err_id = create_job(
+            &pool,
+            "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            "dQw4w9WgXcQ",
+        )
+        .await
+        .unwrap();
         update_job_status(&pool, err_id, &JobStatus::Error, Some("failed"))
             .await
             .unwrap();
 
-        let ok_id = create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
-            .await
-            .unwrap();
+        let ok_id = create_job(
+            &pool,
+            "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            "dQw4w9WgXcQ",
+        )
+        .await
+        .unwrap();
         update_job_status(&pool, ok_id, &JobStatus::Done, None)
             .await
             .unwrap();
@@ -568,9 +586,13 @@ mod tests {
     #[tokio::test]
     async fn get_job_by_video_id_returns_none_when_only_errors() {
         let pool = test_pool().await;
-        let id = create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
-            .await
-            .unwrap();
+        let id = create_job(
+            &pool,
+            "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            "dQw4w9WgXcQ",
+        )
+        .await
+        .unwrap();
         update_job_status(&pool, id, &JobStatus::Error, Some("failed"))
             .await
             .unwrap();
@@ -582,7 +604,13 @@ mod tests {
     #[tokio::test]
     async fn update_job_status_sets_status_and_error() {
         let pool = test_pool().await;
-        let id = create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ").await.unwrap();
+        let id = create_job(
+            &pool,
+            "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            "dQw4w9WgXcQ",
+        )
+        .await
+        .unwrap();
 
         update_job_status(&pool, id, &JobStatus::Downloading, None)
             .await
@@ -602,11 +630,24 @@ mod tests {
     #[tokio::test]
     async fn update_job_download_sets_audio_path_and_title() {
         let pool = test_pool().await;
-        let id = create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ").await.unwrap();
+        let id = create_job(
+            &pool,
+            "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            "dQw4w9WgXcQ",
+        )
+        .await
+        .unwrap();
 
-        update_job_download(&pool, id, "/tmp/audio.wav", "Test Video", "/tmp/video.mp4", Some(120.5))
-            .await
-            .unwrap();
+        update_job_download(
+            &pool,
+            id,
+            "/tmp/audio.wav",
+            "Test Video",
+            "/tmp/video.mp4",
+            Some(120.5),
+        )
+        .await
+        .unwrap();
         let job = get_job(&pool, id).await.unwrap().unwrap();
         assert_eq!(job.audio_path.as_deref(), Some("/tmp/audio.wav"));
         assert_eq!(job.video_title.as_deref(), Some("Test Video"));
@@ -616,11 +657,25 @@ mod tests {
     #[tokio::test]
     async fn insert_and_get_sentences() {
         let pool = test_pool().await;
-        let job_id = create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ").await.unwrap();
+        let job_id = create_job(
+            &pool,
+            "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            "dQw4w9WgXcQ",
+        )
+        .await
+        .unwrap();
 
         let segments = vec![
-            TranscriptSegment { start: 0.0, end: 3.2, text: "First sentence".into() },
-            TranscriptSegment { start: 3.5, end: 6.1, text: "Second sentence".into() },
+            TranscriptSegment {
+                start: 0.0,
+                end: 3.2,
+                text: "First sentence".into(),
+            },
+            TranscriptSegment {
+                start: 3.5,
+                end: 6.1,
+                text: "Second sentence".into(),
+            },
         ];
 
         insert_sentences(&pool, job_id, &segments).await.unwrap();
@@ -637,12 +692,30 @@ mod tests {
     #[tokio::test]
     async fn get_sentences_by_ids_returns_matching() {
         let pool = test_pool().await;
-        let job_id = create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ").await.unwrap();
+        let job_id = create_job(
+            &pool,
+            "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            "dQw4w9WgXcQ",
+        )
+        .await
+        .unwrap();
 
         let segments = vec![
-            TranscriptSegment { start: 0.0, end: 1.0, text: "A".into() },
-            TranscriptSegment { start: 1.0, end: 2.0, text: "B".into() },
-            TranscriptSegment { start: 2.0, end: 3.0, text: "C".into() },
+            TranscriptSegment {
+                start: 0.0,
+                end: 1.0,
+                text: "A".into(),
+            },
+            TranscriptSegment {
+                start: 1.0,
+                end: 2.0,
+                text: "B".into(),
+            },
+            TranscriptSegment {
+                start: 2.0,
+                end: 3.0,
+                text: "C".into(),
+            },
         ];
         insert_sentences(&pool, job_id, &segments).await.unwrap();
 
@@ -693,8 +766,14 @@ mod tests {
             .unwrap();
 
         // Add sentences to the transcribing job (partial data)
-        let seg = TranscriptSegment { start: 0.0, end: 1.0, text: "partial".into() };
-        insert_sentences(&pool, transcribing, &[seg.clone()]).await.unwrap();
+        let seg = TranscriptSegment {
+            start: 0.0,
+            end: 1.0,
+            text: "partial".into(),
+        };
+        insert_sentences(&pool, transcribing, &[seg.clone()])
+            .await
+            .unwrap();
         // And to the done job (should survive)
         insert_sentences(&pool, done, &[seg]).await.unwrap();
 
@@ -741,22 +820,22 @@ mod tests {
     #[tokio::test]
     async fn upsert_vocab_inserts_new_entries() {
         let pool = test_pool().await;
-        let entries = vec![
-            VocabUpsert {
-                user_id: 1,
-                lemma: "東京".into(),
-                reading: "トウキョウ".into(),
-                pos: Some("名詞".into()),
-                status: VocabStatus::Known,
-                count: 2,
-                source: "calibration".into(),
-            },
-        ];
+        let entries = vec![VocabUpsert {
+            user_id: 1,
+            lemma: "東京".into(),
+            reading: "トウキョウ".into(),
+            pos: Some("名詞".into()),
+            status: VocabStatus::Known,
+            count: 2,
+            source: "calibration".into(),
+        }];
 
         let count = upsert_vocab_entries(&pool, &entries).await.unwrap();
         assert_eq!(count, 1);
 
-        let rows = get_vocab_by_lemmas(&pool, 1, &["東京".into()]).await.unwrap();
+        let rows = get_vocab_by_lemmas(&pool, 1, &["東京".into()])
+            .await
+            .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].lemma, "東京");
         assert_eq!(rows[0].reading, "トウキョウ");
@@ -791,7 +870,9 @@ mod tests {
         }];
         upsert_vocab_entries(&pool, &entries2).await.unwrap();
 
-        let rows = get_vocab_by_lemmas(&pool, 1, &["行く".into()]).await.unwrap();
+        let rows = get_vocab_by_lemmas(&pool, 1, &["行く".into()])
+            .await
+            .unwrap();
         assert_eq!(rows[0].encounter_count, 5); // 3 + 2
         assert_eq!(rows[0].status, VocabStatus::Known);
     }

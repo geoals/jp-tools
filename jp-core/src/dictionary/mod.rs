@@ -348,10 +348,7 @@ fn parse_pitch_entry(value: &Value) -> Option<(String, PitchEntry)> {
         .filter_map(|p| p.get("position")?.as_u64().map(|n| n as u32))
         .collect();
 
-    Some((
-        term.to_string(),
-        PitchEntry { reading, positions },
-    ))
+    Some((term.to_string(), PitchEntry { reading, positions }))
 }
 
 /// Parse frequency entries from a Yomitan `term_meta_bank_*.json` string.
@@ -417,21 +414,14 @@ fn read_zip_entry<R: Read + std::io::Seek>(
                 warn!(file = name, "CRC mismatch, retrying with raw decompression");
             }
             Err(e) => {
-                return Err(DictionaryError::Load(format!(
-                    "failed to read {name}: {e}"
-                )));
+                return Err(DictionaryError::Load(format!("failed to read {name}: {e}")));
             }
         }
     }
 
     // Fallback: read raw compressed data and decompress manually
     let index = (0..archive.len())
-        .find(|&i| {
-            archive
-                .by_index(i)
-                .ok()
-                .is_some_and(|f| f.name() == name)
-        })
+        .find(|&i| archive.by_index(i).ok().is_some_and(|f| f.name() == name))
         .ok_or_else(|| DictionaryError::Load(format!("{name} not found in archive")))?;
 
     let compression = archive.by_index(index).unwrap().compression();
@@ -447,9 +437,9 @@ fn read_zip_entry<R: Read + std::io::Seek>(
         zip::CompressionMethod::Deflated => {
             let mut decoder = flate2::read::DeflateDecoder::new(&compressed[..]);
             let mut out = Vec::new();
-            decoder.read_to_end(&mut out).map_err(|e| {
-                DictionaryError::Load(format!("failed to decompress {name}: {e}"))
-            })?;
+            decoder
+                .read_to_end(&mut out)
+                .map_err(|e| DictionaryError::Load(format!("failed to decompress {name}: {e}")))?;
             out
         }
         other => {
@@ -466,8 +456,9 @@ fn read_zip_entry<R: Read + std::io::Seek>(
 impl Dictionary {
     /// Load a Yomitan dictionary from a zip file containing `term_bank_*.json` files.
     pub fn load_from_zip(path: &Path) -> Result<Self, DictionaryError> {
-        let file = std::fs::File::open(path)
-            .map_err(|e| DictionaryError::Load(format!("failed to open {}: {e}", path.display())))?;
+        let file = std::fs::File::open(path).map_err(|e| {
+            DictionaryError::Load(format!("failed to open {}: {e}", path.display()))
+        })?;
         Self::load_from_reader(file)
     }
 
@@ -477,8 +468,9 @@ impl Dictionary {
     fn load_meta_from_zip(
         path: &Path,
     ) -> Result<(Vec<(String, PitchEntry)>, Vec<(String, i64)>), DictionaryError> {
-        let file = std::fs::File::open(path)
-            .map_err(|e| DictionaryError::Load(format!("failed to open {}: {e}", path.display())))?;
+        let file = std::fs::File::open(path).map_err(|e| {
+            DictionaryError::Load(format!("failed to open {}: {e}", path.display()))
+        })?;
         let mut archive = zip::ZipArchive::new(file)
             .map_err(|e| DictionaryError::Load(format!("failed to read zip: {e}")))?;
 
@@ -650,19 +642,24 @@ impl Dictionary {
 
         // Not cached — load from zip and store in db atomically
         let dict = Self::load_from_zip(path)?;
-        let DictionaryStorage::InMemory { ref entries, ref pitch, ref freq } = dict.storage else {
+        let DictionaryStorage::InMemory {
+            ref entries,
+            ref pitch,
+            ref freq,
+        } = dict.storage
+        else {
             unreachable!("load_from_zip always creates InMemory");
         };
         let entries_vec: Vec<DictionaryEntry> =
             entries.values().flat_map(|v| v.iter()).cloned().collect();
         let pitch_vec: Vec<(String, PitchEntry)> = pitch
             .iter()
-            .flat_map(|(term, entries)| {
-                entries.iter().map(move |e| (term.clone(), e.clone()))
-            })
+            .flat_map(|(term, entries)| entries.iter().map(move |e| (term.clone(), e.clone())))
             .collect();
-        let freq_vec: Vec<(String, i64)> =
-            freq.iter().map(|(term, rank)| (term.clone(), *rank)).collect();
+        let freq_vec: Vec<(String, i64)> = freq
+            .iter()
+            .map(|(term, rank)| (term.clone(), *rank))
+            .collect();
         let dict_id = db::import_dictionary(pool, &dict.title, &path_str, &entries_vec).await?;
 
         if !pitch_vec.is_empty() {

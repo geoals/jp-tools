@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 use serde::{Deserialize, Serialize};
 
 use jp_core::tokenize::Tokenizer;
@@ -141,8 +141,7 @@ pub async fn tokenize_text(
         // Normalize godan potential forms to root verb (出せる → 出す).
         // Only when the form itself isn't a dictionary word — avoids collapsing
         // ichidan/godan pairs like 開ける (ichidan) → 開く (godan).
-        let base_form = if token.pos == "動詞"
-            && !state.dictionary_forms.contains(&token.base_form)
+        let base_form = if token.pos == "動詞" && !state.dictionary_forms.contains(&token.base_form)
         {
             godan_root(&token.base_form)
                 .filter(|root| state.dictionary_forms.contains(root))

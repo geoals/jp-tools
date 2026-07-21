@@ -15,7 +15,6 @@ use crate::services::llm::MockLlmDefiner;
 use crate::services::media::{MockMediaExtractor, media_filenames};
 use crate::services::transcribe::MockTranscriber;
 
-
 fn mock_tokenizer() -> MockTokenizer {
     let mut t = MockTokenizer::new();
     t.expect_tokenize().returning(|text| {
@@ -53,9 +52,13 @@ async fn test_app() -> (axum_test::TestServer, sqlx::SqlitePool) {
 }
 
 async fn seed_job(pool: &sqlx::SqlitePool, video_id: &str) -> i64 {
-    let job_id = db::create_job(pool, &format!("https://youtube.com/watch?v={video_id}"), video_id)
-        .await
-        .unwrap();
+    let job_id = db::create_job(
+        pool,
+        &format!("https://youtube.com/watch?v={video_id}"),
+        video_id,
+    )
+    .await
+    .unwrap();
     db::update_job_status(pool, job_id, &JobStatus::Done, None)
         .await
         .unwrap();
@@ -198,9 +201,7 @@ async fn poll_status_returns_204_when_unchanged() {
     let (server, pool) = test_app().await;
     seed_job(&pool, "dQw4w9WgXcQ").await;
 
-    let response = server
-        .get("/api/dQw4w9WgXcQ/status?sc=1&st=done")
-        .await;
+    let response = server.get("/api/dQw4w9WgXcQ/status?sc=1&st=done").await;
     response.assert_status(StatusCode::NO_CONTENT);
 }
 
@@ -239,9 +240,13 @@ async fn preview_returns_json() {
     let router = build_router(state);
     let server = axum_test::TestServer::new(router).unwrap();
 
-    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
-        .await
-        .unwrap();
+    let job_id = db::create_job(
+        &pool,
+        "https://youtube.com/watch?v=dQw4w9WgXcQ",
+        "dQw4w9WgXcQ",
+    )
+    .await
+    .unwrap();
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
         .await
         .unwrap();
@@ -300,9 +305,13 @@ async fn llm_definition_returns_json() {
     let router = build_router(state);
     let server = axum_test::TestServer::new(router).unwrap();
 
-    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
-        .await
-        .unwrap();
+    let job_id = db::create_job(
+        &pool,
+        "https://youtube.com/watch?v=dQw4w9WgXcQ",
+        "dQw4w9WgXcQ",
+    )
+    .await
+    .unwrap();
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
         .await
         .unwrap();
@@ -364,12 +373,10 @@ async fn export_returns_count_and_ids() {
         .returning(|_, _, _, _| Box::pin(async { Ok(()) }));
 
     let mut exporter = MockAnkiExporter::new();
-    exporter
-        .expect_export_sentences()
-        .returning(|sentences| {
-            let count = sentences.len();
-            Box::pin(async move { Ok(count) })
-        });
+    exporter.expect_export_sentences().returning(|sentences| {
+        let count = sentences.len();
+        Box::pin(async move { Ok(count) })
+    });
 
     let pool = db::create_pool("sqlite::memory:").await.unwrap();
     let state = AppState {
@@ -388,15 +395,26 @@ async fn export_returns_count_and_ids() {
     let router = build_router(state);
     let server = axum_test::TestServer::new(router).unwrap();
 
-    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
-        .await
-        .unwrap();
+    let job_id = db::create_job(
+        &pool,
+        "https://youtube.com/watch?v=dQw4w9WgXcQ",
+        "dQw4w9WgXcQ",
+    )
+    .await
+    .unwrap();
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
         .await
         .unwrap();
-    db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test", "/tmp/video.mp4", Some(60.0))
-        .await
-        .unwrap();
+    db::update_job_download(
+        &pool,
+        job_id,
+        "/tmp/audio.wav",
+        "Test",
+        "/tmp/video.mp4",
+        Some(60.0),
+    )
+    .await
+    .unwrap();
     db::insert_sentences(
         &pool,
         job_id,
@@ -472,9 +490,13 @@ async fn test_app_with_media_dir(
 async fn sentence_audio_missing_sentence_returns_404() {
     let (server, pool) = test_app().await;
 
-    db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
-        .await
-        .unwrap();
+    db::create_job(
+        &pool,
+        "https://youtube.com/watch?v=dQw4w9WgXcQ",
+        "dQw4w9WgXcQ",
+    )
+    .await
+    .unwrap();
 
     let response = server.get("/dQw4w9WgXcQ/sentences/999/audio").await;
     response.assert_status(StatusCode::NOT_FOUND);
@@ -498,15 +520,26 @@ async fn sentence_audio_extracts_and_returns_mp3() {
 
     let (server, pool) = test_app_with_media_dir(media_extractor, media_dir).await;
 
-    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
-        .await
-        .unwrap();
+    let job_id = db::create_job(
+        &pool,
+        "https://youtube.com/watch?v=dQw4w9WgXcQ",
+        "dQw4w9WgXcQ",
+    )
+    .await
+    .unwrap();
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
         .await
         .unwrap();
-    db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test", "/tmp/video.mp4", Some(60.0))
-        .await
-        .unwrap();
+    db::update_job_download(
+        &pool,
+        job_id,
+        "/tmp/audio.wav",
+        "Test",
+        "/tmp/video.mp4",
+        Some(60.0),
+    )
+    .await
+    .unwrap();
     db::insert_sentences(
         &pool,
         job_id,
@@ -543,15 +576,26 @@ async fn sentence_audio_serves_cached_clip() {
     let media_extractor = MockMediaExtractor::new();
     let (server, pool) = test_app_with_media_dir(media_extractor, media_dir.clone()).await;
 
-    let job_id = db::create_job(&pool, "https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ")
-        .await
-        .unwrap();
+    let job_id = db::create_job(
+        &pool,
+        "https://youtube.com/watch?v=dQw4w9WgXcQ",
+        "dQw4w9WgXcQ",
+    )
+    .await
+    .unwrap();
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
         .await
         .unwrap();
-    db::update_job_download(&pool, job_id, "/tmp/audio.wav", "Test", "/tmp/video.mp4", Some(60.0))
-        .await
-        .unwrap();
+    db::update_job_download(
+        &pool,
+        job_id,
+        "/tmp/audio.wav",
+        "Test",
+        "/tmp/video.mp4",
+        Some(60.0),
+    )
+    .await
+    .unwrap();
     db::insert_sentences(
         &pool,
         job_id,
@@ -589,8 +633,14 @@ async fn root_returns_spa_shell() {
     let response = server.get("/").await;
     response.assert_status_ok();
     let body = response.text();
-    assert!(body.contains("<div id=\"app\">"), "should contain app mount point");
-    assert!(body.contains("/static/app.js"), "should include Preact entry point");
+    assert!(
+        body.contains("<div id=\"app\">"),
+        "should contain app mount point"
+    );
+    assert!(
+        body.contains("/static/app.js"),
+        "should include Preact entry point"
+    );
 }
 
 #[tokio::test]
@@ -600,7 +650,10 @@ async fn video_url_returns_spa_shell() {
     let response = server.get("/dQw4w9WgXcQ").await;
     response.assert_status_ok();
     let body = response.text();
-    assert!(body.contains("<div id=\"app\">"), "should contain app mount point");
+    assert!(
+        body.contains("<div id=\"app\">"),
+        "should contain app mount point"
+    );
 }
 
 #[tokio::test]
@@ -610,5 +663,8 @@ async fn vocab_url_returns_spa_shell() {
     let response = server.get("/vocab").await;
     response.assert_status_ok();
     let body = response.text();
-    assert!(body.contains("<div id=\"app\">"), "should contain app mount point");
+    assert!(
+        body.contains("<div id=\"app\">"),
+        "should contain app mount point"
+    );
 }

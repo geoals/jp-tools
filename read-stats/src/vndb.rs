@@ -29,8 +29,7 @@ pub fn normalize_id(input: &str) -> Option<String> {
     let s = input.trim().trim_end_matches('/');
     let s = s.rsplit('/').next().unwrap_or(s);
     let digits = s.strip_prefix('v').unwrap_or(s);
-    (!digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
-        .then(|| format!("v{digits}"))
+    (!digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())).then(|| format!("v{digits}"))
 }
 
 /// One-shot lookup of a VN's cover image URL — the only thing we use VNDB for.
@@ -46,7 +45,10 @@ pub async fn fetch_cover_url(client: &reqwest::Client, vndb_id: &str) -> Result<
         .await
         .map_err(|e| AppError::Upstream(format!("vndb request failed: {e}")))?;
     if !resp.status().is_success() {
-        return Err(AppError::Upstream(format!("vndb returned {}", resp.status())));
+        return Err(AppError::Upstream(format!(
+            "vndb returned {}",
+            resp.status()
+        )));
     }
     let parsed: VnResponse = resp
         .json()
@@ -75,14 +77,21 @@ pub async fn download_cover(
         .await
         .map_err(|e| AppError::Upstream(format!("cover download failed: {e}")))?;
     if !resp.status().is_success() {
-        return Err(AppError::Upstream(format!("cover download returned {}", resp.status())));
+        return Err(AppError::Upstream(format!(
+            "cover download returned {}",
+            resp.status()
+        )));
     }
     let bytes = resp
         .bytes()
         .await
         .map_err(|e| AppError::Upstream(format!("cover download failed: {e}")))?;
 
-    let ext = url.rsplit('.').next().filter(|e| e.len() <= 4).unwrap_or("jpg");
+    let ext = url
+        .rsplit('.')
+        .next()
+        .filter(|e| e.len() <= 4)
+        .unwrap_or("jpg");
     let filename = format!("{stem}.{ext}");
     tokio::fs::create_dir_all(covers_dir)
         .await
@@ -101,8 +110,14 @@ mod tests {
     fn normalize_accepts_common_forms() {
         assert_eq!(normalize_id("v3144").as_deref(), Some("v3144"));
         assert_eq!(normalize_id("3144").as_deref(), Some("v3144"));
-        assert_eq!(normalize_id(" https://vndb.org/v3144 ").as_deref(), Some("v3144"));
-        assert_eq!(normalize_id("https://vndb.org/v3144/").as_deref(), Some("v3144"));
+        assert_eq!(
+            normalize_id(" https://vndb.org/v3144 ").as_deref(),
+            Some("v3144")
+        );
+        assert_eq!(
+            normalize_id("https://vndb.org/v3144/").as_deref(),
+            Some("v3144")
+        );
         assert_eq!(normalize_id("subahibi"), None);
         assert_eq!(normalize_id(""), None);
         assert_eq!(normalize_id("v"), None);

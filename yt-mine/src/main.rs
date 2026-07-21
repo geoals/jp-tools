@@ -42,7 +42,10 @@ async fn main() {
         .await
         .expect("failed to clean up incomplete jobs");
     if deleted > 0 {
-        info!(count = deleted, "cleaned up incomplete jobs from previous run");
+        info!(
+            count = deleted,
+            "cleaned up incomplete jobs from previous run"
+        );
     }
 
     // Load dictionaries first so headwords are available for tokenizer
@@ -62,7 +65,10 @@ async fn main() {
         .await
         .expect("failed to load headwords");
     if !headwords.is_empty() {
-        info!(count = headwords.len(), "loaded headwords for dictionary-aware tokenization");
+        info!(
+            count = headwords.len(),
+            "loaded headwords for dictionary-aware tokenization"
+        );
     }
 
     // Broader set including readings — いう matches 言う via reading

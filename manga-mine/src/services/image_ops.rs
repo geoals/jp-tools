@@ -62,9 +62,7 @@ fn decode_oriented(bytes: &[u8]) -> Result<DynamicImage, ImageOpsError> {
         .into_decoder()
         .map_err(|e| ImageOpsError::Failed(format!("failed to decode image: {e}")))?;
 
-    let orientation = decoder
-        .orientation()
-        .unwrap_or(Orientation::NoTransforms);
+    let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
 
     let mut img = DynamicImage::from_decoder(decoder)
         .map_err(|e| ImageOpsError::Failed(format!("failed to decode image: {e}")))?;
@@ -134,7 +132,12 @@ mod tests {
 
     #[test]
     fn crop_rect_to_pixels_clamps_out_of_bounds() {
-        let rect = CropRect { x: -0.5, y: 0.5, w: 2.0, h: 1.0 };
+        let rect = CropRect {
+            x: -0.5,
+            y: 0.5,
+            w: 2.0,
+            h: 1.0,
+        };
         let (px, py, pw, ph) = rect.to_pixels(100, 200).unwrap();
         assert_eq!((px, py), (0, 100));
         assert_eq!((pw, ph), (100, 100));
@@ -142,16 +145,31 @@ mod tests {
 
     #[test]
     fn crop_rect_empty_region_is_none() {
-        let rect = CropRect { x: 0.5, y: 0.5, w: 0.0, h: 0.5 };
+        let rect = CropRect {
+            x: 0.5,
+            y: 0.5,
+            w: 0.0,
+            h: 0.5,
+        };
         assert!(rect.to_pixels(100, 100).is_none());
-        let rect = CropRect { x: 1.5, y: 0.0, w: 0.5, h: 0.5 };
+        let rect = CropRect {
+            x: 1.5,
+            y: 0.0,
+            w: 0.5,
+            h: 0.5,
+        };
         assert!(rect.to_pixels(100, 100).is_none());
     }
 
     #[test]
     fn crop_for_ocr_extracts_region() {
         let jpeg = test_jpeg(200, 100);
-        let rect = CropRect { x: 0.0, y: 0.0, w: 0.4, h: 1.0 };
+        let rect = CropRect {
+            x: 0.0,
+            y: 0.0,
+            w: 0.4,
+            h: 1.0,
+        };
         let out = crop_for_ocr(&jpeg, rect).unwrap();
 
         let img = image::load_from_memory(&out).unwrap();
@@ -159,7 +177,10 @@ mod tests {
         assert_eq!(img.height(), 100);
         // Left 40% of the test image is red
         let px = img.to_rgb8().get_pixel(10, 50).0;
-        assert!(px[0] > 150 && px[2] < 100, "expected red region, got {px:?}");
+        assert!(
+            px[0] > 150 && px[2] < 100,
+            "expected red region, got {px:?}"
+        );
     }
 
     #[test]

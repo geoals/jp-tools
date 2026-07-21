@@ -179,11 +179,7 @@ pub async fn summary(State(state): State<AppState>) -> Result<Json<Value>, AppEr
     let today_vn = vn.get(&today).copied().unwrap_or_default();
     let today_manual = manual.get(&today).copied().unwrap_or_default();
 
-    let (current, best) = stats::streaks(
-        &total,
-        settings.goal_floor_mins as f64 * 60.0,
-        today,
-    );
+    let (current, best) = stats::streaks(&total, settings.goal_floor_mins as f64 * 60.0, today);
 
     let day_start = stats::day_start_ts(today, settings.day_rollover_hour, tz);
     let note_ids = db::fetch_anki_note_ids(&state.pool).await?;
@@ -362,7 +358,8 @@ pub async fn list_sessions(
     // Pad the window so a session straddling the boundary derives correctly,
     // then keep only sessions that *start* on the requested day.
     let pauses = db::fetch_pauses(&state.pool).await?;
-    let mut lines = db::fetch_line_events(&state.pool, day_start - 21600.0, day_end + 21600.0).await?;
+    let mut lines =
+        db::fetch_line_events(&state.pool, day_start - 21600.0, day_end + 21600.0).await?;
     lines.retain(|l| !stats::is_paused(l.ts, &pauses));
     let marks = presence_marks(&state, &pauses, day_start - 21600.0, day_end + 21600.0).await?;
     // Pace over all history, not this day's slice, so the dashboard and the
@@ -438,7 +435,10 @@ pub async fn day_timeline(
     // and never above the session gap, or two sessions could share a bucket
     // index and `add_events` would have no way to tell them apart.
     let bucket_ceiling = 3600.0_f64.min(settings.session_gap_secs).max(15.0);
-    let bucket_secs = params.bucket_secs.unwrap_or(60.0).clamp(15.0, bucket_ceiling);
+    let bucket_secs = params
+        .bucket_secs
+        .unwrap_or(60.0)
+        .clamp(15.0, bucket_ceiling);
 
     let day_start = stats::day_start_ts(date, settings.day_rollover_hour, tz);
     let day_end = day_start + 86400.0;
@@ -475,7 +475,12 @@ pub async fn day_timeline(
     );
     buckets.retain(|b| b.t >= day_start && b.t < day_end);
 
-    stats::add_events(&mut buckets, &lookups, bucket_secs, stats::EventKind::Lookup);
+    stats::add_events(
+        &mut buckets,
+        &lookups,
+        bucket_secs,
+        stats::EventKind::Lookup,
+    );
 
     // Note ids are epoch milliseconds, so they double as card creation times.
     let note_ids = db::fetch_anki_note_ids(&state.pool).await?;
@@ -489,20 +494,20 @@ pub async fn day_timeline(
     // Session spans, so the client can label the bands it draws between.
     let sessions: Vec<Value> = stats::derive_sessions(&lines, &presence, settings.session_gap_secs)
         .into_iter()
-    .filter(|s| stats::date_key(s.start_ts, settings.day_rollover_hour, tz) == date)
-    .map(|s| {
-        let (start, end) = (s.start_ts, s.end_ts);
-        json!({
-            "start_ts": start,
-            "end_ts": end,
-            "chars": s.chars,
-            "active_secs": s.active_secs,
-            "lines": s.lines,
-            "lookups": lookups.iter().filter(|ts| **ts >= start && **ts <= end).count(),
-            "cards": cards_in_window(&note_ids, start, end),
+        .filter(|s| stats::date_key(s.start_ts, settings.day_rollover_hour, tz) == date)
+        .map(|s| {
+            let (start, end) = (s.start_ts, s.end_ts);
+            json!({
+                "start_ts": start,
+                "end_ts": end,
+                "chars": s.chars,
+                "active_secs": s.active_secs,
+                "lines": s.lines,
+                "lookups": lookups.iter().filter(|ts| **ts >= start && **ts <= end).count(),
+                "cards": cards_in_window(&note_ids, start, end),
+            })
         })
-    })
-    .collect();
+        .collect();
 
     Ok(Json(json!({
         "date": date.to_string(),
@@ -610,11 +615,7 @@ pub struct WorkMetaReq {
 
 /// Apply the optional fields of a metadata request to an existing work row,
 /// doing the one-shot VNDB cover fetch when a vndb id is given.
-async fn apply_work_meta(
-    state: &AppState,
-    id: i64,
-    req: &WorkMetaReq,
-) -> Result<(), AppError> {
+async fn apply_work_meta(state: &AppState, id: i64, req: &WorkMetaReq) -> Result<(), AppError> {
     if let Some(raw) = &req.vndb_id {
         let old_cover = db::fetch_work(&state.pool, id)
             .await?
@@ -626,8 +627,13 @@ async fn apply_work_meta(
                 .ok_or_else(|| AppError::BadRequest(format!("bad vndb id: {raw}")))?;
             let url = crate::vndb::fetch_cover_url(&state.http, &vid).await?;
             Some(
-                crate::vndb::download_cover(&state.http, &url, &state.covers_dir, &format!("w{id}"))
-                    .await?,
+                crate::vndb::download_cover(
+                    &state.http,
+                    &url,
+                    &state.covers_dir,
+                    &format!("w{id}"),
+                )
+                .await?,
             )
         };
         db::set_work_cover(&state.pool, id, new_cover.as_deref()).await?;
@@ -669,7 +675,11 @@ pub async fn upsert_work(
         .ok_or_else(|| AppError::BadRequest("title required".into()))?;
     let work = db::upsert_work(&state.pool, title).await?;
     apply_work_meta(&state, work.id, &req).await?;
-    Ok(Json(db::fetch_work(&state.pool, work.id).await?.ok_or(AppError::NotFound)?))
+    Ok(Json(
+        db::fetch_work(&state.pool, work.id)
+            .await?
+            .ok_or(AppError::NotFound)?,
+    ))
 }
 
 pub async fn update_work(
@@ -677,16 +687,24 @@ pub async fn update_work(
     Path(id): Path<i64>,
     Json(req): Json<WorkMetaReq>,
 ) -> Result<Json<db::Work>, AppError> {
-    db::fetch_work(&state.pool, id).await?.ok_or(AppError::NotFound)?;
+    db::fetch_work(&state.pool, id)
+        .await?
+        .ok_or(AppError::NotFound)?;
     apply_work_meta(&state, id, &req).await?;
-    Ok(Json(db::fetch_work(&state.pool, id).await?.ok_or(AppError::NotFound)?))
+    Ok(Json(
+        db::fetch_work(&state.pool, id)
+            .await?
+            .ok_or(AppError::NotFound)?,
+    ))
 }
 
 pub async fn delete_work(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<Json<Value>, AppError> {
-    let work = db::fetch_work(&state.pool, id).await?.ok_or(AppError::NotFound)?;
+    let work = db::fetch_work(&state.pool, id)
+        .await?
+        .ok_or(AppError::NotFound)?;
     if let Some(cover) = &work.cover_path {
         let _ = tokio::fs::remove_file(state.covers_dir.join(cover)).await;
     }
@@ -807,9 +825,7 @@ pub async fn lookups_summary(State(state): State<AppState>) -> Result<Json<Value
 
     // Worst first: most re-looked-up, then most recent.
     let by_weight = |a: &&db::LookupTerm, b: &&db::LookupTerm| {
-        b.times
-            .cmp(&a.times)
-            .then(b.last_ts.total_cmp(&a.last_ts))
+        b.times.cmp(&a.times).then(b.last_ts.total_cmp(&a.last_ts))
     };
     leeches.sort_by(by_weight);
     repeats.sort_by(by_weight);
@@ -872,8 +888,13 @@ pub async fn anki_refresh(
     ));
     let mut snapshot = None;
     for url in crate::anki::candidate_urls(Some(addr.ip()), &state.anki_url) {
-        match crate::anki::fetch_deck_vocab(&state.http, &url, &state.anki_deck, &state.anki_vocab_field)
-            .await
+        match crate::anki::fetch_deck_vocab(
+            &state.http,
+            &url,
+            &state.anki_deck,
+            &state.anki_vocab_field,
+        )
+        .await
         {
             Ok(notes) => {
                 snapshot = Some((url, notes));
@@ -891,7 +912,9 @@ pub async fn anki_refresh(
     db::save_setting(&state.pool, "anki_source", &source).await?;
     let ingest = crate::ingest::ingest_new_lines(&state).await?;
 
-    Ok(Json(json!({ "notes": notes.len(), "source": source, "ingest": ingest })))
+    Ok(Json(
+        json!({ "notes": notes.len(), "source": source, "ingest": ingest }),
+    ))
 }
 
 /// Re-encounter statistics: how often mined words reappear in the line stream.
@@ -921,7 +944,9 @@ pub async fn anki_summary(State(state): State<AppState>) -> Result<Json<Value>, 
     let mut week: BTreeMap<&str, i64> = BTreeMap::new();
     let hits = db::fetch_mined_word_days(&state.pool).await?;
     for h in &hits {
-        let Some((_, mined_date)) = mined.get(&h.lemma) else { continue };
+        let Some((_, mined_date)) = mined.get(&h.lemma) else {
+            continue;
+        };
         if h.date > *mined_date {
             *after.entry(h.lemma.as_str()).or_default() += h.count;
         }

@@ -32,24 +32,16 @@ impl Config {
     /// Load config from environment variables, falling back to defaults.
     pub fn from_env() -> Self {
         Self {
-            db_path: env::var("JP_TOOLS_DB_PATH")
-                .unwrap_or_else(|_| "yt-mine.db".into()),
-            audio_dir: env::var("JP_TOOLS_AUDIO_DIR")
-                .unwrap_or_else(|_| "audio".into()),
-            listen_addr: env::var("JP_TOOLS_LISTEN_ADDR")
-                .unwrap_or_else(|_| "0.0.0.0:3000".into()),
+            db_path: env::var("JP_TOOLS_DB_PATH").unwrap_or_else(|_| "yt-mine.db".into()),
+            audio_dir: env::var("JP_TOOLS_AUDIO_DIR").unwrap_or_else(|_| "audio".into()),
+            listen_addr: env::var("JP_TOOLS_LISTEN_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".into()),
             anki_url: env::var("JP_TOOLS_ANKI_URL")
                 .unwrap_or_else(|_| "http://localhost:8765".into()),
-            media_dir: env::var("JP_TOOLS_MEDIA_DIR")
-                .unwrap_or_else(|_| "media".into()),
+            media_dir: env::var("JP_TOOLS_MEDIA_DIR").unwrap_or_else(|_| "media".into()),
             dictionary_paths: parse_dictionary_paths(),
-            fake_api: matches!(
-                env::var("JP_TOOLS_FAKE_API").as_deref(),
-                Ok("true" | "1"),
-            ),
+            fake_api: matches!(env::var("JP_TOOLS_FAKE_API").as_deref(), Ok("true" | "1"),),
             anthropic_api_key: env::var("JP_TOOLS_ANTHROPIC_API_KEY").ok(),
-            llm_model: env::var("JP_TOOLS_LLM_MODEL")
-                .unwrap_or_else(|_| "claude-haiku-4-5".into()),
+            llm_model: env::var("JP_TOOLS_LLM_MODEL").unwrap_or_else(|_| "claude-haiku-4-5".into()),
             whisper_service_url: env::var("JP_TOOLS_WHISPER_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:8100".into()),
             sudachi_dict_path: env::var("JP_TOOLS_SUDACHI_DICT_PATH")

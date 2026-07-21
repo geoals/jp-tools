@@ -267,11 +267,12 @@ pub async fn fetch_line_events(
     from_ts: f64,
     to_ts: f64,
 ) -> Result<Vec<LineEvent>, sqlx::Error> {
-    let rows = sqlx::query("SELECT ts, chars, text FROM lines WHERE ts >= ? AND ts < ? ORDER BY ts")
-        .bind(from_ts)
-        .bind(to_ts)
-        .fetch_all(pool)
-        .await?;
+    let rows =
+        sqlx::query("SELECT ts, chars, text FROM lines WHERE ts >= ? AND ts < ? ORDER BY ts")
+            .bind(from_ts)
+            .bind(to_ts)
+            .fetch_all(pool)
+            .await?;
 
     // One scanner across the whole stream: a speech broken over several text
     // boxes leaves its 「 open on the first row, so depth has to carry. It is
@@ -304,14 +305,21 @@ pub async fn fetch_line_events(
                 }
                 None => {
                     scanner.reset();
-                    LineEvent { ts, chars, dialogue_chars: 0, classified: false }
+                    LineEvent {
+                        ts,
+                        chars,
+                        dialogue_chars: 0,
+                        classified: false,
+                    }
                 }
             }
         })
         .collect())
 }
 
-pub async fn fetch_work_lines(pool: &SqlitePool) -> Result<Vec<crate::stats::WorkLine>, sqlx::Error> {
+pub async fn fetch_work_lines(
+    pool: &SqlitePool,
+) -> Result<Vec<crate::stats::WorkLine>, sqlx::Error> {
     let rows = sqlx::query("SELECT ts, chars, work FROM lines ORDER BY ts")
         .fetch_all(pool)
         .await?;
@@ -325,7 +333,9 @@ pub async fn fetch_work_lines(pool: &SqlitePool) -> Result<Vec<crate::stats::Wor
         .collect())
 }
 
-pub async fn fetch_pauses(pool: &SqlitePool) -> Result<Vec<crate::stats::PauseInterval>, sqlx::Error> {
+pub async fn fetch_pauses(
+    pool: &SqlitePool,
+) -> Result<Vec<crate::stats::PauseInterval>, sqlx::Error> {
     let rows = sqlx::query("SELECT start_ts, end_ts FROM pauses ORDER BY start_ts")
         .fetch_all(pool)
         .await?;
@@ -575,7 +585,9 @@ pub struct AnkiNote {
 /// Replace the deck snapshot wholesale (it mirrors, never owns, the deck).
 pub async fn replace_anki_notes(pool: &SqlitePool, notes: &[AnkiNote]) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
-    sqlx::query("DELETE FROM anki_notes").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM anki_notes")
+        .execute(&mut *tx)
+        .await?;
     for n in notes {
         sqlx::query("INSERT OR REPLACE INTO anki_notes (note_id, vocab) VALUES (?, ?)")
             .bind(n.note_id)

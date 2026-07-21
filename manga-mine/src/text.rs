@@ -58,7 +58,10 @@ mod tests {
 
     #[test]
     fn keeps_text_without_delimiter_as_one_sentence() {
-        assert_eq!(split_sentences("よろしくお願いします"), vec!["よろしくお願いします"]);
+        assert_eq!(
+            split_sentences("よろしくお願いします"),
+            vec!["よろしくお願いします"]
+        );
     }
 
     #[test]
@@ -87,10 +90,7 @@ mod tests {
 
     #[test]
     fn splits_on_newlines() {
-        assert_eq!(
-            split_sentences("一行目\n二行目"),
-            vec!["一行目", "二行目"],
-        );
+        assert_eq!(split_sentences("一行目\n二行目"), vec!["一行目", "二行目"],);
     }
 
     #[test]

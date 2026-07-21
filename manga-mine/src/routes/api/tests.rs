@@ -16,7 +16,8 @@ fn test_jpeg_bytes(width: u32, height: u32) -> Vec<u8> {
         *p = Rgb([180, 180, 180]);
     }
     let mut out = Vec::new();
-    img.write_with_encoder(JpegEncoder::new_with_quality(&mut out, 85)).unwrap();
+    img.write_with_encoder(JpegEncoder::new_with_quality(&mut out, 85))
+        .unwrap();
     out
 }
 
@@ -179,7 +180,11 @@ async fn ocr_crop_returns_tokenized_sentences() {
         .returning(|_| Box::pin(async { Ok("お前は強い。本当？".to_string()) }));
     let env = build_env(ocr, Arc::new(FakeAnkiExporter));
 
-    std::fs::write(env.inbox.path().join("panel.jpg"), test_jpeg_bytes(200, 200)).unwrap();
+    std::fs::write(
+        env.inbox.path().join("panel.jpg"),
+        test_jpeg_bytes(200, 200),
+    )
+    .unwrap();
 
     let response = env
         .server
@@ -244,7 +249,11 @@ async fn export_sends_card_with_compressed_image() {
         });
 
     let env = build_env(MockOcrEngine::new(), Arc::new(exporter));
-    std::fs::write(env.inbox.path().join("panel.jpg"), test_jpeg_bytes(2000, 1500)).unwrap();
+    std::fs::write(
+        env.inbox.path().join("panel.jpg"),
+        test_jpeg_bytes(2000, 1500),
+    )
+    .unwrap();
 
     let response = env
         .server
@@ -277,7 +286,11 @@ async fn export_uses_source_and_remembers_it() {
         });
 
     let env = build_env(MockOcrEngine::new(), Arc::new(exporter));
-    std::fs::write(env.inbox.path().join("panel.jpg"), test_jpeg_bytes(100, 100)).unwrap();
+    std::fs::write(
+        env.inbox.path().join("panel.jpg"),
+        test_jpeg_bytes(100, 100),
+    )
+    .unwrap();
 
     let response = env
         .server

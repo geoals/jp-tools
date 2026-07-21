@@ -39,21 +39,15 @@ impl Config {
     /// Load config from environment variables, falling back to defaults.
     pub fn from_env() -> Self {
         Self {
-            inbox_dir: env::var("JP_TOOLS_MANGA_INBOX")
-                .unwrap_or_else(|_| "manga-inbox".into()),
+            inbox_dir: env::var("JP_TOOLS_MANGA_INBOX").unwrap_or_else(|_| "manga-inbox".into()),
             listen_addr: env::var("JP_TOOLS_MANGA_LISTEN_ADDR")
                 .unwrap_or_else(|_| "0.0.0.0:3100".into()),
             anki_url: env::var("JP_TOOLS_ANKI_URL")
                 .unwrap_or_else(|_| "http://localhost:8765".into()),
-            media_dir: env::var("JP_TOOLS_MEDIA_DIR")
-                .unwrap_or_else(|_| "media".into()),
-            db_path: env::var("JP_TOOLS_DB_PATH")
-                .unwrap_or_else(|_| "yt-mine.db".into()),
+            media_dir: env::var("JP_TOOLS_MEDIA_DIR").unwrap_or_else(|_| "media".into()),
+            db_path: env::var("JP_TOOLS_DB_PATH").unwrap_or_else(|_| "yt-mine.db".into()),
             dictionary_paths: parse_dictionary_paths(),
-            fake_api: matches!(
-                env::var("JP_TOOLS_FAKE_API").as_deref(),
-                Ok("true" | "1"),
-            ),
+            fake_api: matches!(env::var("JP_TOOLS_FAKE_API").as_deref(), Ok("true" | "1"),),
             ocr_service_url: env::var("JP_TOOLS_OCR_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:8200".into()),
             sudachi_dict_path: env::var("JP_TOOLS_SUDACHI_DICT_PATH")

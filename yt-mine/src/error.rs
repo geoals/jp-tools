@@ -27,15 +27,24 @@ impl IntoResponse for AppError {
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             AppError::Database(e) => {
                 error!(error = %e, "database error");
-                (StatusCode::INTERNAL_SERVER_ERROR, "internal server error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal server error".to_string(),
+                )
             }
             AppError::Export(e) => {
                 error!(error = %e, "export error");
-                (StatusCode::INTERNAL_SERVER_ERROR, "export failed".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "export failed".to_string(),
+                )
             }
             AppError::Media(e) => {
                 error!(error = %e, "media error");
-                (StatusCode::INTERNAL_SERVER_ERROR, "media extraction failed".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "media extraction failed".to_string(),
+                )
             }
         };
 
