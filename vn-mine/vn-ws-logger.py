@@ -61,16 +61,70 @@ _COUNTED = (
 NOT_COUNTED = re.compile(f"[^{_COUNTED}]")
 
 # A hook pointed at the wrong address dumps whole memory regions instead of
-# dialogue: engine paths, UI strings, Shift-JIS-misread bytes. Those rows are
-# still written (the raw stream stays intact and this undoes), but flagged
-# discarded so no read path counts them — same flag the reader's clear button
-# sets. Length alone separates the two cleanly: real lines observed so far top
-# out around 90 chars, the garbage bursts start above 3000, and normalize()
-# truncates at 4000. Deliberately NOT filtering on control characters — VNs use
-# them as text markup (Subahibi puts \x05 at the head of narration lines and
-# \x04 mid-clause), so presence of them says nothing about whether a line is
-# real reading.
+# dialogue, and Dohna Dohna's script-layer hook fuses many lines into one
+# capture while skip is held. Either way a capture far longer than a real line
+# is not reading: it is dropped, not logged and not counted. The raw WS stream
+# is gone once dropped, but lines.log/the DB were never meant to be a verbatim
+# mirror of it. Real lines observed top out around 90 chars; the guard sits well
+# above that. Deliberately NOT filtering on control characters — VNs use them as
+# text markup (Subahibi puts \x05 at the head of narration lines and \x04
+# mid-clause), so presence of them says nothing about whether a line is real
+# reading.
 MAX_READING_CHARS = 500
+
+# Dohna Dohna (Alicesoft System 4.3), hook HS932#-C@289F60:main.bin, taps the
+# script-text layer before rendering, so one capture interleaves dialogue with
+# UI/animation directives. The two are self-labelling: the engine's own regexes
+# arrive verbatim in the stream ahead of the strings they process — a literal
+# ${...} markup-strip pattern heads each dialogue run, a literal [...]-section
+# pattern heads each block of menu/animation/widget junk (Section:…, [X:…],
+# Button\d…, enemy names). Split on those two literals and keep only what a
+# dialogue marker introduced. Captures from any other game carry neither literal
+# and pass through untouched.
+_DIALOG_MARK = r"\$\{[^\}]+\}"
+_UI_MARK = r"([^\[\]]+?)+|\[[^\]]+?\]"
+_SEGMENT = re.compile("(" + re.escape(_DIALOG_MARK) + "|" + re.escape(_UI_MARK) + ")")
+# Each fused line is headed by its 【speaker】 tag; holding skip fuses a crowd of
+# them into one capture. Normal reading tops out at ~4 tags per capture, a skip
+# burst runs 20+, so a tag count this high means skipping, not reading — drop it.
+# The tag is also stripped from what survives: the card wants the line, not who.
+_SPEAKER = re.compile(r"【[^】]*】")
+MAX_SPEAKER_TAGS = 5
+
+
+def clean_line(raw):
+    """Dialogue text to log for `raw`, or None to drop the capture.
+
+    For Dohna Dohna's script-layer captures this keeps only the dialogue runs,
+    strips the 【speaker】 tag, and drops skip-through captures (many lines fused
+    into one). Other games carry no markers and pass through unchanged. Either
+    way a capture longer than a real line, or with no Japanese left, is dropped.
+    """
+    parts = _SEGMENT.split(raw)
+    if len(parts) > 1:  # Dohna Dohna script-layer capture
+        runs, keep = [], False
+        for part in parts:
+            if part == _DIALOG_MARK:
+                keep = True
+            elif part == _UI_MARK:
+                keep = False
+            elif keep and part:
+                runs.append(part)
+        text = "".join(runs)
+        if len(_SPEAKER.findall(text)) >= MAX_SPEAKER_TAGS:
+            return None  # skip-through: a crowd of lines fused into one capture
+        text = _SPEAKER.sub("", text).strip()
+    else:
+        text = raw
+    # Textractor hands us already-decoded text, so a backslash never occurs in
+    # real dialogue. It does occur in Dohna Dohna's widget-registry dumps, which
+    # reach here marker-less (Button\dText2Button\dルートパーツ…) and would
+    # otherwise slip through on their stray katakana. One rule catches them all.
+    if "\\" in text:
+        return None
+    if len(text) > MAX_READING_CHARS or not JP.search(text):
+        return None
+    return text
 
 STATS_DB = os.environ.get("JP_TOOLS_STATS_DB_PATH") or os.path.expanduser(
     "~/.local/share/jp-stats/stats.db"
@@ -153,13 +207,13 @@ class StatsSink:
                 "SELECT value FROM settings WHERE key = 'current_work'"
             ).fetchone()
             work = row[0] if row and row[0] else None
-            discarded = len(text) > MAX_READING_CHARS
-            if discarded:
-                log(f"garbage hook: {len(text)} chars, flagged discarded")
+            # clean_line() already dropped UI, skip-through and runaway captures,
+            # so everything reaching here is real dialogue: insert not discarded.
+            # The discarded column stays for the reader's manual clear button.
             self.db.execute(
                 "INSERT INTO lines (ts, chars, text, source, work, discarded)"
-                " VALUES (?, ?, ?, 'vn', ?, ?)",
-                (ts, chars, text, work, int(discarded)),
+                " VALUES (?, ?, ?, 'vn', ?, 0)",
+                (ts, chars, text, work),
             )
             self.errors = 0
         except sqlite3.Error as e:
@@ -190,8 +244,8 @@ async def pump(out, stats, state):
             async for raw in msg:
                 if isinstance(raw, bytes):
                     raw = raw.decode("utf-8", "replace")
-                text = normalize(raw)
-                if not text or not JP.search(text):
+                text = clean_line(normalize(raw))
+                if not text:
                     continue
                 # A re-hook of the line still on screen (Textractor double-fire,
                 # focus change) must not move the anchor. Only the immediately
