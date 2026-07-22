@@ -24,8 +24,9 @@ fn now_ts() -> f64 {
 }
 
 /// Sorted proofs that the reader was at the keyboard over `[from, to)`:
-/// dictionary lookups and mined cards, with paused spans excluded the same way
-/// the lines are. `stats::Presence` credits gap time against these.
+/// dictionary lookups, mined cards, and deliberate #read actions (explain,
+/// mine, clear), with paused spans excluded the same way the lines are.
+/// `stats::Presence` credits gap time against these.
 async fn presence_marks(
     state: &AppState,
     pauses: &[stats::PauseInterval],
@@ -33,6 +34,7 @@ async fn presence_marks(
     to: f64,
 ) -> Result<Vec<f64>, AppError> {
     let lookups = db::fetch_lookup_events(&state.pool, from, to).await?;
+    let reader = db::fetch_reader_marks(&state.pool, from, to).await?;
     // Note ids are epoch milliseconds, so they double as card creation times.
     let cards: Vec<f64> = db::fetch_anki_note_ids(&state.pool)
         .await?
@@ -40,7 +42,7 @@ async fn presence_marks(
         .map(|id| *id as f64 / 1000.0)
         .filter(|ts| *ts >= from && *ts < to)
         .collect();
-    let mut marks = stats::presence_marks(&lookups, &cards);
+    let mut marks = stats::presence_marks(&lookups, &cards, &reader);
     marks.retain(|ts| !stats::is_paused(*ts, pauses));
     Ok(marks)
 }
@@ -160,6 +162,60 @@ async fn lookup_days(
     Ok(out)
 }
 
+/// The work that best represents each day's reading, so the trend charts can
+/// mark where reading moved from one VN to another and a speed step reads as a
+/// switch rather than a regression. Picks the *latest* work read that day that
+/// cleared a real share of the day's characters — latest-not-dominant so a
+/// mid-day switch onto a new VN still shows even while a heavier earlier work
+/// out-charactered it, and the share floor keeps a brief end-of-day peek at
+/// another VN from flipping the day. Manual sessions join in too — a day of
+/// physical-book reading names the book. Paused spans are dropped the same way
+/// the day totals drop them.
+async fn dominant_work_days(
+    state: &AppState,
+    settings: &Settings,
+    tz: i64,
+) -> Result<BTreeMap<NaiveDate, String>, AppError> {
+    // A work must account for at least this fraction of a day's characters to
+    // count as that day's reading rather than a passing glance at another VN.
+    const SHARE_FLOOR: f64 = 0.2;
+
+    let pauses = db::fetch_pauses(&state.pool).await?;
+    // Per day, each work's total chars and the latest timestamp it was read at.
+    let mut per_day: BTreeMap<NaiveDate, BTreeMap<String, (i64, f64)>> = BTreeMap::new();
+    let mut tally = |work: Option<String>, ts: f64, chars: i64| {
+        if let Some(work) = work.filter(|w| !w.is_empty()) {
+            let day = stats::date_key(ts, settings.day_rollover_hour, tz);
+            let e = per_day.entry(day).or_default().entry(work).or_default();
+            e.0 += chars;
+            e.1 = e.1.max(ts);
+        }
+    };
+    for l in db::fetch_work_lines(&state.pool).await? {
+        if !stats::is_paused(l.ts, &pauses) {
+            tally(l.work, l.ts, l.chars);
+        }
+    }
+    for s in db::fetch_sessions(&state.pool, 0.0, f64::MAX).await? {
+        tally(s.work, s.start_ts, s.chars);
+    }
+    Ok(per_day
+        .into_iter()
+        .filter_map(|(day, works)| {
+            let total: i64 = works.values().map(|(chars, _)| *chars).sum();
+            let floor = total as f64 * SHARE_FLOOR;
+            works
+                .iter()
+                .filter(|(_, (chars, _))| *chars as f64 >= floor)
+                .max_by(|(_, (_, a)), (_, (_, b))| a.total_cmp(b))
+                // Fall back to the day's heaviest work if a busy day split every
+                // work below the floor.
+                .or_else(|| works.iter().max_by_key(|(_, (chars, _))| *chars))
+                .map(|(work, _)| (day, work.clone()))
+        })
+        .collect())
+}
+
 /// Lookups per 1000 characters — the unknown-word rate, and the number that
 /// says whether a work sits at the comprehension edge. None below a floor of
 /// chars, where the ratio is dominated by noise.
@@ -217,6 +273,13 @@ pub struct DaysParams {
     days: Option<i64>,
 }
 
+#[derive(Deserialize)]
+pub struct DialogueParams {
+    days: Option<i64>,
+    /// Scope the split to one work's lines. Absent/empty = all works pooled.
+    work: Option<String>,
+}
+
 pub async fn days(
     State(state): State<AppState>,
     Query(params): Query<DaysParams>,
@@ -229,6 +292,7 @@ pub async fn days(
     let (vn, manual) = day_maps(&state, &settings, tz).await?;
     let lookups = lookup_days(&state, &settings, tz).await?;
     let focus = focus_days(&state, &settings, tz).await?;
+    let work_days = dominant_work_days(&state, &settings, tz).await?;
     let note_ids = db::fetch_anki_note_ids(&state.pool).await?;
 
     // Zero-filled, oldest → newest, so charts never have to infer missing days.
@@ -249,6 +313,7 @@ pub async fn days(
             "lookups_per_1k": lookup_rate(l, v.chars + m.chars),
             "cards": cards_in_window(&note_ids, day_start, day_start + 86400.0),
             "focus": focus_json(&focus.get(&date).copied().unwrap_or_default()),
+            "work": work_days.get(&date),
         }));
     }
     Ok(Json(json!(out)))
@@ -275,16 +340,32 @@ fn side_json(s: &stats::Side) -> Value {
 /// tracks what the reading actually consisted of, which swings with the scene.
 pub async fn dialogue_summary(
     State(state): State<AppState>,
-    Query(params): Query<DaysParams>,
+    Query(params): Query<DialogueParams>,
 ) -> Result<Json<Value>, AppError> {
     let n = params.days.unwrap_or(30).clamp(1, 3650);
+    let want_work = params
+        .work
+        .as_deref()
+        .map(str::trim)
+        .filter(|w| !w.is_empty());
     let settings = db::load_settings(&state.pool).await?;
     let tz = tz_offset_secs();
     let today = stats::date_key(now_ts(), settings.day_rollover_hour, tz);
 
     let pauses = db::fetch_pauses(&state.pool).await?;
-    let mut lines = db::fetch_line_events(&state.pool, 0.0, f64::MAX).await?;
-    lines.retain(|l| !stats::is_paused(l.ts, &pauses));
+    // Scoping to one VN filters the line stream to its lines before the split
+    // is aggregated. Realistic interleaving is session-level or coarser, so the
+    // gaps that bridge two of this work's lines across an interlude in another
+    // exceed session_gap_secs and are dropped — the same per-work handling the
+    // rest of the app relies on. (Line-by-line alternation inside one sitting
+    // would leak, but nobody reads two VNs that way.) Lookups outside this
+    // work's credited gaps fall out for free.
+    let mut classified = db::fetch_classified_lines(&state.pool, 0.0, f64::MAX).await?;
+    classified.retain(|c| !stats::is_paused(c.event.ts, &pauses));
+    if let Some(w) = want_work {
+        classified.retain(|c| c.work.as_deref() == Some(w));
+    }
+    let lines: Vec<stats::LineEvent> = classified.iter().map(|c| c.event).collect();
     let mut lookups = db::fetch_lookup_events(&state.pool, 0.0, f64::MAX).await?;
     lookups.retain(|ts| !stats::is_paused(*ts, &pauses));
     let marks = presence_marks(&state, &pauses, 0.0, f64::MAX).await?;
@@ -605,6 +686,7 @@ fn meta_json(m: &db::Work) -> Value {
         "cover": m.cover_path.as_ref().map(|p| format!("/covers/{p}")),
         "status": m.status,
         "queue_pos": m.queue_pos,
+        "vn_window": m.vn_window,
     })
 }
 
@@ -619,6 +701,9 @@ pub struct WorkMetaReq {
     pub total_chars: Option<i64>,
     pub status: Option<String>,
     pub queue_pos: Option<i64>,
+    /// Substring of the VN's window title for screenshot capture. Empty
+    /// string clears it (fall back to the focused window).
+    pub vn_window: Option<String>,
 }
 
 /// Apply the optional fields of a metadata request to an existing work row,
@@ -666,6 +751,10 @@ async fn apply_work_meta(state: &AppState, id: i64, req: &WorkMetaReq) -> Result
     }
     if let Some(pos) = req.queue_pos {
         db::set_work_queue_pos(&state.pool, id, (pos >= 0).then_some(pos)).await?;
+    }
+    if let Some(win) = &req.vn_window {
+        let win = win.trim();
+        db::set_work_vn_window(&state.pool, id, (!win.is_empty()).then_some(win)).await?;
     }
     Ok(())
 }
