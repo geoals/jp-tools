@@ -45,7 +45,10 @@ impl Config {
             anki_url: env::var("JP_TOOLS_ANKI_URL")
                 .unwrap_or_else(|_| "http://localhost:8765".into()),
             media_dir: env::var("JP_TOOLS_MEDIA_DIR").unwrap_or_else(|_| "media".into()),
-            db_path: env::var("JP_TOOLS_DB_PATH").unwrap_or_else(|_| "yt-mine.db".into()),
+            db_path: env::var("JP_TOOLS_DB_PATH").unwrap_or_else(|_| {
+                let home = env::var("HOME").expect("HOME not set");
+                format!("{home}/.local/share/jp-tools/yt-mine.db")
+            }),
             dictionary_paths: parse_dictionary_paths(),
             fake_api: matches!(env::var("JP_TOOLS_FAKE_API").as_deref(), Ok("true" | "1"),),
             ocr_service_url: env::var("JP_TOOLS_OCR_SERVICE_URL")

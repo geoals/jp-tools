@@ -20,8 +20,9 @@ jp-core tokenization → target word tap → dictionary lookup → Anki export (
 - Remembered manga titles (the card's Document/source field) live in
   `<inbox>/.sources.json`, most-recent-first; `GET /api/sources` serves them
   and the UI preselects the latest.
-- The dictionary cache SQLite DB (`JP_TOOLS_DB_PATH`, default `yt-mine.db`) is
-  shared with yt-mine; manga-mine only reads/imports dictionaries there.
+- The dictionary cache SQLite DB (`JP_TOOLS_DB_PATH`, default
+  `~/.local/share/jp-tools/yt-mine.db`) is shared with yt-mine; manga-mine only
+  reads/imports dictionaries there.
 
 ## Project structure
 

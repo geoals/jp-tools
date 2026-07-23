@@ -39,7 +39,7 @@ SHOT_NOTE=""
 # window. The window is a column on the current work; the old global `vn_window`
 # setting is a legacy fallback for DBs that predate per-work windows. Read-only:
 # the logger writes to this DB concurrently.
-STATS_DB="${JP_TOOLS_STATS_DB_PATH:-$HOME/.local/share/jp-stats/stats.db}"
+STATS_DB="${JP_TOOLS_STATS_DB_PATH:-$HOME/.local/share/jp-tools/read-stats.db}"
 if [ -z "$VN_WINDOW" ] && command -v sqlite3 &>/dev/null && [ -f "$STATS_DB" ]; then
   VN_WINDOW=$(sqlite3 -readonly "$STATS_DB" \
     "SELECT w.vn_window FROM works w

@@ -17,7 +17,7 @@ derived without any manual tracking. Stats failures never block mining.
 Env:
   VN_RUNDIR               run dir (default: $XDG_RUNTIME_DIR/vn-mine or /run/user/$UID/...)
   VN_WS_URL               WebSocket URL (default: ws://localhost:6677)
-  JP_TOOLS_STATS_DB_PATH  read-stats DB (default: ~/.local/share/jp-stats/stats.db)
+  JP_TOOLS_STATS_DB_PATH  read-stats DB (default: ~/.local/share/jp-tools/read-stats.db)
   JP_TOOLS_STATS_DISABLE  set to 1 to skip the stats sink entirely
 """
 import asyncio
@@ -127,7 +127,7 @@ def clean_line(raw):
     return text
 
 STATS_DB = os.environ.get("JP_TOOLS_STATS_DB_PATH") or os.path.expanduser(
-    "~/.local/share/jp-stats/stats.db"
+    "~/.local/share/jp-tools/read-stats.db"
 )
 
 # Keep in sync with read-stats/migrations/001_create_stats_tables.sql —

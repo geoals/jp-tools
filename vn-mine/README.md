@@ -20,7 +20,7 @@ silero-VAD finds where the speech ends.
   (`ws://localhost:6677`, override with `VN_WS_URL`) and appends each hooked
   Japanese line to `lines.log` with a timestamp. Auto-reconnects if Textractor
   restarts. Also inserts each line into the read-stats DB
-  (`~/.local/share/jp-stats/stats.db`) so reading time/chars are tracked
+  (`~/.local/share/jp-tools/read-stats.db`) so reading time/chars are tracked
   automatically — best-effort, never blocks mining; disable with
   `JP_TOOLS_STATS_DISABLE=1`.
 - `vn-capture.sh` — bind to a hotkey. Screenshots the active window, cuts

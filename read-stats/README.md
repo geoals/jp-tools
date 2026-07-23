@@ -13,7 +13,7 @@ narration* card that splits the reading on 「」.
 
 - **Ingestion is passive.** `vn-ws-logger.py` (running under the `vn-buffer`
   systemd unit) inserts every hooked line — timestamp, char count, text — into
-  `~/.local/share/jp-stats/stats.db`. The web service only reads that DB, so
+  `~/.local/share/jp-tools/read-stats.db`. The web service only reads that DB, so
   stats are captured whenever you read, whether or not the dashboard is
   running.
 - **Characters are counted like texthooker-ui does** (`charcount.rs`, mirrored
@@ -297,7 +297,7 @@ be the field named in `JP_TOOLS_ANKI_FIELD_VOCAB` (`VocabKanji`) for the term to
 be recorded. To confirm it's working, do a lookup and:
 
 ```sh
-sqlite3 ~/.local/share/jp-stats/stats.db 'SELECT ts, term, work FROM lookups ORDER BY id DESC LIMIT 5;'
+sqlite3 ~/.local/share/jp-tools/read-stats.db 'SELECT ts, term, work FROM lookups ORDER BY id DESC LIMIT 5;'
 ```
 
 An empty table with popups appearing means the request shape wasn't recognized —
@@ -532,7 +532,7 @@ curl -X POST localhost:3200/api/sessions -H 'Content-Type: application/json' \
 
 ## Config
 
-- `JP_TOOLS_STATS_DB_PATH` (default `~/.local/share/jp-stats/stats.db`) — must
+- `JP_TOOLS_STATS_DB_PATH` (default `~/.local/share/jp-tools/read-stats.db`) — must
   match what `vn-ws-logger.py` uses (same env var).
 - `JP_TOOLS_STATS_LISTEN_ADDR` (default `0.0.0.0:3200`)
 - `JP_TOOLS_ANKI_URL` (default `http://localhost:8765`) — fallback AnkiConnect

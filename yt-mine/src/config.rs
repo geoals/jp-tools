@@ -32,7 +32,10 @@ impl Config {
     /// Load config from environment variables, falling back to defaults.
     pub fn from_env() -> Self {
         Self {
-            db_path: env::var("JP_TOOLS_DB_PATH").unwrap_or_else(|_| "yt-mine.db".into()),
+            db_path: env::var("JP_TOOLS_DB_PATH").unwrap_or_else(|_| {
+                let home = env::var("HOME").expect("HOME not set");
+                format!("{home}/.local/share/jp-tools/yt-mine.db")
+            }),
             audio_dir: env::var("JP_TOOLS_AUDIO_DIR").unwrap_or_else(|_| "audio".into()),
             listen_addr: env::var("JP_TOOLS_LISTEN_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".into()),
             anki_url: env::var("JP_TOOLS_ANKI_URL")
