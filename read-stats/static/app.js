@@ -51,11 +51,36 @@ function paceCharsPerDay(days, settings) {
   };
 }
 
+/** Mean active *hours* per calendar day over the same trailing window
+ *  `paceCharsPerDay` uses, zero days included. This is a property of the
+ *  reader — how much time you sit down for — not of any one VN, so a finish
+ *  estimate multiplies it by the current work's own speed rather than by a
+ *  cross-work chars/day that a faster previous VN inflated. */
+function dailyActiveHours(days, settings) {
+  let win = days.slice(-8, -1);
+  if (settings.pace_start_date) {
+    win = win.filter((d) => d.date >= settings.pace_start_date);
+  }
+  if (!win.length) win = days.slice(-1);
+  if (!win.length) return 0;
+  return win.reduce((a, d) => a + d.active_secs, 0) / 3600 / win.length;
+}
+
 function fmtFinishDate(daysLeft) {
   const d = new Date(Date.now() + daysLeft * 86_400_000);
   const opts = { month: "short", day: "numeric" };
   if (d.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
   return `≈ ${d.toLocaleDateString("en", opts)}`;
+}
+
+/** An ISO date the backend stamped (first_read / last_read), as "Jul 31". */
+function fmtDateStr(iso) {
+  if (!iso) return null;
+  const d = new Date(`${iso}T00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  const opts = { month: "short", day: "numeric" };
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
+  return d.toLocaleDateString("en", opts);
 }
 
 function TodayCard({ summary }) {
@@ -82,12 +107,14 @@ function TodayCard({ summary }) {
       <div class="hero-row">
         <span class="hero">${fmtMins(today.active_secs)}</span>
         <span class="hero-sub">
-          ${mins >= goal.target_mins
-            ? html`<span class="goal-met">target met</span>`
-            : mins >= goal.floor_mins
-              ? html`<span class="goal-met">floor met</span> ·
-                  ${Math.ceil(goal.target_mins - mins)} min to target`
-              : `${Math.ceil(goal.floor_mins - mins)} min to floor`}
+          ${
+            mins >= goal.target_mins
+              ? html`<span class="goal-met">target met</span>`
+              : mins >= goal.floor_mins
+                ? html`<span class="goal-met">floor met</span> ·
+                    ${Math.ceil(goal.target_mins - mins)} min to target`
+                : `${Math.ceil(goal.floor_mins - mins)} min to floor`
+          }
         </span>
       </div>
       <${GoalMeter}
@@ -124,11 +151,14 @@ function TodayCard({ summary }) {
         <div class="tile">
           <div class="label">focus</div>
           <div class="value">
-            ${today.focus.ratio !== null
-              ? `${Math.round(today.focus.ratio * 100)}%`
-              : "—"}
-            ${bestStretch &&
-            html`<span class="value-sub">${bestStretch}</span>`}
+            ${
+              today.focus.ratio !== null
+                ? `${Math.round(today.focus.ratio * 100)}%`
+                : "—"
+            }
+            ${
+              bestStretch && html`<span class="value-sub">${bestStretch}</span>`
+            }
           </div>
         </div>
       </div>
@@ -234,9 +264,11 @@ function WeekTiles({ days }) {
         <div class="tile">
           <div class="label">avg speed</div>
           <div class="value">
-            ${secs >= 600
-              ? `${fmtChars(Math.round(chars / (secs / 3600)))}/h`
-              : "—"}
+            ${
+              secs >= 600
+                ? `${fmtChars(Math.round(chars / (secs / 3600)))}/h`
+                : "—"
+            }
           </div>
         </div>
       </div>
@@ -244,12 +276,19 @@ function WeekTiles({ days }) {
   `;
 }
 
+/** This work's own reading speed in chars/hour, or null below a 10-minute
+ *  floor where the denominator is noise. This is the number that halves when
+ *  you switch to a harder VN — kept per-work so nothing averages it against
+ *  another title. */
+function workSpeedPerHour(w) {
+  return w.active_secs >= 600 ? w.chars / (w.active_secs / 3600) : null;
+}
+
 /** Progress numbers for one work; needs a jpdb total_chars to say anything. */
 function workProgress(w, days, settings) {
   const total = w?.meta?.total_chars;
   if (!total) return null;
-  const workSpeed =
-    w.active_secs >= 600 ? w.chars / (w.active_secs / 3600) : null;
+  const workSpeed = workSpeedPerHour(w);
   const remaining = Math.max(0, total - w.chars);
   const { pace, days: paceDays, partial } = paceCharsPerDay(days, settings);
   const window = partial
@@ -258,17 +297,44 @@ function workProgress(w, days, settings) {
   const cutoff = settings.pace_start_date
     ? ` Days before ${settings.pace_start_date} are excluded.`
     : "";
+
+  // Finish estimate, decomposed. How many hours a day you read is a property of
+  // you and holds across VNs; how fast you read is a property of *this* VN and
+  // does not. So project with (this work's speed × your daily hours) rather
+  // than a cross-work chars/day, which would let a faster previous VN pull a
+  // harder current one's date earlier than it should. Falls back to the old
+  // cross-work pace until the work has 10 minutes of its own to measure speed.
+  const dailyHours = dailyActiveHours(days, settings);
+  const workCharsPerDay =
+    workSpeed !== null && dailyHours > 0 ? workSpeed * dailyHours : null;
+  const finishPace = workCharsPerDay ?? (pace > 0 ? pace : null);
+  const finishHint =
+    finishPace !== null && remaining > 0
+      ? workCharsPerDay !== null
+        ? `${fmtChars(remaining)} chars left ÷ ${fmtChars(Math.round(workCharsPerDay))} chars/day — ` +
+          `this work's own ${fmtChars(Math.round(workSpeed))}/h × ${dailyHours.toFixed(1)} h/day, ` +
+          `your average over ${window} (zero days counted).${cutoff}`
+        : `${fmtChars(remaining)} chars left ÷ ${fmtChars(Math.round(pace))} chars/day, ` +
+          `your cross-work average over ${window} — this work has under 10 minutes of its own to gauge speed.${cutoff}`
+      : null;
+
+  // A finished work reports its real dates rather than a projection: the
+  // estimate is meaningless once there's nothing left to read.
+  const done = w?.meta?.status === "finished";
   return {
     pct: Math.min(100, (w.chars / total) * 100),
     caption: `${fmtChars(w.chars)} / ${fmtChars(total)} chars`,
     remaining,
+    speed: workSpeed,
     hoursLeft: workSpeed ? remaining / workSpeed : null,
-    finish: pace > 0 && remaining > 0 ? fmtFinishDate(remaining / pace) : null,
-    finishHint:
-      pace > 0 && remaining > 0
-        ? `${fmtChars(remaining)} chars left ÷ ${fmtChars(Math.round(pace))} chars/day, ` +
-          `your average across all works over ${window} (zero days counted).${cutoff}`
+    finish:
+      finishPace !== null && remaining > 0
+        ? fmtFinishDate(remaining / finishPace)
         : null,
+    finishHint,
+    done,
+    started: fmtDateStr(w.first_read),
+    finished: done ? fmtDateStr(w.last_read) : null,
   };
 }
 
@@ -324,16 +390,18 @@ function WorkMetaForm({ work, onSaved, onCancel }) {
 
   return html`
     <form class="log work-meta-form" onSubmit=${save}>
-      ${id === null &&
-      html`<div>
-        <label>title *</label
-        ><input
-          name="title"
-          type="text"
-          required
-          placeholder="アイヨクノエウスティア"
-        />
-      </div>`}
+      ${
+        id === null &&
+        html`<div>
+          <label>title *</label
+          ><input
+            name="title"
+            type="text"
+            required
+            placeholder="アイヨクノエウスティア"
+          />
+        </div>`
+      }
       <div>
         <label>total characters</label
         ><input
@@ -353,7 +421,10 @@ function WorkMetaForm({ work, onSaved, onCancel }) {
         <select name="status">
           ${WORK_STATUSES.map(
             (s) =>
-              html`<option value=${s} selected=${(work?.meta?.status ?? "reading") === s}>
+              html`<option
+                value=${s}
+                selected=${(work?.meta?.status ?? "reading") === s}
+              >
                 ${s}
               </option>`,
           )}
@@ -361,14 +432,18 @@ function WorkMetaForm({ work, onSaved, onCancel }) {
       </div>
       <div class="actions">
         <button type="submit" disabled=${busy}>${busy ? "…" : "save"}</button>
-        ${onCancel &&
-        html`<button type="button" class="ghost" onClick=${onCancel}>
-          cancel
-        </button>`}
-        ${msg &&
-        html`<span class="form-msg ${msg.ok ? "ok" : "error"}"
-          >${msg.text}</span
-        >`}
+        ${
+          onCancel &&
+          html`<button type="button" class="ghost" onClick=${onCancel}>
+            cancel
+          </button>`
+        }
+        ${
+          msg &&
+          html`<span class="form-msg ${msg.ok ? "ok" : "error"}"
+            >${msg.text}</span
+          >`
+        }
       </div>
     </form>
   `;
@@ -398,10 +473,11 @@ function CurrentReading({ works, settings, days, onSaved }) {
   const unmatched = title && !current;
 
   async function pick(e) {
-    e.preventDefault();
+    const next = e.currentTarget.value;
+    if (!next || next === title) return;
     setBusy(true);
     try {
-      await setCurrentWork(e.currentTarget.work.value.trim());
+      await setCurrentWork(next);
       onSaved();
     } catch (err) {
       alert(err.message);
@@ -412,9 +488,12 @@ function CurrentReading({ works, settings, days, onSaved }) {
 
   async function saveWindow(e) {
     e.preventDefault();
+    if (!meta?.id) return;
     setWinBusy(true);
     try {
-      await api("/api/settings", {
+      // Per-work now, so the capture target switches with the VN. Requires the
+      // work to have a metadata row, which the current one always does.
+      await api(`/api/works/${meta.id}`, {
         method: "PUT",
         body: { vn_window: e.currentTarget.vnwindow.value.trim() },
       });
@@ -430,139 +509,207 @@ function CurrentReading({ works, settings, days, onSaved }) {
     <div class="card">
       <div class="card-head">
         <h2>Currently reading</h2>
-        ${current &&
-        html`<button class="ghost" onClick=${() => setEditing((v) => !v)}>
-          ${editing ? "close" : "edit"}
-        </button>`}
+        ${
+          current &&
+          html`<button class="ghost" onClick=${() => setEditing((v) => !v)}>
+            ${editing ? "close" : "edit"}
+          </button>`
+        }
       </div>
-      ${current &&
-      prog &&
-      html`
-        <div class="current-work">
-          ${meta.cover &&
-          html`<img class="cover" src=${meta.cover} alt="cover" />`}
-          <div class="info">
-            <div class="title">${current.work}</div>
-            <${ProgressBar}
-              pct=${prog.pct}
-              label="Progress through ${current.work}"
-            />
-            <div class="progress-caption">
-              <span>${prog.caption}</span>
-              <span>${prog.pct.toFixed(1)}%</span>
-            </div>
-            <div class="tile-row">
-              ${prog.remaining !== null &&
-              html`
-                <div class="tile">
-                  <div class="label">remaining</div>
-                  <div class="value">${fmtChars(prog.remaining)}</div>
-                </div>
-              `}
-              <div class="tile">
-                <div class="label">time left</div>
-                <div class="value">
-                  ${prog.hoursLeft !== null
-                    ? `${prog.hoursLeft < 10 ? prog.hoursLeft.toFixed(1) : Math.round(prog.hoursLeft)} h`
-                    : "—"}
-                </div>
+      ${
+        current &&
+        prog &&
+        html`
+          <div class="current-work">
+            ${
+              meta.cover &&
+              html`<img class="cover" src=${meta.cover} alt="cover" />`
+            }
+            <div class="info">
+              <div class="title">${current.work}</div>
+              <${ProgressBar}
+                pct=${prog.pct}
+                label="Progress through ${current.work}"
+              />
+              <div class="progress-caption">
+                <span>${prog.caption}</span>
+                <span>${prog.pct.toFixed(1)}%</span>
               </div>
-              <div
-                class=${prog.finishHint ? "tile has-hint" : "tile"}
-                title=${prog.finishHint ??
-                "No estimate: needs both a remaining count and a non-zero recent pace."}
-              >
-                <div class="label">finish</div>
-                <div class="value">${prog.finish ?? "—"}</div>
+              <div class="tile-row">
+                ${
+                  prog.started &&
+                  html`
+                    <div class="tile">
+                      <div class="label">started</div>
+                      <div class="value">${prog.started}</div>
+                    </div>
+                  `
+                }
+                ${
+                  prog.done
+                    ? html`
+                        <div class="tile">
+                          <div class="label">finished</div>
+                          <div class="value">${prog.finished ?? "—"}</div>
+                        </div>
+                      `
+                    : html`
+                        ${
+                          prog.remaining !== null &&
+                          html`
+                            <div class="tile">
+                              <div class="label">remaining</div>
+                              <div class="value">
+                                ${fmtChars(prog.remaining)}
+                              </div>
+                            </div>
+                          `
+                        }
+                        <div class="tile">
+                          <div class="label">time left</div>
+                          <div class="value">
+                            ${
+                              prog.hoursLeft !== null
+                                ? `${prog.hoursLeft < 10 ? prog.hoursLeft.toFixed(1) : Math.round(prog.hoursLeft)} h`
+                                : "—"
+                            }
+                          </div>
+                        </div>
+                        <div
+                          class=${prog.finishHint ? "tile has-hint" : "tile"}
+                          title=${
+                            prog.finishHint ??
+                            "No estimate: needs both a remaining count and a non-zero recent pace."
+                          }
+                        >
+                          <div class="label">finish</div>
+                          <div class="value">${prog.finish ?? "—"}</div>
+                        </div>
+                      `
+                }
+                ${
+                  prog.speed !== null &&
+                  html`
+                    <div
+                      class="tile has-hint"
+                      title="This VN's own reading speed, over all your time in it. Kept separate from other works, so switching to a harder VN shows the real drop here instead of blending into a cross-work average."
+                    >
+                      <div class="label">speed</div>
+                      <div class="value">
+                        ${fmtChars(Math.round(prog.speed))}/h
+                      </div>
+                    </div>
+                  `
+                }
               </div>
             </div>
           </div>
-        </div>
-      `}
-      ${current &&
-      !prog &&
-      html`
-        <div class="current-work">
-          <div class="info">
-            <div class="title">${current.work}</div>
-            <div class="meta-hint">
-              ${fmtChars(current.chars)} read so far. No total length set — add
-              the jpdb character count with <strong>edit</strong> to get
-              progress, hours left and a finish date.
+        `
+      }
+      ${
+        current &&
+        !prog &&
+        html`
+          <div class="current-work">
+            <div class="info">
+              <div class="title">${current.work}</div>
+              <div class="meta-hint">
+                ${fmtChars(current.chars)} read so far. No total length set —
+                add the jpdb character count with <strong>edit</strong> to get
+                progress, hours left and a finish date.
+              </div>
             </div>
           </div>
-        </div>
-      `}
-      ${unmatched &&
-      html`
-        <div class="meta-hint">
-          Nothing tracked for <strong>${title}</strong> yet. If you have been
-          reading it, the title here has to match the one your tracker stamps
-          on lines exactly — pick from the list below instead of typing it.
-        </div>
-      `}
-      ${!title &&
-      html`<div class="meta-hint">
-        No work selected. Pick one below, or set one from the Library.
-      </div>`}
-      ${editing &&
-      html`<${WorkMetaForm}
-        work=${current}
-        onSaved=${onSaved}
-        onCancel=${() => setEditing(false)}
-      />`}
-      <form class="now-reading" onSubmit=${pick}>
+        `
+      }
+      ${
+        unmatched &&
+        html`
+          <div class="meta-hint">
+            Nothing tracked for <strong>${title}</strong> yet. If you have been
+            reading it, the title here has to match the one your tracker stamps
+            on lines exactly — pick from the list below instead of typing it.
+          </div>
+        `
+      }
+      ${
+        !title &&
+        html`<div class="meta-hint">
+          No work selected. Pick one below, or set one from the Library.
+        </div>`
+      }
+      <div class="now-reading">
         <label for="now-reading-input">Switch to</label>
         <div class="now-reading-row">
-          <input
+          <select
             id="now-reading-input"
             name="work"
-            type="text"
-            list="known-works"
-            value=${title}
-            placeholder="pick a work, or type a new title"
-          />
-          <datalist id="known-works">
-            ${works.map((w) => html`<option value=${w.work}></option>`)}
-          </datalist>
-          <button type="submit" disabled=${busy}>${busy ? "…" : "set"}</button>
+            disabled=${busy}
+            onChange=${pick}
+          >
+            ${
+              !title &&
+              html`<option value="" selected disabled>pick a work…</option>`
+            }
+            ${
+              unmatched &&
+              html`<option value=${title} selected>${title}</option>`
+            }
+            ${works.map(
+              (w) =>
+                html`<option value=${w.work} selected=${w.work === title}>
+                  ${w.work}
+                </option>`,
+            )}
+          </select>
         </div>
-      </form>
-      <form class="now-reading" onSubmit=${saveWindow}>
-        <label for="vn-window-input">VN window</label>
-        <div class="now-reading-row">
-          <input
-            id="vn-window-input"
-            name="vnwindow"
-            type="text"
-            list="open-windows"
-            value=${settings.vn_window}
-            placeholder="pick the VN's window"
+      </div>
+      ${
+        editing &&
+        html`
+          <${WorkMetaForm}
+            work=${current}
+            onSaved=${onSaved}
+            onCancel=${() => setEditing(false)}
           />
-          <datalist id="open-windows">
-            ${windows.map((w) => html`<option value=${w}></option>`)}
-          </datalist>
-          <button type="submit" disabled=${winBusy}>
-            ${winBusy ? "…" : "set"}
-          </button>
-        </div>
-        <div class="meta-hint">${vnWindowHint(settings, windows)}</div>
-      </form>
+          <form class="now-reading" onSubmit=${saveWindow}>
+            <label for="vn-window-input">VN window</label>
+            <div class="now-reading-row">
+              <input
+                id="vn-window-input"
+                name="vnwindow"
+                type="text"
+                list="open-windows"
+                value=${meta?.vn_window ?? ""}
+                placeholder="pick the VN's window"
+              />
+              <datalist id="open-windows">
+                ${windows.map((w) => html`<option value=${w}></option>`)}
+              </datalist>
+              <button type="submit" disabled=${winBusy}>
+                ${winBusy ? "…" : "set"}
+              </button>
+            </div>
+            <div class="meta-hint">${vnWindowHint(meta, windows)}</div>
+          </form>
+        `
+      }
     </div>
   `;
 }
 
 /** Why this box exists, and whether what's in it currently matches a real
- *  window — a stale title still mines, it just screenshots the wrong thing. */
-function vnWindowHint(settings, windows) {
-  const set = settings.vn_window;
+ *  window — a stale title still mines, it just screenshots the wrong thing.
+ *  The window is a property of the current work, so it travels with the VN. */
+function vnWindowHint(meta, windows) {
+  const set = meta?.vn_window;
   if (!set) {
-    return "Not set — the mine button screenshots whatever has focus, which is the browser when you mine from this machine. Pick the VN's window above.";
+    return "Not set for this VN — the mine button screenshots whatever has focus, which is the browser when you mine from this machine. Pick this VN's window above.";
   }
   const matches = windows.some((w) => w.includes(set));
   return matches
-    ? `Screenshots match "${set}". Update it when you switch VNs.`
-    : `No open window matches "${set}" — captures will fall back to the focused window. Re-pick it if you have switched VNs.`;
+    ? `Screenshots this VN match "${set}". It's tied to this work, so switching VNs switches it.`
+    : `No open window matches "${set}" — captures will fall back to the focused window. Re-pick it if this VN isn't running.`;
 }
 
 /** The library is where works are managed: switch the current one, edit
@@ -591,84 +738,110 @@ function WorksTable({ works, settings, onSaved }) {
           ${adding ? "close" : "add work"}
         </button>
       </div>
-      ${adding &&
-      html`<${WorkMetaForm}
-        work=${null}
-        onSaved=${() => {
-          setAdding(false);
-          onSaved();
-        }}
-        onCancel=${() => setAdding(false)}
-      />`}
-      ${works.length === 0
-        ? html`<div class="meta-hint">
-            No works yet — add one above, or just start reading and the tracker
-            will stamp lines with a title.
-          </div>`
-        : html`<table class="days">
-            <thead>
-              <tr>
-                <th>title</th>
-                <th>time</th>
-                <th>chars</th>
-                <th>progress</th>
-                <th>last read</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              ${works.slice(0, 10).map((w) => {
-                const isCurrent = w.work === settings.current_work;
-                return html`
-                  <tr class=${isCurrent ? "row-current" : ""}>
-                    <td class="work-name">
-                      ${w.work ?? "(unlabeled)"}
-                      ${isCurrent && html`<span class="status-tag">current</span>`}
-                      ${w.meta &&
-                      w.meta.status !== "reading" &&
-                      html`<span class="status-tag">${w.meta.status}</span>`}
-                    </td>
-                    <td>${w.active_secs > 0 ? fmtMins(w.active_secs) : "—"}</td>
-                    <td>${w.chars > 0 ? w.chars.toLocaleString("en") : "—"}</td>
-                    <td>
-                      ${w.meta?.total_chars
-                        ? `${Math.min(100, (w.chars / w.meta.total_chars) * 100).toFixed(0)}%`
-                        : "—"}
-                    </td>
-                    <td>${w.last_read ?? "—"}</td>
-                    <td class="row-actions">
-                      ${!isCurrent &&
-                      w.work &&
-                      html`<button
-                        class="ghost"
-                        onClick=${() => makeCurrent(w.work)}
-                      >
-                        read
-                      </button>`}
-                      ${w.meta &&
-                      html`<button
-                        class="ghost"
-                        onClick=${() =>
-                          setEditing(editing === w.work ? null : w.work)}
-                      >
-                        ${editing === w.work ? "close" : "edit"}
-                      </button>`}
-                    </td>
-                  </tr>
-                  ${editing === w.work &&
-                  html`<tr>
-                    <td colspan="6" class="work-editor-cell">
-                      <${WorkMetaForm}
-                        work=${w}
-                        onSaved=${onSaved}
-                        onCancel=${() => setEditing(null)}
-                      />
-                    </td>
-                  </tr>`}
-                `;
-              })}
-            </tbody>
-          </table>`}
+      ${
+        adding &&
+        html`<${WorkMetaForm}
+          work=${null}
+          onSaved=${() => {
+            setAdding(false);
+            onSaved();
+          }}
+          onCancel=${() => setAdding(false)}
+        />`
+      }
+      ${
+        works.length === 0
+          ? html`<div class="meta-hint">
+              No works yet — add one above, or just start reading and the
+              tracker will stamp lines with a title.
+            </div>`
+          : html`<table class="days">
+              <thead>
+                <tr>
+                  <th>title</th>
+                  <th>time</th>
+                  <th>chars</th>
+                  <th>speed</th>
+                  <th>progress</th>
+                  <th>last read</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${works.slice(0, 10).map((w) => {
+                  const isCurrent = w.work === settings.current_work;
+                  return html`
+                    <tr class=${isCurrent ? "row-current" : ""}>
+                      <td class="work-name">
+                        ${w.work ?? "(unlabeled)"}
+                        ${isCurrent && html`<span class="status-tag">current</span>`}
+                        ${
+                          w.meta &&
+                          w.meta.status !== "reading" &&
+                          html`<span class="status-tag">${w.meta.status}</span>`
+                        }
+                      </td>
+                      <td>
+                        ${w.active_secs > 0 ? fmtMins(w.active_secs) : "—"}
+                      </td>
+                      <td>
+                        ${w.chars > 0 ? w.chars.toLocaleString("en") : "—"}
+                      </td>
+                      <td>
+                        ${
+                          workSpeedPerHour(w) !== null
+                            ? `${fmtChars(Math.round(workSpeedPerHour(w)))}/h`
+                            : "—"
+                        }
+                      </td>
+                      <td>
+                        ${
+                          w.meta?.total_chars
+                            ? `${Math.min(100, (w.chars / w.meta.total_chars) * 100).toFixed(0)}%`
+                            : "—"
+                        }
+                      </td>
+                      <td>${w.last_read ?? "—"}</td>
+                      <td class="row-actions">
+                        ${
+                          !isCurrent &&
+                          w.work &&
+                          html`<button
+                            class="ghost"
+                            onClick=${() => makeCurrent(w.work)}
+                          >
+                            read
+                          </button>`
+                        }
+                        ${
+                          w.meta &&
+                          html`<button
+                            class="ghost"
+                            onClick=${() =>
+                            setEditing(editing === w.work ? null : w.work)}
+                          >
+                            ${editing === w.work ? "close" : "edit"}
+                          </button>`
+                        }
+                      </td>
+                    </tr>
+                    ${
+                      editing === w.work &&
+                      html`<tr>
+                        <td colspan="7" class="work-editor-cell">
+                          <${WorkMetaForm}
+                            work=${w}
+                            onSaved=${onSaved}
+                            onCancel=${() => setEditing(null)}
+                          />
+                        </td>
+                      </tr>`
+                    }
+                  `;
+                })}
+              </tbody>
+            </table>`
+      }
     </div>
   `;
 }
@@ -742,10 +915,12 @@ function LogForm({ onLogged }) {
             <button type="submit" disabled=${busy}>
               ${busy ? "logging…" : "log"}
             </button>
-            ${msg &&
-            html`<span class="form-msg ${msg.ok ? "ok" : "error"}"
-              >${msg.text}</span
-            >`}
+            ${
+              msg &&
+              html`<span class="form-msg ${msg.ok ? "ok" : "error"}"
+                >${msg.text}</span
+              >`
+            }
           </div>
         </form>
       </details>
@@ -791,15 +966,19 @@ function SessionsToday({ sessions }) {
                 <td>${Math.round(s.active_secs / 60)}</td>
                 <td>${s.chars.toLocaleString("en")}</td>
                 <td>
-                  ${s.active_secs >= 600
-                    ? fmtChars(Math.round(s.chars / hours))
-                    : "—"}
+                  ${
+                    s.active_secs >= 600
+                      ? fmtChars(Math.round(s.chars / hours))
+                      : "—"
+                  }
                 </td>
                 <td>${s.cards > 0 ? s.cards : "—"}</td>
                 <td>
-                  ${s.cards > 0 && s.active_secs >= 600
-                    ? (s.cards / hours).toFixed(1)
-                    : "—"}
+                  ${
+                    s.cards > 0 && s.active_secs >= 600
+                      ? (s.cards / hours).toFixed(1)
+                      : "—"
+                  }
                 </td>
               </tr>
             `;
@@ -852,7 +1031,9 @@ function DayDetailCard({ todayDate }) {
     <div class="card">
       <h2>Day detail · reading speed vs. lookups</h2>
       <div class="day-controls">
-        <button class="day-nav" onClick=${() => shift(-1)} title="Previous day">◀</button>
+        <button class="day-nav" onClick=${() => shift(-1)} title="Previous day">
+          ◀
+        </button>
         <input
           type="date"
           value=${date}
@@ -867,9 +1048,16 @@ function DayDetailCard({ todayDate }) {
         >
           ▶
         </button>
-        ${date !== todayDate &&
-        html`<button class="day-nav" style="width:auto;padding:0 8px"
-                     onClick=${() => setDate(todayDate)}>today</button>`}
+        ${
+          date !== todayDate &&
+          html`<button
+            class="day-nav"
+            style="width:auto;padding:0 8px"
+            onClick=${() => setDate(todayDate)}
+          >
+            today
+          </button>`
+        }
         <label class="smooth-control">
           smoothing
           <input
@@ -885,20 +1073,24 @@ function DayDetailCard({ todayDate }) {
       </div>
       ${err && html`<p class="chart-empty">Failed to load: ${err}</p>`}
       ${!err && !data && html`<p class="chart-empty">Loading…</p>`}
-      ${data &&
-      html`
-        <${DayTimelineChart}
-          buckets=${data.buckets}
-          bucketSecs=${data.bucket_secs}
-          windowMins=${windowMins}
-        />
-        ${sessions.length > 0 &&
+      ${
+        data &&
         html`
-          <div class="meta-hint">
-            ${`${sessions.length} session${sessions.length === 1 ? '' : 's'} · ${Math.round(totalMins)} min read`}
-          </div>
-        `}
-      `}
+          <${DayTimelineChart}
+            buckets=${data.buckets}
+            bucketSecs=${data.bucket_secs}
+            windowMins=${windowMins}
+          />
+          ${
+            sessions.length > 0 &&
+            html`
+              <div class="meta-hint">
+                ${`${sessions.length} session${sessions.length === 1 ? "" : "s"} · ${Math.round(totalMins)} min read`}
+              </div>
+            `
+          }
+        `
+      }
     </div>
   `;
 }
@@ -946,31 +1138,38 @@ function AnkiCard({ anki, onRefresh, busy }) {
           <div class="value">${anki.week_encounters.toLocaleString("en")}</div>
         </div>
       </div>
-      ${anki.top_week.length > 0 &&
-      html`
-        <div class="word-list-label">most met this week</div>
-        <div class="word-chips">
-          ${anki.top_week.map(
-            (w) => html`<span class="chip">${w.word} <b>×${w.count}</b></span>`,
-          )}
-        </div>
-      `}
-      ${anki.never_count > 0 &&
-      html`
-        <details class="never-seen">
-          <summary>
-            ${anki.never_count.toLocaleString("en")} mined words not
-            re-encountered yet
-          </summary>
+      ${
+        anki.top_week.length > 0 &&
+        html`
+          <div class="word-list-label">most met this week</div>
           <div class="word-chips">
-            ${anki.never_sample.map(
-              (w) => html`<span class="chip">${w}</span>`,
+            ${anki.top_week.map(
+              (w) =>
+                html`<span class="chip">${w.word} <b>×${w.count}</b></span>`,
             )}
-            ${anki.never_count > anki.never_sample.length &&
-            html`<span class="chip">…</span>`}
           </div>
-        </details>
-      `}
+        `
+      }
+      ${
+        anki.never_count > 0 &&
+        html`
+          <details class="never-seen">
+            <summary>
+              ${anki.never_count.toLocaleString("en")} mined words not
+              re-encountered yet
+            </summary>
+            <div class="word-chips">
+              ${anki.never_sample.map(
+                (w) => html`<span class="chip">${w}</span>`,
+              )}
+              ${
+                anki.never_count > anki.never_sample.length &&
+                html`<span class="chip">…</span>`
+              }
+            </div>
+          </details>
+        `
+      }
       <div class="anki-footer">
         <span>${snapshotAge}</span>
         <button class="pause-btn" onClick=${onRefresh} disabled=${busy}>
@@ -1031,62 +1230,76 @@ function LookupsCard({ lookups }) {
           <div class="label">repeat lookups</div>
           <div class="value">
             ${lookups.repeat_events.toLocaleString("en")}
-            ${lookups.repeat_terms > 0 &&
-            html`<span class="value-sub"
-              >(${lookups.repeat_terms} words)</span
-            >`}
+            ${
+              lookups.repeat_terms > 0 &&
+              html`<span class="value-sub"
+                >(${lookups.repeat_terms} words)</span
+              >`
+            }
           </div>
         </div>
       </div>
-      ${lookups.repeats.length > 0 &&
-      html`
-        <div class="word-list-label">looked up more than once</div>
-        <div class="word-chips">
-          ${lookups.repeats.map(
-            (r) => html`
-              <span class="chip"
-                >${r.term} <b>×${r.times}</b>
-                <span class="chip-note">${LOOKUP_STATUS[r.status]}</span></span
-              >
-            `,
-          )}
-          ${lookups.repeat_terms > lookups.repeats.length &&
-          html`<span class="chip">…</span>`}
-        </div>
-      `}
-      ${lookups.leeches.length > 0 &&
-      html`
-        <details class="never-seen">
-          <summary>
-            ${lookups.leech_count.toLocaleString("en")} looked up despite
-            already having a card
-          </summary>
+      ${
+        lookups.repeats.length > 0 &&
+        html`
+          <div class="word-list-label">looked up more than once</div>
           <div class="word-chips">
-            ${lookups.leeches.map(
-              (l) => html`
+            ${lookups.repeats.map(
+              (r) => html`
                 <span class="chip"
-                  >${l.term}
+                  >${r.term} <b>×${r.times}</b>
                   <span class="chip-note"
-                    >card ${Math.round(l.card_age_days)}d
-                    old${l.times > 1 ? ` · ×${l.times}` : ""}</span
-                  >
-                </span>
+                    >${LOOKUP_STATUS[r.status]}</span
+                  ></span
+                >
               `,
             )}
-            ${lookups.leech_count > lookups.leeches.length &&
-            html`<span class="chip">…</span>`}
+            ${
+              lookups.repeat_terms > lookups.repeats.length &&
+              html`<span class="chip">…</span>`
+            }
           </div>
-        </details>
-      `}
-      ${lookups.median_mine_secs !== null &&
-      html`
-        <div class="anki-footer">
-          <span
-            >median ${Math.round(lookups.median_mine_secs)}s from lookup to
-            card</span
-          >
-        </div>
-      `}
+        `
+      }
+      ${
+        lookups.leeches.length > 0 &&
+        html`
+          <details class="never-seen">
+            <summary>
+              ${lookups.leech_count.toLocaleString("en")} looked up despite
+              already having a card
+            </summary>
+            <div class="word-chips">
+              ${lookups.leeches.map(
+                (l) => html`
+                  <span class="chip"
+                    >${l.term}
+                    <span class="chip-note"
+                      >card ${Math.round(l.card_age_days)}d
+                      old${l.times > 1 ? ` · ×${l.times}` : ""}</span
+                    >
+                  </span>
+                `,
+              )}
+              ${
+                lookups.leech_count > lookups.leeches.length &&
+                html`<span class="chip">…</span>`
+              }
+            </div>
+          </details>
+        `
+      }
+      ${
+        lookups.median_mine_secs !== null &&
+        html`
+          <div class="anki-footer">
+            <span
+              >median ${Math.round(lookups.median_mine_secs)}s from lookup to
+              card</span
+            >
+          </div>
+        `
+      }
     </div>
   `;
 }
@@ -1156,21 +1369,80 @@ function dialogueVerdict(d, n) {
     : `${speedPart[0].toUpperCase()}${speedPart.slice(1)}, yet ${denser} ${lookupPart} — the slower half is not the one with more unknown words.`;
 }
 
-function DialogueCard({ dialogue }) {
-  if (!dialogue || dialogue.overall.share === null) {
-    return html`
-      <div class="card">
-        <h2>Dialogue vs narration</h2>
-        <p class="chart-empty">
-          Nothing classified yet — this reads 「」 out of the stored line text,
-          so it fills in as the logger captures lines.
-        </p>
-      </div>
-    `;
+function DialogueCard({ dialogue, currentWork }) {
+  // "all" = every VN pooled (the passed-in lifetime data); "work" = just the
+  // current VN, fetched on demand so the lifetime view costs nothing.
+  const [scope, setScope] = useState("all");
+  const [workData, setWorkData] = useState(null);
+  const [workErr, setWorkErr] = useState(false);
+
+  useEffect(() => {
+    if (scope !== "work" || !currentWork) return;
+    let live = true;
+    setWorkData(null);
+    setWorkErr(false);
+    api(`/api/dialogue/summary?days=60&work=${encodeURIComponent(currentWork)}`)
+      .then((r) => live && setWorkData(r))
+      .catch(() => live && setWorkErr(true));
+    return () => {
+      live = false;
+    };
+  }, [scope, currentWork]);
+
+  // The toggle only appears once there's a current work to scope to; without
+  // one the card stays lifetime-only, as it was before.
+  const head = html`
+    <div class="card-head">
+      <h2>Dialogue vs narration</h2>
+      ${
+        currentWork &&
+        html`<${SegmentedControl}
+          label="Scope"
+          value=${scope}
+          onChange=${setScope}
+          options=${[
+            { value: "all", label: "all works" },
+            { value: "work", label: "current work" },
+          ]}
+        />`
+      }
+    </div>
+  `;
+
+  const data = scope === "work" ? workData : dialogue;
+  const scopeNote =
+    scope === "work"
+      ? `Just ${currentWork} — its own split, speed and lookup rate.`
+      : "All works, all of your reading history, pooled together.";
+
+  if (scope === "work" && workErr) {
+    return html`<div class="card">
+      ${head}
+      <p class="chart-empty">Couldn't load this work's split.</p>
+    </div>`;
   }
-  const { dialogue: d, narration: n, share } = dialogue.overall;
+  if (!data) {
+    return html`<div class="card">
+      ${head}
+      <p class="chart-empty">Loading…</p>
+    </div>`;
+  }
+  if (data.overall.share === null) {
+    return html`<div class="card">
+      ${head}
+      <p class="chart-empty">
+        ${
+          scope === "work"
+            ? "No 「」-classified text for this work yet."
+            : "Nothing classified yet — this reads 「」 out of the stored line text, so it fills in as the logger captures lines."
+        }
+      </p>
+    </div>`;
+  }
+
+  const { dialogue: d, narration: n, share } = data.overall;
   const dPct = Math.round(share * 100);
-  const today = dialogue.today;
+  const today = data.today;
 
   // Pre-built strings: htm collapses whitespace where literal text meets an
   // ${...} across a line break (see CLAUDE.md).
@@ -1185,7 +1457,8 @@ function DialogueCard({ dialogue }) {
 
   return html`
     <div class="card">
-      <h2>Dialogue vs narration</h2>
+      ${head}
+      <div class="meta-hint">${scopeNote}</div>
 
       <div class="split-bar">
         <span
@@ -1198,8 +1471,20 @@ function DialogueCard({ dialogue }) {
         ></span>
       </div>
       <div class="split-caption">
-        <span><span class="legend-swatch" style=${`background:${DIALOGUE_COLOR}`}></span>${dLabel}</span>
-        <span><span class="legend-swatch" style=${`background:${NARRATION_COLOR}`}></span>${nLabel}</span>
+        <span
+          ><span
+            class="legend-swatch"
+            style=${`background:${DIALOGUE_COLOR}`}
+          ></span
+          >${dLabel}</span
+        >
+        <span
+          ><span
+            class="legend-swatch"
+            style=${`background:${NARRATION_COLOR}`}
+          ></span
+          >${nLabel}</span
+        >
       </div>
       <div class="meta-hint">${todayLabel}</div>
 
@@ -1213,20 +1498,29 @@ function DialogueCard({ dialogue }) {
         ]}
       />
 
-      ${d.lookups_per_1k !== null &&
-      n.lookups_per_1k !== null &&
-      html`
-        <${CompareBars}
-          title="unknown-word rate"
-          unit="lookups per 1000 characters"
-          format=${(v) => v.toFixed(2)}
-          rows=${[
-            { label: "dialogue", value: d.lookups_per_1k, color: DIALOGUE_COLOR },
-            { label: "narration", value: n.lookups_per_1k, color: NARRATION_COLOR },
-          ]}
-        />
-      `}
-
+      ${
+        d.lookups_per_1k !== null &&
+        n.lookups_per_1k !== null &&
+        html`
+          <${CompareBars}
+            title="unknown-word rate"
+            unit="lookups per 1000 characters"
+            format=${(v) => v.toFixed(2)}
+            rows=${[
+              {
+                label: "dialogue",
+                value: d.lookups_per_1k,
+                color: DIALOGUE_COLOR,
+              },
+              {
+                label: "narration",
+                value: n.lookups_per_1k,
+                color: NARRATION_COLOR,
+              },
+            ]}
+          />
+        `
+      }
       ${verdict && html`<p class="chart-note">${verdict}</p>`}
     </div>
   `;
@@ -1256,25 +1550,33 @@ function DaysTable({ days, todayDate }) {
                 <td>${d.active_secs > 0 ? fmtMins(d.active_secs) : "—"}</td>
                 <td>${d.chars > 0 ? d.chars.toLocaleString("en") : "—"}</td>
                 <td>
-                  ${d.active_secs >= 600
-                    ? Math.round(
-                        d.chars / (d.active_secs / 3600),
-                      ).toLocaleString("en")
-                    : "—"}
+                  ${
+                    d.active_secs >= 600
+                      ? Math.round(
+                          d.chars / (d.active_secs / 3600),
+                        ).toLocaleString("en")
+                      : "—"
+                  }
                 </td>
                 <td>
-                  ${d.lookups_per_1k !== null
-                    ? d.lookups_per_1k.toFixed(1)
-                    : "—"}
+                  ${
+                    d.lookups_per_1k !== null
+                      ? d.lookups_per_1k.toFixed(1)
+                      : "—"
+                  }
                 </td>
                 <td
-                  title=${d.focus.interruptions > 0
-                    ? `${d.focus.interruptions} interruptions`
-                    : ""}
+                  title=${
+                    d.focus.interruptions > 0
+                      ? `${d.focus.interruptions} interruptions`
+                      : ""
+                  }
                 >
-                  ${d.focus.ratio !== null
-                    ? `${Math.round(d.focus.ratio * 100)}%`
-                    : "—"}
+                  ${
+                    d.focus.ratio !== null
+                      ? `${Math.round(d.focus.ratio * 100)}%`
+                      : "—"
+                  }
                 </td>
               </tr>
             `,
@@ -1374,17 +1676,21 @@ function App() {
         </button>
         <span class="streak"
           >streak <strong>${summary.streak.current}</strong> days
-          ${summary.streak.best > summary.streak.current
-            ? ` · best ${summary.streak.best}`
-            : " · personal best"}</span
+          ${
+            summary.streak.best > summary.streak.current
+              ? ` · best ${summary.streak.best}`
+              : " · personal best"
+          }</span
         >
       </div>
     </header>
-    ${summary.paused &&
-    html`<div class="paused-banner">
-      Tracking paused — lines are captured but won't count. Resume when you're
-      reading again.
-    </div>`}
+    ${
+      summary.paused &&
+      html`<div class="paused-banner">
+        Tracking paused — lines are captured but won't count. Resume when you're
+        reading again.
+      </div>`
+    }
     <${TodayCard} summary=${summary} />
     <${CurrentReading}
       works=${works}
@@ -1411,7 +1717,10 @@ function App() {
     <${SessionsToday} sessions=${sessions} />
     <${AnkiCard} anki=${anki} onRefresh=${refreshAnki} busy=${ankiBusy} />
     <${LookupsCard} lookups=${lookups} />
-    <${DialogueCard} dialogue=${dialogue} />
+    <${DialogueCard}
+      dialogue=${dialogue}
+      currentWork=${settings.current_work}
+    />
     <${WorksTable} works=${works} settings=${settings} onSaved=${load} />
     <${LogForm} onLogged=${load} />
     <${DaysTable} days=${days} todayDate=${summary.today.date} />

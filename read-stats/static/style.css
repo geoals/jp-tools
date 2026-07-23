@@ -9,7 +9,7 @@
   --muted: #898781;
   --grid: #e1e0d9;
   --baseline: #c3c2b7;
-  --border: rgba(11, 11, 11, 0.10);
+  --border: rgba(11, 11, 11, 0.1);
   --series-1: #2a78d6;
   --series-2: #008300;
   --series-3: #db2777;
@@ -27,7 +27,7 @@
     --muted: #898781;
     --grid: #2c2c2a;
     --baseline: #383835;
-    --border: rgba(255, 255, 255, 0.10);
+    --border: rgba(255, 255, 255, 0.1);
     --series-1: #3987e5;
     --series-2: #008300;
     --series-3: #e0407f;
@@ -45,7 +45,7 @@
   --muted: #898781;
   --grid: #2c2c2a;
   --baseline: #383835;
-  --border: rgba(255, 255, 255, 0.10);
+  --border: rgba(255, 255, 255, 0.1);
   --series-1: #3987e5;
   --series-2: #008300;
   --series-3: #e0407f;
@@ -54,13 +54,15 @@
   --warn: #cf3b31;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 body {
   margin: 0;
   background: var(--page);
   color: var(--text-primary);
-  font-family: 'IBM Plex Sans', 'Noto Sans JP', system-ui, sans-serif;
+  font-family: "IBM Plex Sans", "Noto Sans JP", system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.5;
 }
@@ -78,10 +80,23 @@ header {
   gap: 12px;
   margin-bottom: 16px;
 }
-header h1 { font-size: 20px; font-weight: 600; margin: 0; }
-.header-right { display: flex; align-items: center; gap: 14px; }
-.streak { color: var(--text-secondary); font-size: 14px; }
-.streak strong { color: var(--text-primary); }
+header h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+}
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.streak {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.streak strong {
+  color: var(--text-primary);
+}
 
 .pause-btn {
   padding: 5px 12px;
@@ -124,10 +139,25 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
 }
 
 /* Today */
-.hero-row { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
-.hero { font-size: 48px; font-weight: 600; line-height: 1.1; }
-.hero-sub { color: var(--text-secondary); font-size: 14px; }
-.hero-sub .goal-met { color: var(--good); font-weight: 500; }
+.hero-row {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.hero {
+  font-size: 48px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.hero-sub {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.hero-sub .goal-met {
+  color: var(--good);
+  font-weight: 500;
+}
 
 .meter {
   position: relative;
@@ -157,25 +187,85 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
   font-size: 12px;
 }
 
-.tile-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 14px; }
-.tile { min-width: 110px; }
-.tile .label { color: var(--muted); font-size: 12px; }
-.tile .value { font-size: 18px; font-weight: 600; }
+.tile-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.tile {
+  min-width: 110px;
+}
+.tile .label {
+  color: var(--muted);
+  font-size: 12px;
+}
+.tile .value {
+  font-size: 18px;
+  font-weight: 600;
+}
 /* Tiles that carry an explanatory title= tooltip. */
-.tile.has-hint { cursor: help; }
-.tile.has-hint .label { border-bottom: 1px dotted var(--muted); display: inline-block; }
+.tile.has-hint {
+  cursor: help;
+}
+.tile.has-hint .label {
+  border-bottom: 1px dotted var(--muted);
+  display: inline-block;
+}
 
 /* Charts */
-.chart-wrap { position: relative; }
-.chart-wrap svg { display: block; width: 100%; height: auto; }
-.chart-empty { color: var(--muted); font-size: 14px; margin: 8px 0; }
+.chart-wrap {
+  position: relative;
+}
+.chart-wrap svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.chart-empty {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 8px 0;
+}
 
-.gridline { stroke: var(--grid); stroke-width: 1; }
-.baseline { stroke: var(--baseline); stroke-width: 1; }
-.goal-line { stroke: var(--baseline); stroke-width: 1; }
-.crosshair { stroke: var(--baseline); stroke-width: 1; }
-.tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-.end-label { fill: var(--text-secondary); font-size: 12px; font-weight: 500; }
+.gridline {
+  stroke: var(--grid);
+  stroke-width: 1;
+}
+.baseline {
+  stroke: var(--baseline);
+  stroke-width: 1;
+}
+.goal-line {
+  stroke: var(--baseline);
+  stroke-width: 1;
+}
+.crosshair {
+  stroke: var(--baseline);
+  stroke-width: 1;
+}
+.tick {
+  fill: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.end-label {
+  fill: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Where the dominant VN changed — a quiet dashed rule so a speed step reads as
+   a switch, not a slump. Muted, behind the trend line, never a data mark. */
+.work-divider {
+  stroke: var(--baseline);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.work-divider-label {
+  fill: var(--muted);
+  font-size: 10px;
+}
 
 .trend-line {
   fill: none;
@@ -210,19 +300,31 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
   font-size: 13px;
   cursor: pointer;
 }
-.legend-item:hover { color: var(--text-primary); }
-.legend-item:focus-visible { outline: 2px solid var(--series-1); outline-offset: 1px; }
-.legend-off { color: var(--muted); }
+.legend-item:hover {
+  color: var(--text-primary);
+}
+.legend-item:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 1px;
+}
+.legend-off {
+  color: var(--muted);
+}
 /* Hidden series keeps its hue but drains to an outline, so the swatch still
    identifies it while reading as off. */
-.legend-off .legend-swatch { background: transparent !important; box-shadow: inset 0 0 0 2px currentColor; }
+.legend-off .legend-swatch {
+  background: transparent !important;
+  box-shadow: inset 0 0 0 2px currentColor;
+}
 .legend-swatch {
   width: 10px;
   height: 10px;
   border-radius: 2px;
   flex: none;
 }
-.tooltip-sub { color: var(--muted); }
+.tooltip-sub {
+  color: var(--muted);
+}
 
 /* Card header with controls on the right ---------------------------------- */
 .card-head {
@@ -232,8 +334,15 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
   gap: 12px;
   flex-wrap: wrap;
 }
-.card-head h2 { margin-bottom: 10px; }
-.card-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.card-head h2 {
+  margin-bottom: 10px;
+}
+.card-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
 
 .segmented {
   display: inline-flex;
@@ -250,9 +359,17 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
   padding: 3px 10px;
   cursor: pointer;
 }
-.segment:hover { color: var(--text-primary); }
-.segment-on { background: var(--meter-track); color: var(--text-primary); }
-.segment:focus-visible { outline: 2px solid var(--series-1); outline-offset: -2px; }
+.segment:hover {
+  color: var(--text-primary);
+}
+.segment-on {
+  background: var(--meter-track);
+  color: var(--text-primary);
+}
+.segment:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: -2px;
+}
 
 .toggle-btn {
   border: 1px solid var(--border);
@@ -264,9 +381,17 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
   padding: 3px 10px;
   cursor: pointer;
 }
-.toggle-btn:hover { color: var(--text-primary); }
-.toggle-on { background: var(--meter-track); color: var(--text-primary); }
-.toggle-btn:focus-visible { outline: 2px solid var(--series-1); outline-offset: -2px; }
+.toggle-btn:hover {
+  color: var(--text-primary);
+}
+.toggle-on {
+  background: var(--meter-track);
+  color: var(--text-primary);
+}
+.toggle-btn:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: -2px;
+}
 
 /* Dialogue vs narration ---------------------------------------------------
    Dialogue takes slot 1 and narration slot 2 — a categorical pair, validated
@@ -278,17 +403,30 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
   height: 14px;
   margin: 12px 0 6px;
 }
-.split-seg { border-radius: 3px; min-width: 3px; }
+.split-seg {
+  border-radius: 3px;
+  min-width: 3px;
+}
 .split-caption {
   display: flex;
   justify-content: space-between;
   color: var(--text-secondary);
   font-size: 12px;
 }
-.split-caption .legend-swatch { display: inline-block; margin-right: 6px; vertical-align: baseline; }
+.split-caption .legend-swatch {
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: baseline;
+}
 
-.compare { margin-top: 16px; }
-.compare-title { color: var(--muted); font-size: 12px; margin-bottom: 7px; }
+.compare {
+  margin-top: 16px;
+}
+.compare-title {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 7px;
+}
 .compare-row {
   display: grid;
   grid-template-columns: 72px 1fr auto;
@@ -297,19 +435,37 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
   margin-bottom: 5px;
   font-size: 13px;
 }
-.compare-name { color: var(--text-secondary); }
-.compare-track { background: var(--grid); border-radius: 3px; height: 10px; }
-.compare-fill { display: block; height: 100%; border-radius: 3px; min-width: 2px; }
+.compare-name {
+  color: var(--text-secondary);
+}
+.compare-track {
+  background: var(--grid);
+  border-radius: 3px;
+  height: 10px;
+}
+.compare-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  min-width: 2px;
+}
 .compare-value {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   color: var(--text-primary);
 }
-.compare-unit { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.compare-unit {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
 
 /* Day detail ------------------------------------------------------------- */
 
-.panel-title { fill: var(--muted); font-size: 11px; }
+.panel-title {
+  fill: var(--muted);
+  font-size: 11px;
+}
 .chart-note {
   margin: 6px 4px 0;
   font-size: 13px;
@@ -318,14 +474,25 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
 }
 /* Reading speed owns slot 3 everywhere it appears, so lookups (slot 1) and
    cards (slot 2) keep their hues when speed shares a panel with them. */
-.trend-line-speed { stroke: var(--series-3); }
-.trend-dot-speed { fill: var(--series-3); }
+.trend-line-speed {
+  stroke: var(--series-3);
+}
+.trend-dot-speed {
+  fill: var(--series-3);
+}
 /* The counterfactual speed: same hue as the measured line (one measure, two
    conditions), dashed because it is a "would have been", not a reading. */
-.trend-line-raw { stroke-dasharray: 5 3; opacity: 0.75; }
+.trend-line-raw {
+  stroke-dasharray: 5 3;
+  opacity: 0.75;
+}
 /* Gap between the two speeds = the lookup tax. Tinted, not outlined, so it
    reads as the area it is rather than a third series. */
-.tax-band { fill: var(--series-3); opacity: 0.14; stroke: none; }
+.tax-band {
+  fill: var(--series-3);
+  opacity: 0.14;
+  stroke: none;
+}
 /* Shape-only overlay: deliberately recessive, since its amplitude is
    normalised and carries no magnitude. */
 .overlay-line {
@@ -336,15 +503,22 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
   stroke-linejoin: round;
 }
 /* Legend entries that label a line style rather than toggle a series. */
-.legend-static { cursor: default; }
+.legend-static {
+  cursor: default;
+}
 .legend-line {
   width: 14px;
   height: 0;
   border-radius: 0;
   border-top: 2px solid var(--series-3);
 }
-.legend-line-dashed { border-top-style: dashed; }
-.legend-off .legend-line { background: transparent !important; box-shadow: none; }
+.legend-line-dashed {
+  border-top-style: dashed;
+}
+.legend-off .legend-line {
+  background: transparent !important;
+  box-shadow: none;
+}
 
 /* Controls above the day-detail chart. */
 .day-controls {
@@ -372,8 +546,13 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
   cursor: pointer;
   font: inherit;
 }
-.day-nav:hover:not(:disabled) { color: var(--text-primary); }
-.day-nav:disabled { opacity: 0.4; cursor: default; }
+.day-nav:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+.day-nav:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 .smooth-control {
   display: flex;
   align-items: center;
@@ -382,8 +561,14 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
   font-size: 13px;
   color: var(--text-secondary);
 }
-.smooth-control input[type="range"] { width: 130px; accent-color: var(--series-1); }
-.smooth-value { font-variant-numeric: tabular-nums; min-width: 46px; }
+.smooth-control input[type="range"] {
+  width: 130px;
+  accent-color: var(--series-1);
+}
+.smooth-value {
+  font-variant-numeric: tabular-nums;
+  min-width: 46px;
+}
 
 .chart-tooltip {
   position: absolute;
@@ -398,20 +583,36 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
   white-space: nowrap;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
-.chart-tooltip strong { color: var(--text-primary); font-weight: 500; }
+.chart-tooltip strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
 
 /* Currently reading */
-.current-work { display: flex; gap: 16px; margin-bottom: 14px; }
+.current-work {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 14px;
+}
 .current-work .cover {
-  width: 92px;
+  width: 140px;
   height: auto;
   align-self: flex-start;
   border-radius: 6px;
   border: 1px solid var(--border);
 }
-.current-work .info { flex: 1; min-width: 0; }
-.current-work .title { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
-.current-work .meter { margin: 8px 0 4px; }
+.current-work .info {
+  flex: 1;
+  min-width: 0;
+}
+.current-work .title {
+  font-size: 17px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.current-work .meter {
+  margin: 8px 0 4px;
+}
 .progress-caption {
   display: flex;
   justify-content: space-between;
@@ -419,7 +620,11 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
-.meta-hint { color: var(--muted); font-size: 13px; margin: 6px 0 12px; }
+.meta-hint {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 6px 0 12px;
+}
 .card-head {
   display: flex;
   align-items: baseline;
@@ -427,7 +632,9 @@ header h1 { font-size: 20px; font-weight: 600; margin: 0; }
   gap: 12px;
   margin-bottom: 16px;
 }
-.card-head h2 { margin-bottom: 0; }
+.card-head h2 {
+  margin-bottom: 0;
+}
 button.ghost {
   background: none;
   border: 1px solid var(--border);
@@ -437,24 +644,41 @@ button.ghost {
   padding: 3px 9px;
   cursor: pointer;
 }
-button.ghost:hover { color: var(--text-primary); border-color: var(--muted); }
-.work-meta-form { margin: 12px 0 4px; }
+button.ghost:hover {
+  color: var(--text-primary);
+  border-color: var(--muted);
+}
+.work-meta-form {
+  margin: 12px 0 4px;
+}
 /* Long CJK titles in a grid cell would otherwise set the column's min width
    and blow the whole form out past the card. */
-.work-meta-form > div { min-width: 0; }
+.work-meta-form > div {
+  min-width: 0;
+}
 /* The actions cell has no label above it, so it needs the label's height
    back to sit on the same baseline as the inputs it follows. */
-.work-meta-form .actions { padding-top: 18px; flex-wrap: wrap; }
+.work-meta-form .actions {
+  padding-top: 18px;
+  flex-wrap: wrap;
+}
 /* The editor spans a row of .days, which right-aligns and pads for numbers. */
 td.work-editor-cell {
   text-align: left;
   padding: 0 8px 10px;
   font-variant-numeric: normal;
 }
-td.row-actions { text-align: right; white-space: nowrap; }
-td.row-actions button + button { margin-left: 6px; }
+td.row-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+td.row-actions button + button {
+  margin-left: 6px;
+}
 /* Neutral tint so it reads the same in both themes. */
-tr.row-current td { background: rgba(127, 127, 127, 0.07); }
+tr.row-current td {
+  background: rgba(127, 127, 127, 0.07);
+}
 .status-tag {
   color: var(--muted);
   font-size: 11px;
@@ -465,9 +689,22 @@ tr.row-current td { background: rgba(127, 127, 127, 0.07); }
 }
 
 /* Anki re-encounters */
-.value-sub { font-size: 13px; font-weight: 400; color: var(--text-secondary); }
-.word-list-label { color: var(--muted); font-size: 12px; margin-top: 14px; }
-.word-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.value-sub {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+.word-list-label {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 14px;
+}
+.word-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
 .chip {
   background: var(--page);
   border: 1px solid var(--border);
@@ -475,10 +712,19 @@ tr.row-current td { background: rgba(127, 127, 127, 0.07); }
   padding: 2px 8px;
   font-size: 13px;
 }
-.chip b { color: var(--text-secondary); font-weight: 500; }
+.chip b {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
 /* Secondary fact on a chip (card age, outcome) — recedes so the word leads. */
-.chip-note { color: var(--muted); font-size: 12px; margin-left: 4px; }
-details.never-seen { margin-top: 12px; }
+.chip-note {
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: 4px;
+}
+details.never-seen {
+  margin-top: 12px;
+}
 details.never-seen summary {
   cursor: pointer;
   color: var(--text-secondary);
@@ -495,10 +741,21 @@ details.never-seen summary {
 }
 
 /* Now reading */
-.now-reading label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-.now-reading-row { display: flex; gap: 8px; align-items: center; }
-.now-reading input {
+.now-reading label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.now-reading-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.now-reading input,
+.now-reading select {
   flex: 1;
+  min-width: 0;
   padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -517,9 +774,15 @@ details.never-seen summary {
   font-size: 14px;
   cursor: pointer;
 }
-.now-reading .form-msg.ok { color: var(--good); font-size: 14px; }
+.now-reading .form-msg.ok {
+  color: var(--good);
+  font-size: 14px;
+}
 
-td.work-name { text-align: left; color: var(--text-primary); }
+td.work-name {
+  text-align: left;
+  color: var(--text-primary);
+}
 
 /* Log form */
 details.log summary {
@@ -537,8 +800,13 @@ form.log {
   gap: 10px;
   margin-top: 12px;
 }
-.log label { display: block; font-size: 12px; color: var(--muted); }
-.log input, .log select {
+.log label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+.log input,
+.log select {
   width: 100%;
   padding: 6px 8px;
   border: 1px solid var(--border);
@@ -548,7 +816,11 @@ form.log {
   font: inherit;
   font-size: 14px;
 }
-.log .actions { display: flex; align-items: end; gap: 10px; }
+.log .actions {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+}
 .log button {
   padding: 7px 16px;
   border: none;
@@ -559,10 +831,20 @@ form.log {
   font-size: 14px;
   cursor: pointer;
 }
-.log button:disabled { opacity: 0.6; cursor: default; }
-.log .form-msg { font-size: 13px; color: var(--text-secondary); }
-.log .form-msg.error { color: #d03b3b; }
-.log .form-msg.ok { color: var(--good); }
+.log button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.log .form-msg {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.log .form-msg.error {
+  color: #d03b3b;
+}
+.log .form-msg.ok {
+  color: var(--good);
+}
 
 /* Table view (the charts' accessible fallback) */
 table.days {
@@ -578,7 +860,10 @@ table.days th {
   padding: 4px 8px;
   border-bottom: 1px solid var(--grid);
 }
-table.days th:first-child, table.days td:first-child { text-align: left; }
+table.days th:first-child,
+table.days td:first-child {
+  text-align: left;
+}
 table.days td {
   text-align: right;
   padding: 4px 8px;
@@ -586,7 +871,10 @@ table.days td {
   font-variant-numeric: tabular-nums;
   color: var(--text-secondary);
 }
-table.days tr.today td { color: var(--text-primary); font-weight: 500; }
+table.days tr.today td {
+  color: var(--text-primary);
+  font-weight: 500;
+}
 
 /* ── Reading view (#read) ────────────────────────────────────────────────
    Sized for a phone in split-screen beside a Moonlight stream: fixed to the
@@ -605,15 +893,18 @@ table.days tr.today td { color: var(--text-primary); font-weight: 500; }
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
+  /* Match the footer's height: its buttons are 44px inside 8px top/bottom
+     padding, so 60px total. */
+  min-height: 60px;
   border-bottom: 1px solid var(--border);
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text-secondary);
   flex: none;
 }
 .reader-back {
   color: var(--text-secondary);
   text-decoration: none;
-  font-size: 16px;
+  font-size: 19px;
   padding: 0 4px;
 }
 /* The work title takes the slack and truncates; the status and buttons after
@@ -626,8 +917,12 @@ table.days tr.today td { color: var(--text-primary); font-weight: 500; }
   white-space: nowrap;
   color: var(--text-primary);
 }
-.reader-live { color: var(--muted); }
-.reader-live.on { color: var(--good); }
+.reader-live {
+  color: var(--muted);
+}
+.reader-live.on {
+  color: var(--good);
+}
 
 .reader-lines {
   flex: 1;
@@ -642,12 +937,16 @@ table.days tr.today td { color: var(--text-primary); font-weight: 500; }
 .reader-line {
   margin: 0 0 0.75em;
   line-height: 1.75;
-  font-family: 'Noto Sans JP', 'IBM Plex Sans', sans-serif;
+  font-family: "Noto Sans JP", "IBM Plex Sans", sans-serif;
   color: var(--text-primary);
 }
 /* The newest line is the one being read — the rest is context behind it. */
-.reader-line:last-child { color: var(--text-primary); }
-.reader-line:not(:last-child) { color: var(--text-secondary); }
+.reader-line:last-child {
+  color: var(--text-primary);
+}
+.reader-line:not(:last-child) {
+  color: var(--text-secondary);
+}
 .reader-empty {
   color: var(--muted);
   font-size: 14px;
@@ -657,12 +956,35 @@ table.days tr.today td { color: var(--text-primary); font-weight: 500; }
 
 .reader-toast {
   flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   padding: 8px 14px;
   font-size: 13px;
   border-top: 1px solid var(--border);
 }
-.reader-toast.ok { color: var(--good); }
-.reader-toast.err { color: var(--text-primary); background: rgba(200, 60, 60, 0.14); }
+/* The only route back to a cleared line, and the toast holding it expires —
+   so it's a full thumb target rather than a text-sized link. */
+.reader-undo {
+  flex: none;
+  font: inherit;
+  font-size: 13px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.reader-toast.ok {
+  color: var(--good);
+}
+.reader-toast.err {
+  color: var(--text-primary);
+  background: rgba(200, 60, 60, 0.14);
+}
 
 .reader-actions {
   flex: none;
@@ -687,22 +1009,127 @@ table.days tr.today td { color: var(--text-primary); font-weight: 500; }
   border: 1px solid var(--border);
   background: var(--surface-1);
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 15px;
 }
 .reader-pause.paused {
   background: var(--series-1);
   border-color: transparent;
   color: #fff;
 }
+/* Sits next to the mine button, which is the one pressed constantly — so it is
+   kept narrow and quiet, and every press is undoable. */
+.reader-clear {
+  flex: none;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+.reader-clear:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 .reader-mine {
   flex: 1;
   border: none;
   background: var(--series-1);
   color: #fff;
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 500;
 }
-.reader-mine:disabled { opacity: 0.5; cursor: default; }
+.reader-mine:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* Quiet square next to the loud mine button — pressed occasionally, not every
+   line, so it stays out of the way and reads as a secondary action. */
+.reader-explain-btn {
+  flex: none;
+  width: 44px;
+  padding: 0;
+  font-size: 19px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+}
+.reader-explain-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* The model's read on the current line. Sits above the actions like the toast,
+   but stays until dismissed and scrolls internally — an explanation is a few
+   sentences and the reader may want to keep it up while looking back. */
+.reader-explain {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 40vh;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-1);
+  font-size: 14px;
+}
+.reader-explain.err .reader-explain-body {
+  color: var(--text-primary);
+}
+.reader-explain-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: none;
+}
+.reader-explain-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.reader-explain-close {
+  flex: none;
+  min-height: 32px;
+  min-width: 32px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+.reader-explain-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  line-height: 1.6;
+  color: var(--text-primary);
+  /* A returned explanation can hold Japanese — match the line feed's font. */
+  font-family: "Noto Sans JP", "IBM Plex Sans", sans-serif;
+}
+/* Tight blocks — the reply is a few short lines, so no big paragraph gaps. */
+.reader-explain-body p {
+  margin: 0 0 0.5em;
+}
+.reader-explain-body p:last-child {
+  margin-bottom: 0;
+}
+.reader-explain-body ul {
+  margin: 0 0 0.5em;
+  padding-left: 1.2em;
+}
+.reader-explain-body ul:last-child {
+  margin-bottom: 0;
+}
+.reader-explain-body li {
+  margin: 0.15em 0;
+}
+.reader-explain-body strong {
+  font-weight: 600;
+}
 
 /* Paused state on the reading view. Pause never auto-resumes — a skip-pause
    has to survive lines flying past — so a forgotten one silently costs a whole

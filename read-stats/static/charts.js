@@ -1,5 +1,5 @@
-import { useState } from 'preact/hooks';
-import { html } from 'htm/preact';
+import { useState } from "preact/hooks";
+import { html } from "htm/preact";
 
 // Hand-rolled SVG charts following the dataviz mark specs: thin marks, 4px
 // rounded data-ends (square at the baseline), 2px lines, hairline solid grid,
@@ -14,13 +14,15 @@ function niceCeil(v, step) {
 /** Rounded top corners only — bars stay square at the baseline. */
 function barPath(x, y, w, h, r) {
   r = Math.min(r, h, w / 2);
-  return `M${x},${y + h} L${x},${y + r} Q${x},${y} ${x + r},${y}`
-    + ` L${x + w - r},${y} Q${x + w},${y} ${x + w},${y + r}`
-    + ` L${x + w},${y + h} Z`;
+  return (
+    `M${x},${y + h} L${x},${y + r} Q${x},${y} ${x + r},${y}` +
+    ` L${x + w - r},${y} Q${x + w},${y} ${x + w},${y + r}` +
+    ` L${x + w},${y + h} Z`
+  );
 }
 
 function shortDate(iso) {
-  const [, m, d] = iso.split('-');
+  const [, m, d] = iso.split("-");
   return `${Number(m)}/${Number(d)}`;
 }
 
@@ -47,9 +49,9 @@ function kChars(n) {
    in muted ink rather than a fourth hue says that — it is the absence of the
    measurement, not a third kind of reading. */
 const DAY_SPLIT = [
-  { key: 'dialogue', label: 'dialogue', color: 'var(--series-1)' },
-  { key: 'narration', label: 'narration', color: 'var(--series-2)' },
-  { key: 'other', label: 'no line text', color: 'var(--muted)' },
+  { key: "dialogue", label: "dialogue", color: "var(--series-1)" },
+  { key: "narration", label: "narration", color: "var(--series-2)" },
+  { key: "other", label: "no line text", color: "var(--muted)" },
 ];
 
 /**
@@ -79,14 +81,14 @@ export function DailyBarChart({
   const m = { top: 16, right: 56, bottom: 24, left: 44 };
   const plotW = W - m.left - m.right;
   const plotH = H - m.top - m.bottom;
-  const isMins = metric === 'minutes';
+  const isMins = metric === "minutes";
 
   const total = (d) => (isMins ? d.active_secs / 60 : d.chars);
 
   /** A day's bar as stacked parts, largest category first, bottom-up. */
   const parts = (d) => {
     const t = total(d);
-    if (!split) return [{ ...DAY_SPLIT[0], key: 'all', value: t }];
+    if (!split) return [{ ...DAY_SPLIT[0], key: "all", value: t }];
     const s = dialogueByDate[d.date];
     const dv = s ? (isMins ? s.dialogue_secs / 60 : s.dialogue_chars) : 0;
     const nv = s ? (isMins ? s.narration_secs / 60 : s.narration_chars) : 0;
@@ -120,20 +122,48 @@ export function DailyBarChart({
     return html`<p class="chart-empty">No reading recorded yet.</p>`;
   }
 
-  const label = isMins ? 'minutes' : 'characters';
+  const label = isMins ? "minutes" : "characters";
   return html`
     <div class="chart-wrap" onMouseLeave=${() => setHover(null)}>
-      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Daily reading ${label}, last ${days.length} days">
-        ${ticks.map((t) => html`
-          <line x1=${m.left} x2=${W - m.right} y1=${y(t)} y2=${y(t)} class="gridline" />
-          <text x=${m.left - 6} y=${y(t) + 3} class="tick" text-anchor="end">
-            ${isMins ? t : kChars(t)}
-          </text>
-        `)}
-        ${isMins && [[floorMins, 'floor'], [targetMins, 'goal']].map(([v, name]) => html`
-          <line x1=${m.left} x2=${W - m.right} y1=${y(v)} y2=${y(v)} class="goal-line" />
-          <text x=${W - m.right + 4} y=${y(v) + 3} class="tick">${name} ${v}</text>
-        `)}
+      <svg
+        viewBox="0 0 ${W} ${H}"
+        role="img"
+        aria-label="Daily reading ${label}, last ${days.length} days"
+      >
+        ${ticks.map(
+          (t) => html`
+            <line
+              x1=${m.left}
+              x2=${W - m.right}
+              y1=${y(t)}
+              y2=${y(t)}
+              class="gridline"
+            />
+            <text x=${m.left - 6} y=${y(t) + 3} class="tick" text-anchor="end">
+              ${isMins ? t : kChars(t)}
+            </text>
+          `,
+        )}
+        ${
+          isMins &&
+          [
+            [floorMins, "floor"],
+            [targetMins, "goal"],
+          ].map(
+            ([v, name]) => html`
+              <line
+                x1=${m.left}
+                x2=${W - m.right}
+                y1=${y(v)}
+                y2=${y(v)}
+                class="goal-line"
+              />
+              <text x=${W - m.right + 4} y=${y(v) + 3} class="tick"
+                >${name} ${v}</text
+              >
+            `,
+          )
+        }
         ${days.map((d, i) => {
           const cx = m.left + band * i + band / 2;
           const segs = parts(d).filter((s) => s.value > 0);
@@ -148,57 +178,124 @@ export function DailyBarChart({
               // 2px of surface between segments, taken off the top of every
               // segment but the last so the gaps sit *between* the fills.
               const h = yBase - yTop - (isTop ? 0 : 2);
-              return h > 0.5 && html`
-                <path d=${barPath(cx - barW / 2, yTop, barW, h, isTop ? 4 : 0)}
-                      fill=${s.color} opacity=${dim} />
-              `;
+              return (
+                h > 0.5 &&
+                html`
+                  <path
+                    d=${barPath(cx - barW / 2, yTop, barW, h, isTop ? 4 : 0)}
+                    fill=${s.color}
+                    opacity=${dim}
+                  />
+                `
+              );
             })}
-            ${i % labelEvery === 0 && html`
-              <text x=${cx} y=${H - 8} class="tick" text-anchor="middle">${shortDate(d.date)}</text>
-            `}
-            <rect x=${m.left + band * i} y=${m.top} width=${band} height=${plotH}
-                  fill="transparent" onMouseEnter=${() => setHover(i)} />
+            ${
+              i % labelEvery === 0 &&
+              html`
+                <text x=${cx} y=${H - 8} class="tick" text-anchor="middle"
+                  >${shortDate(d.date)}</text
+                >
+              `
+            }
+            <rect
+              x=${m.left + band * i}
+              y=${m.top}
+              width=${band}
+              height=${plotH}
+              fill="transparent"
+              onMouseEnter=${() => setHover(i)}
+            />
           `;
         })}
-        <line x1=${m.left} x2=${W - m.right} y1=${y(0)} y2=${y(0)} class="baseline" />
+        <line
+          x1=${m.left}
+          x2=${W - m.right}
+          y1=${y(0)}
+          y2=${y(0)}
+          class="baseline"
+        />
       </svg>
-      ${split && html`
-        <div class="chart-legend">
-          ${DAY_SPLIT.map((s) => html`
-            <span class="legend-item legend-static">
-              <span class="legend-swatch" style=${`background:${s.color}`}></span>${s.label}
-            </span>
-          `)}
-        </div>
-      `}
-      ${hover !== null && html`
-        <${Tooltip} x=${m.left + band * hover + band / 2} y=${8}>
-          <${DayBarTooltip} day=${days[hover]} parts=${parts(days[hover])}
-                            split=${split} isMins=${isMins} />
-        <//>
-      `}
+      ${
+        split &&
+        html`
+          <div class="chart-legend">
+            ${DAY_SPLIT.map(
+            (s) => html`
+              <span class="legend-item legend-static">
+                <span
+                  class="legend-swatch"
+                  style=${`background:${s.color}`}
+                ></span
+                >${s.label}
+              </span>
+            `,
+          )}
+          </div>
+        `
+      }
+      ${
+        hover !== null &&
+        html`
+          <${Tooltip} x=${m.left + band * hover + band / 2} y=${8}>
+            <${DayBarTooltip}
+              day=${days[hover]}
+              parts=${parts(days[hover])}
+              split=${split}
+              isMins=${isMins}
+            />
+          <//>
+        `
+      }
     </div>
   `;
 }
 
 function DayBarTooltip({ day, parts, split, isMins }) {
   const fmt = (v) =>
-    isMins ? `${Math.round(v)} min` : `${Math.round(v).toLocaleString('en')} chars`;
-  const headline = `${Math.round(day.active_secs / 60)} min · ${day.chars.toLocaleString('en')} chars`;
+    isMins
+      ? `${Math.round(v)} min`
+      : `${Math.round(v).toLocaleString("en")} chars`;
+  const headline = `${Math.round(day.active_secs / 60)} min · ${day.chars.toLocaleString("en")} chars`;
   return html`
     <strong>${day.date}</strong><br />
     ${headline}
-    ${split && parts.filter((s) => s.value > 0).map((s) => {
-      const line = `${s.label} ${fmt(s.value)}`;
-      return html`<br /><span class="tooltip-sub">${line}</span>`;
-    })}
+    ${
+      split &&
+      parts
+        .filter((s) => s.value > 0)
+        .map((s) => {
+          const line = `${s.label} ${fmt(s.value)}`;
+          return html`<br /><span class="tooltip-sub">${line}</span>`;
+        })
+    }
   `;
 }
 
 /** Candidate y-axis steps for the speed chart, finest first. */
 const SPEED_STEPS = [500, 1000, 2000, 2500, 5000, 10000];
 
-/** Chars/hour trend over days with ≥10 min read. days: [{date, active_secs, chars}] */
+/** VN titles are long; a divider label only needs enough to recognise it. */
+function truncWork(title, n = 10) {
+  return title.length > n ? `${title.slice(0, n)}…` : title;
+}
+
+/** Days where the dominant work changed from the previous reading day — the
+ *  points a chart marks so a speed step reads as "switched VN", not a slump.
+ *  The first work to appear isn't a switch, so it gets no marker. A day with no
+ *  reading (no `work`) is skipped, never treated as a change. */
+function workChanges(days) {
+  const out = [];
+  let prev = null;
+  days.forEach((d, i) => {
+    if (d.work && d.work !== prev) {
+      if (prev !== null) out.push({ i, work: d.work });
+      prev = d.work;
+    }
+  });
+  return out;
+}
+
+/** Chars/hour trend over days with ≥10 min read. days: [{date, active_secs, chars, work}] */
 export function SpeedTrendChart({ days }) {
   const [hover, setHover] = useState(null);
   const H = 280;
@@ -207,11 +304,17 @@ export function SpeedTrendChart({ days }) {
   const plotH = H - m.top - m.bottom;
 
   const points = days
-    .map((d, i) => ({ ...d, i, speed: d.active_secs >= 600 ? d.chars / (d.active_secs / 3600) : null }))
+    .map((d, i) => ({
+      ...d,
+      i,
+      speed: d.active_secs >= 600 ? d.chars / (d.active_secs / 3600) : null,
+    }))
     .filter((d) => d.speed !== null && d.speed > 0);
 
   if (points.length < 2) {
-    return html`<p class="chart-empty">Needs a few days with 10+ minutes read to draw a trend.</p>`;
+    return html`<p class="chart-empty">
+      Needs a few days with 10+ minutes read to draw a trend.
+    </p>`;
   }
 
   const rawMax = Math.max(...points.map((p) => p.speed));
@@ -226,56 +329,128 @@ export function SpeedTrendChart({ days }) {
   const yStep = SPEED_STEPS.find((s) => (hi - lo) / s <= 5) ?? 10000;
   const yMax = Math.ceil(hi / yStep) * yStep;
   const yMin = Math.max(0, Math.floor(lo / yStep) * yStep);
-  const x = (i) => m.left + (days.length === 1 ? 0 : (i / (days.length - 1)) * plotW);
+  const x = (i) =>
+    m.left + (days.length === 1 ? 0 : (i / (days.length - 1)) * plotW);
   const y = (v) => m.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
 
   // A sub-1k step needs a decimal, or 12500 and 13000 both label as "13k".
   const kLabel = (t) => `${(t / 1000).toFixed(yStep < 1000 ? 1 : 0)}k`;
   const ticks = [];
   for (let t = yMin; t <= yMax; t += yStep) ticks.push(t);
-  const path = points.map((p, k) => `${k === 0 ? 'M' : 'L'}${x(p.i)},${y(p.speed)}`).join(' ');
+  const path = points
+    .map((p, k) => `${k === 0 ? "M" : "L"}${x(p.i)},${y(p.speed)}`)
+    .join(" ");
   const last = points[points.length - 1];
   const labelEvery = Math.ceil(days.length / 6);
+  const changes = workChanges(days);
 
   return html`
     <div class="chart-wrap" onMouseLeave=${() => setHover(null)}>
-      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Reading speed trend, characters per hour">
-        ${ticks.map((t) => html`
-          <line x1=${m.left} x2=${W - m.right} y1=${y(t)} y2=${y(t)} class="gridline" />
-          <text x=${m.left - 6} y=${y(t) + 3} class="tick" text-anchor="end">${kLabel(t)}</text>
-        `)}
-        ${days.map((d, i) => i % labelEvery === 0 && html`
-          <text x=${x(i)} y=${H - 8} class="tick" text-anchor="middle">${shortDate(d.date)}</text>
-        `)}
+      <svg
+        viewBox="0 0 ${W} ${H}"
+        role="img"
+        aria-label="Reading speed trend, characters per hour"
+      >
+        ${ticks.map(
+          (t) => html`
+            <line
+              x1=${m.left}
+              x2=${W - m.right}
+              y1=${y(t)}
+              y2=${y(t)}
+              class="gridline"
+            />
+            <text x=${m.left - 6} y=${y(t) + 3} class="tick" text-anchor="end"
+              >${kLabel(t)}</text
+            >
+          `,
+        )}
+        ${days.map(
+          (d, i) =>
+            i % labelEvery === 0 &&
+            html`
+              <text x=${x(i)} y=${H - 8} class="tick" text-anchor="middle"
+                >${shortDate(d.date)}</text
+              >
+            `,
+        )}
+        ${changes.map(
+          (c) => html`
+            <line
+              x1=${x(c.i)}
+              x2=${x(c.i)}
+              y1=${m.top}
+              y2=${m.top + plotH}
+              class="work-divider"
+            />
+            <text
+              x=${x(c.i) + 4}
+              y=${m.top + 10}
+              class="work-divider-label"
+              transform=${`rotate(90 ${x(c.i) + 4} ${m.top + 10})`}
+            >
+              ${truncWork(c.work)}
+            </text>
+          `,
+        )}
         <path d=${path} class="trend-line trend-line-speed" />
-        ${hover !== null && html`
-          <line x1=${x(points[hover].i)} x2=${x(points[hover].i)} y1=${m.top} y2=${m.top + plotH} class="crosshair" />
-        `}
-        ${points.map((p, k) => html`
-          <circle cx=${x(p.i)} cy=${y(p.speed)} r=${k === points.length - 1 || hover === k ? 5 : 3.5}
-                  class="trend-dot trend-dot-speed" />
-        `)}
+        ${
+          hover !== null &&
+          html`
+            <line
+              x1=${x(points[hover].i)}
+              x2=${x(points[hover].i)}
+              y1=${m.top}
+              y2=${m.top + plotH}
+              class="crosshair"
+            />
+          `
+        }
+        ${points.map(
+          (p, k) => html`
+            <circle
+              cx=${x(p.i)}
+              cy=${y(p.speed)}
+              r=${k === points.length - 1 || hover === k ? 5 : 3.5}
+              class="trend-dot trend-dot-speed"
+            />
+          `,
+        )}
         <text x=${x(last.i) + 10} y=${y(last.speed) + 4} class="end-label">
           ${(last.speed / 1000).toFixed(1)}k/h
         </text>
-        <rect x=${m.left} y=${m.top} width=${plotW} height=${plotH} fill="transparent"
-              onMouseMove=${(e) => {
-                const rect = e.currentTarget.closest('svg').getBoundingClientRect();
+        <rect
+          x=${m.left}
+          y=${m.top}
+          width=${plotW}
+          height=${plotH}
+          fill="transparent"
+          onMouseMove=${(e) => {
+                const rect = e.currentTarget
+                  .closest("svg")
+                  .getBoundingClientRect();
                 const px = ((e.clientX - rect.left) / rect.width) * W;
                 let nearest = 0;
                 points.forEach((p, k) => {
-                  if (Math.abs(x(p.i) - px) < Math.abs(x(points[nearest].i) - px)) nearest = k;
+                  if (
+                    Math.abs(x(p.i) - px) < Math.abs(x(points[nearest].i) - px)
+                  )
+                    nearest = k;
                 });
                 setHover(nearest);
-              }} />
+              }}
+        />
       </svg>
-      ${hover !== null && html`
-        <${Tooltip} x=${x(points[hover].i)} y=${8}>
-          <strong>${points[hover].date}</strong><br />
-          ${Math.round(points[hover].speed).toLocaleString('en')} chars/h
-          · ${Math.round(points[hover].active_secs / 60)} min
-        <//>
-      `}
+      ${
+        hover !== null &&
+        html`
+          <${Tooltip} x=${x(points[hover].i)} y=${8}>
+            <strong>${points[hover].date}</strong><br />
+            ${Math.round(points[hover].speed).toLocaleString("en")} chars/h ·
+            ${Math.round(points[hover].active_secs / 60)} min
+          <//>
+        `
+      }
     </div>
   `;
 }
@@ -284,8 +459,18 @@ export function SpeedTrendChart({ days }) {
 // different unit and stays in its own chart — overlaying it here would mean two
 // y-scales, whose alignment is arbitrary and invents correlations.
 const RATE_SERIES = [
-  { key: 'lookups', label: 'lookups/h', color: 'var(--series-1)', of: (d) => d.lookups },
-  { key: 'cards', label: 'cards/h', color: 'var(--series-2)', of: (d) => d.cards },
+  {
+    key: "lookups",
+    label: "lookups/h",
+    color: "var(--series-1)",
+    of: (d) => d.lookups,
+  },
+  {
+    key: "cards",
+    label: "cards/h",
+    color: "var(--series-2)",
+    of: (d) => d.cards,
+  },
 ];
 
 /** Minimum active time before a per-hour rate means anything. */
@@ -319,18 +504,22 @@ export function RateTrendChart({ days }) {
   const shown = RATE_SERIES.filter((s) => !off[s.key]);
 
   if (rated.length < 2) {
-    return html`<p class="chart-empty">Needs a few days with 10+ minutes read to draw a trend.</p>`;
+    return html`<p class="chart-empty">
+      Needs a few days with 10+ minutes read to draw a trend.
+    </p>`;
   }
 
   const values = shown.flatMap((s) => rated.map((d) => s.of(d) / d.hours));
   const step = rateStep(Math.max(...values, 1));
   const yMax = niceCeil(Math.max(...values, 1) * 1.1, step);
-  const x = (i) => m.left + (days.length === 1 ? 0 : (i / (days.length - 1)) * plotW);
+  const x = (i) =>
+    m.left + (days.length === 1 ? 0 : (i / (days.length - 1)) * plotW);
   const y = (v) => m.top + plotH - (v / yMax) * plotH;
 
   const ticks = [];
   for (let t = 0; t <= yMax; t += step) ticks.push(t);
   const labelEvery = Math.ceil(days.length / 6);
+  const changes = workChanges(days);
 
   const plotted = shown.map((s) => {
     const pts = rated.map((d) => ({ i: d.i, v: s.of(d) / d.hours }));
@@ -338,7 +527,9 @@ export function RateTrendChart({ days }) {
       s,
       pts,
       last: pts[pts.length - 1],
-      path: pts.map((p, k) => `${k === 0 ? 'M' : 'L'}${x(p.i)},${y(p.v)}`).join(' '),
+      path: pts
+        .map((p, k) => `${k === 0 ? "M" : "L"}${x(p.i)},${y(p.v)}`)
+        .join(" "),
     };
   });
 
@@ -355,68 +546,158 @@ export function RateTrendChart({ days }) {
   // Identity is legend + direct label, never color alone.
   const legend = html`
     <div class="chart-legend">
-      ${RATE_SERIES.map((s) => html`
-        <button type="button"
-                class=${`legend-item${off[s.key] ? ' legend-off' : ''}`}
-                aria-pressed=${!off[s.key]}
-                onClick=${() => setOff((o) => ({ ...o, [s.key]: !o[s.key] }))}>
-          <span class="legend-swatch" style=${`background:${s.color}`}></span>${s.label}
-        </button>
-      `)}
+      ${RATE_SERIES.map(
+        (s) => html`
+          <button
+            type="button"
+            class=${`legend-item${off[s.key] ? " legend-off" : ""}`}
+            aria-pressed=${!off[s.key]}
+            onClick=${() => setOff((o) => ({ ...o, [s.key]: !o[s.key] }))}
+          >
+            <span class="legend-swatch" style=${`background:${s.color}`}></span
+            >${s.label}
+          </button>
+        `,
+      )}
     </div>
   `;
 
   if (shown.length === 0) {
-    return html`${legend}<p class="chart-empty">Both series hidden — pick one above.</p>`;
+    return html`${legend}
+      <p class="chart-empty">Both series hidden — pick one above.</p>`;
   }
 
   return html`
     ${legend}
     <div class="chart-wrap" onMouseLeave=${() => setHover(null)}>
-      <svg viewBox="0 0 ${W} ${H}" role="img"
-           aria-label="Lookups and mined cards per hour of reading, last ${days.length} days">
-        ${ticks.map((t) => html`
-          <line x1=${m.left} x2=${W - m.right} y1=${y(t)} y2=${y(t)} class="gridline" />
-          <text x=${m.left - 6} y=${y(t) + 3} class="tick" text-anchor="end">${t}</text>
-        `)}
-        ${days.map((d, i) => i % labelEvery === 0 && html`
-          <text x=${x(i)} y=${H - 8} class="tick" text-anchor="middle">${shortDate(d.date)}</text>
-        `)}
-        ${hover !== null && html`
-          <line x1=${x(rated[hover].i)} x2=${x(rated[hover].i)} y1=${m.top} y2=${m.top + plotH}
-                class="crosshair" />
-        `}
-        ${plotted.map(({ s, pts, path }) => html`
-          <path d=${path} class="trend-line" style=${`stroke:${s.color}`} />
-          ${pts.map((p, k) => html`
-            <circle cx=${x(p.i)} cy=${y(p.v)} r=${k === pts.length - 1 || hover === k ? 5 : 3.5}
-                    class="trend-dot" style=${`fill:${s.color}`} />
-          `)}
-        `)}
-        ${labelled.map(({ s, last, labelY }) => html`
-          <text x=${x(last.i) + 8} y=${labelY} class="end-label">${last.v.toFixed(1)}</text>
-        `)}
-        <line x1=${m.left} x2=${W - m.right} y1=${y(0)} y2=${y(0)} class="baseline" />
-        <rect x=${m.left} y=${m.top} width=${plotW} height=${plotH} fill="transparent"
-              onMouseMove=${(e) => {
-                const rect = e.currentTarget.closest('svg').getBoundingClientRect();
+      <svg
+        viewBox="0 0 ${W} ${H}"
+        role="img"
+        aria-label="Lookups and mined cards per hour of reading, last ${days.length} days"
+      >
+        ${ticks.map(
+          (t) => html`
+            <line
+              x1=${m.left}
+              x2=${W - m.right}
+              y1=${y(t)}
+              y2=${y(t)}
+              class="gridline"
+            />
+            <text x=${m.left - 6} y=${y(t) + 3} class="tick" text-anchor="end"
+              >${t}</text
+            >
+          `,
+        )}
+        ${days.map(
+          (d, i) =>
+            i % labelEvery === 0 &&
+            html`
+              <text x=${x(i)} y=${H - 8} class="tick" text-anchor="middle"
+                >${shortDate(d.date)}</text
+              >
+            `,
+        )}
+        ${changes.map(
+          (c) => html`
+            <line
+              x1=${x(c.i)}
+              x2=${x(c.i)}
+              y1=${m.top}
+              y2=${m.top + plotH}
+              class="work-divider"
+            />
+            <text
+              x=${x(c.i) + 4}
+              y=${m.top + 10}
+              class="work-divider-label"
+              transform=${`rotate(90 ${x(c.i) + 4} ${m.top + 10})`}
+            >
+              ${truncWork(c.work)}
+            </text>
+          `,
+        )}
+        ${
+          hover !== null &&
+          html`
+            <line
+              x1=${x(rated[hover].i)}
+              x2=${x(rated[hover].i)}
+              y1=${m.top}
+              y2=${m.top + plotH}
+              class="crosshair"
+            />
+          `
+        }
+        ${plotted.map(
+          ({ s, pts, path }) => html`
+            <path d=${path} class="trend-line" style=${`stroke:${s.color}`} />
+            ${pts.map(
+            (p, k) => html`
+              <circle
+                cx=${x(p.i)}
+                cy=${y(p.v)}
+                r=${k === pts.length - 1 || hover === k ? 5 : 3.5}
+                class="trend-dot"
+                style=${`fill:${s.color}`}
+              />
+            `,
+          )}
+          `,
+        )}
+        ${labelled.map(
+          ({ s, last, labelY }) => html`
+            <text x=${x(last.i) + 8} y=${labelY} class="end-label"
+              >${last.v.toFixed(1)}</text
+            >
+          `,
+        )}
+        <line
+          x1=${m.left}
+          x2=${W - m.right}
+          y1=${y(0)}
+          y2=${y(0)}
+          class="baseline"
+        />
+        <rect
+          x=${m.left}
+          y=${m.top}
+          width=${plotW}
+          height=${plotH}
+          fill="transparent"
+          onMouseMove=${(e) => {
+                const rect = e.currentTarget
+                  .closest("svg")
+                  .getBoundingClientRect();
                 const px = ((e.clientX - rect.left) / rect.width) * W;
                 let nearest = 0;
                 rated.forEach((d, k) => {
-                  if (Math.abs(x(d.i) - px) < Math.abs(x(rated[nearest].i) - px)) nearest = k;
+                  if (
+                    Math.abs(x(d.i) - px) < Math.abs(x(rated[nearest].i) - px)
+                  )
+                    nearest = k;
                 });
                 setHover(nearest);
-              }} />
+              }}
+        />
       </svg>
-      ${hover !== null && html`
-        <${Tooltip} x=${x(rated[hover].i)} y=${8}>
-          <strong>${rated[hover].date}</strong><br />
-          ${shown.map((s) => html`
-            ${s.label.replace('/h', '')}: ${(s.of(rated[hover]) / rated[hover].hours).toFixed(1)}/h<br />
-          `)}
-          <span class="tooltip-sub">${Math.round(rated[hover].active_secs / 60)} min read</span>
-        <//>
-      `}
+      ${
+        hover !== null &&
+        html`
+          <${Tooltip} x=${x(rated[hover].i)} y=${8}>
+            <strong>${rated[hover].date}</strong><br />
+            ${shown.map(
+            (s) => html`
+              ${s.label.replace("/h", "")}:
+              ${(s.of(rated[hover]) / rated[hover].hours).toFixed(1)}/h<br />
+            `,
+          )}
+            <span class="tooltip-sub"
+              >${Math.round(rated[hover].active_secs / 60)} min read</span
+            >
+          <//>
+        `
+      }
     </div>
   `;
 }
@@ -430,7 +711,7 @@ const DAY_MIN_ACTIVE_SECS = 45;
 
 function clockHM(ts) {
   const d = new Date(ts * 1000);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 /**
@@ -442,7 +723,13 @@ function clockHM(ts) {
 function smoothBuckets(buckets, win) {
   const half = Math.floor(win / 2);
   return buckets.map((b, i) => {
-    let chars = 0, cleanChars = 0, lookupChars = 0, active = 0, lookup = 0, lookups = 0, cards = 0;
+    let chars = 0,
+      cleanChars = 0,
+      lookupChars = 0,
+      active = 0,
+      lookup = 0,
+      lookups = 0,
+      cards = 0;
     const lo = Math.max(0, i - half);
     const hi = Math.min(buckets.length - 1, i + half);
     for (let j = lo; j <= hi; j += 1) {
@@ -477,9 +764,17 @@ function smoothBuckets(buckets, win) {
       winCleanChars: cleanChars,
       // Time actually lost to the dictionary: the lookup gaps minus what the
       // lines inside them would have cost at clean pace.
-      winOverhead: lookupOverhead(cleanChars, active - lookup, lookupChars, lookup),
+      winOverhead: lookupOverhead(
+        cleanChars,
+        active - lookup,
+        lookupChars,
+        lookup,
+      ),
       speed: ok ? timedChars / hours : null,
-      raw: ok && textHours > DAY_MIN_ACTIVE_SECS / 3600 ? cleanChars / textHours : null,
+      raw:
+        ok && textHours > DAY_MIN_ACTIVE_SECS / 3600
+          ? cleanChars / textHours
+          : null,
       lookups: ok ? lookups / hours : null,
       cards: ok ? cards / hours : null,
     };
@@ -526,7 +821,8 @@ function segments(pts, key) {
 function niceTicks(max, count) {
   const raw = max / count;
   const mag = 10 ** Math.floor(Math.log10(raw));
-  const step = [1, 2, 2.5, 5, 10].map((s) => s * mag).find((s) => s >= raw) ?? mag * 10;
+  const step =
+    [1, 2, 2.5, 5, 10].map((s) => s * mag).find((s) => s >= raw) ?? mag * 10;
   const top = Math.ceil(max / step) * step;
   const ticks = [];
   for (let t = 0; t <= top + 1e-9; t += step) ticks.push(t);
@@ -534,14 +830,19 @@ function niceTicks(max, count) {
 }
 
 const DAY_RATE_SERIES = [
-  { key: 'lookups', label: 'lookups/h', color: 'var(--series-1)' },
-  { key: 'cards', label: 'cards/h', color: 'var(--series-2)' },
+  { key: "lookups", label: "lookups/h", color: "var(--series-1)" },
+  { key: "cards", label: "cards/h", color: "var(--series-2)" },
 ];
 
 /** Area between the two speed lines — the lookup tax, in chars/hour. */
 function bandPath(seg, x, y) {
-  const up = seg.map((p, k) => `${k === 0 ? 'M' : 'L'}${x(p.t)},${y(p.raw)}`).join(' ');
-  const back = [...seg].reverse().map((p) => `L${x(p.t)},${y(p.speed)}`).join(' ');
+  const up = seg
+    .map((p, k) => `${k === 0 ? "M" : "L"}${x(p.t)},${y(p.raw)}`)
+    .join(" ");
+  const back = [...seg]
+    .reverse()
+    .map((p) => `L${x(p.t)},${y(p.speed)}`)
+    .join(" ");
   return `${up} ${back} Z`;
 }
 
@@ -563,16 +864,18 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
 
   // Right margin holds the two direct labels on the speed panel.
   const m = { top: 16, right: 82, bottom: 30, left: 48 };
-  const aH = 220;   // speed panel
+  const aH = 220; // speed panel
   const gap = 34;
-  const bH = 150;   // rate panel
+  const bH = 150; // rate panel
   const H = m.top + aH + gap + bH + m.bottom;
   const plotW = W - m.left - m.right;
   const aTop = m.top;
   const bTop = m.top + aH + gap;
 
   if (!buckets || buckets.length < 2) {
-    return html`<p class="chart-empty">No line-stream reading recorded this day.</p>`;
+    return html`<p class="chart-empty">
+      No line-stream reading recorded this day.
+    </p>`;
   }
 
   const win = Math.max(1, Math.round((windowMins * 60) / bucketSecs));
@@ -587,34 +890,52 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
   const speeds = pts.map((p) => p.speed).filter((v) => v !== null);
   if (speeds.length < 2) {
     return html`<p class="chart-empty">
-      Not enough continuous reading this day to draw a curve — try a smaller smoothing window.
+      Not enough continuous reading this day to draw a curve — try a smaller
+      smoothing window.
     </p>`;
   }
   const raws = pts.map((p) => p.raw).filter((v) => v !== null);
   const speedAxis = niceTicks(Math.max(...speeds, ...raws) * 1.1, 6);
-  const rateVals = shown.flatMap((s) => pts.map((p) => p[s.key]).filter((v) => v !== null));
+  const rateVals = shown.flatMap((s) =>
+    pts.map((p) => p[s.key]).filter((v) => v !== null),
+  );
   const rateAxis = niceTicks(Math.max(...rateVals, 1) * 1.05, 5);
 
   const yA = (v) => aTop + aH - (v / speedAxis.top) * aH;
   const yB = (v) => bTop + bH - (v / rateAxis.top) * bH;
 
   const toPath = (segs, y, key) =>
-    segs.map((seg) => seg.map((p, k) => `${k === 0 ? 'M' : 'L'}${x(p.t)},${y(p[key])}`).join(' '));
+    segs.map((seg) =>
+      seg
+        .map((p, k) => `${k === 0 ? "M" : "L"}${x(p.t)},${y(p[key])}`)
+        .join(" "),
+    );
 
-  const speedPaths = toPath(segments(pts, 'speed'), yA, 'speed');
-  const rawPaths = toPath(segments(pts, 'raw'), yA, 'raw');
+  const speedPaths = toPath(segments(pts, "speed"), yA, "speed");
+  const rawPaths = toPath(segments(pts, "raw"), yA, "raw");
   // The band needs both lines defined, so mark the points where they overlap
   // and reuse the same segmenting.
-  const paired = pts.map((p) => ({ ...p, both: p.raw !== null && p.speed !== null ? 1 : null }));
-  const bands = segments(paired, 'both').map((seg) => bandPath(seg, x, yA));
+  const paired = pts.map((p) => ({
+    ...p,
+    both: p.raw !== null && p.speed !== null ? 1 : null,
+  }));
+  const bands = segments(paired, "both").map((seg) => bandPath(seg, x, yA));
 
   // Direct labels at each line's last defined point, nudged apart when the two
   // speeds finish close enough to overprint.
-  const lastOf = (key) => [...pts].reverse().find((p) => p[key] !== null) ?? null;
-  const lastSpeed = lastOf('speed');
-  let lastRaw = lastOf('raw');
-  if (lastSpeed && lastRaw && Math.abs(yA(lastRaw.raw) - yA(lastSpeed.speed)) < 13) {
-    lastRaw = { ...lastRaw, raw: speedAxis.top * ((yA(lastSpeed.speed) - 13 - aTop - aH) / -aH) };
+  const lastOf = (key) =>
+    [...pts].reverse().find((p) => p[key] !== null) ?? null;
+  const lastSpeed = lastOf("speed");
+  let lastRaw = lastOf("raw");
+  if (
+    lastSpeed &&
+    lastRaw &&
+    Math.abs(yA(lastRaw.raw) - yA(lastSpeed.speed)) < 13
+  ) {
+    lastRaw = {
+      ...lastRaw,
+      raw: speedAxis.top * ((yA(lastSpeed.speed) - 13 - aTop - aH) / -aH),
+    };
   }
 
   // Day-level tax, stated as a number rather than left to the eye.
@@ -622,18 +943,25 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
   const totLookup = buckets.reduce((a, b) => a + b.lookup_secs, 0);
   const totClean = buckets.reduce((a, b) => a + b.clean_chars, 0);
   const totLookupChars = buckets.reduce((a, b) => a + b.lookup_chars, 0);
-  const dayOverhead = lookupOverhead(totClean, totActive - totLookup, totLookupChars, totLookup);
+  const dayOverhead = lookupOverhead(
+    totClean,
+    totActive - totLookup,
+    totLookupChars,
+    totLookup,
+  );
   // Timed chars, not all chars — see `smoothBuckets`. Each session's trailing
   // line has chars but no credited seconds, and counting it here only would
   // make the tax a comparison between two different character sets.
   const dayEffective = (totClean + totLookupChars) / (totActive / 3600);
-  const dayRaw = totActive > totLookup ? totClean / ((totActive - totLookup) / 3600) : null;
+  const dayRaw =
+    totActive > totLookup ? totClean / ((totActive - totLookup) / 3600) : null;
 
   // Hour gridlines, or half-hour when the day is short enough to need them.
   const spanHours = (t1 - t0) / 3600;
   const tickSecs = spanHours > 6 ? 7200 : spanHours > 3 ? 3600 : 1800;
   const timeTicks = [];
-  for (let t = Math.ceil(t0 / tickSecs) * tickSecs; t < t1; t += tickSecs) timeTicks.push(t);
+  for (let t = Math.ceil(t0 / tickSecs) * tickSecs; t < t1; t += tickSecs)
+    timeTicks.push(t);
 
   // Panel A's two lines are one measure under two conditions, so they share a
   // hue and separate by dash + direct label; panel B's two are different
@@ -644,21 +972,29 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
         <span class="legend-swatch legend-line"></span>as read
       </span>
       <span class="legend-item legend-static">
-        <span class="legend-swatch legend-line legend-line-dashed"></span>lookups removed
+        <span class="legend-swatch legend-line legend-line-dashed"></span
+        >lookups removed
       </span>
-      ${DAY_RATE_SERIES.map((s) => html`
-        <button type="button"
-                class=${`legend-item${off[s.key] ? ' legend-off' : ''}`}
-                aria-pressed=${!off[s.key]}
-                onClick=${() => setOff((o) => ({ ...o, [s.key]: !o[s.key] }))}>
-          <span class="legend-swatch" style=${`background:${s.color}`}></span>${s.label}
-        </button>
-      `)}
-      <button type="button"
-              class=${`legend-item${overlay ? '' : ' legend-off'}`}
-              aria-pressed=${overlay}
-              title="Draw the rate curves into the speed panel, each scaled 0–max. Shows when they move together; amplitude is normalised away, so read magnitude from the panel below or from hover."
-              onClick=${() => setOverlay((v) => !v)}>
+      ${DAY_RATE_SERIES.map(
+        (s) => html`
+          <button
+            type="button"
+            class=${`legend-item${off[s.key] ? " legend-off" : ""}`}
+            aria-pressed=${!off[s.key]}
+            onClick=${() => setOff((o) => ({ ...o, [s.key]: !o[s.key] }))}
+          >
+            <span class="legend-swatch" style=${`background:${s.color}`}></span
+            >${s.label}
+          </button>
+        `,
+      )}
+      <button
+        type="button"
+        class=${`legend-item${overlay ? "" : " legend-off"}`}
+        aria-pressed=${overlay}
+        title="Draw the rate curves into the speed panel, each scaled 0–max. Shows when they move together; amplitude is normalised away, so read magnitude from the panel below or from hover."
+        onClick=${() => setOverlay((v) => !v)}
+      >
         ⇕ overlay shape
       </button>
     </div>
@@ -685,104 +1021,223 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
 
   return html`
     <div class="chart-wrap" onMouseLeave=${() => setHover(null)}>
-      <svg viewBox="0 0 ${W} ${H}" role="img"
-           aria-label="Reading speed, lookup rate and mining rate across the day">
+      <svg
+        viewBox="0 0 ${W} ${H}"
+        role="img"
+        aria-label="Reading speed, lookup rate and mining rate across the day"
+      >
         <text x=${m.left} y=${aTop - 3} class="panel-title">chars/hour</text>
-        ${speedAxis.ticks.map((t) => html`
-          <line x1=${m.left} x2=${W - m.right} y1=${yA(t)} y2=${yA(t)} class="gridline" />
-          <text x=${m.left - 6} y=${yA(t) + 3} class="tick" text-anchor="end">
-            ${t >= 1000 ? `${(t / 1000).toFixed(t % 1000 ? 1 : 0)}k` : t}
-          </text>
-        `)}
+        ${speedAxis.ticks.map(
+          (t) => html`
+            <line
+              x1=${m.left}
+              x2=${W - m.right}
+              y1=${yA(t)}
+              y2=${yA(t)}
+              class="gridline"
+            />
+            <text x=${m.left - 6} y=${yA(t) + 3} class="tick" text-anchor="end">
+              ${t >= 1000 ? `${(t / 1000).toFixed(t % 1000 ? 1 : 0)}k` : t}
+            </text>
+          `,
+        )}
         ${bands.map((d) => html`<path d=${d} class="tax-band" />`)}
-        ${overlayPaths.map(({ s, paths }) => paths.map((d) => html`
-          <path d=${d} class="overlay-line" style=${`stroke:${s.color}`} />
-        `))}
+        ${overlayPaths.map(({ s, paths }) =>
+          paths.map(
+            (d) => html`
+              <path d=${d} class="overlay-line" style=${`stroke:${s.color}`} />
+            `,
+          ),
+        )}
         ${rawPaths.map((d) => html`<path d=${d} class="trend-line trend-line-speed trend-line-raw" />`)}
         ${speedPaths.map((d) => html`<path d=${d} class="trend-line trend-line-speed" />`)}
-        ${lastSpeed && html`
-          <text x=${x(lastSpeed.t) + 7} y=${yA(lastSpeed.speed) + 4} class="end-label">as read</text>
-        `}
-        ${lastRaw && html`
-          <text x=${x(lastRaw.t) + 7} y=${yA(lastRaw.raw) + 4} class="end-label">no lookups</text>
-        `}
-        <line x1=${m.left} x2=${W - m.right} y1=${yA(0)} y2=${yA(0)} class="baseline" />
+        ${
+          lastSpeed &&
+          html`
+            <text
+              x=${x(lastSpeed.t) + 7}
+              y=${yA(lastSpeed.speed) + 4}
+              class="end-label"
+              >as read</text
+            >
+          `
+        }
+        ${
+          lastRaw &&
+          html`
+            <text
+              x=${x(lastRaw.t) + 7}
+              y=${yA(lastRaw.raw) + 4}
+              class="end-label"
+              >no lookups</text
+            >
+          `
+        }
+        <line
+          x1=${m.left}
+          x2=${W - m.right}
+          y1=${yA(0)}
+          y2=${yA(0)}
+          class="baseline"
+        />
 
-        <text x=${m.left} y=${bTop - 3} class="panel-title">per hour of reading</text>
-        ${rateAxis.ticks.map((t) => html`
-          <line x1=${m.left} x2=${W - m.right} y1=${yB(t)} y2=${yB(t)} class="gridline" />
-          <text x=${m.left - 6} y=${yB(t) + 3} class="tick" text-anchor="end">${t}</text>
-        `)}
-        ${shown.map((s) => html`
-          ${toPath(segments(pts, s.key), yB, s.key).map((d) => html`
-            <path d=${d} class="trend-line" style=${`stroke:${s.color}`} />
-          `)}
-        `)}
-        <line x1=${m.left} x2=${W - m.right} y1=${yB(0)} y2=${yB(0)} class="baseline" />
+        <text x=${m.left} y=${bTop - 3} class="panel-title">
+          per hour of reading
+        </text>
+        ${rateAxis.ticks.map(
+          (t) => html`
+            <line
+              x1=${m.left}
+              x2=${W - m.right}
+              y1=${yB(t)}
+              y2=${yB(t)}
+              class="gridline"
+            />
+            <text x=${m.left - 6} y=${yB(t) + 3} class="tick" text-anchor="end"
+              >${t}</text
+            >
+          `,
+        )}
+        ${shown.map(
+          (s) => html`
+            ${toPath(segments(pts, s.key), yB, s.key).map(
+            (d) => html`
+              <path d=${d} class="trend-line" style=${`stroke:${s.color}`} />
+            `,
+          )}
+          `,
+        )}
+        <line
+          x1=${m.left}
+          x2=${W - m.right}
+          y1=${yB(0)}
+          y2=${yB(0)}
+          class="baseline"
+        />
 
-        ${timeTicks.map((t) => html`
-          <text x=${x(t)} y=${H - 8} class="tick" text-anchor="middle">${clockHM(t)}</text>
-        `)}
-        ${hp && html`
-          <line x1=${x(hp.t)} x2=${x(hp.t)} y1=${aTop} y2=${bTop + bH} class="crosshair" />
-          ${hp.speed !== null && html`
-            <circle cx=${x(hp.t)} cy=${yA(hp.speed)} r="4.5" class="trend-dot trend-dot-speed" />
-          `}
-          ${shown.map((s) => hp[s.key] !== null && html`
-            <circle cx=${x(hp.t)} cy=${yB(hp[s.key])} r="4.5" class="trend-dot"
-                    style=${`fill:${s.color}`} />
-          `)}
-        `}
-        <rect x=${m.left} y=${aTop} width=${plotW} height=${bTop + bH - aTop} fill="transparent"
-              onMouseMove=${(e) => {
-                const rect = e.currentTarget.closest('svg').getBoundingClientRect();
+        ${timeTicks.map(
+          (t) => html`
+            <text x=${x(t)} y=${H - 8} class="tick" text-anchor="middle"
+              >${clockHM(t)}</text
+            >
+          `,
+        )}
+        ${
+          hp &&
+          html`
+            <line
+              x1=${x(hp.t)}
+              x2=${x(hp.t)}
+              y1=${aTop}
+              y2=${bTop + bH}
+              class="crosshair"
+            />
+            ${
+            hp.speed !== null &&
+            html`
+              <circle
+                cx=${x(hp.t)}
+                cy=${yA(hp.speed)}
+                r="4.5"
+                class="trend-dot trend-dot-speed"
+              />
+            `
+          }
+            ${shown.map(
+            (s) =>
+              hp[s.key] !== null &&
+              html`
+                <circle
+                  cx=${x(hp.t)}
+                  cy=${yB(hp[s.key])}
+                  r="4.5"
+                  class="trend-dot"
+                  style=${`fill:${s.color}`}
+                />
+              `,
+          )}
+          `
+        }
+        <rect
+          x=${m.left}
+          y=${aTop}
+          width=${plotW}
+          height=${bTop + bH - aTop}
+          fill="transparent"
+          onMouseMove=${(e) => {
+                const rect = e.currentTarget
+                  .closest("svg")
+                  .getBoundingClientRect();
                 const px = ((e.clientX - rect.left) / rect.width) * W;
                 let nearest = 0;
                 pts.forEach((p, k) => {
-                  if (Math.abs(x(p.t) - px) < Math.abs(x(pts[nearest].t) - px)) nearest = k;
+                  if (Math.abs(x(p.t) - px) < Math.abs(x(pts[nearest].t) - px))
+                    nearest = k;
                 });
                 setHover(nearest);
-              }} />
+              }}
+        />
       </svg>
-      ${hp && html`
-        <${Tooltip} x=${x(hp.t)} y=${6}>
-          <strong>${clockHM(hp.t)}</strong><br />
-          ${hp.speed === null
-            ? html`<span class="tooltip-sub">too little reading in the window</span>`
-            : html`
-                ${`${Math.round(hp.speed).toLocaleString('en')} chars/h as read`}<br />
-                ${hp.raw !== null &&
-                  html`${`${Math.round(hp.raw).toLocaleString('en')} chars/h without lookups`}<br />`}
-                ${shown.map((s) => html`
-                  ${s.label.replace('/h', '')}: ${hp[s.key].toFixed(1)}/h<br />
-                `)}
-                <span class="tooltip-sub">
-                  ${`${hp.winChars.toLocaleString('en')} chars · ${Math.round(hp.winActive / 60)} min read · ${Math.round(hp.winOverhead / 6) / 10} min lost to lookups`}
-                </span>
-              `}
-        <//>
-      `}
+      ${
+        hp &&
+        html`
+          <${Tooltip} x=${x(hp.t)} y=${6}>
+            <strong>${clockHM(hp.t)}</strong><br />
+            ${
+            hp.speed === null
+              ? html`<span class="tooltip-sub"
+                  >too little reading in the window</span
+                >`
+              : html`
+                  ${`${Math.round(hp.speed).toLocaleString("en")} chars/h as read`}<br />
+                  ${
+                  hp.raw !== null &&
+                  html`${`${Math.round(hp.raw).toLocaleString("en")} chars/h without lookups`}<br />`
+                }
+                  ${shown.map(
+                  (s) => html`
+                    ${s.label.replace("/h", "")}: ${hp[s.key].toFixed(1)}/h<br />
+                  `,
+                )}
+                  <span class="tooltip-sub">
+                    ${`${hp.winChars.toLocaleString("en")} chars · ${Math.round(hp.winActive / 60)} min read · ${Math.round(hp.winOverhead / 6) / 10} min lost to lookups`}
+                  </span>
+                `
+          }
+          <//>
+        `
+      }
     </div>
     ${legend}
-    ${dayRaw !== null && html`
-      <p class="chart-note">
-        ${`Whole day: ${Math.round(dayEffective).toLocaleString('en')} chars/h as read, ${Math.round(dayRaw).toLocaleString('en')} without lookups — a lookup tax of ${Math.round(dayRaw - dayEffective).toLocaleString('en')} chars/h (${Math.round(((dayRaw - dayEffective) / dayRaw) * 100)}%).`}
-        ${' '}
-        ${`Lookups cost about ${Math.round(dayOverhead / 60)} min: ${Math.round(totLookup / 60)} min sat in gaps holding one, but ${Math.round((totLookup - dayOverhead) / 60)} min of that was reading the line itself.`}
-        ${' '}
-        <span class="tooltip-sub">
-          A lookup running past the 30s afk cap is only ever charged 30s, so this is a slight floor.
-        </span>
-      </p>
-    `}
+    ${
+      dayRaw !== null &&
+      html`
+        <p class="chart-note">
+          ${`Whole day: ${Math.round(dayEffective).toLocaleString("en")} chars/h as read, ${Math.round(dayRaw).toLocaleString("en")} without lookups — a lookup tax of ${Math.round(dayRaw - dayEffective).toLocaleString("en")} chars/h (${Math.round(((dayRaw - dayEffective) / dayRaw) * 100)}%).`}
+          ${" "}
+          ${`Lookups cost about ${Math.round(dayOverhead / 60)} min: ${Math.round(totLookup / 60)} min sat in gaps holding one, but ${Math.round((totLookup - dayOverhead) / 60)} min of that was reading the line itself.`}
+          ${" "}
+          <span class="tooltip-sub">
+            A lookup running past the 30s afk cap is only ever charged 30s, so
+            this is a slight floor.
+          </span>
+        </p>
+      `
+    }
   `;
 }
 
 /** Plain progress bar (same visual language as the goal meter, no marker). */
 export function ProgressBar({ pct, label }) {
   return html`
-    <div class="meter" role="meter" aria-valuenow=${Math.round(pct)} aria-valuemin="0"
-         aria-valuemax="100" aria-label=${label}>
+    <div
+      class="meter"
+      role="meter"
+      aria-valuenow=${Math.round(pct)}
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-label=${label}
+    >
       <div class="meter-fill" style="width:${Math.min(100, pct)}%"></div>
     </div>
   `;
@@ -793,10 +1248,20 @@ export function GoalMeter({ mins, floorMins, targetMins }) {
   const pct = Math.min(100, (mins / targetMins) * 100);
   const floorPct = Math.min(100, (floorMins / targetMins) * 100);
   return html`
-    <div class="meter" role="meter" aria-valuenow=${Math.round(mins)} aria-valuemin="0"
-         aria-valuemax=${targetMins} aria-label="Minutes read toward ${targetMins}-minute target">
+    <div
+      class="meter"
+      role="meter"
+      aria-valuenow=${Math.round(mins)}
+      aria-valuemin="0"
+      aria-valuemax=${targetMins}
+      aria-label="Minutes read toward ${targetMins}-minute target"
+    >
       <div class="meter-fill" style="width:${pct}%"></div>
-      <div class="meter-marker" style="left:${floorPct}%" title="floor ${floorMins} min"></div>
+      <div
+        class="meter-marker"
+        style="left:${floorPct}%"
+        title="floor ${floorMins} min"
+      ></div>
     </div>
   `;
 }
