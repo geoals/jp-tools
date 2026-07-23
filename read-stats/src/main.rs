@@ -30,6 +30,7 @@ async fn main() {
         vn_capture_script: config.vn_capture_script.clone(),
         anthropic_api_key: config.anthropic_api_key.clone(),
         llm_model: config.llm_model.clone(),
+        whisper_url: config.whisper_url.clone(),
     });
 
     let listener = tokio::net::TcpListener::bind(&config.listen_addr)

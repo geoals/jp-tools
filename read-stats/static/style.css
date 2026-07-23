@@ -923,6 +923,13 @@ table.days tr.today td {
 .reader-live.on {
   color: var(--good);
 }
+/* Sentence trim unavailable — quiet, since mining still works without it. */
+.reader-trimoff {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
 
 .reader-lines {
   flex: 1;

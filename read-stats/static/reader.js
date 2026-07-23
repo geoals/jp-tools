@@ -234,6 +234,10 @@ export function Reader() {
     : "Not connected — is read-stats reachable?";
   const captureOff = state && state.capture_available === false;
   const explainOff = state && state.explain_available === false;
+  // Quality-only: mining still works, so this is a quiet hint, not a disable.
+  const trimOff = state && state.trim_available === false;
+  const trimTitle =
+    "whisper-service is down — mined clips are VAD-trimmed but not narrowed to the single mined sentence";
   // Built whole rather than split around the focus word — htm collapses the
   // whitespace where literal text meets an interpolation across a line break.
   const explainTitle = explain && explain.focus
@@ -250,6 +254,8 @@ export function Reader() {
         <a class="reader-back" href="#" title="Back to the dashboard">←</a>
         <span class="reader-work">${work}</span>
         <span class="reader-live ${live ? "on" : "off"}">${liveLabel}</span>
+        ${trimOff &&
+        html`<span class="reader-trimoff" title=${trimTitle}>✂ off</span>`}
         <button class="ghost" onClick=${() => bumpFont(-2)}>A−</button>
         <button class="ghost" onClick=${() => bumpFont(2)}>A+</button>
       </div>

@@ -20,6 +20,10 @@ pub struct Config {
     /// Model the explain button asks. Cheap and fast by default — it is a
     /// short lookup, not a translation job.
     pub llm_model: String,
+    /// whisper-service, used by vn-capture.sh only for the sentence-level trim.
+    /// Probed for the reader's status indicator; a capture still works without
+    /// it (the clip is attached VAD-trimmed, just not narrowed to one sentence).
+    pub whisper_url: String,
 }
 
 impl Config {
@@ -57,6 +61,8 @@ impl Config {
             anthropic_api_key: std::env::var("JP_TOOLS_ANTHROPIC_API_KEY").ok(),
             llm_model: std::env::var("JP_TOOLS_LLM_MODEL")
                 .unwrap_or_else(|_| "claude-haiku-4-5".to_string()),
+            whisper_url: std::env::var("JP_TOOLS_WHISPER_URL")
+                .unwrap_or_else(|_| "http://localhost:8100".to_string()),
         }
     }
 }

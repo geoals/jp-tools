@@ -158,7 +158,11 @@ the PC while the phone does the looking-up. The setup:
 - **⛏ mine last line** runs `vn-mine/vn-capture.sh` on the PC, attaching the
   voiceline audio and a screenshot to the note Yomitan just added, and reports
   the outcome on the page instead of via `notify-send` on a desktop nobody is
-  looking at.
+  looking at. **whisper-service is optional here:** it only narrows the clip to
+  the single mined sentence within a multi-sentence line. When it's down the
+  mine still works — the clip is attached VAD-trimmed — and the reader bar shows
+  a muted **✂ off** hint (from `trim_available` in `/api/reader/state`, probed
+  each poll) so you know the sentence trim isn't running.
 - **ℹ explain** sends the newest line (with the previous few for context) to the
   Anthropic API and shows a short read on it — a natural rendering plus any
   nuance or grammar a plain translation misses. **Select a word in the line
@@ -197,7 +201,11 @@ client disconnects abortively, so a second WS client would be a risk for nothing
 cargo run -p read-stats     # http://localhost:3200
 ```
 
-Or as part of the stack: `scripts/start-all.sh`.
+Or as part of the stack: `scripts/start-all.sh`. To run only the VN reading
+stack (read-stats + optional whisper-service, skipping yt-mine and manga):
+`scripts/vn.sh` — see its `--help`. The passive `vn-buffer` ingestion daemon is
+a systemd user unit (`systemctl --user start vn-buffer`); `vn.sh status` reports
+it but doesn't manage it.
 
 ## API
 
@@ -235,7 +243,9 @@ Or as part of the stack: `scripts/start-all.sh`.
   changed, which is what undo re-sends. `POST /api/lines/undiscard` is the
   inverse. See *Clear last line*
 - `GET  /api/reader/state` — `{paused, current_work, capture_available,
-  explain_available}`
+  explain_available, trim_available}`. `trim_available` is a live probe of
+  whisper-service (`JP_TOOLS_WHISPER_URL`, 800 ms timeout) — false lights the
+  reader's **✂ off** hint; capture doesn't depend on it
 - `POST /api/reader/explain` — `{context: [oldest…newest], focus?}`; sends the
   lines to the Anthropic API and returns `{text}`, a short explanation of the
   last one centred on `focus` if given. 400 if no key is configured or the
@@ -536,6 +546,10 @@ curl -X POST localhost:3200/api/sessions -H 'Content-Type: application/json' \
 - `JP_TOOLS_ANTHROPIC_API_KEY` — enables `#read`'s ℹ explain button; unset
   leaves it disabled. `JP_TOOLS_LLM_MODEL` (default `claude-haiku-4-5`) — the
   model it asks. Both are shared with yt-mine, so a root `.env` covers both.
+- `JP_TOOLS_WHISPER_URL` (default `http://localhost:8100`) — whisper-service,
+  probed only to light the reader's **✂ off** hint. read-stats never calls it
+  directly; `vn-capture.sh` does (its own `VN_WHISPER_URL`), and the mine works
+  whether or not it's up.
 
 ## Extending to new sources
 
