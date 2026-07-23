@@ -12,6 +12,7 @@ Cargo workspace for Japanese language learning tools.
 - `whisper-service/` — Python FastAPI transcription service for yt-mine (port 8100)
 - `spec/` — feature specs and roadmap
 - `scripts/start-all.sh` — start/stop/restart/status for the full stack (whisper-service, manga-ocr-service, yt-mine, manga-mine, read-stats); takes service names to act on just one (`restart read-stats`); see `--help`
+- `scripts/vn.sh` — start/stop/restart/status for just the VN reading stack (read-stats + optional whisper-service), a thin wrapper over `start-all.sh` that also reports the `vn-buffer` systemd unit; `no-whisper` skips whisper. See `--help`
 
 ```sh
 cargo build              # all members
