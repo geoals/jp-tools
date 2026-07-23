@@ -714,22 +714,25 @@ async fn apply_work_meta(state: &AppState, id: i64, req: &WorkMetaReq) -> Result
             .await?
             .and_then(|w| w.cover_path);
         let new_cover = if raw.trim().is_empty() {
+            db::set_work_cover(&state.pool, id, None).await?;
+            db::clear_work_cover_vndb(&state.pool, id).await?;
             None
         } else {
             let vid = crate::vndb::normalize_id(raw)
                 .ok_or_else(|| AppError::BadRequest(format!("bad vndb id: {raw}")))?;
-            let url = crate::vndb::fetch_cover_url(&state.http, &vid).await?;
+            // Fetches the cover and records both the filename (on the work) and
+            // the vndb id (in work_covers), so a lost file can be re-fetched.
             Some(
-                crate::vndb::download_cover(
+                crate::covers::fetch_and_store(
                     &state.http,
-                    &url,
+                    &state.pool,
                     &state.covers_dir,
-                    &format!("w{id}"),
+                    id,
+                    &vid,
                 )
                 .await?,
             )
         };
-        db::set_work_cover(&state.pool, id, new_cover.as_deref()).await?;
         if let Some(old) = old_cover.filter(|old| Some(old) != new_cover.as_ref()) {
             let _ = tokio::fs::remove_file(state.covers_dir.join(&old)).await;
         }
@@ -805,6 +808,7 @@ pub async fn delete_work(
     if let Some(cover) = &work.cover_path {
         let _ = tokio::fs::remove_file(state.covers_dir.join(cover)).await;
     }
+    db::clear_work_cover_vndb(&state.pool, id).await?;
     db::delete_work(&state.pool, id).await?;
     Ok(Json(json!({ "deleted": id })))
 }

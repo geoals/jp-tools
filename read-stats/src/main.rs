@@ -19,10 +19,20 @@ async fn main() {
         .expect("failed to open stats database");
     info!(path = %config.db_path, "stats database ready");
 
+    let http = reqwest::Client::new();
+
+    // Best-effort: re-download any cover whose file vanished since last run.
+    tokio::spawn({
+        let http = http.clone();
+        let pool = pool.clone();
+        let covers_dir = config.covers_dir.clone();
+        async move { read_stats::covers::reconcile_missing(&http, &pool, &covers_dir).await }
+    });
+
     let router = build_router(AppState {
         pool,
         covers_dir: config.covers_dir.clone(),
-        http: reqwest::Client::new(),
+        http,
         anki_url: config.anki_url.clone(),
         anki_deck: config.anki_deck.clone(),
         anki_vocab_field: config.anki_vocab_field.clone(),

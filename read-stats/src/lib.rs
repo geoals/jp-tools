@@ -3,6 +3,7 @@ pub mod ankiproxy;
 pub mod app;
 pub mod charcount;
 pub mod config;
+pub mod covers;
 pub mod db;
 pub mod dialogue;
 pub mod error;
