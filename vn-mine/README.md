@@ -65,9 +65,9 @@ Reading from a phone instead? read-stats' `#read` view shows the same line feed
 over the LAN and has a mine button that runs this script — the VN never loses
 desktop focus that way, so the "click back first" step disappears.
 
-Set `VN_WINDOW` (or read-stats' `vn_window` setting) and the "click back first"
-step disappears on the desktop too: the screenshot then targets the VN window
-directly instead of whatever happens to be focused.
+Set `VN_WINDOW` (or the current work's window in read-stats) and the "click back
+first" step disappears on the desktop too: the screenshot then targets the VN
+window directly instead of whatever happens to be focused.
 
 The voiceline anchor is the moment Textractor hooks the line (a re-hook of the
 line still on screen — a double-fire — does not move it). The audio must still
@@ -99,11 +99,13 @@ switching outputs).
   windows are XWayland, so this works under a Wayland session even though
   `xdotool getactivewindow` does not. Unset, unmatched, or missing tools fall
   back to the active window and say so in the result. **Unset, it falls back to
-  read-stats' `vn_window` setting** (read straight from the stats DB), so the
-  hotkey and the `#read` mine button share one place to configure this — set it
-  from the dashboard's *Currently reading* card, which offers a picker of open
-  windows. Configuring it in two places is how you end up with one of them
-  silently capturing the wrong window after a VN switch.
+  the current work's `vn_window` in read-stats** (read straight from the stats
+  DB — the column on the currently-selected work, with the legacy global
+  `vn_window` setting as a last resort), so the hotkey and the `#read` mine
+  button share one place to configure this. Set it from the dashboard's
+  *Currently reading* card (under **edit**), which offers a picker of open
+  windows. Because it's tied to the work, switching VNs switches the capture
+  target with it — no second place to keep in sync.
 - `VN_MAX_LEN` (default 20) — max seconds considered after the line appears.
 - `VN_VAD_THRESHOLD` (default 0.5) — raise if BGM vocals leak in, lower if
   quiet lines get cut.
