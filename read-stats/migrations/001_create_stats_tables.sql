@@ -9,7 +9,11 @@ CREATE TABLE IF NOT EXISTS lines (
     chars  INTEGER NOT NULL,          -- counted codepoints, punctuation excluded (see charcount.rs; recomputable from text)
     text   TEXT,
     source TEXT    NOT NULL DEFAULT 'vn',
-    work   TEXT                      -- stamped from the current_work setting at capture
+    work   TEXT,                     -- stamped from the current_work setting at capture
+    -- 1 = retroactively cleared from the reader ("that wasn't reading"): lines
+    -- hooked while finding a route, or a stretch re-read after skipping back.
+    -- Soft rather than deleted, so the raw stream stays intact and it undoes.
+    discarded INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_lines_ts ON lines(ts);
 

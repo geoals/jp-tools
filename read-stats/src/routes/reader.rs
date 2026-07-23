@@ -27,6 +27,24 @@ use crate::app::AppState;
 use crate::db;
 use crate::error::AppError;
 
+fn now_ts() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64()
+}
+
+/// Record that the reader did something deliberate on this page just now, so
+/// `stats::Presence` credits the surrounding gap even when no Yomitan lookup or
+/// mined card landed in it (reading an explanation, mining without a fresh
+/// lookup). Best-effort: a failed insert is logged, never propagated — the
+/// action it accompanies must still succeed.
+async fn mark_presence(state: &AppState, kind: &str) {
+    if let Err(e) = db::insert_reader_mark(&state.pool, now_ts(), kind).await {
+        warn!(error = %e, kind, "failed to record reader presence mark");
+    }
+}
+
 /// How often the stream checks for new lines, which is the whole of the
 /// pipeline's controllable latency: vn-ws-logger.py commits in autocommit mode
 /// the moment Textractor hooks a line, and the LAN hop is sub-millisecond. A
@@ -141,14 +159,25 @@ pub async fn vn_capture(State(state): State<AppState>) -> Result<Json<Value>, Ap
         )));
     }
 
+    // Pressing mine proves presence whether or not the capture lands (a stale
+    // line still fails), and it attaches media to an existing note rather than
+    // creating one, so it never shows up as a card mark.
+    mark_presence(&state, "mine").await;
+
     // Which window to screenshot. Without it the script grabs whatever has
     // focus — correct when mining from the phone (the VN never loses focus on
     // this machine), wrong from a browser on this machine, which is what would
     // be focused at the moment the button was pressed.
-    let vn_window = db::load_settings(&state.pool)
-        .await
-        .map(|s| s.vn_window)
-        .unwrap_or_default();
+    //
+    // The current work's own window comes first; the global `vn_window` setting
+    // is a legacy fallback for setups that predate per-work windows.
+    let vn_window = match db::current_work_vn_window(&state.pool).await {
+        Ok(Some(w)) if !w.trim().is_empty() => w,
+        _ => db::load_settings(&state.pool)
+            .await
+            .map(|s| s.vn_window)
+            .unwrap_or_default(),
+    };
 
     let mut cmd = tokio::process::Command::new(&script);
     cmd.env("VN_JSON", "1");
@@ -241,6 +270,57 @@ fn is_helper_window(name: &str) -> bool {
     NOISE.contains(&name) || name.starts_with("Qt Selection Owner")
 }
 
+/// Cap on one clear request. The button clears what is on screen, and the
+/// reader keeps `MAX_LINES` (300) of those.
+const MAX_DISCARD: usize = 500;
+
+#[derive(Deserialize)]
+pub struct DiscardBody {
+    pub ids: Vec<i64>,
+}
+
+/// Retroactively drop lines from every derived figure: the ones Textractor
+/// hooks while you are still finding the route, or a stretch re-read after
+/// skipping back, which would otherwise be counted twice.
+///
+/// Pause covers the same ground prospectively; this is for when you only
+/// notice afterwards, which is most of the time. Nothing is deleted — the rows
+/// keep their `discarded` flag and `undiscard_lines` puts them back.
+pub async fn discard_lines(
+    State(state): State<AppState>,
+    Json(body): Json<DiscardBody>,
+) -> Result<Json<Value>, AppError> {
+    set_discarded(&state, body.ids, true).await
+}
+
+/// Undo for `discard_lines`, taking the ids it returned.
+pub async fn undiscard_lines(
+    State(state): State<AppState>,
+    Json(body): Json<DiscardBody>,
+) -> Result<Json<Value>, AppError> {
+    set_discarded(&state, body.ids, false).await
+}
+
+async fn set_discarded(
+    state: &AppState,
+    ids: Vec<i64>,
+    discarded: bool,
+) -> Result<Json<Value>, AppError> {
+    if ids.len() > MAX_DISCARD {
+        return Err(AppError::BadRequest(format!(
+            "at most {MAX_DISCARD} lines at a time, got {}",
+            ids.len()
+        )));
+    }
+    let changed = db::set_lines_discarded(&state.pool, &ids, discarded).await?;
+    info!(count = changed.len(), discarded, "reader cleared lines");
+    // No presence mark here on purpose: clearing is a *suppress* action, like
+    // pause. It widens the gap so the removed line's span stops being credited
+    // (junk route-finding lines, a re-read stretch) — a mark at clear-time would
+    // re-credit exactly what the clear is there to remove.
+    Ok(Json(json!({ "ids": changed })))
+}
+
 /// Everything the reader needs on open, in one round trip.
 pub async fn reader_state(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     let settings = db::load_settings(&state.pool).await?;
@@ -248,5 +328,58 @@ pub async fn reader_state(State(state): State<AppState>) -> Result<Json<Value>, 
         "paused": db::is_pause_open(&state.pool).await?,
         "current_work": settings.current_work,
         "capture_available": state.vn_capture_script.is_file(),
+        "explain_available": state.anthropic_api_key.is_some(),
     })))
+}
+
+/// Recent lines and, optionally, the word the reader has selected in the last
+/// one. The lines are oldest-first with the target line last, mirroring what
+/// the feed shows on screen so the server never has to guess which line is "the
+/// current one".
+#[derive(Deserialize)]
+pub struct ExplainBody {
+    pub context: Vec<String>,
+    #[serde(default)]
+    pub focus: String,
+}
+
+/// Enough earlier lines to place a pronoun or an unstated subject without
+/// paying for a whole scene. The client sends what is on screen; this caps it.
+const MAX_EXPLAIN_CONTEXT: usize = 12;
+
+/// Ask the model for a short read on the line currently being read, centred on
+/// a selected word if one was passed. Off unless an API key is configured.
+pub async fn explain_line(
+    State(state): State<AppState>,
+    Json(body): Json<ExplainBody>,
+) -> Result<Json<Value>, AppError> {
+    let Some(api_key) = state.anthropic_api_key.clone() else {
+        return Err(AppError::BadRequest(
+            "no Anthropic API key set (JP_TOOLS_ANTHROPIC_API_KEY)".into(),
+        ));
+    };
+
+    let mut context: Vec<String> = body
+        .context
+        .into_iter()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    if context.is_empty() {
+        return Err(AppError::BadRequest("no line to explain".into()));
+    }
+    if context.len() > MAX_EXPLAIN_CONTEXT {
+        context.drain(0..context.len() - MAX_EXPLAIN_CONTEXT);
+    }
+
+    mark_presence(&state, "explain").await;
+    let text = crate::llm::explain(
+        &state.http,
+        &api_key,
+        &state.llm_model,
+        &context,
+        body.focus.trim(),
+    )
+    .await?;
+    Ok(Json(json!({ "text": text })))
 }

@@ -8,6 +8,7 @@ const MIGRATION_WORKS: &str = include_str!("../migrations/002_create_works.sql")
 const MIGRATION_ANKI: &str = include_str!("../migrations/003_create_anki_tables.sql");
 const MIGRATION_LOOKUPS: &str = include_str!("../migrations/004_create_lookups.sql");
 const MIGRATION_LOOKUP_IDX: &str = include_str!("../migrations/005_create_lookup_indexes.sql");
+const MIGRATION_READER_MARKS: &str = include_str!("../migrations/006_create_reader_marks.sql");
 
 pub async fn create_pool(db_path: &str) -> Result<SqlitePool, sqlx::Error> {
     let opts = SqliteConnectOptions::new()
@@ -27,11 +28,19 @@ pub async fn create_pool(db_path: &str) -> Result<SqlitePool, sqlx::Error> {
     sqlx::raw_sql(MIGRATION_ANKI).execute(&pool).await?;
     sqlx::raw_sql(MIGRATION_LOOKUPS).execute(&pool).await?;
     sqlx::raw_sql(MIGRATION_LOOKUP_IDX).execute(&pool).await?;
+    sqlx::raw_sql(MIGRATION_READER_MARKS).execute(&pool).await?;
 
     // ALTER TABLE ADD COLUMN has no IF NOT EXISTS in SQLite — DBs created
     // before the work column need it added.
     if !has_column(&pool, "lines", "work").await? {
         sqlx::raw_sql("ALTER TABLE lines ADD COLUMN work TEXT")
+            .execute(&pool)
+            .await?;
+    }
+    // Retroactively discarded lines (see `discard_lines`). Every read of the
+    // stream filters on it, so it has to exist before anything queries.
+    if !has_column(&pool, "lines", "discarded").await? {
+        sqlx::raw_sql("ALTER TABLE lines ADD COLUMN discarded INTEGER NOT NULL DEFAULT 0")
             .execute(&pool)
             .await?;
     }
@@ -42,6 +51,13 @@ pub async fn create_pool(db_path: &str) -> Result<SqlitePool, sqlx::Error> {
                 .execute(&pool)
                 .await?;
         }
+    }
+    // The VN's window title is per-work now (each VN has its own), not one
+    // global setting that goes stale the moment you switch VNs.
+    if !has_column(&pool, "works", "vn_window").await? {
+        sqlx::raw_sql("ALTER TABLE works ADD COLUMN vn_window TEXT")
+            .execute(&pool)
+            .await?;
     }
     recount_line_chars(&pool).await?;
     Ok(pool)
@@ -218,7 +234,7 @@ pub async fn fetch_lines_after_id(
 ) -> Result<Vec<ReaderLine>, sqlx::Error> {
     let rows = sqlx::query(
         "SELECT id, ts, chars, text FROM lines
-         WHERE id > ? AND text IS NOT NULL ORDER BY id LIMIT ?",
+         WHERE id > ? AND text IS NOT NULL AND discarded = 0 ORDER BY id LIMIT ?",
     )
     .bind(after_id)
     .bind(limit)
@@ -235,7 +251,7 @@ pub async fn fetch_recent_lines(
 ) -> Result<Vec<ReaderLine>, sqlx::Error> {
     let rows = sqlx::query(
         "SELECT id, ts, chars, text FROM lines
-         WHERE text IS NOT NULL ORDER BY id DESC LIMIT ?",
+         WHERE text IS NOT NULL AND discarded = 0 ORDER BY id DESC LIMIT ?",
     )
     .bind(limit)
     .fetch_all(pool)
@@ -243,6 +259,38 @@ pub async fn fetch_recent_lines(
     let mut lines: Vec<ReaderLine> = rows.iter().map(reader_line).collect();
     lines.reverse();
     Ok(lines)
+}
+
+/// Flag lines as not-reading (`discarded = 1`) or put them back. Every read of
+/// the stream filters the flag out, so this is how a line stops counting
+/// without leaving the raw table — the same reason pauses don't delete either.
+///
+/// Ids come from the client rather than being a "last N" computed here: the
+/// reader is clearing the lines it has on screen, and a line hooked between
+/// the tap and the request must not be swept up with them.
+///
+/// Returns the ids actually changed, which is what the undo button re-sends.
+pub async fn set_lines_discarded(
+    pool: &SqlitePool,
+    ids: &[i64],
+    discarded: bool,
+) -> Result<Vec<i64>, sqlx::Error> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = std::iter::repeat_n("?", ids.len())
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!(
+        "UPDATE lines SET discarded = ? WHERE id IN ({placeholders}) AND discarded = ?
+         RETURNING id"
+    );
+    let mut q = sqlx::query(&sql).bind(i64::from(discarded));
+    for id in ids {
+        q = q.bind(id);
+    }
+    let rows = q.bind(i64::from(!discarded)).fetch_all(pool).await?;
+    Ok(rows.iter().map(|r| r.get("id")).collect())
 }
 
 fn reader_line(r: &sqlx::sqlite::SqliteRow) -> ReaderLine {
@@ -262,17 +310,27 @@ pub async fn max_line_id(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
     Ok(row.get("max_id"))
 }
 
-pub async fn fetch_line_events(
+/// A classified line paired with the work it was stamped for, so the dialogue
+/// summary can scope its split to one VN. The 「」 classification comes from the
+/// same scanner `fetch_line_events` uses.
+pub struct ClassifiedLine {
+    pub event: LineEvent,
+    pub work: Option<String>,
+}
+
+pub async fn fetch_classified_lines(
     pool: &SqlitePool,
     from_ts: f64,
     to_ts: f64,
-) -> Result<Vec<LineEvent>, sqlx::Error> {
-    let rows =
-        sqlx::query("SELECT ts, chars, text FROM lines WHERE ts >= ? AND ts < ? ORDER BY ts")
-            .bind(from_ts)
-            .bind(to_ts)
-            .fetch_all(pool)
-            .await?;
+) -> Result<Vec<ClassifiedLine>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT ts, chars, text, work FROM lines
+             WHERE ts >= ? AND ts < ? AND discarded = 0 ORDER BY ts",
+    )
+    .bind(from_ts)
+    .bind(to_ts)
+    .fetch_all(pool)
+    .await?;
 
     // One scanner across the whole stream: a speech broken over several text
     // boxes leaves its 「 open on the first row, so depth has to carry. It is
@@ -286,11 +344,12 @@ pub async fn fetch_line_events(
             let ts: f64 = r.get("ts");
             let chars: i64 = r.get("chars");
             let text: Option<String> = r.get("text");
+            let work: Option<String> = r.get("work");
             if prev_ts.is_some_and(|p| ts - p > crate::dialogue::CARRY_GAP_SECS) {
                 scanner.reset();
             }
             prev_ts = Some(ts);
-            match text {
+            let event = match text {
                 Some(text) => {
                     let split = scanner.scan(&text);
                     LineEvent {
@@ -312,15 +371,28 @@ pub async fn fetch_line_events(
                         classified: false,
                     }
                 }
-            }
+            };
+            ClassifiedLine { event, work }
         })
+        .collect())
+}
+
+pub async fn fetch_line_events(
+    pool: &SqlitePool,
+    from_ts: f64,
+    to_ts: f64,
+) -> Result<Vec<LineEvent>, sqlx::Error> {
+    Ok(fetch_classified_lines(pool, from_ts, to_ts)
+        .await?
+        .into_iter()
+        .map(|c| c.event)
         .collect())
 }
 
 pub async fn fetch_work_lines(
     pool: &SqlitePool,
 ) -> Result<Vec<crate::stats::WorkLine>, sqlx::Error> {
-    let rows = sqlx::query("SELECT ts, chars, work FROM lines ORDER BY ts")
+    let rows = sqlx::query("SELECT ts, chars, work FROM lines WHERE discarded = 0 ORDER BY ts")
         .fetch_all(pool)
         .await?;
     Ok(rows
@@ -466,9 +538,13 @@ pub struct Work {
     pub cover_path: Option<String>,
     pub status: String,
     pub queue_pos: Option<i64>,
+    /// Substring of this VN's window title, passed to vn-capture.sh as
+    /// VN_WINDOW so a mine screenshots the VN rather than the focused window.
+    /// Per-work so switching VNs switches the capture target with it.
+    pub vn_window: Option<String>,
 }
 
-const WORK_COLS: &str = "id, title, total_chars, cover_path, status, queue_pos";
+const WORK_COLS: &str = "id, title, total_chars, cover_path, status, queue_pos, vn_window";
 
 fn work_from_row(r: &sqlx::sqlite::SqliteRow) -> Work {
     Work {
@@ -478,6 +554,7 @@ fn work_from_row(r: &sqlx::sqlite::SqliteRow) -> Work {
         cover_path: r.get("cover_path"),
         status: r.get("status"),
         queue_pos: r.get("queue_pos"),
+        vn_window: r.get("vn_window"),
     }
 }
 
@@ -557,6 +634,31 @@ pub async fn set_work_queue_pos(
     Ok(())
 }
 
+pub async fn set_work_vn_window(
+    pool: &SqlitePool,
+    id: i64,
+    vn_window: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE works SET vn_window = ? WHERE id = ?")
+        .bind(vn_window)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// The `vn_window` of whichever work is currently selected, if it has one set.
+/// The capture target follows the current VN without a separate global knob.
+pub async fn current_work_vn_window(pool: &SqlitePool) -> Result<Option<String>, sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT w.vn_window FROM works w
+           JOIN settings s ON s.key = 'current_work' AND s.value = w.title",
+    )
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.and_then(|r| r.get::<Option<String>, _>("vn_window")))
+}
+
 pub async fn delete_work(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error> {
     let result = sqlx::query("DELETE FROM works WHERE id = ?")
         .bind(id)
@@ -629,11 +731,13 @@ pub async fn fetch_lines_after(
     pool: &SqlitePool,
     after_id: i64,
 ) -> Result<Vec<IngestLine>, sqlx::Error> {
-    let rows =
-        sqlx::query("SELECT id, ts, text FROM lines WHERE id > ? AND text IS NOT NULL ORDER BY id")
-            .bind(after_id)
-            .fetch_all(pool)
-            .await?;
+    let rows = sqlx::query(
+        "SELECT id, ts, text FROM lines
+             WHERE id > ? AND text IS NOT NULL AND discarded = 0 ORDER BY id",
+    )
+    .bind(after_id)
+    .fetch_all(pool)
+    .await?;
     Ok(rows
         .iter()
         .map(|r| IngestLine {
@@ -691,6 +795,33 @@ pub async fn insert_lookup(
     .execute(pool)
     .await?;
     Ok(result.rows_affected() > 0)
+}
+
+/// Record a presence mark from a #read action (explain / mine / clear). Best-
+/// effort: the caller logs and swallows any error, since a missed mark only
+/// costs a little presence credit and must never fail the action itself.
+pub async fn insert_reader_mark(pool: &SqlitePool, ts: f64, kind: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("INSERT INTO reader_marks (ts, kind) VALUES (?, ?)")
+        .bind(ts)
+        .bind(kind)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Reader-mark timestamps in a window, oldest first. Merged with lookups and
+/// cards into the presence evidence stream.
+pub async fn fetch_reader_marks(
+    pool: &SqlitePool,
+    from_ts: f64,
+    to_ts: f64,
+) -> Result<Vec<f64>, sqlx::Error> {
+    let rows = sqlx::query("SELECT ts FROM reader_marks WHERE ts >= ? AND ts < ? ORDER BY ts")
+        .bind(from_ts)
+        .bind(to_ts)
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.iter().map(|r| r.get("ts")).collect())
 }
 
 /// Lookup timestamps in a window, oldest first.

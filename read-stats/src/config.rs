@@ -14,6 +14,12 @@ pub struct Config {
     pub sudachi_dict_path: PathBuf,
     /// vn-mine's capture script, fired by the reader view's mine button.
     pub vn_capture_script: PathBuf,
+    /// Anthropic API key for the reader's "explain this line" button. When
+    /// unset the button is disabled rather than the server failing a request.
+    pub anthropic_api_key: Option<String>,
+    /// Model the explain button asks. Cheap and fast by default — it is a
+    /// short lookup, not a translation job.
+    pub llm_model: String,
 }
 
 impl Config {
@@ -48,6 +54,9 @@ impl Config {
                     concat!(env!("CARGO_MANIFEST_DIR"), "/../vn-mine/vn-capture.sh").to_string()
                 })
                 .into(),
+            anthropic_api_key: std::env::var("JP_TOOLS_ANTHROPIC_API_KEY").ok(),
+            llm_model: std::env::var("JP_TOOLS_LLM_MODEL")
+                .unwrap_or_else(|_| "claude-haiku-4-5".to_string()),
         }
     }
 }

@@ -7,6 +7,7 @@ pub mod db;
 pub mod dialogue;
 pub mod error;
 pub mod ingest;
+pub mod llm;
 pub mod routes;
 pub mod stats;
 pub mod vndb;

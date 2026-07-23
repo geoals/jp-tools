@@ -162,11 +162,13 @@ pub fn measure_pace(lines: &[LineEvent], marks: &[f64], afk_secs: f64) -> Option
     (secs > 0.0 && chars > 0).then(|| chars as f64 / secs)
 }
 
-/// Merge lookup and card timestamps into one sorted evidence stream.
-pub fn presence_marks(lookups: &[f64], cards: &[f64]) -> Vec<f64> {
-    let mut out = Vec::with_capacity(lookups.len() + cards.len());
+/// Merge lookup, card and #read-action timestamps into one sorted evidence
+/// stream. All three are equally proof the reader was at the keyboard.
+pub fn presence_marks(lookups: &[f64], cards: &[f64], reader: &[f64]) -> Vec<f64> {
+    let mut out = Vec::with_capacity(lookups.len() + cards.len() + reader.len());
     out.extend_from_slice(lookups);
     out.extend_from_slice(cards);
+    out.extend_from_slice(reader);
     out.sort_by(f64::total_cmp);
     out
 }

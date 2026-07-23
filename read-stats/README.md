@@ -80,6 +80,34 @@ narration* card that splits the reading on 「」.
   lines are still captured raw but derivation ignores those inside a pause
   interval, so a forgotten pause can be fixed retroactively by editing the
   `pauses` table.
+- **Clear last line** (`✕ clear last` on `#read`) is the retroactive version of
+  pause: it flags the newest line `discarded`, and every read of the stream
+  filters that out. It covers the two things pause is always remembered too
+  late for — the handful of lines Textractor hooks while you are still finding
+  the route, which are otherwise enough to open a session, and a stretch
+  re-read after skipping back, which would otherwise be counted a second time.
+
+  One tap per line, and the line leaves the feed as it goes, so tapping until
+  the junk is gone needs no count in the UI. The ids come from what is on
+  screen rather than the server picking "the last one", so a line hooked
+  between the tap and the request isn't swept up with them. Consecutive taps
+  accumulate into one undo, offered on the toast for 15s.
+
+  Nothing is deleted — the flag is soft, for the same reason pauses don't
+  delete: the raw stream is what lets every threshold here stay tunable after
+  the fact. A clear can be undone past the toast with
+  `UPDATE lines SET discarded = 0 WHERE id = ?`.
+
+  Clearing widens the gap around what it removed, and that is the point: with
+  the junk lines gone the surrounding span has no evidence in it, so the
+  *time* stops being credited along with the characters. For a re-read stretch
+  that means the minutes spent skimming already-read text stop counting too,
+  which is the right call — it was re-reading, not reading.
+
+  One caveat: `word_days` is **not** rewound. If tokenization already ran over
+  a cleared line (it runs on Anki refresh, so usually it hasn't) its lemma
+  counts stay, very slightly inflating the re-encounter card. Everything else —
+  chars, time, speed, focus, the dialogue split — is derived fresh and correct.
 - **Manual sessions** cover everything without a line stream: physical books
   (pages × `chars_per_page`, default 550 ≈ bunkobon), manga, or imported
   history. Logged from the dashboard form or `POST /api/sessions`.
@@ -89,9 +117,16 @@ narration* card that splits the reading on 「」.
   optionally a cover: pass a VNDB id once and the cover is fetched from
   `api.vndb.org/kana`, cached next to the DB in `covers/`, served at
   `/covers/` — nothing else from VNDB is stored. The currently-reading card
-  shows cover, char-based progress bar, hours left at the work's own speed,
-  and a projected finish date from the trailing 7 complete days' pace
-  (clipped to the `pace_start_date` setting, for coming back from a break).
+  shows cover, char-based progress bar, this VN's own reading speed, hours left
+  at that speed, and a projected finish date. The finish date is decomposed:
+  **this work's speed × your daily active hours**, the hours taken from the
+  trailing 7 complete days (clipped to `pace_start_date`, for coming back from a
+  break). Speed is a property of the VN and daily hours a property of you, so a
+  fresh harder VN no longer inherits an easier one's chars/day. Under 10 minutes
+  into a work it falls back to the cross-work chars/day until it can gauge the
+  work's own speed. A **finished** work shows its real started/finished dates
+  instead of a projection. The Library lists every work's own chars/h so they
+  compare directly, and the speed chart marks where reading switched VNs.
 
 - **Anki integration (read-only).** On dashboard load (or the refresh button)
   the server probes for AnkiConnect — the dashboard client's IP first (phone
@@ -117,10 +152,23 @@ the PC while the phone does the looking-up. The setup:
 - **Yomitan in Firefox Android** scans the lines. Point its *Server address* at
   `http://<pc-ip>:3200/anki-proxy` exactly as on the desktop, so phone lookups
   are counted too and cards land in the **PC's** Anki.
+- **✕ clear last** drops the newest hooked line from the stats — see *Clear
+  last line* above. Deliberately narrow and quiet next to the mine button,
+  which is the one being pressed constantly; every press is undoable.
 - **⛏ mine last line** runs `vn-mine/vn-capture.sh` on the PC, attaching the
   voiceline audio and a screenshot to the note Yomitan just added, and reports
   the outcome on the page instead of via `notify-send` on a desktop nobody is
   looking at.
+- **ℹ explain** sends the newest line (with the previous few for context) to the
+  Anthropic API and shows a short read on it — a natural rendering plus any
+  nuance or grammar a plain translation misses. **Select a word in the line
+  first** and the explanation is centred on that word instead; the selection is
+  read the instant the button is tapped, so opening the panel doesn't clear it.
+  For a light lookup while reading, not a full translation — the reply is capped
+  at a few sentences and the model defaults to `claude-haiku-4-5`
+  (`JP_TOOLS_LLM_MODEL`). The button is only shown enabled when
+  `JP_TOOLS_ANTHROPIC_API_KEY` is set. The panel stays up (scrolling internally)
+  until dismissed, so it can sit open while looking back over the line.
 
 While the reader is open the **page title is set to `current_work`**, not
 "read-stats". Yomitan's `{document-title}` marker is what fills the note's
@@ -155,7 +203,9 @@ Or as part of the stack: `scripts/start-all.sh`.
 
 - `GET  /api/summary` — today (chars, active seconds, per-source, lookups),
   goal, streak
-- `GET  /api/days?days=60` — zero-filled per-day totals, oldest first
+- `GET  /api/days?days=60` — zero-filled per-day totals, oldest first; each day
+  also carries `work`, the title that read the most characters that day, so the
+  speed chart can mark where reading switched VNs
 - `POST /anki-proxy` — AnkiConnect pass-through that counts Yomitan lookups;
   point Yomitan's server address here (see *Counting lookups*)
 - `GET  /api/day/timeline?date=2026-07-19&bucket_secs=60` — one day sliced into
@@ -167,21 +217,32 @@ Or as part of the stack: `scripts/start-all.sh`.
 - `POST /api/sessions` — `{date?, start_ts?, minutes, chars? | pages?, work?, source?, note?}`
 - `DELETE /api/sessions/{id}`
 - `GET  /api/works` — per-work (title) totals, merging line-stream and manual
-  sessions, each with its metadata (`meta`: vndb id, total_chars, cover, status);
-  metadata-only works (e.g. queued) get a zero row
+  sessions, each with its metadata (`meta`: total_chars, cover, status,
+  `vn_window`); metadata-only works (e.g. queued) get a zero row
 - `POST /api/works` — create/update metadata by title:
-  `{title, vndb_id?, total_chars?, status?, queue_pos?}` — `vndb_id` accepts
-  `v3144` / `3144` / a vndb.org URL, is used once to fetch the cover and not
-  stored; empty string removes the cover; `total_chars: 0` clears; status ∈
-  reading/queued/finished/dropped
+  `{title, vndb_id?, total_chars?, status?, queue_pos?, vn_window?}` — `vndb_id`
+  accepts `v3144` / `3144` / a vndb.org URL, is used once to fetch the cover and
+  not stored; empty string removes the cover; `total_chars: 0` clears; status ∈
+  reading/queued/finished/dropped; `vn_window` is the capture-target substring
+  for this VN (empty string clears)
 - `PUT  /api/works/{id}` / `DELETE /api/works/{id}` — same fields by id / remove
 - `GET  /api/lines/stream` — SSE, one event per hooked line, `data` being
   `{id, ts, chars, text}` and the event id being the line id. Sends the last
   `?backlog=` lines (40) on open, or resumes after `?after=<id>` /
   `Last-Event-ID` so a reconnecting phone doesn't replay or skip
-- `GET  /api/reader/state` — `{paused, current_work, capture_available}`
+- `POST /api/lines/discard` — `{ids: [...]}` (max 500), flags those lines
+  `discarded` so every derived figure drops them; returns the ids actually
+  changed, which is what undo re-sends. `POST /api/lines/undiscard` is the
+  inverse. See *Clear last line*
+- `GET  /api/reader/state` — `{paused, current_work, capture_available,
+  explain_available}`
+- `POST /api/reader/explain` — `{context: [oldest…newest], focus?}`; sends the
+  lines to the Anthropic API and returns `{text}`, a short explanation of the
+  last one centred on `focus` if given. 400 if no key is configured or the
+  context is empty; the context is capped server-side. See *Reading from a
+  phone*
 - `GET  /api/vn/windows` — open window titles (via xdotool, Wine/Qt/IME
-  scaffolding filtered out), offered as a picker for the `vn_window` setting
+  scaffolding filtered out), offered as a picker for a work's `vn_window`
 - `POST /api/vn/capture` — run `vn-capture.sh` (see `JP_TOOLS_VN_CAPTURE_SH`)
   and return its result. A capture that fails for an ordinary reason (stale
   line, Anki closed) is `200 {"ok": false, "error": ...}`; only an unrunnable
@@ -194,15 +255,15 @@ Or as part of the stack: `scripts/start-all.sh`.
 - `GET  /api/lookups/summary` — lookup outcomes per distinct term (mined /
   already-carded / never carded), repeat-lookup list, leech list, median
   lookup→card latency
-- `GET  /api/dialogue/summary?days=60` — the 「」 split: `today` and per-`day`
-  character shares, plus `overall` with speed, clean speed and lookups/1k for
-  each side. See *Dialogue vs narration*
+- `GET  /api/dialogue/summary?days=60&work=<title>` — the 「」 split: `today` and
+  per-`day` character shares, plus `overall` with speed, clean speed and
+  lookups/1k for each side. `work` scopes it to one VN (its lines only, filtered
+  before aggregation); absent/empty pools all works. See *Dialogue vs narration*
 - `GET/PUT /api/settings` — `afk_secs`, `session_gap_secs`, `day_rollover_hour`,
   `goal_floor_mins`, `goal_target_mins`, `chars_per_page`, `current_work`,
-  `vn_window` (substring of the VN window's title, passed to vn-capture.sh as
-  `VN_WINDOW` so the mine button screenshots the VN rather than the focused
-  window — required to mine from `#read` in a browser on the PC itself; set it
-  when you switch VNs, no restart needed),
+  `vn_window` (legacy global fallback; the VN window is now a per-work column —
+  see `PUT /api/works/:id` — so it travels with the VN instead of going stale on
+  a switch),
   `pace_start_date` (ISO date or "" — clips the finish-estimate pace window;
   no dashboard control, set it here after a reading break:
   `curl -X PUT localhost:3200/api/settings -H 'Content-Type: application/json'
@@ -314,11 +375,21 @@ A gap inside `afk_secs` is credited whole — that is ordinary reading and none 
 it is in doubt. Past the cap, the question is whether you were still at the
 keyboard, and the answer comes from evidence rather than a flat rate:
 
-- **A lookup or a mined card in the gap** proves you were present when it fired,
-  so the clock restarts there and runs a fresh `afk_secs`. A lookup is not
-  instantaneous — reading the definition happens *after* the event — so a
-  45-second detour is credited 45, not truncated to 30 the way the old flat cap
-  did it.
+- **A lookup, a mined card, or a #read engagement action in the gap** proves you
+  were present when it fired, so the clock restarts there and runs a fresh
+  `afk_secs`. A lookup is not instantaneous — reading the definition happens
+  *after* the event — so a 45-second detour is credited 45, not truncated to 30
+  the way the old flat cap did it.
+
+  The engagement actions are the reader's **ℹ explain** and **⛏ mine** buttons,
+  recorded as `reader_marks` when tapped (see *Reading from a phone*). They fill
+  the one gap the other two signals leave: reading an explanation, or mining a
+  line you didn't also look up in Yomitan, is real presence the line stream has
+  no other trace of. Kept in their own table, not `lookups`, so they credit
+  *time* without touching the lookups/h or unknown-word-rate metrics. The
+  *suppress* actions — **clear** and **pause** — deliberately leave no mark: they
+  exist to stop counting a span, so crediting presence for them would undo their
+  own purpose.
 - **Nothing in the gap** means only the line itself can be claimed, priced at
   your uninterrupted pace. A 15-character line earns about four seconds whether
   you were gone 35 seconds or seven minutes.
@@ -377,6 +448,15 @@ the card's event counts can sit a little under the day totals on
 The card answers three questions off one classification: what share of the
 reading was people talking, whether speech and prose read at different speeds,
 and which of the two carries more unknown words.
+
+A **scope toggle** (all works / current work) sits in the header. All-works
+pools your entire history; scoping to a VN filters to its lines before the split
+is aggregated, so the numbers are that VN's own — and they diverge sharply (on
+the current corpus 素晴らしき日々 is 69% dialogue at 14.5k/h, ドーナドーナ is 90%
+dialogue at 8.8k/h; pooled sits between and belongs to neither). Per-VN scoping
+relies on the same session-level line stream the rest of the app does, so
+coarse interleaving is exact and only line-by-line alternation inside one
+sitting would blur it.
 
 On 素晴らしき日々 the answer is lopsided, and consistently so:
 
@@ -453,6 +533,9 @@ curl -X POST localhost:3200/api/sessions -H 'Content-Type: application/json' \
   crate) — what `#read`'s mine button runs. It needs the desktop session's
   environment (`spectacle` screenshots the active window), so read-stats has to
   be started from within the session, as `scripts/start-all.sh` does.
+- `JP_TOOLS_ANTHROPIC_API_KEY` — enables `#read`'s ℹ explain button; unset
+  leaves it disabled. `JP_TOOLS_LLM_MODEL` (default `claude-haiku-4-5`) — the
+  model it asks. Both are shared with yt-mine, so a root `.env` covers both.
 
 ## Extending to new sources
 

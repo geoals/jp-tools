@@ -28,6 +28,8 @@ async fn main() {
         anki_vocab_field: config.anki_vocab_field.clone(),
         sudachi_dict_path: config.sudachi_dict_path.clone(),
         vn_capture_script: config.vn_capture_script.clone(),
+        anthropic_api_key: config.anthropic_api_key.clone(),
+        llm_model: config.llm_model.clone(),
     });
 
     let listener = tokio::net::TcpListener::bind(&config.listen_addr)

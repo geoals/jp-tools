@@ -23,6 +23,8 @@ pub struct AppState {
     pub anki_vocab_field: String,
     pub sudachi_dict_path: std::path::PathBuf,
     pub vn_capture_script: std::path::PathBuf,
+    pub anthropic_api_key: Option<String>,
+    pub llm_model: String,
 }
 
 async fn spa_shell() -> Html<&'static str> {
@@ -58,8 +60,20 @@ pub fn build_router(state: AppState) -> Router {
         // Reading view (phone): live line feed + the mine trigger.
         .route("/api/lines/stream", get(reader::lines_stream))
         .route("/api/reader/state", get(reader::reader_state))
+        .route(
+            "/api/lines/discard",
+            axum::routing::post(reader::discard_lines),
+        )
+        .route(
+            "/api/lines/undiscard",
+            axum::routing::post(reader::undiscard_lines),
+        )
         .route("/api/vn/capture", axum::routing::post(reader::vn_capture))
         .route("/api/vn/windows", get(reader::vn_windows))
+        .route(
+            "/api/reader/explain",
+            axum::routing::post(reader::explain_line),
+        )
         // Yomitan's AnkiConnect endpoint: forwards to Anki, counts lookups.
         .route(
             "/anki-proxy",
