@@ -27,7 +27,6 @@ pub struct AppState {
     pub sudachi_dict_path: std::path::PathBuf,
     pub vn_capture_script: std::path::PathBuf,
     pub anthropic_api_key: Option<String>,
-    pub llm_model: String,
     /// whisper-service base URL, probed for the reader's trim-status indicator.
     pub whisper_url: String,
 }

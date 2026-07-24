@@ -41,65 +41,103 @@ pre-populate that flagged pile.
 
 ## CompactDef: what it is
 
-A new field on the "Japanese sentences" note type, rendered at the **top** of the
+A field on the "Japanese sentences" note type, rendered at the **top** of the
 card back, above the existing `VocabDef`/`VocabDefFull` block. It holds the
-specific sense the target word carries **in that card's sentence**, compressed to
-be readable in **under 2 seconds** — at ~14k chars/hour that is roughly **8
-Japanese characters**, or a few English words. It is a pass/fail *gate*, not a
-place to learn nuance; the full definitions stay right below it for when a card
-is failed and actually needs studying.
+specific sense the target word carries **in that card's sentence**, written in
+**English** so it is instant for a native English speaker to read, plus a usage
+note where the word warrants one and a register tag. The learner can skim ~2
+English sentences in the time 6 Japanese characters take, so the budget is
+generous; the full Japanese definitions stay below it for cards that are failed
+and actually studied.
+
+> **Design history.** CompactDef started as an *ultra-short Japanese* gloss (~8
+> chars). Two problems killed that: a Japanese gloss can itself contain a word
+> the learner doesn't know (unknowable in advance), and — for a native English
+> speaker whose goal is to *maximize immersion-reading time* — the fastest,
+> most reliable recognition gate is English. The Japanese-acquisition load is
+> carried by the reading itself and by the monolingual `VocabDefFull` below, not
+> by this gate. So CompactDef is now English-first and richer.
 
 ### Content rules (the prompt encodes these)
 
-- **Mostly Japanese, English when English is safe.** Default to Japanese. Use
-  English only when the word has a clear, direct English counterpart that can't
-  mislead — concrete nouns, established science/technical concepts (焼却炉 →
-  "incinerator", 要人 → "VIP / dignitary"). The bar: *could writing it in
-  English give off a wrong meaning or nuance?* If yes → Japanese.
-- **Synonyms vs. a short phrase.**
-  - If the word is genuinely interchangeable with 1–2 close synonyms, give those
-    synonyms (弱る・衰える).
-  - If the word has a nuance its near-neighbours don't, **do not give synonyms** —
-    a synonym would reinforce a wrong equivalence. Give a short plain-Japanese
-    phrase pinning the specific sense instead. Onomatopoeia especially: they
-    usually carry a specific feel, so describe it rather than equate it.
-- **Kanji compound → 和語 counterpart.** When the word is essentially the
-  Sino-Japanese (音読み) form of a plain verb/act, give the native 和語 form:
-  奪取 → 奪い取る, 減退 → 弱る・衰える. (Reading of 奪取 is だっしゅ; 奪い取る is
-  うばいとる — the same act, so the 和語 is the fastest possible gloss.)
+- **English, nuance over translation.** Give a bare one/two-word translation
+  **only** for a concrete term with a clean 1-to-1 equivalent (焼却炉 →
+  "incinerator", 額縁 → "picture frame"). For anything with nuance, use a short
+  phrase that carries the actual sense — never flatten it to one misleading word.
 - **Sense-in-context.** Gloss the meaning as used *in this sentence*, not the
   dictionary's first sense.
-- **Length.** Target under 8 Japanese characters (or 2–4 English words); up to
-  ~12 is acceptable when a word genuinely needs it to be understandable. Never a
-  full sentence. No trailing punctuation, no labels, no romaji, no markdown.
+- **Usage note (only when it earns one).** One short sentence capturing what a
+  bare gloss misses: a fixed collocation ("almost always 与しやすい相手／者"), a
+  polarity restriction (only in the negative; always pejorative), the typical
+  speaker/situation, or a notable reference. Citing the Japanese word or its
+  usual phrase here is fine and useful (this is *not* circular — the meaning line
+  already carries the sense in English).
+- **Two-axis tag line (always).** After the meaning/usage, on its own final line,
+  emit `FAMILIARITY · FLAVOR[ · FLAVOR2[ · FLAVOR3]]` plus an optional trailing
+  structural parenthetical. **Familiarity** (exactly one — recognizability on
+  sight, population-wide): `CORE`/`COMMON`/`UNCOMMON`/`RARE`/`OBSCURE`. **Flavor**
+  (1–3 — a production / "which room" warning): one baseline formality
+  `SLANG`/`PLAIN`/`FORMAL`/`LITERARY` plus marks `TECHNICAL`/`RELIGIOUS`/
+  `HONORIFIC`/`HUMBLE`/`DIALECT`/`ARCHAIC`/`VULGAR`/`DEROGATORY`/`CHILDISH`. Tag
+  the in-sentence sense; usage overrides etymology. (Superseded the old single
+  `EVERYDAY`/`PASSIVE`/`FORMAL-LITERARY`/`SPECIALIZED-DATED`/`OBSCURE` register;
+  the reader-explain path in `llm.rs` uses this same two-axis system.)
+- **Length & form.** Up to ~2 short English sentences plus the tag line. Any
+  Japanese reading cited must be hiragana, never romaji. `clean_gloss` joins the
+  lines with `<br>` so the tag line renders on its own line.
 
 ### Prompt (used verbatim in code and skills)
 
 System prompt:
 
 ```
-You write an ultra-short gloss ("CompactDef") for a Japanese vocab flashcard.
-It sits at the top of the card back and must be readable in under 2 seconds —
-about 8 Japanese characters, or a few English words. It is a quick check of
-recognition, not a full definition (the full dictionary entry is shown below
-it). Gloss the sense the word carries IN THE GIVEN SENTENCE.
+You write a compact ENGLISH gloss ("CompactDef") for a Japanese vocab flashcard.
+It sits at the top of the card back as a fast recognition check; the full
+Japanese dictionary entry is shown below it. The learner is a native English
+speaker. Gloss the sense the word carries IN THE GIVEN SENTENCE.
 
-Rules:
-- Default to Japanese. Use English ONLY when the word has a clear, direct
-  English counterpart that cannot mislead — concrete nouns and established
-  technical/scientific terms (e.g. 焼却炉 → incinerator). Ask yourself: could
-  the English give a wrong nuance? If yes, use Japanese.
-- If the word is freely interchangeable with one or two close synonyms, give
-  those synonyms (e.g. 弱る・衰える).
-- If the word carries a nuance its near-synonyms do NOT share, do NOT give a
-  synonym — it would reinforce a wrong equivalence. Give a short plain-Japanese
-  phrase that pins the specific sense. This applies especially to onomatopoeia,
-  which usually have a specific feel rather than a synonym.
-- If the word is essentially the Sino-Japanese (音読み) compound form of a plain
-  act, give its native 和語 counterpart (e.g. 奪取 → 奪い取る, 減退 → 衰える).
-- Output ONLY the gloss. No labels, no quotes, no romaji, no markdown, no
-  trailing punctuation. Target under 8 Japanese characters (up to ~12 only when
-  the word genuinely needs it); never a full sentence.
+Output exactly two lines and nothing else — no preamble, no markdown, and never
+an XML or HTML tag of your own (do NOT write <meaning>, </meaning>, <usage>,
+<br>, or any angle-bracket tag or label):
+- Line 1 — the meaning, optionally followed by ". " and one short usage note.
+- Line 2 — FAMILIARITY · FLAVOR[ · FLAVOR2[ · FLAVOR3]][ (structural)]
+
+MEANING/USAGE: nuance-carrying English. A bare one/two-word translation ONLY for
+a concrete 1-to-1 term (焼却炉 → incinerator); otherwise a short phrase that
+carries the actual nuance. Optionally one short usage note — a fixed collocation,
+a polarity restriction, or the typical speaker — where citing the Japanese word
+or its usual phrase is fine. Adult/explicit words: gloss clinically. Any Japanese
+reading you cite: hiragana, never romaji.
+
+FAMILIARITY (exactly one) — how many native adults RECOGNIZE the word on sight
+(population-wide, NOT frequency, NOT whether they say it):
+- CORE — every native, from childhood.
+- COMMON — nearly all adults.
+- UNCOMMON — many adults, but not most people's active vocabulary.
+- RARE — mainly the well-read, older, or specialists.
+- OBSCURE — many natives wouldn't recognize it.
+A transparent compound of common parts with a predictable meaning (等価値 =
+等価+価値) is understood first-encounter → COMMON or higher. Spoken/colloquial
+words are more familiar than their rarity in writing suggests; don't demote them
+for being informal.
+
+FLAVOR (1-3) — if you SAY it in the wrong room, how do you sound. Emit exactly
+one baseline formality, then add marks only when they carry an independent,
+equally-important warning:
+- baseline: SLANG / PLAIN (safe anywhere — always shown) / FORMAL (stiff if
+casual; fine in formal speech or writing) / LITERARY (writing-only; theatrical
+if spoken).
+- marks: TECHNICAL, RELIGIOUS, HONORIFIC, HUMBLE, DIALECT, ARCHAIC, VULGAR,
+DEROGATORY, CHILDISH.
+Tag the IN-SENTENCE sense; other senses don't count (joking 成仏 = PLAIN, not
+RELIGIOUS). A word can be marked in origin but plain in use — tag current usage,
+not etymology.
+
+STRUCTURAL (optional trailing parenthetical, orthogonal): (idiom) (mimetic)
+(fixed phrase) (proverb) (name) (four-char idiom).
+
+Judge from the word, the sentence, and your own knowledge ALONE — no frequency
+data, no dictionary tags. No preamble, no markdown.
 ```
 
 User message:
@@ -109,8 +147,46 @@ Word: {word}
 Sentence: {sentence}
 ```
 
-Model: cheap/fast is fine (this is a short lookup). read-stats already defaults
-`JP_TOOLS_LLM_MODEL` to `claude-haiku-4-5`; CompactDef reuses it.
+**Postclean (`compactdef.rs::clean_gloss`).** The model returns a short English
+meaning/usage line and the two-axis tag line below it. `clean_gloss` strips any
+literal `<meaning>`/`<usage>` placeholder tags the model echoes (Opus 5 does this),
+trims each line, strips stray wrapping quotes, drops blank lines, and joins the
+rest with `<br>` so the tag line renders on its own line in Anki's HTML (plain
+newlines don't render). The caller skips writing an empty result.
+
+Model: **pinned to `claude-opus-5`** in `compactdef.rs`, with thinking disabled
+and low effort. The tag axes were shown to need no thinking and no external
+signals; opus ≈ sonnet on tags but opus is preferred for the meaning/usage prose
+(see *Why no external signals* below). Both live LLM calls — this one and the
+reader-explain path in `llm.rs` — are pinned to opus-5 with thinking off and no
+longer read `JP_TOOLS_LLM_MODEL` (that env var now only configures yt-mine's
+definer). The hand backfill used this same prompt.
+
+### Why no external signals (experiment log)
+
+Settled by experiment against hand-graded gold (tested on sonnet-5 and opus-4-8);
+recorded so nobody re-tries these:
+
+- **BCCWJ frequency as input → HURT familiarity.** A rank anchors the model toward
+  "catalogued/known" and inflates familiarity; it demoted rare literary words
+  (恥垢, 手向ける) and helped none.
+- **Thinking / high effort → HURT the tag axes.** Adaptive/high-effort reasoning
+  talks itself *up* the familiarity scale ("an educated adult would know this").
+  No-think beat think on both models; opus ≈ sonnet. This is why both live calls
+  disable thinking.
+- **jitendex `rare`/`dated` flag → useless for familiarity.** ~Zero coverage on
+  the words that actually miss (JMdict `rare` tags spellings, not "rare word").
+- **sankoku `〔文〕` (literary) as a familiarity nudge → HURT.** `〔文〕` is register,
+  not familiarity (忖度 is `〔文〕` yet COMMON); feeding it inflated 齟齬/逗留 upward.
+- **jitendex/sankoku candidate tags for FLAVOR → NET ZERO.** Helped one word
+  (精進, dropped a wrong RELIGIOUS), hurt one (仰せ, anchored into dropping a correct
+  ARCHAIC); the model avoids the wrong-sense traps (布石, 寸法) unaided.
+
+Conclusion: the anchoring effect is axis-general — any external metadata nudges the
+model toward "known/standard." The residual errors (RARE↔UNCOMMON on literary
+words; the PLAIN/FORMAL/LITERARY baseline) are inherent gray zones the golds
+themselves are debatable on, not signal-fixable. So: model judgment only, no
+external signals, thinking off.
 
 ## Where it plugs in
 
@@ -183,8 +259,19 @@ Evaluate each card against the quality bar and flag (never auto-delete) the bad
 ones with a `reformulate` tag for offline review. Consider **all** fields and the
 layout above. Primary criteria, in order:
 
-1. **Sentence too long** — can't be read in ~2s (rough proxy: length well above
-   the deck norm; recent good cards sit ~14–30 chars).
+1. **Too much to read for the word in context** — raw character count is a weak
+   proxy; what matters is *how much of the sentence you must parse to pin the
+   word's sense in this context*, which depends on **where the target sits**:
+   - **Word at/near the start** — in review you read only up to (and just past)
+     the target and stop; a long tail after it is irrelevant. e.g.
+     いつも優しく朗らかで、… — you read 「いつも優しく朗らかで」 for 朗らか and never
+     the rest. Do **not** flag these on length alone.
+   - **Word in the middle/late, or entangled with the sentence** — you must parse
+     the whole thing to get the sense, so overall length genuinely bites. Flag
+     when the sentence is long *and* the word depends on a wide span around it.
+   (Deck/reading reference: natural single sentences run p50 ~14, p90 ~29 chars;
+   a full read-stats line averages ~3 sentences, so a card sentence much longer
+   than one natural sentence usually means more context than the word needs.)
 2. **Poor illustration of the word** — the sentence doesn't show the word's
    canonical use: metaphor / wordplay / idiom obscuring the plain sense, the
    target word barely load-bearing, or a non-representative sense.
@@ -199,11 +286,21 @@ reformulate vs. keep.
 
 ## Status
 
-- [x] Design + finalized prompt (this doc)
-- [x] `read-stats/src/compactdef.rs` — the LLM call
+- [x] Design + finalized **two-axis** prompt (this doc). Signal investigation
+      done — no frequency/dictionary input helps (see *Why no external signals*).
+- [x] `read-stats/src/compactdef.rs` — LLM call (opus-5, no thinking) +
+      `clean_gloss` postclean (strips echoed `<meaning>`/`<usage>` tags); live
+      path validated end-to-end.
 - [x] `/anki-proxy` enrichment: CompactDef write + auto vn-capture on `addNote`
-- [ ] Add `CompactDef` field to the note type + back template (via AnkiConnect,
-      needs Anki running & a full sync — user's call)
+- [x] Add `CompactDef` field to the note type + back template (via
+      `scripts/add-compactdef-field.sh`; field at index 2, renders atop the
+      Recognition card back). **Full sync still pending** — do it after backfill.
 - [ ] yt-mine CompactDef wiring (TODO above)
-- [ ] Backfill skill (Skill A)
-- [ ] Poor-quality-card triage skill (Skill B)
+- [x] Backfill — complete on opus-5: 681 old single-register cards re-tagged and
+      1197 empty cards fully glossed (1955 two-axis total). 13 empty-sentence notes
+      and 20 "new words in order" left untouched by design. **Anki full-sync still
+      pending — the user's to run.**
+- [–] Poor-quality-card triage (Skill B) — investigated on the live collection
+      and found ~zero cull yield: forgotten cards are good sentences with weak
+      backsides (the backfill's job), not bad illustrations. Bad-card removal
+      stays a review-time one-keypress habit, not a batch pass.

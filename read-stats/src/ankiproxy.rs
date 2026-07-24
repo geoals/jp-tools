@@ -192,7 +192,6 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value) {
                 match crate::compactdef::compact_def(
                     &state.http,
                     api_key,
-                    &state.llm_model,
                     &word,
                     &sentence,
                 )

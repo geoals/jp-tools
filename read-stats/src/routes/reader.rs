@@ -408,13 +408,6 @@ pub async fn explain_line(
     }
 
     mark_presence(&state, "explain").await;
-    let text = crate::llm::explain(
-        &state.http,
-        &api_key,
-        &state.llm_model,
-        &context,
-        body.focus.trim(),
-    )
-    .await?;
+    let text = crate::llm::explain(&state.http, &api_key, &context, body.focus.trim()).await?;
     Ok(Json(json!({ "text": text })))
 }
