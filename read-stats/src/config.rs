@@ -10,6 +10,14 @@ pub struct Config {
     /// Deck holding mined cards and the field carrying the dictionary form.
     pub anki_deck: String,
     pub anki_vocab_field: String,
+    /// Field holding the card's sentence (source text for CompactDef).
+    pub anki_sentence_field: String,
+    /// Field CompactDef is written to. Empty disables CompactDef enrichment.
+    pub anki_compact_def_field: String,
+    /// Fire vn-capture.sh (audio + picture) after a card is added through the
+    /// proxy, folding the mine button into the card-add. Off by default: it
+    /// only makes sense on the one machine that runs the VN + capture stack.
+    pub auto_capture_on_add: bool,
     /// Sudachi system dictionary for tokenizing the line stream.
     pub sudachi_dict_path: PathBuf,
     /// vn-mine's capture script, fired by the reader view's mine button.
@@ -48,6 +56,13 @@ impl Config {
                 .unwrap_or_else(|_| "Japanese".to_string()),
             anki_vocab_field: std::env::var("JP_TOOLS_ANKI_FIELD_VOCAB")
                 .unwrap_or_else(|_| "VocabKanji".to_string()),
+            anki_sentence_field: std::env::var("JP_TOOLS_ANKI_FIELD_SENTENCE")
+                .unwrap_or_else(|_| "SentKanji".to_string()),
+            anki_compact_def_field: std::env::var("JP_TOOLS_ANKI_FIELD_COMPACT_DEF")
+                .unwrap_or_else(|_| "CompactDef".to_string()),
+            auto_capture_on_add: std::env::var("JP_TOOLS_AUTO_CAPTURE_ON_ADD")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false),
             sudachi_dict_path: std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
                 .unwrap_or_else(|_| "system_full.dic".to_string())
                 .into(),

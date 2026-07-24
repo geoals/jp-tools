@@ -538,6 +538,15 @@ curl -X POST localhost:3200/api/sessions -H 'Content-Type: application/json' \
 - `JP_TOOLS_ANKI_URL` (default `http://localhost:8765`) — fallback AnkiConnect
   when the dashboard client has none; `JP_TOOLS_ANKI_DECK` (`Japanese`),
   `JP_TOOLS_ANKI_FIELD_VOCAB` (`VocabKanji`)
+- `JP_TOOLS_ANKI_FIELD_SENTENCE` (`SentKanji`), `JP_TOOLS_ANKI_FIELD_COMPACT_DEF`
+  (`CompactDef`) — when a card is added through `/anki-proxy` (Yomitan mining a
+  VN line), the proxy forwards it unchanged and then, in the background,
+  generates a ≤2-second CompactDef gloss from the note's word + sentence and
+  writes it to that field. Needs `JP_TOOLS_ANTHROPIC_API_KEY`; set the field
+  name empty to disable. See `spec/anki-compactdef.md`.
+- `JP_TOOLS_AUTO_CAPTURE_ON_ADD` (default off) — also fire `vn-capture.sh` after
+  a proxied card add, folding the mine button into the add (audio + picture,
+  best-effort). Only enable on the machine running the VN + capture stack.
 - `JP_TOOLS_SUDACHI_DICT_PATH` (default `system_full.dic` in the working dir)
 - `JP_TOOLS_VN_CAPTURE_SH` (default `../vn-mine/vn-capture.sh` relative to the
   crate) — what `#read`'s mine button runs. It needs the desktop session's

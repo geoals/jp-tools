@@ -83,8 +83,26 @@ pub async fn pick_url(
     None
 }
 
+/// Set fields on an existing note. Used by the AnkiConnect proxy to write
+/// CompactDef onto a note Yomitan just added.
+pub async fn update_note_fields(
+    client: &reqwest::Client,
+    url: &str,
+    note_id: i64,
+    fields: Value,
+) -> Result<(), AppError> {
+    call(
+        client,
+        url,
+        "updateNoteFields",
+        json!({ "note": { "id": note_id, "fields": fields } }),
+    )
+    .await
+    .map(|_| ())
+}
+
 /// Strip HTML tags and surrounding whitespace from a field value.
-fn clean_field(raw: &str) -> String {
+pub fn clean_field(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     let mut in_tag = false;
     for c in raw.chars() {
