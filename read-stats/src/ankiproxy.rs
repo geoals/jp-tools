@@ -145,10 +145,17 @@ pub async fn proxy(State(state): State<AppState>, body: Bytes) -> Response {
         Err(resp) => return resp,
     };
 
-    if let (Some(req), Some(note_id)) = (added_note, new_note_id(&resp_bytes)) {
-        let state = state.clone();
-        // Detached: card creation must not wait on an LLM call or a capture.
-        tokio::spawn(async move { enrich_added_note(&state, note_id, &req).await });
+    match (added_note, new_note_id(&resp_bytes)) {
+        (Some(req), Some(note_id)) => {
+            let state = state.clone();
+            // Detached: card creation must not wait on an LLM call or a capture.
+            tokio::spawn(async move { enrich_added_note(&state, note_id, &req).await });
+        }
+        (Some(_), None) => warn!(
+            resp = %String::from_utf8_lossy(&resp_bytes),
+            "proxy: addNote returned no note id (duplicate or error) — not enriching"
+        ),
+        _ => {}
     }
 
     let mut headers = cors_headers();
@@ -163,10 +170,19 @@ pub async fn proxy(State(state): State<AppState>, body: Bytes) -> Response {
 /// (`{"result": 12345, "error": null}`), or `None` on a duplicate/error.
 fn new_note_id(resp_bytes: &Bytes) -> Option<i64> {
     let json: Value = serde_json::from_slice(resp_bytes).ok()?;
-    if !json.get("error").map(Value::is_null).unwrap_or(true) {
-        return None;
+    // AnkiConnect answers two ways. With `"version": 6` it wraps the reply in
+    // `{"result": <id>, "error": null}`. Yomitan's addNote omits the version, so
+    // AnkiConnect falls back to legacy mode and returns the *bare* result — the
+    // note id on success, a bare `null` on a duplicate/failure. Handle both, or
+    // every Yomitan mine silently skips enrichment.
+    if json.is_object() {
+        if !json.get("error").map(Value::is_null).unwrap_or(true) {
+            return None;
+        }
+        json.get("result").and_then(Value::as_i64)
+    } else {
+        json.as_i64()
     }
-    json.get("result").and_then(Value::as_i64)
 }
 
 /// Write CompactDef onto a freshly added note and (optionally) fire vn-capture
@@ -209,15 +225,24 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value) {
                         {
                             warn!(note_id, error = %e, "CompactDef write failed");
                         } else {
-                            debug!(note_id, word, "CompactDef written");
+                            info!(note_id, word = %word, "CompactDef written");
                         }
                     }
                     Ok(_) => warn!(note_id, word, "CompactDef came back empty"),
                     Err(e) => warn!(note_id, word, error = %e, "CompactDef generation failed"),
                 }
             }
-            None => debug!("no Anthropic API key; skipping CompactDef"),
+            None => warn!(note_id, "enrich: no Anthropic API key; skipping CompactDef"),
         }
+    } else {
+        warn!(
+            note_id,
+            word = %word,
+            word_empty = word.is_empty(),
+            sentence_empty = sentence.is_empty(),
+            compact_field_empty = state.anki_compact_def_field.is_empty(),
+            "enrich: skipped CompactDef — empty word, sentence, or field"
+        );
     }
 
     // Auto-capture: fold the mine button into the add. vn-capture.sh finds the
@@ -339,6 +364,14 @@ mod tests {
     fn new_note_id_reads_successful_add() {
         let ok = Bytes::from(r#"{"result": 1784796207918, "error": null}"#);
         assert_eq!(new_note_id(&ok), Some(1784796207918));
+    }
+
+    #[test]
+    fn new_note_id_reads_legacy_bare_response() {
+        // Yomitan omits "version": 6, so AnkiConnect returns the bare id...
+        assert_eq!(new_note_id(&Bytes::from("1784933649618")), Some(1784933649618));
+        // ...and a bare null on a duplicate/failure.
+        assert_eq!(new_note_id(&Bytes::from("null")), None);
     }
 
     #[test]
