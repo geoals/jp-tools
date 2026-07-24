@@ -72,10 +72,10 @@ window directly instead of whatever happens to be focused.
 The voiceline anchor is the moment Textractor hooks the line (a re-hook of the
 line still on screen — a double-fire — does not move it). The audio must still
 be in the ring, so press the hotkey within ~5 minutes of the line playing. If
-no speech is detected in the window, the full window is attached and a warning
-notification says so — usual causes are a stale anchor or audio playing on a
-different output than the one the daemon recorded (restart vn-buffer after
-switching outputs).
+no speech is detected in the window, the note gets the screenshot only (no
+audio) and a warning notification says so — usual causes are an unvoiced line,
+a stale anchor, or audio playing on a different output than the one the daemon
+recorded (restart vn-buffer after switching outputs).
 
 - The daemon binds the default sink at startup — `systemctl --user restart
   vn-buffer` after switching audio outputs. **Restart while Textractor is

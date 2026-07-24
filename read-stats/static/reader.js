@@ -377,8 +377,13 @@ function clearedText(n) {
   return `cleared ${n} ${n === 1 ? "line" : "lines"}`;
 }
 
-/** "2.4s audio + screenshot attached · ✂" — the trim note only when there is one. */
+/** "2.4s audio + screenshot attached · ✂" — the trim note only when there is one.
+ *  A null duration means VAD found no speech in the line, so only the screenshot
+ *  was attached. */
 function successText(r) {
-  const base = `${r.duration}s audio + screenshot attached`;
+  const base =
+    r.duration == null
+      ? "screenshot attached"
+      : `${r.duration}s audio + screenshot attached`;
   return r.note ? `${base} · ${r.note}` : base;
 }

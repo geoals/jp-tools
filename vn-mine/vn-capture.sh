@@ -148,17 +148,24 @@ CLIP_BYTES=$(stat -c %s "$TMP/clip.raw")
 [ "$CLIP_BYTES" -ge 19200 ] || die "Extracted clip is too short (${CLIP_BYTES} bytes)"
 
 # === VAD TRIM ===
+# NO_AUDIO: VAD is confident there was no voice at all (an unvoiced line, a
+# narration-only screen). Attaching the raw window there would put ${MAX_LEN}s
+# of room tone on the card, so the capture becomes screenshot-only. A VAD
+# *failure* is different — nothing is known about the audio, so the untrimmed
+# window is still the best guess and gets attached as before.
 TRIM_NOTE=""
+NO_AUDIO=""
 if [ -x "$VAD_PYTHON" ] && [ -f "$VAD_SCRIPT" ]; then
   ffmpeg -nostdin -loglevel error -f s16le -ar 48000 -ac 2 -i "$TMP/clip.raw" \
     -ac 1 -ar 16000 -c:a pcm_s16le "$TMP/vad.wav" -y
   VAD_OUT=$("$VAD_PYTHON" "$VAD_SCRIPT" "$TMP/vad.wav" 2>"$TMP/vad.err")
   if [ "$VAD_OUT" == "none" ]; then
-    TRIM_NOTE=" (⚠ no speech detected — kept full window)"
+    NO_AUDIO=1
+    TRIM_NOTE=" (no speech detected — screenshot only)"
     # In JSON mode the warning rides back on the result instead: nobody is
     # looking at this desktop.
-    [ -z "$VN_JSON" ] && notify-send -u critical "⚠️ VN Mine" "No speech detected in the ${MAX_LEN}s after the hooked line — attaching the full window anyway.
-Wrong audio output, or did the line hook long after the voice played?"
+    [ -z "$VN_JSON" ] && notify-send "⚠️ VN Mine" "No speech detected in the ${MAX_LEN}s after the hooked line — attaching the screenshot only.
+If the line was voiced, check the audio output or press sooner after it plays."
   elif [ -z "$VAD_OUT" ]; then
     TRIM_NOTE=" (⚠ VAD failed — kept full window)"
     [ -z "$VN_JSON" ] && notify-send -u critical "⚠️ VN Mine" "VAD script failed — attaching the untrimmed window.
@@ -211,7 +218,7 @@ if [ -z "$VN_DRY" ]; then
   }" | jq -r '.result[0].fields')
   TARGET_WORD=$(echo "$NOTE_FIELDS" | jq -r '.VocabKanji.value // ""')
   SENTENCE=$(echo "$NOTE_FIELDS" | jq -r '.SentKanji.value // ""')
-  if [ -n "$TARGET_WORD" ] && [ -n "$SENTENCE" ] && [ -x "$VAD_PYTHON" ] && [ -f "$TRIM_SCRIPT" ]; then
+  if [ -z "$NO_AUDIO" ] && [ -n "$TARGET_WORD" ] && [ -n "$SENTENCE" ] && [ -x "$VAD_PYTHON" ] && [ -f "$TRIM_SCRIPT" ]; then
     ffmpeg -nostdin -loglevel error -f s16le -ar 48000 -ac 2 -i "$TMP/clip.raw" \
       -ac 1 -ar 16000 -c:a pcm_s16le "$TMP/trim.wav" -y
     TRIM_OUT=$("$VAD_PYTHON" "$TRIM_SCRIPT" "$TMP/trim.wav" "$TARGET_WORD" "$SENTENCE" "$WHISPER_URL" 2>"$TMP/trim.err")
@@ -232,12 +239,16 @@ if [ -z "$VN_DRY" ]; then
 fi
 
 # === ENCODE ===
-AUDIO_FILE="recording_${TIMESTAMP}.ogg"
-ffmpeg -nostdin -loglevel error -f s16le -ar 48000 -ac 2 -i "$TMP/clip.raw" \
-  -c:a libvorbis -q:a 3 "$TMP/$AUDIO_FILE" -y || die "ffmpeg encoding failed"
-# LC_ALL=C: a comma-decimal locale would print "2,4" here, which is not valid
-# JSON for the VN_JSON result below.
-DURATION=$(LC_ALL=C awk -v b="$(stat -c %s "$TMP/clip.raw")" -v bps="$BPS" 'BEGIN{printf "%.1f", b/bps}')
+AUDIO_FILE=""
+DURATION=""
+if [ -z "$NO_AUDIO" ]; then
+  AUDIO_FILE="recording_${TIMESTAMP}.ogg"
+  ffmpeg -nostdin -loglevel error -f s16le -ar 48000 -ac 2 -i "$TMP/clip.raw" \
+    -c:a libvorbis -q:a 3 "$TMP/$AUDIO_FILE" -y || die "ffmpeg encoding failed"
+  # LC_ALL=C: a comma-decimal locale would print "2,4" here, which is not valid
+  # JSON for the VN_JSON result below.
+  DURATION=$(LC_ALL=C awk -v b="$(stat -c %s "$TMP/clip.raw")" -v bps="$BPS" 'BEGIN{printf "%.1f", b/bps}')
+fi
 
 # Everything worth telling the user about this capture, in one string.
 NOTE="$TRIM_NOTE$SHOT_NOTE"
@@ -245,7 +256,11 @@ NOTE="$TRIM_NOTE$SHOT_NOTE"
 if [ -n "$VN_DRY" ]; then
   echo "DRY RUN — no Anki upload"
   echo "Line:      $LINE_TEXT"
-  echo "Audio:     $TMP/$AUDIO_FILE (${DURATION}s)$TRIM_NOTE"
+  if [ -n "$NO_AUDIO" ]; then
+    echo "Audio:     none$TRIM_NOTE"
+  else
+    echo "Audio:     $TMP/$AUDIO_FILE (${DURATION}s)$TRIM_NOTE"
+  fi
   echo "Image:     $TMP/$SCREENSHOT_FILE${VN_WID:+ (window $VN_WID)}$SHOT_NOTE"
   exit 0
 fi
@@ -267,19 +282,21 @@ upload_media() { # filename filepath
 }
 
 upload_media "$SCREENSHOT_FILE" "$TMP/$SCREENSHOT_FILE"
-upload_media "$AUDIO_FILE" "$TMP/$AUDIO_FILE"
+[ -z "$NO_AUDIO" ] && upload_media "$AUDIO_FILE" "$TMP/$AUDIO_FILE"
 
 # === UPDATE NOTE ===
+# SentAudio is left out entirely when there was no speech, rather than set to
+# an empty string: whatever the note already holds is better than nothing.
+FIELDS=$(jq -nc --arg img "<img src='$SCREENSHOT_FILE'>" \
+  --arg audio "${AUDIO_FILE:+[sound:$AUDIO_FILE]}" \
+  '{Image: $img} + (if $audio == "" then {} else {SentAudio: $audio} end)')
 UPDATE_RESULT=$(curl -s -X POST "$ANKI_CONNECT_URL" -d "{
     \"action\": \"updateNoteFields\",
     \"version\": 6,
     \"params\": {
         \"note\": {
             \"id\": $NOTE_ID,
-            \"fields\": {
-                \"Image\": \"<img src='$SCREENSHOT_FILE'>\",
-                \"SentAudio\": \"[sound:$AUDIO_FILE]\"
-            }
+            \"fields\": $FIELDS
         }
     }
 }")
@@ -289,11 +306,14 @@ fi
 
 rm -rf "$TMP"
 if [ -n "$VN_JSON" ]; then
-  jq -nc --argjson note_id "$NOTE_ID" --argjson duration "$DURATION" \
+  # duration is null on a screenshot-only capture — the reader keys its wording
+  # off that rather than off the note text.
+  jq -nc --argjson note_id "$NOTE_ID" --argjson duration "${DURATION:-null}" \
     --arg note "$NOTE" --arg line "$LINE_TEXT" \
     '{ok: true, note_id: $note_id, duration: $duration, note: ($note | ltrimstr(" ")), line: $line}'
 else
-  echo "✅ Added ${DURATION}s audio + screenshot to note $NOTE_ID"
-  notify-send "✅ VN Mine" "${DURATION}s audio + screenshot added$NOTE
+  WHAT="${DURATION:+${DURATION}s audio + }screenshot"
+  echo "✅ Added $WHAT to note $NOTE_ID"
+  notify-send "✅ VN Mine" "$WHAT added$NOTE
 $LINE_TEXT"
 fi
