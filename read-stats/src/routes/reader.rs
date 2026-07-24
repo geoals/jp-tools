@@ -164,6 +164,23 @@ pub async fn vn_capture(State(state): State<AppState>) -> Result<Json<Value>, Ap
     // creating one, so it never shows up as a card mark.
     mark_presence(&state, "mine").await;
 
+    run_vn_capture(&state).await.map(Json)
+}
+
+/// Run vn-capture.sh once and return its parsed JSON result.
+///
+/// Shared by the reader's mine button and the AnkiConnect proxy's auto-capture
+/// on card add. Callers own presence marking: the button marks a deliberate
+/// mine, the proxy relies on the Yomitan lookup that preceded the add.
+pub async fn run_vn_capture(state: &AppState) -> Result<Value, AppError> {
+    let script = state.vn_capture_script.clone();
+    if !script.is_file() {
+        return Err(AppError::BadRequest(format!(
+            "vn-capture.sh not found at {} (set JP_TOOLS_VN_CAPTURE_SH)",
+            script.display()
+        )));
+    }
+
     // Which window to screenshot. Without it the script grabs whatever has
     // focus — correct when mining from the phone (the VN never loses focus on
     // this machine), wrong from a browser on this machine, which is what would
@@ -231,7 +248,7 @@ pub async fn vn_capture(State(state): State<AppState>) -> Result<Json<Value>, Ap
     } else {
         warn!(result = %parsed, "vn-capture reported failure");
     }
-    Ok(Json(parsed))
+    Ok(parsed)
 }
 
 /// Candidate window titles for the `vn_window` setting.

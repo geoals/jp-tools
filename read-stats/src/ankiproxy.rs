@@ -17,7 +17,7 @@ use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde_json::Value;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use crate::app::AppState;
 use crate::db;
@@ -117,6 +117,9 @@ fn term_from_query(query: &str, field: &str) -> Option<String> {
 
 pub async fn proxy(State(state): State<AppState>, body: Bytes) -> Response {
     // Record before forwarding: a lookup happened whether or not Anki is up.
+    // Also remember an addNote so its *response* (the new note id) can trigger
+    // CompactDef + media enrichment once Anki has accepted it.
+    let mut added_note: Option<Value> = None;
     match serde_json::from_slice::<Value>(&body) {
         Ok(parsed) => {
             let action = parsed.get("action").and_then(Value::as_str).unwrap_or("");
@@ -126,13 +129,107 @@ pub async fn proxy(State(state): State<AppState>, body: Bytes) -> Response {
                 } else {
                     debug!(action, "lookup action with no extractable term");
                 }
+            } else if action == "addNote" {
+                added_note = Some(parsed);
             }
         }
         // Not our business to reject what Anki might accept — forward it.
         Err(e) => debug!(error = %e, "unparseable proxy body, forwarding as-is"),
     }
 
-    forward(&state, body).await
+    // Forward byte-for-byte and relay the response unchanged — the proxy's
+    // contract. Enrichment is a *separate* follow-up write, never a mutation of
+    // what Yomitan sent or what it gets back.
+    let (status, resp_bytes) = match forward(&state, body).await {
+        Ok(pair) => pair,
+        Err(resp) => return resp,
+    };
+
+    if let (Some(req), Some(note_id)) = (added_note, new_note_id(&resp_bytes)) {
+        let state = state.clone();
+        // Detached: card creation must not wait on an LLM call or a capture.
+        tokio::spawn(async move { enrich_added_note(&state, note_id, &req).await });
+    }
+
+    let mut headers = cors_headers();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    (status, headers, resp_bytes).into_response()
+}
+
+/// The note id AnkiConnect returns from a successful `addNote`
+/// (`{"result": 12345, "error": null}`), or `None` on a duplicate/error.
+fn new_note_id(resp_bytes: &Bytes) -> Option<i64> {
+    let json: Value = serde_json::from_slice(resp_bytes).ok()?;
+    if !json.get("error").map(Value::is_null).unwrap_or(true) {
+        return None;
+    }
+    json.get("result").and_then(Value::as_i64)
+}
+
+/// Write CompactDef onto a freshly added note and (optionally) fire vn-capture
+/// for audio + picture. All best-effort: any failure is logged, never surfaced —
+/// the card already exists and is usable without either.
+async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value) {
+    // CompactDef: only when a target field and an API key are configured.
+    let fields = req.pointer("/params/note/fields");
+    let word = fields
+        .and_then(|f| f.get(&state.anki_vocab_field))
+        .and_then(Value::as_str)
+        .map(crate::anki::clean_field)
+        .unwrap_or_default();
+    let sentence = fields
+        .and_then(|f| f.get(&state.anki_sentence_field))
+        .and_then(Value::as_str)
+        .map(crate::anki::clean_field)
+        .unwrap_or_default();
+
+    if !state.anki_compact_def_field.is_empty() && !word.is_empty() && !sentence.is_empty() {
+        match &state.anthropic_api_key {
+            Some(api_key) => {
+                match crate::compactdef::compact_def(
+                    &state.http,
+                    api_key,
+                    &state.llm_model,
+                    &word,
+                    &sentence,
+                )
+                .await
+                {
+                    Ok(def) if !def.is_empty() => {
+                        let fields = serde_json::json!({ &state.anki_compact_def_field: def });
+                        if let Err(e) = crate::anki::update_note_fields(
+                            &state.http,
+                            &state.anki_url,
+                            note_id,
+                            fields,
+                        )
+                        .await
+                        {
+                            warn!(note_id, error = %e, "CompactDef write failed");
+                        } else {
+                            debug!(note_id, word, "CompactDef written");
+                        }
+                    }
+                    Ok(_) => warn!(note_id, word, "CompactDef came back empty"),
+                    Err(e) => warn!(note_id, word, error = %e, "CompactDef generation failed"),
+                }
+            }
+            None => debug!("no Anthropic API key; skipping CompactDef"),
+        }
+    }
+
+    // Auto-capture: fold the mine button into the add. vn-capture.sh finds the
+    // most recently added note itself, so it needs no id — it just has to run
+    // after the add lands, which is exactly here.
+    if state.auto_capture_on_add {
+        match crate::routes::reader::run_vn_capture(state).await {
+            Ok(result) => info!(note_id, result = %result, "auto-capture after add"),
+            Err(e) => warn!(note_id, error = %e, "auto-capture after add failed"),
+        }
+    }
 }
 
 async fn record(state: &AppState, term: &str) {
@@ -153,7 +250,11 @@ async fn record(state: &AppState, term: &str) {
     }
 }
 
-async fn forward(state: &AppState, body: Bytes) -> Response {
+/// Forward the request to AnkiConnect and return `(status, response bytes)` so
+/// the caller can both relay it unchanged and inspect it. On a transport error
+/// the ready-made error `Response` is returned in `Err` for the caller to pass
+/// straight through.
+async fn forward(state: &AppState, body: Bytes) -> Result<(StatusCode, Bytes), Response> {
     let resp = state
         .http
         .post(&state.anki_url)
@@ -166,23 +267,16 @@ async fn forward(state: &AppState, body: Bytes) -> Response {
         Ok(r) => r,
         Err(e) => {
             warn!(error = %e, url = %state.anki_url, "AnkiConnect unreachable");
-            return (StatusCode::BAD_GATEWAY, cors_headers(), e.to_string()).into_response();
+            return Err((StatusCode::BAD_GATEWAY, cors_headers(), e.to_string()).into_response());
         }
     };
 
     let status = resp.status();
     match resp.bytes().await {
-        Ok(bytes) => {
-            let mut headers = cors_headers();
-            headers.insert(
-                header::CONTENT_TYPE,
-                HeaderValue::from_static("application/json"),
-            );
-            (status, headers, bytes).into_response()
-        }
+        Ok(bytes) => Ok((status, bytes)),
         Err(e) => {
             warn!(error = %e, "AnkiConnect response unreadable");
-            (StatusCode::BAD_GATEWAY, cors_headers(), e.to_string()).into_response()
+            Err((StatusCode::BAD_GATEWAY, cors_headers(), e.to_string()).into_response())
         }
     }
 }
@@ -240,6 +334,22 @@ mod tests {
             "params": { "notes": [{ "fields": { "VocabKanji": "" } }] }
         });
         assert_eq!(extract_term(&empty, "VocabKanji"), None);
+    }
+
+    #[test]
+    fn new_note_id_reads_successful_add() {
+        let ok = Bytes::from(r#"{"result": 1784796207918, "error": null}"#);
+        assert_eq!(new_note_id(&ok), Some(1784796207918));
+    }
+
+    #[test]
+    fn new_note_id_ignores_duplicate_and_error() {
+        // Duplicate: AnkiConnect returns null result with an error string.
+        let dup = Bytes::from(r#"{"result": null, "error": "cannot create note because it is a duplicate"}"#);
+        assert_eq!(new_note_id(&dup), None);
+        // No result at all.
+        let empty = Bytes::from(r#"{"error": null}"#);
+        assert_eq!(new_note_id(&empty), None);
     }
 
     #[test]

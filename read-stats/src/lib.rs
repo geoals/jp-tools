@@ -2,6 +2,7 @@ pub mod anki;
 pub mod ankiproxy;
 pub mod app;
 pub mod charcount;
+pub mod compactdef;
 pub mod config;
 pub mod db;
 pub mod dialogue;
