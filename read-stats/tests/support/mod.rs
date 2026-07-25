@@ -102,7 +102,7 @@ impl TestApp {
     pub async fn add_line(&self, ts: f64, text: &str, work: Option<&str>) {
         sqlx::query("INSERT INTO lines (ts, chars, text, work) VALUES (?, ?, ?, ?)")
             .bind(ts)
-            .bind(read_stats::charcount::count_chars(text))
+            .bind(jp_core::text::chars::count_chars(text))
             .bind(text)
             .bind(work)
             .execute(&self.pool)

@@ -1,7 +1,7 @@
 //! How much of the reading was people talking, and at what speed.
 //!
 //! The classification itself is free — Japanese prose brackets speech with
-//! 「」, so [`crate::dialogue`] partitions a line's characters with nothing but
+//! 「」, so [`jp_core::text::dialogue`] partitions a line's characters with nothing but
 //! bracket depth. What this module adds is the aggregation, and the one rule
 //! that makes the speed comparison honest: characters are counted over *every*
 //! line, but seconds are counted only over lines that are wholly one kind.
@@ -15,7 +15,7 @@ use serde::Serialize;
 use super::day::date_key;
 use super::line::LineEvent;
 use super::presence::{Presence, marks_in};
-use crate::dialogue::Kind;
+use jp_core::text::dialogue::Kind;
 
 /// One side of the dialogue/narration split.
 ///

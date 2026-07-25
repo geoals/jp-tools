@@ -19,7 +19,7 @@ use jp_mine_core::lookup::{bold_target_in_sentence, lookup_word};
 use crate::app::AppState;
 use crate::error::AppError;
 use crate::services::image_ops::{self, CropRect};
-use crate::text::split_sentences;
+use jp_core::text::sentences::split_sentences;
 
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
 

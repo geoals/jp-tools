@@ -139,7 +139,7 @@ pub async fn fetch_classified_lines(
     // boxes leaves its 「 open on the first row, so depth has to carry. It is
     // dropped across a break too long for that to be what happened — see
     // `dialogue::CARRY_GAP_SECS`.
-    let mut scanner = crate::dialogue::Scanner::new();
+    let mut scanner = jp_core::text::dialogue::Scanner::new();
     let mut prev_ts: Option<f64> = None;
     Ok(rows
         .iter()
@@ -148,7 +148,7 @@ pub async fn fetch_classified_lines(
             let chars: i64 = r.get("chars");
             let text: Option<String> = r.get("text");
             let work: Option<String> = r.get("work");
-            if prev_ts.is_some_and(|p| ts - p > crate::dialogue::CARRY_GAP_SECS) {
+            if prev_ts.is_some_and(|p| ts - p > jp_core::text::dialogue::CARRY_GAP_SECS) {
                 scanner.reset();
             }
             prev_ts = Some(ts);

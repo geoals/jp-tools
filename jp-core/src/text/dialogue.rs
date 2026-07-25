@@ -9,7 +9,7 @@
 //! The split is by *character*, not by line, so `「そうか」と彼は言った` is
 //! counted as three dialogue characters and the rest narration. Counting whole
 //! lines would have to round that case one way or the other; counting
-//! characters partitions [`crate::charcount::count_chars`] exactly, which is
+//! characters partitions [`super::chars::count_chars`] exactly, which is
 //! the property the aggregates lean on:
 //!
 //! ```text
@@ -17,14 +17,14 @@
 //! ```
 //!
 //! The brackets themselves are not counted either way — they fall outside the
-//! `charcount` allowlist, so they never inflate one side.
+//! `chars` allowlist, so they never inflate one side.
 //!
 //! Only the corner brackets count as speech. Double quotes (“…”) appear in VN
 //! prose for emphasis and for quoting a phrase rather than a speaker, so
 //! treating them as dialogue would file narration under speech; parentheses
 //! (（…）) are usually inner monologue, which is neither.
 
-use crate::charcount::is_counted;
+use super::chars::is_counted;
 
 /// A line's characters, partitioned.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -38,10 +38,12 @@ impl Split {
         self.dialogue + self.narration
     }
 
-    /// Whether the line is wholly one kind. Speed is measured over these only —
-    /// a mixed line's characters split cleanly but the seconds after it cannot,
+    /// Whether the line is wholly one kind, or `None` when it is mixed.
+    ///
+    /// read-stats measures per-kind reading speed over the pure lines only: a
+    /// mixed line's characters split cleanly but the seconds after it cannot,
     /// since a gap is one span of time and belongs to whatever was being read
-    /// across it. See [`crate::stats::aggregate_dialogue_days`].
+    /// across it.
     pub fn kind(&self) -> Option<Kind> {
         match (self.dialogue > 0, self.narration > 0) {
             (true, false) => Some(Kind::Dialogue),
@@ -120,7 +122,7 @@ pub fn split(text: &str) -> Split {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::charcount::count_chars;
+    use crate::text::chars::count_chars;
 
     #[test]
     fn plain_speech_is_all_dialogue() {

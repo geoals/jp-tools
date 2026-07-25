@@ -5,13 +5,13 @@
 //! prose. Everything else about the row (its id, its work, the text itself)
 //! stays in the database — derivation never needs it.
 
-use crate::dialogue;
+use jp_core::text::dialogue;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LineEvent {
     pub ts: f64,
     pub chars: i64,
-    /// How many of `chars` sat inside 「」/『』 — see [`crate::dialogue`].
+    /// How many of `chars` sat inside 「」/『』 — see [`jp_core::text::dialogue`].
     /// Narration is the remainder, so this stays a partition of `chars` and
     /// nothing downstream has to reconcile two counts. Zero for rows stored
     /// without text, which read as pure narration; the dialogue aggregates

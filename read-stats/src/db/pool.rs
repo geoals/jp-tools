@@ -70,9 +70,9 @@ pub async fn create_pool(db_path: &str) -> Result<SqlitePool, sqlx::Error> {
     Ok(pool)
 }
 
-/// Bring `lines.chars` in line with `charcount::count_chars`, which excludes
-/// punctuation; rows written under the old rule counted every non-whitespace
-/// codepoint, inflating chars/h relative to texthooker-ui.
+/// Bring `lines.chars` in line with `jp_core::text::chars::count_chars`, which
+/// excludes punctuation; rows written under the old rule counted every
+/// non-whitespace codepoint, inflating chars/h relative to texthooker-ui.
 ///
 /// Deliberately unconditional rather than watermarked: vn-ws-logger.py writes
 /// this column too, so a logger still running the old rule (it can't be
@@ -87,7 +87,7 @@ async fn recount_line_chars(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         .iter()
         .filter_map(|r| {
             let text: String = r.get("text");
-            let recounted = crate::charcount::count_chars(&text);
+            let recounted = jp_core::text::chars::count_chars(&text);
             (recounted != r.get::<i64, _>("chars")).then(|| (r.get("id"), recounted))
         })
         .collect();
