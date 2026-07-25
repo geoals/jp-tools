@@ -22,13 +22,6 @@ Cargo workspace for Japanese language learning tools.
   port 3299) and diff its endpoints before/after a change. Use this instead of
   restarting the live one.
 
-```sh
-cargo build              # all members
-cargo test               # all members
-cargo run -p yt-mine     # server on :3000
-cargo run -p manga-mine  # server on :3100
-```
-
 ## The databases
 
 | file | holds | owner |

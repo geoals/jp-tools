@@ -8,38 +8,6 @@ YouTube URL → yt-dlp download → whisper-service transcription → Sudachi to
 
 Jobs run as background `tokio::spawn` tasks. Frontend polls via JSON API.
 
-## Project structure
-
-```
-src/
-  main.rs           — server bootstrap, wires concrete implementations
-  lib.rs            — pub mod declarations
-  app.rs            — AppState (DI container) + router, SPA shell handler
-  config.rs         — env-based config (dotenvy)
-  db.rs             — SQLite via sqlx, compile-time checked queries
-  error.rs          — AppError enum → HTTP status mapping
-  models.rs         — Job, JobStatus, Sentence, TranscriptSegment
-  routes/
-    api/mod.rs      — JSON API handlers (submit, poll, preview, export, audio)
-    api/tests.rs    — JSON API route tests
-    mining/mod.rs   — shared business logic (tokenize, lookup, format)
-    mining/tests.rs — pure function tests
-    vocab/mod.rs    — vocab calibration API (tokenize text against the vocab
-                      table + dictionary, bulk known/unknown submission)
-    vocab/tests.rs  — vocab route tests
-  bin/tokenize.rs   — standalone CLI: tokenize text via Sudachi (debugging)
-  services/
-    pipeline.rs     — orchestrates download → transcribe → store
-    download.rs     — AudioDownloader trait, YtDlpDownloader
-    transcribe.rs   — Transcriber trait, RemoteTranscriber (whisper-service client)
-    export.rs       — AnkiExporter trait, AnkiConnectExporter
-    llm.rs          — LlmDefiner trait, AnthropicDefiner
-    media.rs        — MediaExtractor trait, FfmpegMediaExtractor
-    fake.rs         — fake impls for dev mode (JP_TOOLS_FAKE_API=true)
-static/               — Preact components, CSS, fetch wrappers, router, signals
-templates/spa.html    — minimal HTML shell (inlined via include_str!)
-```
-
 ## Key design decisions
 
 - **Tokenizer + dictionary in `jp-core`** — shared library crate with Sudachi tokenization (hybrid Mode C/B: Mode C for compounds, validated against dictionary headwords, unknown compounds split to Mode B) and Yomitan dictionary parsing
@@ -67,15 +35,7 @@ cargo test -p yt-mine -- --ignored                # real subprocess tests
 
 ## Config
 
-Via env vars, loaded from `.env` (repo root) via `dotenvy`. See `.env.example`.
-
-Key variables: `JP_TOOLS_DB_PATH`, `JP_TOOLS_AUDIO_DIR`, `JP_TOOLS_MEDIA_DIR`, `JP_TOOLS_LISTEN_ADDR`, `JP_TOOLS_WHISPER_SERVICE_URL`, `JP_TOOLS_DICTIONARY_PATHS` (comma-separated Yomitan zips), `JP_TOOLS_SUDACHI_DICT_PATH` (path to system_core.dic), `JP_TOOLS_FAKE_API`, `JP_TOOLS_ANTHROPIC_API_KEY`, `JP_TOOLS_LLM_MODEL`.
+Via env vars, loaded from `.env` (repo root) via `dotenvy`. See `config.rs` and
+`.env.example`.
 
 Anki export fields are all configurable via `JP_TOOLS_ANKI_*` vars (model, deck, field mapping). Defaults match "Japanese sentences" Yomitan note type.
-
-## Testing
-
-- Unit: pure functions (URL validation, JSON parsing, status roundtrips)
-- Integration: in-memory SQLite + `mockall` mocks
-- Route: `axum-test::TestServer` with mocked deps
-- `#[ignore]`: real subprocess calls for manual verification

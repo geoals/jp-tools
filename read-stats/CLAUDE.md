@@ -32,38 +32,12 @@ Nothing in `stats/` touches a database, a clock or a timezone: every threshold
 arrives as a parameter, which is what makes the derivations unit-testable and
 what lets `tests/api.rs` assert on exact numbers.
 
-## Layout
+## Where to start
 
-```
-src/
-  main.rs         bootstrap: open both databases, refuse a half-migrated pair
-  lib.rs          the layer map — read this first
-  app.rs          AppState (both pools + config) and the router
-  config.rs       env config
-  clock.rs        now_ts() and tz_offset_secs() — the only impure inputs
-  error.rs        AppError → HTTP status
-  history.rs      the reading history, loaded once per request; owns the
-                  decision of what the reader's pace and presence are
-  stats/          pure derivation, one module per question
-    presence.rs     how much of a gap counts as reading  ← read this first
-    line.rs         the one input type
-    session.rs      where one sitting ends
-    day.rs          the rollover boundary, per-day totals, streaks
-    timeline.rs     a day sliced into buckets
-    work.rs         per-VN totals
-    focus.rs        how continuous the reading was
-    dialogue.rs     speech vs prose, and their speeds
-    rate.rs         lookups per 1000 characters
-  db/             SQLite, one module per table family (see its module doc for
-                  which database each one talks to)
-  routes/         one module per resource; reader/ is the #read view
-  services/       everything that crosses a process or network boundary
-static/           app.js + panels/ + charts/ + lib/ + css/
-                  hash routes: #today (default), #trends, #library,
-                  #settings, #read
-templates/spa.html
-migrations/       read-stats' own tables only
-```
+`src/lib.rs` is the layer map — read it first. Then `stats/presence.rs`: how
+much of a gap counts as reading is the decision everything else is built on.
+`clock.rs` holds the only impure inputs (`now_ts`, `tz_offset_secs`); every
+`db/` module doc says which of the two databases it talks to.
 
 ## Two databases
 

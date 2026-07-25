@@ -20,27 +20,9 @@ jp-core tokenization → target word tap → dictionary lookup → Anki export (
 - Remembered manga titles (the card's Document/source field) live in
   `<inbox>/.sources.json`, most-recent-first; `GET /api/sources` serves them
   and the UI preselects the latest.
-- The dictionary cache SQLite DB (`JP_TOOLS_DB_PATH`, default
-  `~/.local/share/jp-tools/yt-mine.db`) is shared with yt-mine; manga-mine only
-  reads/imports dictionaries there.
-
-## Project structure
-
-```
-src/
-  main.rs           — server bootstrap, wires concrete implementations
-  app.rs            — AppState (DI container) + router, SPA shell handler
-  config.rs         — env-based config (dotenvy)
-  error.rs          — AppError enum → HTTP status mapping
-  text.rs           — sentence segmentation for OCR text
-  routes/api.rs     — JSON API (queue, photo/thumb, upload, ocr, preview, export, mark)
-  services/
-    ocr.rs          — OcrEngine trait, MangaOcrEngine (manga-ocr-service client)
-    image_ops.rs    — EXIF-aware crop / compress / thumbnail (spawn_blocking)
-    fake.rs         — fakes for dev mode (JP_TOOLS_FAKE_API=true)
-static/               — Preact components (queue page, crop box, photo page)
-templates/spa.html    — HTML shell (inlined via include_str!)
-```
+- The dictionary cache lives in the shared `knowledge.db`
+  (`JP_TOOLS_KNOWLEDGE_DB_PATH`); manga-mine only reads/imports dictionaries
+  there. See `spec/knowledge-db.md`.
 
 ## Key design decisions
 
@@ -59,6 +41,7 @@ templates/spa.html    — HTML shell (inlined via include_str!)
 - **Export dedup is Anki's** — AnkiConnect rejects a note whose first field
   (VocabKanji) already exists; surfaced as an export error.
 - Traits (`OcrEngine`, `AnkiExporter`, `Tokenizer`) enable mockall route tests.
+- Exported notes are tagged `manga-mine, manga`.
 
 ## Build & run
 
@@ -76,11 +59,5 @@ configured as for yt-mine (same env vars).
 
 ## Config
 
-`JP_TOOLS_MANGA_INBOX` (default `manga-inbox`), `JP_TOOLS_MANGA_LISTEN_ADDR`
-(default `0.0.0.0:3100`), `JP_TOOLS_OCR_SERVICE_URL` (default
-`http://localhost:8200`), `JP_TOOLS_ANKI_USE_CLIENT` (default `true`),
-`JP_TOOLS_MANGA_CARD_IMAGE_MAX_DIM` (default `1280`),
-`JP_TOOLS_MANGA_CARD_IMAGE_QUALITY` (default `80`), plus the shared vars: `JP_TOOLS_DB_PATH`,
-`JP_TOOLS_MEDIA_DIR`, `JP_TOOLS_DICTIONARY_PATHS`, `JP_TOOLS_SUDACHI_DICT_PATH`,
-`JP_TOOLS_ANKI_*` (note type/deck/field mapping — same note type as yt-mine).
-Exported notes are tagged `manga-mine, manga`.
+Env vars, names and defaults in `config.rs`. The `JP_TOOLS_ANKI_*` note
+type/deck/field mapping is shared with yt-mine — same note type.
