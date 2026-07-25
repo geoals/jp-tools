@@ -12,4 +12,5 @@ pub mod ingest;
 pub mod llm;
 pub mod routes;
 pub mod stats;
+pub mod tags;
 pub mod vndb;

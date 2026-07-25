@@ -7,11 +7,19 @@
 //! selected — without dragging in the trait/mock scaffolding yt-mine wants for
 //! its pipeline.
 
+use std::sync::LazyLock;
+
 use serde_json::Value;
 
 use crate::error::AppError;
+use crate::tags::{FAMILIARITY_RUBRIC, FLAVOR_RUBRIC};
 
-const SYSTEM_PROMPT: &str = "\
+/// Built once from the shared tag rubric (`crate::tags`) plus the explain-path
+/// framing. The FAMILIARITY/FLAVOR definitions are the same source of truth
+/// `compactdef.rs` uses, so the two paths tag identically.
+static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        "\
 You are a Japanese reading tutor helping an advanced learner read a visual \
 novel. You are given the last few lines on screen as context; explain only the \
 FINAL line.\n\n\
@@ -19,26 +27,17 @@ Open with a short, natural English rendering of the line. Then add one or two \
 brief notes on nuance, grammar, or a reference a plain translation would miss; \
 if a focus word is given, centre these on it (its meaning and role here).\n\n\
 When a focus word is given, finish with a line starting 'Tags:' that rates the \
-focus word on two axes, then a few words of qualification:\n\
-- FAMILIARITY (exactly one) — how many native adults RECOGNIZE it on sight \
-(population-wide recognition, NOT frequency): CORE (every native, from \
-childhood) / COMMON (nearly all adults) / UNCOMMON (many adults, but not most \
-people's active vocabulary) / RARE (mainly the well-read, older, or \
-specialists) / OBSCURE (many natives wouldn't recognize it). A transparent \
-compound of common parts reads as COMMON or higher; don't demote \
-spoken/colloquial words for being informal.\n\
-- FLAVOR (one to three) — if you SAY it in the wrong room, how do you sound: one \
-baseline of SLANG / PLAIN (safe anywhere) / FORMAL (stiff if casual) / LITERARY \
-(writing-only, theatrical if spoken), plus marks only when independently \
-important (TECHNICAL, RELIGIOUS, HONORIFIC, HUMBLE, DIALECT, ARCHAIC, VULGAR, \
-DEROGATORY, CHILDISH). Tag the in-sentence sense and current usage, not \
-etymology.\n\
-Write it as 'Tags: FAMILIARITY · FLAVOR[ · FLAVOR2]' then the qualification.\n\n\
+focus word on the two axes below, then a few words of qualification. Write it as \
+'Tags: FAMILIARITY · FLAVOR[ · FLAVOR2]' followed by the qualification.\n\n\
+{FAMILIARITY_RUBRIC}\n\n\
+{FLAVOR_RUBRIC}\n\n\
 Whenever you give the reading of a word, write it in hiragana, never in romaji \
 — and make sure it is the reading the word actually takes here (e.g. 金目のもの \
 is かねめのもの, not きんめ). Be very concise: no filler, no preamble, each block \
 just a line or two. You may use light Markdown — a bold label, or a short \
-bullet list with one-line bullets — but nothing heavier.";
+bullet list with one-line bullets — but nothing heavier."
+    )
+});
 
 /// Pinned to Opus 5 — the explain button is a short interactive lookup, and its
 /// two-axis tags should match the cards' (both on Opus, thinking off). Not driven
@@ -81,7 +80,7 @@ pub async fn explain(
         "model": MODEL,
         "max_tokens": 512,
         "thinking": { "type": "disabled" },
-        "system": SYSTEM_PROMPT,
+        "system": SYSTEM_PROMPT.as_str(),
         "messages": [{ "role": "user", "content": user }],
     });
 

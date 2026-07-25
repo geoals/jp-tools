@@ -7,9 +7,12 @@
 //! See `spec/anki-compactdef.md` for the reasoning behind every rule in the
 //! prompt.
 
+use std::sync::LazyLock;
+
 use serde_json::Value;
 
 use crate::error::AppError;
+use crate::tags::{FAMILIARITY_RUBRIC, FLAVOR_RUBRIC};
 
 /// Pinned to Opus 5. The tag-axis experiment (see `spec/anki-compactdef.md` →
 /// "Why no external signals") was run on Opus 4.8 and found no thinking and no
@@ -17,7 +20,12 @@ use crate::error::AppError;
 /// Opus is preferred over sonnet for the meaning/usage prose.
 const MODEL: &str = "claude-opus-5";
 
-const SYSTEM_PROMPT: &str = "\
+/// Built once from the shared tag rubric (`crate::tags`) plus the CompactDef-
+/// specific framing and output format. The FAMILIARITY/FLAVOR definitions live in
+/// `tags.rs` so this and `llm.rs` can never drift apart again.
+static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        "\
 You write a compact ENGLISH gloss (\"CompactDef\") for a Japanese vocab \
 flashcard. It sits at the top of the card back as a fast recognition check; the \
 full Japanese dictionary entry is shown below it. The learner is a native \
@@ -33,32 +41,14 @@ carries the actual nuance. Optionally one short usage note — a fixed collocati
 a polarity restriction, or the typical speaker — where citing the Japanese word \
 or its usual phrase is fine. Adult/explicit words: gloss clinically. Any Japanese \
 reading you cite: hiragana, never romaji.\n\n\
-FAMILIARITY (exactly one) — how many native adults RECOGNIZE the word on sight \
-(population-wide, NOT frequency, NOT whether they say it):\n\
-- CORE — every native, from childhood.\n\
-- COMMON — nearly all adults.\n\
-- UNCOMMON — many adults, but not most people's active vocabulary.\n\
-- RARE — mainly the well-read, older, or specialists.\n\
-- OBSCURE — many natives wouldn't recognize it.\n\
-A transparent compound of common parts with a predictable meaning (等価値 = \
-等価+価値) is understood first-encounter → COMMON or higher. Spoken/colloquial \
-words are more familiar than their rarity in writing suggests; don't demote them \
-for being informal.\n\n\
-FLAVOR (1-3) — if you SAY it in the wrong room, how do you sound. Emit exactly \
-one baseline formality, then add marks only when they carry an independent, \
-equally-important warning:\n\
-- baseline: SLANG / PLAIN (safe anywhere — always shown) / FORMAL (stiff if \
-casual; fine in formal speech or writing) / LITERARY (writing-only; theatrical \
-if spoken).\n\
-- marks: TECHNICAL, RELIGIOUS, HONORIFIC, HUMBLE, DIALECT, ARCHAIC, VULGAR, \
-DEROGATORY, CHILDISH.\n\
-Tag the IN-SENTENCE sense; other senses don't count (joking 成仏 = PLAIN, not \
-RELIGIOUS). A word can be marked in origin but plain in use — tag current usage, \
-not etymology.\n\n\
+{FAMILIARITY_RUBRIC}\n\n\
+{FLAVOR_RUBRIC}\n\n\
 STRUCTURAL (optional trailing parenthetical, orthogonal): (idiom) (mimetic) \
 (fixed phrase) (proverb) (name) (four-char idiom).\n\n\
 Judge from the word, the sentence, and your own knowledge ALONE — no frequency \
-data, no dictionary tags. No preamble, no markdown.";
+data, no dictionary tags. No preamble, no markdown."
+    )
+});
 
 /// Generate the CompactDef gloss for `word` as used in `sentence`.
 ///
@@ -75,7 +65,7 @@ pub async fn compact_def(
         "max_tokens": 300,
         "thinking": { "type": "disabled" },
         "output_config": { "effort": "low" },
-        "system": SYSTEM_PROMPT,
+        "system": SYSTEM_PROMPT.as_str(),
         "messages": [{
             "role": "user",
             "content": format!("Word: {word}\nSentence: {sentence}"),

@@ -88,6 +88,19 @@ and actually studied.
 
 ### Prompt (used verbatim in code and skills)
 
+The **FAMILIARITY and FLAVOR rubric blocks are the single source of truth in
+`read-stats/src/tags.rs`** (`FAMILIARITY_RUBRIC` / `FLAVOR_RUBRIC`); both live
+LLM calls — `compactdef.rs` (this gloss) and `llm.rs` (reader explain) — build
+their system prompts from those consts, so the two can no longer drift. Keep the
+text below in sync with `tags.rs`. The **FAMILIARITY definitions are the
+sharpened set**: the axis turns on the single question "can you be certain EVERY
+native adult recognizes it?", COMMON vs UNCOMMON split on active-vs-passive
+vocabulary, RARE = the first tier where universal recognition can't be assumed
+(A/B-tested against the old count-based wording; the sharpened set moved
+borderline literary/idiom words to more defensible tiers — 逼迫 COMMON→UNCOMMON,
+魑魅魍魎 UNCOMMON→RARE, 手向ける→UNCOMMON — with no regression once 手向ける's
+elementary-dict presence was accounted for).
+
 System prompt:
 
 ```
@@ -109,13 +122,18 @@ a polarity restriction, or the typical speaker — where citing the Japanese wor
 or its usual phrase is fine. Adult/explicit words: gloss clinically. Any Japanese
 reading you cite: hiragana, never romaji.
 
-FAMILIARITY (exactly one) — how many native adults RECOGNIZE the word on sight
-(population-wide, NOT frequency, NOT whether they say it):
+FAMILIARITY (exactly one) — recognition-on-sight across the native adult
+population (NOT frequency, NOT whether they say it). The axis turns on ONE
+question: can you be certain EVERY native adult recognizes it?
 - CORE — every native, from childhood.
-- COMMON — nearly all adults.
-- UNCOMMON — many adults, but not most people's active vocabulary.
-- RARE — mainly the well-read, older, or specialists.
-- OBSCURE — many natives wouldn't recognize it.
+- COMMON — every native adult knows it, and for most it is ACTIVE vocabulary
+  (they would use it themselves).
+- UNCOMMON — essentially every native adult still RECOGNIZES it, but for a large
+  portion it is PASSIVE only (known, but they would not produce it).
+- RARE — the first tier where you CANNOT be certain every adult knows it. Many
+  do, but a large share of such words are recognized mainly by people who read.
+- OBSCURE — you can assume non-readers do NOT know it, and even among active
+  readers only a portion recognize it.
 A transparent compound of common parts with a predictable meaning (等価値 =
 等価+価値) is understood first-encounter → COMMON or higher. Spoken/colloquial
 words are more familiar than their rarity in writing suggests; don't demote them
