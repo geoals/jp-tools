@@ -56,3 +56,12 @@ pub async fn fetch_mined_word_days(k: &Knowledge) -> Result<Vec<WordDayHit>, sql
         })
         .collect())
 }
+
+/// Every lemma the tokenizer has seen, with its total count across all days —
+/// the source of the example words on each kanji.
+pub async fn fetch_word_totals(k: &Knowledge) -> Result<Vec<(String, i64)>, sqlx::Error> {
+    let rows = sqlx::query("SELECT lemma, SUM(count) AS n FROM word_days GROUP BY lemma")
+        .fetch_all(k.pool())
+        .await?;
+    Ok(rows.iter().map(|r| (r.get("lemma"), r.get("n"))).collect())
+}

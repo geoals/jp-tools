@@ -12,7 +12,11 @@
 //! - [`dialogue`] — splitting a line into spoken dialogue and narration by
 //!   corner-bracket depth.
 //! - [`sentences`] — segmenting a block of text into sentences.
+//! - [`kanji`] — which codepoints are kanji, and the grade/frequency reference
+//!   table behind the kanji statistics.
 
 pub mod chars;
 pub mod dialogue;
+pub mod kanji;
+mod kanji_data;
 pub mod sentences;

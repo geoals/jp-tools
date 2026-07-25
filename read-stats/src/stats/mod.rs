@@ -17,6 +17,7 @@
 //! | [`work`] | per-VN totals |
 //! | [`focus`] | how *continuous* the reading was, as opposed to how much |
 //! | [`dialogue`] | how much of it was people talking, and at what speed |
+//! | [`kanji`] | which kanji the text was made of, and how well each is known |
 //!
 //! [`presence`] is the module to read first: every other aggregate credits gap
 //! time through it, and keeping that rule in one place is what stops two views
@@ -25,6 +26,7 @@
 pub mod day;
 pub mod dialogue;
 pub mod focus;
+pub mod kanji;
 pub mod line;
 pub mod presence;
 pub mod rate;
@@ -38,6 +40,7 @@ pub(crate) mod testutil;
 pub use day::{DayBucket, aggregate_line_days, date_key, day_start_ts, streaks};
 pub use dialogue::{DialogueDay, Side, aggregate_dialogue_days};
 pub use focus::{FocusDay, INTERRUPTION_SECS, aggregate_focus_days};
+pub use kanji::{KanjiLine, KanjiStats, TermTimes, aggregate_kanji};
 pub use line::LineEvent;
 pub use presence::{Presence, measure_pace, presence_marks};
 pub use session::{Session, derive_sessions};

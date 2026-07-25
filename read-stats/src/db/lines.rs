@@ -6,7 +6,7 @@
 //!
 //! The four shapes exist because the callers genuinely need different columns:
 //!
-//! - [`ReaderLine`] — id + text, for the phone's live feed.
+//! - [`ReaderLine`] — id + text, for the reading view's live feed.
 //! - [`ClassifiedLine`] / [`crate::stats::LineEvent`] — time + chars + the
 //!   speech/prose split, for the derivations.
 //! - [`crate::stats::WorkLine`] — time + chars + work, for per-VN totals.
@@ -230,6 +230,29 @@ pub async fn fetch_lines_after(
             id: r.get("id"),
             ts: r.get("ts"),
             text: r.get("text"),
+        })
+        .collect())
+}
+
+/// Every kept line's raw text, oldest first — the input to the kanji pass.
+///
+/// This is the one read that pulls all the text of all history into memory at
+/// once. It is a few hundred kilobytes and the kanji tab is the only caller;
+/// the derivations that run on every request deliberately use the columns-only
+/// shapes above instead.
+pub async fn fetch_kanji_lines(k: &Knowledge) -> Result<Vec<crate::stats::KanjiLine>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT ts, text, work FROM lines
+         WHERE text IS NOT NULL AND discarded = 0 ORDER BY ts",
+    )
+    .fetch_all(k.pool())
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| crate::stats::KanjiLine {
+            ts: r.get("ts"),
+            text: r.get("text"),
+            work: r.get("work"),
         })
         .collect())
 }

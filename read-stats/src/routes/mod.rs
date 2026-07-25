@@ -13,15 +13,17 @@
 //! | [`works`] | `/api/works` — per-VN totals and metadata |
 //! | [`dialogue`] | `/api/dialogue/summary` — speech vs prose |
 //! | [`lookups`] | `/api/lookups/summary` — the mining funnel |
+//! | [`kanji`] | `/api/kanji` — every kanji read, and how well each is known |
 //! | [`anki`] | `/api/anki/*` — deck snapshot + re-encounter stats |
 //! | [`settings`] | `/api/settings`, `/api/pause` |
-//! | [`reader`] | the phone-side `#read` view: line feed, mine, explain |
+//! | [`reader`] | the `#read` view: line feed, mine, explain |
 
 pub mod anki;
 pub mod ankiproxy;
 pub mod days;
 pub mod dialogue;
 pub mod json;
+pub mod kanji;
 pub mod lookups;
 pub mod reader;
 pub mod sessions;

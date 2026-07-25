@@ -47,7 +47,8 @@ pub use anki_notes::{AnkiNote, fetch_anki_note_ids, fetch_anki_notes, replace_an
 pub use covers::{clear_work_cover_vndb, fetch_work_covers, set_work_cover_vndb};
 pub use lines::{
     ClassifiedLine, IngestLine, ReaderLine, fetch_classified_lines, fetch_line_events,
-    fetch_lines_after, fetch_lines_after_id, fetch_recent_lines, fetch_work_lines, max_line_id,
+    fetch_kanji_lines, fetch_lines_after, fetch_lines_after_id, fetch_recent_lines,
+    fetch_work_lines, max_line_id,
     set_lines_discarded,
 };
 pub use lookups::{LookupTerm, fetch_lookup_events, fetch_lookup_terms, insert_lookup};
@@ -58,7 +59,7 @@ pub use sessions::{ManualSession, delete_session, fetch_sessions, insert_session
 pub use settings::{
     BOOL_SETTING_KEYS, SETTING_KEYS, Settings, get_setting_raw, load_settings, save_setting,
 };
-pub use word_days::{WordDayHit, add_word_day_counts, fetch_mined_word_days};
+pub use word_days::{WordDayHit, add_word_day_counts, fetch_mined_word_days, fetch_word_totals};
 pub use works::{
     WORK_STATUSES, Work, current_work_vn_window, delete_work, fetch_work, fetch_works_meta,
     set_work_cover, set_work_queue_pos, set_work_status, set_work_total_chars, set_work_vn_window,

@@ -186,6 +186,17 @@ cmd_browser() {
     grep -qF "$want" "$WORK/dom.html" || die "rendered page is missing: $want"
   done
   say "dashboard renders ($(wc -c <"$WORK/dom.html") bytes) -> $WORK/dom.html"
+
+  # The kanji tab gets its own render: it is the one view whose panels are
+  # reached from no other tab, so a bad import there would pass every check
+  # above while showing an empty page.
+  chromium --headless --disable-gpu --no-sandbox --dump-dom --virtual-time-budget=15000 \
+    "http://127.0.0.1:$PORT/#kanji" >"$WORK/dom-kanji.html" 2>>"$WORK/console.log"
+  for want in "Every kanji you have read" "Jōyō coverage" "kanji-cell"; do
+    grep -qF "$want" "$WORK/dom-kanji.html" || die "kanji tab is missing: $want"
+  done
+  say "kanji tab renders ($(wc -c <"$WORK/dom-kanji.html") bytes)"
+
   # The reading view is not rendered here: it holds an SSE connection open, so
   # --dump-dom never returns. Its modules are covered by the import check.
   local fail=0

@@ -27,6 +27,7 @@ import { CurrentReading } from "./panels/current-reading.js";
 import { DayCard } from "./panels/day.js";
 import { LibraryView } from "./panels/library.js";
 import { SettingsView } from "./panels/settings.js";
+import { KanjiView } from "./panels/kanji.js";
 import { TrendsCard } from "./panels/trends.js";
 
 const REFRESH_MS = 60_000;
@@ -38,6 +39,7 @@ const TABS = [
   { id: "today", label: "Today" },
   { id: "trends", label: "Trends" },
   { id: "library", label: "Library" },
+  { id: "kanji", label: "Kanji" },
 ];
 
 function App({ view }) {
@@ -49,12 +51,13 @@ function App({ view }) {
   const [anki, setAnki] = useState(null);
   const [lookups, setLookups] = useState(null);
   const [dialogue, setDialogue] = useState(null);
+  const [kanji, setKanji] = useState(null);
   const [ankiBusy, setAnkiBusy] = useState(false);
   const [error, setError] = useState(null);
 
   async function load() {
     try {
-      const [s, d, w, cfg, sess, ank, lk, dlg] = await Promise.all([
+      const [s, d, w, cfg, sess, ank, lk, dlg, kj] = await Promise.all([
         api("/api/summary"),
         api("/api/days?days=60"),
         api("/api/works"),
@@ -63,6 +66,7 @@ function App({ view }) {
         api("/api/anki/summary"),
         api("/api/lookups/summary"),
         api("/api/dialogue/summary?days=60"),
+        api("/api/kanji"),
       ]);
       setSummary(s);
       setDays(d);
@@ -72,6 +76,7 @@ function App({ view }) {
       setAnki(ank);
       setLookups(lk);
       setDialogue(dlg);
+      setKanji(kj);
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -137,7 +142,11 @@ function App({ view }) {
         )}
       </nav>
       <div class="header-right">
-        <a class="pause-btn" href="#read" title="Live line feed + explain button">
+        <a
+          class="pause-btn"
+          href="#read"
+          title="Live line feed + explain button"
+        >
           📖 read
         </a>
         <a
@@ -181,30 +190,32 @@ function App({ view }) {
               targetMins=${summary.goal.target_mins}
               todayDate=${summary.today.date}
             />`
-          : tab === "library"
-            ? html`<${LibraryView}
-                works=${works}
-                settings=${settings}
-                anki=${anki}
-                lookups=${lookups}
-                dialogue=${dialogue}
-                onRefreshAnki=${refreshAnki}
-                ankiBusy=${ankiBusy}
-                onSaved=${load}
-              />`
-            : html`
-                <${CurrentReading}
+          : tab === "kanji"
+            ? html`<${KanjiView} kanji=${kanji} />`
+            : tab === "library"
+              ? html`<${LibraryView}
                   works=${works}
                   settings=${settings}
-                  days=${days}
+                  anki=${anki}
+                  lookups=${lookups}
+                  dialogue=${dialogue}
+                  onRefreshAnki=${refreshAnki}
+                  ankiBusy=${ankiBusy}
                   onSaved=${load}
-                />
-                <${DayCard}
-                  days=${days}
-                  todayDate=${summary.today.date}
-                  goal=${summary.goal}
-                />
-              `
+                />`
+              : html`
+                  <${CurrentReading}
+                    works=${works}
+                    settings=${settings}
+                    days=${days}
+                    onSaved=${load}
+                  />
+                  <${DayCard}
+                    days=${days}
+                    todayDate=${summary.today.date}
+                    goal=${summary.goal}
+                  />
+                `
     }
   `;
 }

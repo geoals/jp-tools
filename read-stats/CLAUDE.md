@@ -9,9 +9,10 @@ Two things live here:
   it cost in lookups. Everything on it is *derived* from the raw line stream at
   query time, so a threshold can be changed and the whole history re-reads
   under the new rule.
-- **`#read`** — the phone-side live line feed used to read a VN over Moonlight,
-  plus the mine button, the explain button, and the AnkiConnect proxy Yomitan
-  points at.
+- **`#read`** — the live line feed read beside the running VN, plus the explain
+  button and the AnkiConnect proxy Yomitan points at. Usually a browser on this
+  machine; it is served over the LAN (and Tailscale) too, so a second device
+  beside the screen works the same way.
 
 ## The shape of the thing
 
@@ -135,14 +136,18 @@ assumes".
   different readings of the same days, and independent fetches would show a
   stale streak beside a fresh chart. **Tabs choose what renders, never what is
   fetched** — that is what keeps two tabs from disagreeing about the same day.
-- Three tabs, one per question. **Today** — `current-reading.js` over `day.js`:
+- Four tabs, one per question. **Today** — `current-reading.js` over `day.js`:
   what you are reading, then how the day against it went (the goal, the totals,
   the curve and the sittings, all following one date). **Trends** —
   `trends.js`, one range selector over the summary tiles, the daily bars, the
   speed panel and the rate panel. **Library** — `library.js`: works,
-  vocabulary, dialogue, and the manual log form. The page was twelve cards in
-  one column before, with today and the last 30 days interleaved and four
-  slices of the same window each carrying its own hardcoded range.
+  vocabulary, dialogue, and the manual log form. **Kanji** — `kanji.js` over
+  `/api/kanji`: the grid of every kanji ever read, tinted by encounter count
+  and ringed by what it cost, plus grade coverage, the corpus-coverage curve,
+  discovery per day, the lookup-rate ranking and the per-work fingerprints. The
+  page was twelve cards in one column before, with today and the last 30 days
+  interleaved and four slices of the same window each carrying its own
+  hardcoded range.
 - Selected-state has one vocabulary: `background: var(--meter-track)` with
   primary ink (`.segment-on`, `.toggle-on`, `.tab-on`). Not an accent border,
   not a saturated fill — `--series-1` at full strength is spent on the paused

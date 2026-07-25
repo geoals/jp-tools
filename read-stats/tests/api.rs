@@ -391,7 +391,7 @@ async fn the_reader_backlog_comes_back_oldest_first() {
 }
 
 #[tokio::test]
-async fn reader_state_reports_what_the_phone_can_do() {
+async fn reader_state_reports_what_the_reader_can_do() {
     let app = TestApp::new().await;
     let s = app.get("/api/reader/state").await;
     assert_eq!(s["paused"], false);
@@ -409,4 +409,56 @@ async fn anki_summary_reports_unavailable_before_the_first_refresh() {
     // The snapshot timestamp is what marks a refresh as having happened; notes
     // alone (however they got there) are not enough to report against.
     assert_eq!(app.get("/api/anki/summary").await["available"], false);
+}
+
+#[tokio::test]
+async fn kanji_counts_the_glyphs_and_joins_lookups_and_cards_to_them() {
+    let app = TestApp::new().await;
+    let base = today_start() + 3600.0;
+    app.add_line(base, "手強い人と手を組む", None).await;
+    app.add_line(base + 10.0, "人がいる", Some("A")).await;
+    // Discarded lines must be invisible here as they are everywhere else.
+    app.add_line(base + 20.0, "邂逅", None).await;
+    let last: i64 = sqlx::query_scalar("SELECT MAX(id) FROM lines")
+        .fetch_one(app.knowledge.pool())
+        .await
+        .unwrap();
+    app.send("POST", "/api/lines/discard", json!({ "ids": [last] }))
+        .await;
+
+    app.add_lookup(base + 30.0, "手強い").await;
+    app.add_note((base * 1000.0) as i64, "手強い").await;
+
+    let s = app.get("/api/kanji").await;
+    let rows = s["kanji"].as_array().unwrap();
+    let row = |k: &str| {
+        rows.iter()
+            .find(|r| r["kanji"] == k)
+            .unwrap_or_else(|| panic!("{k} missing"))
+            .clone()
+    };
+
+    assert_eq!(s["total_encounters"], 6, "手×2 強 人×2 組, no 邂逅");
+    assert!(!rows.iter().any(|r| r["kanji"] == "邂"), "discarded line");
+    assert_eq!(row("人")["count"], 2);
+    assert_eq!(row("人")["top_work"], "A", "only one line carried a work");
+    assert_eq!(row("手")["lookups"], 1, "手強い contains it");
+    assert_eq!(row("手")["mined"], true);
+    assert_eq!(row("組")["lookups"], 0);
+    assert_eq!(row("組")["mined"], false);
+    // The reference table rides along, and 人 is the first kanji taught.
+    assert_eq!(row("人")["grade"], 1);
+    assert_eq!(row("人")["gloss"], "person");
+
+    let g1 = s["grades"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|g| g["grade"] == 1)
+        .unwrap()
+        .clone();
+    assert_eq!(g1["total"], 80);
+    assert_eq!(g1["met"], 2, "人 and 手");
+    assert_eq!(g1["solid"], 0, "neither reaches the solid threshold");
+    assert_eq!(s["days"].as_array().unwrap()[0]["new"], 4);
 }
