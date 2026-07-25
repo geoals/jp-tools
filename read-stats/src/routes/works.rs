@@ -52,7 +52,7 @@ pub async fn works(State(state): State<AppState>) -> Result<Json<Value>, AppErro
 
     // Metadata joins by exact title; leftovers (queued works with no lines
     // yet) still get a row so they show up before reading starts.
-    let mut meta_by_title: BTreeMap<String, db::Work> = db::fetch_works_meta(&state.pool)
+    let mut meta_by_title: BTreeMap<String, db::Work> = db::fetch_works_meta(&state.knowledge)
         .await?
         .into_iter()
         .map(|w| (w.title.clone(), w))
@@ -111,12 +111,12 @@ pub struct WorkMetaReq {
 /// doing the one-shot VNDB cover fetch when a vndb id is given.
 async fn apply_work_meta(state: &AppState, id: i64, req: &WorkMetaReq) -> Result<(), AppError> {
     if let Some(raw) = &req.vndb_id {
-        let old_cover = db::fetch_work(&state.pool, id)
+        let old_cover = db::fetch_work(&state.knowledge, id)
             .await?
             .and_then(|w| w.cover_path);
         let new_cover = if raw.trim().is_empty() {
-            db::set_work_cover(&state.pool, id, None).await?;
-            db::clear_work_cover_vndb(&state.pool, id).await?;
+            db::set_work_cover(&state.knowledge, id, None).await?;
+            db::clear_work_cover_vndb(&state.local, id).await?;
             None
         } else {
             let vid = crate::services::vndb::normalize_id(raw)
@@ -126,7 +126,8 @@ async fn apply_work_meta(state: &AppState, id: i64, req: &WorkMetaReq) -> Result
             Some(
                 crate::services::covers::fetch_and_store(
                     &state.http,
-                    &state.pool,
+                    &state.local,
+                    &state.knowledge,
                     &state.covers_dir,
                     id,
                     &vid,
@@ -142,7 +143,7 @@ async fn apply_work_meta(state: &AppState, id: i64, req: &WorkMetaReq) -> Result
         if total < 0 {
             return Err(AppError::BadRequest("total_chars must be >= 0".into()));
         }
-        db::set_work_total_chars(&state.pool, id, (total > 0).then_some(total)).await?;
+        db::set_work_total_chars(&state.knowledge, id, (total > 0).then_some(total)).await?;
     }
     if let Some(status) = &req.status {
         if !db::WORK_STATUSES.contains(&status.as_str()) {
@@ -151,14 +152,14 @@ async fn apply_work_meta(state: &AppState, id: i64, req: &WorkMetaReq) -> Result
                 db::WORK_STATUSES
             )));
         }
-        db::set_work_status(&state.pool, id, status).await?;
+        db::set_work_status(&state.knowledge, id, status).await?;
     }
     if let Some(pos) = req.queue_pos {
-        db::set_work_queue_pos(&state.pool, id, (pos >= 0).then_some(pos)).await?;
+        db::set_work_queue_pos(&state.knowledge, id, (pos >= 0).then_some(pos)).await?;
     }
     if let Some(win) = &req.vn_window {
         let win = win.trim();
-        db::set_work_vn_window(&state.pool, id, (!win.is_empty()).then_some(win)).await?;
+        db::set_work_vn_window(&state.knowledge, id, (!win.is_empty()).then_some(win)).await?;
     }
     Ok(())
 }
@@ -174,10 +175,10 @@ pub async fn upsert_work(
         .map(str::trim)
         .filter(|t| !t.is_empty())
         .ok_or_else(|| AppError::BadRequest("title required".into()))?;
-    let work = db::upsert_work(&state.pool, title).await?;
+    let work = db::upsert_work(&state.knowledge, title).await?;
     apply_work_meta(&state, work.id, &req).await?;
     Ok(Json(
-        db::fetch_work(&state.pool, work.id)
+        db::fetch_work(&state.knowledge, work.id)
             .await?
             .ok_or(AppError::NotFound)?,
     ))
@@ -188,12 +189,12 @@ pub async fn update_work(
     Path(id): Path<i64>,
     Json(req): Json<WorkMetaReq>,
 ) -> Result<Json<db::Work>, AppError> {
-    db::fetch_work(&state.pool, id)
+    db::fetch_work(&state.knowledge, id)
         .await?
         .ok_or(AppError::NotFound)?;
     apply_work_meta(&state, id, &req).await?;
     Ok(Json(
-        db::fetch_work(&state.pool, id)
+        db::fetch_work(&state.knowledge, id)
             .await?
             .ok_or(AppError::NotFound)?,
     ))
@@ -203,13 +204,13 @@ pub async fn delete_work(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<Json<Value>, AppError> {
-    let work = db::fetch_work(&state.pool, id)
+    let work = db::fetch_work(&state.knowledge, id)
         .await?
         .ok_or(AppError::NotFound)?;
     if let Some(cover) = &work.cover_path {
         let _ = tokio::fs::remove_file(state.covers_dir.join(cover)).await;
     }
-    db::clear_work_cover_vndb(&state.pool, id).await?;
-    db::delete_work(&state.pool, id).await?;
+    db::clear_work_cover_vndb(&state.local, id).await?;
+    db::delete_work(&state.knowledge, id).await?;
     Ok(Json(json!({ "deleted": id })))
 }

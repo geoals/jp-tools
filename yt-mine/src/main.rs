@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use tracing::info;
+use tracing::{info, warn};
 
 use jp_core::dictionary::Dictionary;
 use jp_core::tokenize::{SudachiTokenizer, Tokenizer};
@@ -48,20 +48,36 @@ async fn main() {
         );
     }
 
-    // Load dictionaries first so headwords are available for tokenizer
+    // Dictionaries live in the shared knowledge database, not in yt-mine's
+    // own — every tool asks the same one whether a string is a word.
+    let knowledge = jp_core::knowledge::Knowledge::open(&config.knowledge_db_path)
+        .await
+        .expect("failed to open knowledge database");
+    info!(path = %config.knowledge_db_path, "knowledge database ready");
+
     let mut dictionaries: Vec<Arc<Dictionary>> = Vec::new();
     for path in &config.dictionary_paths {
         info!(path, "loading dictionary");
-        let dict = Dictionary::load_or_import(&pool, std::path::Path::new(path))
+        let dict = Dictionary::load_or_import(knowledge.pool(), std::path::Path::new(path))
             .await
             .expect("failed to load dictionary");
         dictionaries.push(Arc::new(dict));
+    }
+    match jp_core::knowledge::dictionaries::ensure_master(
+        knowledge.pool(),
+        &config.master_dictionary,
+    )
+    .await
+    {
+        Ok(Some(id)) => info!(id, marker = %config.master_dictionary, "master dictionary set"),
+        Ok(None) => info!(marker = %config.master_dictionary, "no master dictionary loaded"),
+        Err(e) => warn!(error = %e, "could not mark the master dictionary"),
     }
     if dictionaries.is_empty() {
         info!("no dictionaries configured (set JP_TOOLS_DICTIONARY_PATHS to enable definitions)");
     }
 
-    let headwords = jp_core::db::get_all_headwords(&pool)
+    let headwords = jp_core::knowledge::dictionaries::get_all_headwords(knowledge.pool())
         .await
         .expect("failed to load headwords");
     if !headwords.is_empty() {
@@ -72,9 +88,10 @@ async fn main() {
     }
 
     // Broader set including readings — いう matches 言う via reading
-    let dictionary_forms = jp_core::db::get_all_dictionary_forms(&pool)
-        .await
-        .expect("failed to load dictionary forms");
+    let dictionary_forms =
+        jp_core::knowledge::dictionaries::get_all_dictionary_forms(knowledge.pool())
+            .await
+            .expect("failed to load dictionary forms");
 
     let (downloader, transcriber, exporter, media_extractor, tokenizer, dictionary_forms): (
         Arc<dyn AudioDownloader>,

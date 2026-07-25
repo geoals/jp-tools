@@ -1,7 +1,11 @@
 use std::path::PathBuf;
 
 pub struct Config {
+    /// read-stats' own database (settings, pauses, reader marks, cover sources).
     pub db_path: String,
+    /// jp-core's shared knowledge database: the line stream, works, manual
+    /// sessions, the Anki mirror, lookups, and the dictionary cache.
+    pub knowledge_db_path: String,
     pub listen_addr: String,
     /// Cached cover images, next to the DB by default.
     pub covers_dir: PathBuf,
@@ -37,6 +41,10 @@ impl Config {
             let home = std::env::var("HOME").expect("HOME not set");
             format!("{home}/.local/share/jp-tools/read-stats.db")
         });
+        let knowledge_db_path = std::env::var("JP_TOOLS_KNOWLEDGE_DB_PATH").unwrap_or_else(|_| {
+            let home = std::env::var("HOME").expect("HOME not set");
+            format!("{home}/.local/share/jp-tools/knowledge.db")
+        });
         let listen_addr = std::env::var("JP_TOOLS_STATS_LISTEN_ADDR")
             .unwrap_or_else(|_| "0.0.0.0:3200".to_string());
         let covers_dir = std::path::Path::new(&db_path)
@@ -45,6 +53,7 @@ impl Config {
             .join("covers");
         Config {
             db_path,
+            knowledge_db_path,
             listen_addr,
             covers_dir,
             anki_url: std::env::var("JP_TOOLS_ANKI_URL")

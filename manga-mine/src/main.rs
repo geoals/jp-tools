@@ -42,14 +42,16 @@ async fn main() {
             Arc::new(FakeAnkiExporter),
         )
     } else {
-        // Dictionary cache lives in the shared SQLite DB (imported by yt-mine
-        // or on first run here)
-        let pool = jp_core_pool(&config.database_url()).await;
+        // The dictionary cache lives in the shared knowledge database
+        // (imported by yt-mine, or on first run here).
+        let knowledge = jp_core::knowledge::Knowledge::open(&config.knowledge_db_path)
+            .await
+            .expect("failed to open knowledge database");
 
         let mut dictionaries: Vec<Arc<Dictionary>> = Vec::new();
         for path in &config.dictionary_paths {
             info!(path, "loading dictionary");
-            let dict = Dictionary::load_or_import(&pool, std::path::Path::new(path))
+            let dict = Dictionary::load_or_import(knowledge.pool(), std::path::Path::new(path))
                 .await
                 .expect("failed to load dictionary");
             dictionaries.push(Arc::new(dict));
@@ -60,7 +62,7 @@ async fn main() {
             );
         }
 
-        let headwords = jp_core::db::get_all_headwords(&pool)
+        let headwords = jp_core::knowledge::dictionaries::get_all_headwords(knowledge.pool())
             .await
             .expect("failed to load headwords");
         if !headwords.is_empty() {
@@ -117,16 +119,4 @@ async fn main() {
     )
     .await
     .expect("server error");
-}
-
-async fn jp_core_pool(database_url: &str) -> sqlx::SqlitePool {
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
-        .max_connections(4)
-        .connect(database_url)
-        .await
-        .expect("failed to open dictionary database");
-    jp_core::db::run_migrations(&pool)
-        .await
-        .expect("failed to run dictionary migrations");
-    pool
 }

@@ -3,6 +3,7 @@ use axum::http::HeaderValue;
 use axum::http::header::CACHE_CONTROL;
 use axum::response::Html;
 use axum::routing::{delete, get};
+use jp_core::knowledge::Knowledge;
 use sqlx::SqlitePool;
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
@@ -17,7 +18,12 @@ const STATIC_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
 
 #[derive(Clone)]
 pub struct AppState {
-    pub pool: SqlitePool,
+    /// read-stats' own database: settings, pauses, reader marks, cover sources.
+    pub local: SqlitePool,
+    /// jp-core's shared knowledge database: the line stream, works, manual
+    /// sessions, the Anki mirror, lookups — and the dictionary cache. A
+    /// distinct type, so passing the wrong database is a compile error.
+    pub knowledge: Knowledge,
     pub covers_dir: std::path::PathBuf,
     pub http: reqwest::Client,
     pub anki_url: String,

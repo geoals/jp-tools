@@ -1,7 +1,12 @@
+-- role decides which questions a dictionary may answer: `master` alone defines
+-- the vocabulary denominator, `name` marks proper nouns, `reference` (the
+-- default for any new import) counts only toward "is this a word at all".
+-- See jp_core::knowledge::dictionaries for why they cannot be pooled.
 CREATE TABLE IF NOT EXISTS dictionaries (
     id INTEGER PRIMARY KEY,
     title TEXT NOT NULL,
-    source_path TEXT NOT NULL UNIQUE
+    source_path TEXT NOT NULL UNIQUE,
+    role TEXT NOT NULL DEFAULT 'reference'
 );
 
 CREATE TABLE IF NOT EXISTS dictionary_entries (

@@ -10,15 +10,22 @@ Replaces the old clipboard watcher: the WS stream carries only Textractor
 hooks, so copying a sentence for a lookup/card no longer pollutes the log and
 there is no startup clipboard replay to guard against.
 
-Every logged line is also inserted into the read-stats SQLite DB (durable,
-unlike the tmpfs lines.log) so reading time and character counts can be
-derived without any manual tracking. Stats failures never block mining.
+Every logged line is also inserted into the shared knowledge SQLite DB
+(durable, unlike the tmpfs lines.log) so reading time and character counts can
+be derived without any manual tracking. Stats failures never block mining.
+
+Two databases are involved, and the split is jp-core's (see
+spec/knowledge-db.md): `lines` is knowledge, shared with every tool that asks
+what has been read, while `settings.current_work` — the title stamped on each
+line — is read-stats' own. The knowledge DB is the connection; read-stats' is
+attached read-only-in-practice for that one lookup.
 
 Env:
-  VN_RUNDIR               run dir (default: $XDG_RUNTIME_DIR/vn-mine or /run/user/$UID/...)
-  VN_WS_URL               WebSocket URL (default: ws://localhost:6677)
-  JP_TOOLS_STATS_DB_PATH  read-stats DB (default: ~/.local/share/jp-tools/read-stats.db)
-  JP_TOOLS_STATS_DISABLE  set to 1 to skip the stats sink entirely
+  VN_RUNDIR                   run dir (default: $XDG_RUNTIME_DIR/vn-mine or /run/user/$UID/...)
+  VN_WS_URL                   WebSocket URL (default: ws://localhost:6677)
+  JP_TOOLS_KNOWLEDGE_DB_PATH  shared knowledge DB (default: ~/.local/share/jp-tools/knowledge.db)
+  JP_TOOLS_STATS_DB_PATH      read-stats DB (default: ~/.local/share/jp-tools/read-stats.db)
+  JP_TOOLS_STATS_DISABLE      set to 1 to skip the stats sink entirely
 """
 import asyncio
 import os
@@ -126,13 +133,16 @@ def clean_line(raw):
         return None
     return text
 
+KNOWLEDGE_DB = os.environ.get("JP_TOOLS_KNOWLEDGE_DB_PATH") or os.path.expanduser(
+    "~/.local/share/jp-tools/knowledge.db"
+)
 STATS_DB = os.environ.get("JP_TOOLS_STATS_DB_PATH") or os.path.expanduser(
     "~/.local/share/jp-tools/read-stats.db"
 )
 
-# Keep in sync with read-stats/migrations/001_create_stats_tables.sql —
-# whichever process starts first creates the schema.
-STATS_SCHEMA = """
+# Keep in sync with jp-core/migrations/knowledge/004_reading.sql — whichever
+# process starts first creates the schema.
+KNOWLEDGE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS lines (
     id     INTEGER PRIMARY KEY,
     ts     REAL    NOT NULL,
@@ -143,25 +153,15 @@ CREATE TABLE IF NOT EXISTS lines (
     discarded INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_lines_ts ON lines(ts);
-CREATE TABLE IF NOT EXISTS sessions (
-    id       INTEGER PRIMARY KEY,
-    start_ts REAL    NOT NULL,
-    end_ts   REAL    NOT NULL,
-    chars    INTEGER NOT NULL,
-    source   TEXT    NOT NULL DEFAULT 'book',
-    work     TEXT,
-    pages    REAL,
-    note     TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_sessions_start_ts ON sessions(start_ts);
-CREATE TABLE IF NOT EXISTS settings (
+"""
+
+# read-stats/migrations/001_settings_and_pauses.sql. Created here only so the
+# current_work lookup has something to read on a first-ever run; read-stats
+# owns the table and everything else in that file.
+STATS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS stats.settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS pauses (
-    id       INTEGER PRIMARY KEY,
-    start_ts REAL NOT NULL,
-    end_ts   REAL
 );
 """
 
@@ -178,10 +178,14 @@ class StatsSink:
         if os.environ.get("JP_TOOLS_STATS_DISABLE"):
             return
         try:
+            os.makedirs(os.path.dirname(KNOWLEDGE_DB), exist_ok=True)
             os.makedirs(os.path.dirname(STATS_DB), exist_ok=True)
-            self.db = sqlite3.connect(STATS_DB, isolation_level=None)
+            self.db = sqlite3.connect(KNOWLEDGE_DB, isolation_level=None)
             self.db.execute("PRAGMA journal_mode=WAL")
             self.db.execute("PRAGMA busy_timeout=5000")
+            self.db.executescript(KNOWLEDGE_SCHEMA)
+            # read-stats' own DB, for the current_work setting only.
+            self.db.execute("ATTACH DATABASE ? AS stats", (STATS_DB,))
             self.db.executescript(STATS_SCHEMA)
             for column in (
                 "work TEXT",
@@ -191,7 +195,7 @@ class StatsSink:
                     self.db.execute(f"ALTER TABLE lines ADD COLUMN {column}")
                 except sqlite3.OperationalError:
                     pass  # column already exists
-            log(f"stats sink: {STATS_DB}")
+            log(f"stats sink: {KNOWLEDGE_DB} (+ settings from {STATS_DB})")
         except (OSError, sqlite3.Error) as e:
             log(f"stats sink unavailable ({e}) — reading stats disabled")
             self.db = None
@@ -204,7 +208,7 @@ class StatsSink:
             # Title set via the dashboard's "now reading" field; read per line
             # so a change applies immediately without restarting the daemon.
             row = self.db.execute(
-                "SELECT value FROM settings WHERE key = 'current_work'"
+                "SELECT value FROM stats.settings WHERE key = 'current_work'"
             ).fetchone()
             work = row[0] if row and row[0] else None
             # clean_line() already dropped UI, skip-through and runaway captures,

@@ -9,13 +9,14 @@
 //! — it is derivable from `lines`, and only survives today because there is no
 //! ledger to derive it into.
 
-use sqlx::{Row, SqlitePool};
+use jp_core::knowledge::Knowledge;
+use sqlx::Row;
 
 pub async fn add_word_day_counts(
-    pool: &SqlitePool,
+    k: &Knowledge,
     counts: &[(String, String, i64)], // (lemma, date, count)
 ) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin().await?;
+    let mut tx = k.pool().begin().await?;
     for (lemma, date, count) in counts {
         sqlx::query(
             "INSERT INTO word_days (lemma, date, count) VALUES (?, ?, ?)
@@ -38,13 +39,13 @@ pub struct WordDayHit {
 }
 
 /// All word-day rows whose lemma matches a mined vocab entry.
-pub async fn fetch_mined_word_days(pool: &SqlitePool) -> Result<Vec<WordDayHit>, sqlx::Error> {
+pub async fn fetch_mined_word_days(k: &Knowledge) -> Result<Vec<WordDayHit>, sqlx::Error> {
     let rows = sqlx::query(
         "SELECT w.lemma, w.date, w.count FROM word_days w
          WHERE EXISTS (SELECT 1 FROM anki_notes a WHERE a.vocab = w.lemma)
          ORDER BY w.date",
     )
-    .fetch_all(pool)
+    .fetch_all(k.pool())
     .await?;
     Ok(rows
         .iter()

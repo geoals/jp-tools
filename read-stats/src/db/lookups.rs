@@ -10,7 +10,8 @@
 //! and as the mining funnel the term matters. `spec/knowledge-db.md` generalizes
 //! this into the ledger's `encounters` log, tagged by source type.
 
-use sqlx::{Row, SqlitePool};
+use jp_core::knowledge::Knowledge;
+use sqlx::Row;
 
 /// Record one Yomitan lookup, unless the same term was already recorded within
 /// `dedupe_secs`. One popup display can fire several AnkiConnect requests (a
@@ -19,7 +20,7 @@ use sqlx::{Row, SqlitePool};
 ///
 /// Returns whether a row was written.
 pub async fn insert_lookup(
-    pool: &SqlitePool,
+    k: &Knowledge,
     ts: f64,
     term: &str,
     work: Option<&str>,
@@ -37,21 +38,21 @@ pub async fn insert_lookup(
     .bind(work)
     .bind(term)
     .bind(ts - dedupe_secs)
-    .execute(pool)
+    .execute(k.pool())
     .await?;
     Ok(result.rows_affected() > 0)
 }
 
 /// Lookup timestamps in a window, oldest first.
 pub async fn fetch_lookup_events(
-    pool: &SqlitePool,
+    k: &Knowledge,
     from_ts: f64,
     to_ts: f64,
 ) -> Result<Vec<f64>, sqlx::Error> {
     let rows = sqlx::query("SELECT ts FROM lookups WHERE ts >= ? AND ts < ? ORDER BY ts")
         .bind(from_ts)
         .bind(to_ts)
-        .fetch_all(pool)
+        .fetch_all(k.pool())
         .await?;
     Ok(rows.iter().map(|r| r.get("ts")).collect())
 }
@@ -72,7 +73,7 @@ pub struct LookupTerm {
     pub mine_from_ts: Option<f64>,
 }
 
-pub async fn fetch_lookup_terms(pool: &SqlitePool) -> Result<Vec<LookupTerm>, sqlx::Error> {
+pub async fn fetch_lookup_terms(k: &Knowledge) -> Result<Vec<LookupTerm>, sqlx::Error> {
     let rows = sqlx::query(
         "SELECT t.term, t.times, t.first_ts, t.last_ts,
                 (SELECT MIN(a.note_id) FROM anki_notes a WHERE a.vocab = t.term) AS note_id,
@@ -87,7 +88,7 @@ pub async fn fetch_lookup_terms(pool: &SqlitePool) -> Result<Vec<LookupTerm>, sq
              GROUP BY term
          ) t",
     )
-    .fetch_all(pool)
+    .fetch_all(k.pool())
     .await?;
     Ok(rows
         .iter()

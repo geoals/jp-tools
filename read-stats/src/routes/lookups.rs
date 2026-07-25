@@ -34,7 +34,7 @@ fn status_of(t: &LookupTerm) -> &'static str {
 }
 
 pub async fn lookups_summary(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
-    let terms = db::fetch_lookup_terms(&state.pool).await?;
+    let terms = db::fetch_lookup_terms(&state.knowledge).await?;
 
     let (mut mined, mut known, mut unmined) = (0i64, 0i64, 0i64);
     let mut leeches: Vec<&LookupTerm> = Vec::new();

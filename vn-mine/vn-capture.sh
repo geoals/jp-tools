@@ -39,11 +39,17 @@ SHOT_NOTE=""
 # window. The window is a column on the current work; the old global `vn_window`
 # setting is a legacy fallback for DBs that predate per-work windows. Read-only:
 # the logger writes to this DB concurrently.
+# Two databases since the knowledge split: `works` is shared knowledge, the
+# `current_work` / `vn_window` settings are read-stats' own.
 STATS_DB="${JP_TOOLS_STATS_DB_PATH:-$HOME/.local/share/jp-tools/read-stats.db}"
+KNOWLEDGE_DB="${JP_TOOLS_KNOWLEDGE_DB_PATH:-$HOME/.local/share/jp-tools/knowledge.db}"
 if [ -z "$VN_WINDOW" ] && command -v sqlite3 &>/dev/null && [ -f "$STATS_DB" ]; then
-  VN_WINDOW=$(sqlite3 -readonly "$STATS_DB" \
-    "SELECT w.vn_window FROM works w
-       JOIN settings s ON s.key = 'current_work' AND s.value = w.title" 2>/dev/null)
+  CURRENT_WORK=$(sqlite3 -readonly "$STATS_DB" \
+    "SELECT value FROM settings WHERE key = 'current_work'" 2>/dev/null)
+  if [ -n "$CURRENT_WORK" ] && [ -f "$KNOWLEDGE_DB" ]; then
+    VN_WINDOW=$(sqlite3 -readonly "$KNOWLEDGE_DB" \
+      "SELECT vn_window FROM works WHERE title = '${CURRENT_WORK//\'/\'\'}'" 2>/dev/null)
+  fi
   if [ -z "$VN_WINDOW" ]; then
     VN_WINDOW=$(sqlite3 -readonly "$STATS_DB" \
       "SELECT value FROM settings WHERE key = 'vn_window'" 2>/dev/null)

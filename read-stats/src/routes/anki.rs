@@ -46,9 +46,9 @@ pub async fn anki_refresh(
         return Err(last_err);
     };
 
-    db::replace_anki_notes(&state.pool, &notes).await?;
-    db::save_setting(&state.pool, "anki_snapshot_ts", &now_ts().to_string()).await?;
-    db::save_setting(&state.pool, "anki_source", &source).await?;
+    db::replace_anki_notes(&state.knowledge, &notes).await?;
+    db::save_setting(&state.local, "anki_snapshot_ts", &now_ts().to_string()).await?;
+    db::save_setting(&state.local, "anki_source", &source).await?;
     let ingest = crate::ingest::ingest_new_lines(&state).await?;
 
     Ok(Json(
@@ -58,14 +58,14 @@ pub async fn anki_refresh(
 
 /// Re-encounter statistics: how often mined words reappear in the line stream.
 pub async fn anki_summary(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
-    let Some(snapshot_ts) = db::get_setting_raw(&state.pool, "anki_snapshot_ts")
+    let Some(snapshot_ts) = db::get_setting_raw(&state.local, "anki_snapshot_ts")
         .await?
         .and_then(|v| v.parse::<f64>().ok())
     else {
         return Ok(Json(json!({ "available": false })));
     };
 
-    let settings = db::load_settings(&state.pool).await?;
+    let settings = db::load_settings(&state.local).await?;
     let tz = tz_offset_secs();
     let rollover = settings.day_rollover_hour;
     let today = stats::date_key(now_ts(), rollover, tz);
@@ -73,7 +73,7 @@ pub async fn anki_summary(State(state): State<AppState>) -> Result<Json<Value>, 
 
     // Earliest note per vocab (dupes possible when a word was re-mined).
     let mut mined: BTreeMap<String, (i64, String)> = BTreeMap::new();
-    for n in db::fetch_anki_notes(&state.pool).await? {
+    for n in db::fetch_anki_notes(&state.knowledge).await? {
         let date = stats::date_key(n.note_id as f64 / 1000.0, rollover, tz).to_string();
         mined.entry(n.vocab).or_insert((n.note_id, date));
     }
@@ -81,7 +81,7 @@ pub async fn anki_summary(State(state): State<AppState>) -> Result<Json<Value>, 
     // Encounters per mined lemma, split into after-mined-day and last-7-days.
     let mut after: BTreeMap<&str, i64> = BTreeMap::new();
     let mut week: BTreeMap<&str, i64> = BTreeMap::new();
-    let hits = db::fetch_mined_word_days(&state.pool).await?;
+    let hits = db::fetch_mined_word_days(&state.knowledge).await?;
     for h in &hits {
         let Some((_, mined_date)) = mined.get(&h.lemma) else {
             continue;
@@ -115,7 +115,7 @@ pub async fn anki_summary(State(state): State<AppState>) -> Result<Json<Value>, 
     Ok(Json(json!({
         "available": true,
         "snapshot_ts": snapshot_ts,
-        "source": db::get_setting_raw(&state.pool, "anki_source").await?,
+        "source": db::get_setting_raw(&state.local, "anki_source").await?,
         "mined": mined.len(),
         "reencountered": reencountered,
         "week_encounters": week_total,

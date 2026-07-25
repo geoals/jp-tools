@@ -61,7 +61,7 @@ pub async fn lines_stream(
         // log for a fresh client.
         let mut last_id = match resume {
             Some(id) => id,
-            None => match db::fetch_recent_lines(&state.pool, backlog).await {
+            None => match db::fetch_recent_lines(&state.knowledge, backlog).await {
                 Ok(lines) => {
                     let last = lines.last().map(|l| l.id);
                     for line in &lines {
@@ -71,7 +71,7 @@ pub async fn lines_stream(
                         Some(id) => id,
                         // Empty table: start from the current end so the first
                         // hooked line still arrives.
-                        None => db::max_line_id(&state.pool).await.unwrap_or(0),
+                        None => db::max_line_id(&state.knowledge).await.unwrap_or(0),
                     }
                 }
                 Err(e) => {
@@ -82,7 +82,7 @@ pub async fn lines_stream(
         };
 
         loop {
-            match db::fetch_lines_after_id(&state.pool, last_id, MAX_BATCH).await {
+            match db::fetch_lines_after_id(&state.knowledge, last_id, MAX_BATCH).await {
                 Ok(lines) => {
                     for line in &lines {
                         last_id = line.id;

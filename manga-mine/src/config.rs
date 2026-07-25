@@ -15,6 +15,13 @@ pub struct Config {
     /// SQLite database holding the dictionary cache. Shared with yt-mine so
     /// dictionaries imported there are reused (manga-mine stores nothing else).
     pub db_path: String,
+    /// jp-core's shared knowledge database: the dictionary cache and the
+    /// reading record. Separate from this app's own DB — see
+    /// spec/knowledge-db.md.
+    pub knowledge_db_path: String,
+    /// Which loaded dictionary defines the vocabulary scale. Matched against
+    /// the end of a dictionary's source path, or its exact title.
+    pub master_dictionary: String,
     /// Paths to Yomitan dictionary zip files.
     pub dictionary_paths: Vec<String>,
     pub anki: AnkiConfig,
@@ -45,6 +52,12 @@ impl Config {
             anki_url: env::var("JP_TOOLS_ANKI_URL")
                 .unwrap_or_else(|_| "http://localhost:8765".into()),
             media_dir: env::var("JP_TOOLS_MEDIA_DIR").unwrap_or_else(|_| "media".into()),
+            knowledge_db_path: env::var("JP_TOOLS_KNOWLEDGE_DB_PATH").unwrap_or_else(|_| {
+                let home = env::var("HOME").expect("HOME not set");
+                format!("{home}/.local/share/jp-tools/knowledge.db")
+            }),
+            master_dictionary: env::var("JP_TOOLS_MASTER_DICTIONARY")
+                .unwrap_or_else(|_| jp_core::knowledge::dictionaries::DEFAULT_MASTER.to_string()),
             db_path: env::var("JP_TOOLS_DB_PATH").unwrap_or_else(|_| {
                 let home = env::var("HOME").expect("HOME not set");
                 format!("{home}/.local/share/jp-tools/yt-mine.db")

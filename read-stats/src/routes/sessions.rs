@@ -61,7 +61,7 @@ pub async fn list_sessions(
             with_cards(start, end, serde_json::to_value(s).unwrap())
         })
         .collect();
-    let manual: Vec<Value> = db::fetch_sessions(&state.pool, day_start, day_end)
+    let manual: Vec<Value> = db::fetch_sessions(&state.knowledge, day_start, day_end)
         .await?
         .into_iter()
         .map(|s| {
@@ -98,7 +98,7 @@ pub async fn create_session(
     if !(req.minutes > 0.0) {
         return Err(AppError::BadRequest("minutes must be > 0".into()));
     }
-    let settings = db::load_settings(&state.pool).await?;
+    let settings = db::load_settings(&state.local).await?;
     let tz = crate::clock::tz_offset_secs();
 
     let chars = match (req.chars, req.pages) {
@@ -120,7 +120,7 @@ pub async fn create_session(
     };
 
     let session = db::insert_session(
-        &state.pool,
+        &state.knowledge,
         start_ts,
         start_ts + req.minutes * 60.0,
         chars,
@@ -137,7 +137,7 @@ pub async fn delete_session(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<Json<Value>, AppError> {
-    if !db::delete_session(&state.pool, id).await? {
+    if !db::delete_session(&state.knowledge, id).await? {
         return Err(AppError::NotFound);
     }
     Ok(Json(json!({ "deleted": id })))

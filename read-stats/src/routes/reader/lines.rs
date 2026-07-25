@@ -52,7 +52,7 @@ async fn set_discarded(
             ids.len()
         )));
     }
-    let changed = db::set_lines_discarded(&state.pool, &ids, discarded).await?;
+    let changed = db::set_lines_discarded(&state.knowledge, &ids, discarded).await?;
     info!(count = changed.len(), discarded, "reader cleared lines");
     // No presence mark here on purpose: clearing is a *suppress* action, like
     // pause. It widens the gap so the removed line's span stops being credited

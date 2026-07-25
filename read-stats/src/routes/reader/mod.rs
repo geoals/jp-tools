@@ -37,7 +37,7 @@ use crate::db;
 /// fresh lookup). Best-effort: a failed insert is logged, never propagated —
 /// the action it accompanies must still succeed.
 pub(crate) async fn mark_presence(state: &AppState, kind: &str) {
-    if let Err(e) = db::insert_reader_mark(&state.pool, now_ts(), kind).await {
+    if let Err(e) = db::insert_reader_mark(&state.local, now_ts(), kind).await {
         warn!(error = %e, kind, "failed to record reader presence mark");
     }
 }

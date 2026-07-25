@@ -29,23 +29,23 @@ pub struct IngestOutcome {
 }
 
 pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppError> {
-    let watermark: i64 = db::get_setting_raw(&state.pool, WATERMARK_KEY)
+    let watermark: i64 = db::get_setting_raw(&state.local, WATERMARK_KEY)
         .await?
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);
 
-    let pauses = db::fetch_pauses(&state.pool).await?;
-    let mut lines = db::fetch_lines_after(&state.pool, watermark).await?;
+    let pauses = db::fetch_pauses(&state.local).await?;
+    let mut lines = db::fetch_lines_after(&state.knowledge, watermark).await?;
     let max_id = lines.last().map(|l| l.id);
     lines.retain(|l| !stats::is_paused(l.ts, &pauses));
     let Some(max_id) = max_id else {
         return Ok(IngestOutcome { lines: 0, words: 0 });
     };
 
-    let settings = db::load_settings(&state.pool).await?;
+    let settings = db::load_settings(&state.local).await?;
     let rollover = settings.day_rollover_hour;
     let tz = tz_offset_secs();
-    let vocab: HashSet<String> = db::fetch_anki_notes(&state.pool)
+    let vocab: HashSet<String> = db::fetch_anki_notes(&state.knowledge)
         .await?
         .into_iter()
         .map(|n| n.vocab)
@@ -80,8 +80,8 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
         .into_iter()
         .map(|((lemma, date), count)| (lemma, date, count))
         .collect();
-    db::add_word_day_counts(&state.pool, &rows).await?;
-    db::save_setting(&state.pool, WATERMARK_KEY, &max_id.to_string()).await?;
+    db::add_word_day_counts(&state.knowledge, &rows).await?;
+    db::save_setting(&state.local, WATERMARK_KEY, &max_id.to_string()).await?;
 
     info!(lines = n_lines, words = rows.len(), "line ingest complete");
     Ok(IngestOutcome {

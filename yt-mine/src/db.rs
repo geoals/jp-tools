@@ -19,7 +19,6 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> 
         .await?;
 
     sqlx::raw_sql(MIGRATION).execute(&pool).await?;
-    jp_core::db::run_migrations(&pool).await?;
 
     // ALTER TABLE ADD COLUMN has no IF NOT EXISTS in SQLite,
     // so check whether the column is already present first.
@@ -488,7 +487,6 @@ mod tests {
         let pool = create_pool("sqlite::memory:").await.unwrap();
         // Re-run all migrations (simulates second server start).
         sqlx::raw_sql(MIGRATION).execute(&pool).await.unwrap();
-        jp_core::db::run_migrations(&pool).await.unwrap();
         // 004 uses ALTER TABLE ADD COLUMN which would fail without the guard.
         assert!(has_column(&pool, "mining_jobs", "video_id").await.unwrap());
     }

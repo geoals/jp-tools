@@ -5,6 +5,9 @@
 //! be re-fetched at startup), while `works` is shared knowledge-layer data. The
 //! cover *filename* does live on `works`, since that is what the API serves.
 
+use std::collections::HashMap;
+
+use jp_core::knowledge::Knowledge;
 use sqlx::{Row, SqlitePool};
 
 /// Remember which VNDB id a work's cover came from, so a lost cover file can be
@@ -36,17 +39,32 @@ pub async fn clear_work_cover_vndb(pool: &SqlitePool, work_id: i64) -> Result<()
 
 /// Every work that has a remembered cover source, with its current cover
 /// filename — the input to the startup "re-fetch anything missing" pass.
+///
+/// Joined in memory rather than in SQL: `work_covers` is local and `works` is
+/// in the shared knowledge database. There is one row per work with art, so the
+/// cost of doing it this way is nothing and the cost of an ATTACH would be a
+/// second connection-setup path.
 pub async fn fetch_work_covers(
     pool: &SqlitePool,
+    knowledge: &Knowledge,
 ) -> Result<Vec<(i64, String, Option<String>)>, sqlx::Error> {
-    let rows = sqlx::query(
-        "SELECT wc.work_id, wc.vndb_id, w.cover_path
-         FROM work_covers wc JOIN works w ON w.id = wc.work_id",
-    )
-    .fetch_all(pool)
-    .await?;
-    Ok(rows
+    let sources = sqlx::query("SELECT work_id, vndb_id FROM work_covers")
+        .fetch_all(pool)
+        .await?;
+    let covers: HashMap<i64, Option<String>> = super::works::fetch_works_meta(knowledge)
+        .await?
+        .into_iter()
+        .map(|w| (w.id, w.cover_path))
+        .collect();
+    Ok(sources
         .iter()
-        .map(|r| (r.get("work_id"), r.get("vndb_id"), r.get("cover_path")))
+        .filter_map(|r| {
+            let work_id: i64 = r.get("work_id");
+            // A cover source whose work has been deleted is dropped, which is
+            // what the SQL join did too.
+            covers
+                .get(&work_id)
+                .map(|cover| (work_id, r.get("vndb_id"), cover.clone()))
+        })
         .collect())
 }

@@ -257,7 +257,7 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value) {
 }
 
 async fn record(state: &AppState, term: &str) {
-    let work = match db::load_settings(&state.pool).await {
+    let work = match db::load_settings(&state.local).await {
         Ok(s) => s.current_work,
         Err(e) => {
             warn!(error = %e, "lookup work lookup failed, recording without work");
@@ -266,7 +266,15 @@ async fn record(state: &AppState, term: &str) {
     };
     let work = (!work.is_empty()).then_some(work);
 
-    match db::insert_lookup(&state.pool, now_ts(), term, work.as_deref(), DEDUPE_SECS).await {
+    match db::insert_lookup(
+        &state.knowledge,
+        now_ts(),
+        term,
+        work.as_deref(),
+        DEDUPE_SECS,
+    )
+    .await
+    {
         Ok(true) => debug!(term, "lookup recorded"),
         Ok(false) => debug!(term, "lookup deduped"),
         // Counting lookups must never break mining: log and forward anyway.

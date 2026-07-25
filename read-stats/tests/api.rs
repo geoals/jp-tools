@@ -67,7 +67,8 @@ async fn a_paused_span_removes_its_lines_from_every_figure() {
     sqlx::query("INSERT INTO pauses (start_ts, end_ts) VALUES (?, ?)")
         .bind(base + 5.0)
         .bind(base + 100.0)
-        .execute(&app.pool)
+        // pauses are read-stats' own, not knowledge
+        .execute(&app.local)
         .await
         .unwrap();
 
@@ -84,7 +85,7 @@ async fn discarding_lines_removes_them_and_undo_puts_them_back() {
     let app = TestApp::new().await;
     three_lines(&app, today_start() + 3600.0, None).await;
     let ids: Vec<i64> = sqlx::query_scalar("SELECT id FROM lines ORDER BY id")
-        .fetch_all(&app.pool)
+        .fetch_all(app.knowledge.pool())
         .await
         .unwrap();
 
@@ -295,7 +296,7 @@ async fn the_mining_funnel_sorts_terms_into_mined_known_and_unmined() {
         .bind("新出")
         .bind(((base - 86400.0) * 1000.0) as i64)
         .bind("手強い")
-        .execute(&app.pool)
+        .execute(app.knowledge.pool())
         .await
         .unwrap();
 
@@ -338,7 +339,7 @@ async fn the_reader_backlog_comes_back_oldest_first() {
         app.add_line(base + i as f64 * 10.0, text, None).await;
     }
 
-    let lines = read_stats::db::fetch_recent_lines(&app.pool, 2)
+    let lines = read_stats::db::fetch_recent_lines(&app.knowledge, 2)
         .await
         .unwrap();
     assert_eq!(lines.len(), 2, "capped at the limit");

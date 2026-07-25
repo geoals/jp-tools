@@ -11,26 +11,44 @@ async fn main() {
 
     let config = Config::from_env();
 
-    if let Some(parent) = std::path::Path::new(&config.db_path).parent() {
-        std::fs::create_dir_all(parent).expect("failed to create stats DB directory");
+    for path in [&config.db_path, &config.knowledge_db_path] {
+        if let Some(parent) = std::path::Path::new(path).parent() {
+            std::fs::create_dir_all(parent).expect("failed to create database directory");
+        }
     }
-    let pool = db::create_pool(&config.db_path)
+    let local = db::create_pool(&config.db_path)
         .await
-        .expect("failed to open stats database");
-    info!(path = %config.db_path, "stats database ready");
+        .expect("failed to open read-stats database");
+    info!(path = %config.db_path, "read-stats database ready");
+
+    let knowledge = db::open_knowledge(&config.knowledge_db_path)
+        .await
+        .expect("failed to open knowledge database");
+    info!(path = %config.knowledge_db_path, "knowledge database ready");
+
+    // Starting against a half-migrated pair would silently write a second
+    // history beside the real one.
+    if let Err(problem) = db::check_migrated(&local, &knowledge).await {
+        panic!("{problem}");
+    }
 
     let http = reqwest::Client::new();
 
     // Best-effort: re-download any cover whose file vanished since last run.
     tokio::spawn({
         let http = http.clone();
-        let pool = pool.clone();
+        let local = local.clone();
+        let knowledge = knowledge.clone();
         let covers_dir = config.covers_dir.clone();
-        async move { read_stats::services::covers::reconcile_missing(&http, &pool, &covers_dir).await }
+        async move {
+            read_stats::services::covers::reconcile_missing(&http, &local, &knowledge, &covers_dir)
+                .await
+        }
     });
 
     let router = build_router(AppState {
-        pool,
+        local,
+        knowledge,
         covers_dir: config.covers_dir.clone(),
         http,
         anki_url: config.anki_url.clone(),

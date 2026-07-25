@@ -15,7 +15,8 @@
 //! Fetching all columns for all of them would be simpler and would also mean
 //! dragging every line's text through the per-day aggregates.
 
-use sqlx::{Row, SqlitePool};
+use jp_core::knowledge::Knowledge;
+use sqlx::Row;
 
 use crate::stats::LineEvent;
 
@@ -31,7 +32,7 @@ pub struct ReaderLine {
 /// Lines newer than `after_id`, oldest first. The reader's SSE loop calls this
 /// on a short interval, so it stays a bounded index range scan.
 pub async fn fetch_lines_after_id(
-    pool: &SqlitePool,
+    k: &Knowledge,
     after_id: i64,
     limit: i64,
 ) -> Result<Vec<ReaderLine>, sqlx::Error> {
@@ -41,23 +42,20 @@ pub async fn fetch_lines_after_id(
     )
     .bind(after_id)
     .bind(limit)
-    .fetch_all(pool)
+    .fetch_all(k.pool())
     .await?;
     Ok(rows.iter().map(reader_line).collect())
 }
 
 /// The newest `limit` lines, oldest first — the backlog a reader gets on open
 /// so the screen isn't blank until the next line is hooked.
-pub async fn fetch_recent_lines(
-    pool: &SqlitePool,
-    limit: i64,
-) -> Result<Vec<ReaderLine>, sqlx::Error> {
+pub async fn fetch_recent_lines(k: &Knowledge, limit: i64) -> Result<Vec<ReaderLine>, sqlx::Error> {
     let rows = sqlx::query(
         "SELECT id, ts, chars, text FROM lines
          WHERE text IS NOT NULL AND discarded = 0 ORDER BY id DESC LIMIT ?",
     )
     .bind(limit)
-    .fetch_all(pool)
+    .fetch_all(k.pool())
     .await?;
     let mut lines: Vec<ReaderLine> = rows.iter().map(reader_line).collect();
     lines.reverse();
@@ -74,7 +72,7 @@ pub async fn fetch_recent_lines(
 ///
 /// Returns the ids actually changed, which is what the undo button re-sends.
 pub async fn set_lines_discarded(
-    pool: &SqlitePool,
+    k: &Knowledge,
     ids: &[i64],
     discarded: bool,
 ) -> Result<Vec<i64>, sqlx::Error> {
@@ -92,7 +90,7 @@ pub async fn set_lines_discarded(
     for id in ids {
         q = q.bind(id);
     }
-    let rows = q.bind(i64::from(!discarded)).fetch_all(pool).await?;
+    let rows = q.bind(i64::from(!discarded)).fetch_all(k.pool()).await?;
     Ok(rows.iter().map(|r| r.get("id")).collect())
 }
 
@@ -106,9 +104,9 @@ fn reader_line(r: &sqlx::sqlite::SqliteRow) -> ReaderLine {
 }
 
 /// Highest line id currently stored, or 0 when the table is empty.
-pub async fn max_line_id(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
+pub async fn max_line_id(k: &Knowledge) -> Result<i64, sqlx::Error> {
     let row = sqlx::query("SELECT COALESCE(MAX(id), 0) AS max_id FROM lines")
-        .fetch_one(pool)
+        .fetch_one(k.pool())
         .await?;
     Ok(row.get("max_id"))
 }
@@ -122,7 +120,7 @@ pub struct ClassifiedLine {
 }
 
 pub async fn fetch_classified_lines(
-    pool: &SqlitePool,
+    k: &Knowledge,
     from_ts: f64,
     to_ts: f64,
 ) -> Result<Vec<ClassifiedLine>, sqlx::Error> {
@@ -132,7 +130,7 @@ pub async fn fetch_classified_lines(
     )
     .bind(from_ts)
     .bind(to_ts)
-    .fetch_all(pool)
+    .fetch_all(k.pool())
     .await?;
 
     // One scanner across the whole stream: a speech broken over several text
@@ -181,22 +179,20 @@ pub async fn fetch_classified_lines(
 }
 
 pub async fn fetch_line_events(
-    pool: &SqlitePool,
+    k: &Knowledge,
     from_ts: f64,
     to_ts: f64,
 ) -> Result<Vec<LineEvent>, sqlx::Error> {
-    Ok(fetch_classified_lines(pool, from_ts, to_ts)
+    Ok(fetch_classified_lines(k, from_ts, to_ts)
         .await?
         .into_iter()
         .map(|c| c.event)
         .collect())
 }
 
-pub async fn fetch_work_lines(
-    pool: &SqlitePool,
-) -> Result<Vec<crate::stats::WorkLine>, sqlx::Error> {
+pub async fn fetch_work_lines(k: &Knowledge) -> Result<Vec<crate::stats::WorkLine>, sqlx::Error> {
     let rows = sqlx::query("SELECT ts, chars, work FROM lines WHERE discarded = 0 ORDER BY ts")
-        .fetch_all(pool)
+        .fetch_all(k.pool())
         .await?;
     Ok(rows
         .iter()
@@ -218,7 +214,7 @@ pub struct IngestLine {
 }
 
 pub async fn fetch_lines_after(
-    pool: &SqlitePool,
+    k: &Knowledge,
     after_id: i64,
 ) -> Result<Vec<IngestLine>, sqlx::Error> {
     let rows = sqlx::query(
@@ -226,7 +222,7 @@ pub async fn fetch_lines_after(
              WHERE id > ? AND text IS NOT NULL AND discarded = 0 ORDER BY id",
     )
     .bind(after_id)
-    .fetch_all(pool)
+    .fetch_all(k.pool())
     .await?;
     Ok(rows
         .iter()

@@ -6,25 +6,31 @@
 //! decides *which* rows a request needs). Keeping it thin is what lets the
 //! derivations be unit-tested without a database.
 //!
-//! | module | tables | owner |
-//! |---|---|---|
-//! | [`pool`] | — | connection + migrations |
-//! | [`settings`] | `settings` | read-stats |
-//! | [`pauses`] | `pauses` | read-stats |
-//! | [`marks`] | `reader_marks` | read-stats |
-//! | [`covers`] | `work_covers` | read-stats |
-//! | [`lines`] | `lines` | knowledge (shared) |
-//! | [`works`] | `works` | knowledge (shared) |
-//! | [`sessions`] | `sessions` | knowledge (shared) |
-//! | [`anki_notes`] | `anki_notes` | knowledge (shared) |
-//! | [`word_days`] | `word_days` | knowledge (shared) |
-//! | [`lookups`] | `lookups` | knowledge (shared) |
+//! There are **two databases**, and which one a module talks to is visible in
+//! its signature: knowledge modules take a [`jp_core::knowledge::Knowledge`],
+//! local ones take a bare `SqlitePool`. Both are SQLite pools and both create
+//! their file on demand, so passing the wrong one would fail silently against a
+//! freshly created empty table — the newtype makes that a compile error.
 //!
-//! The "owner" column is where `spec/knowledge-db.md` places each table: the
-//! shared ones are dictionary-gated knowledge that other tools will read, and
-//! are destined to move into `jp-core`'s `knowledge.db`. They all live in one
-//! file today; the split above is drawn where that seam will fall, and no query
-//! in this crate joins across it.
+//! | module | tables | database |
+//! |---|---|---|
+//! | [`pool`] | — | opens both |
+//! | [`settings`] | `settings` | read-stats.db |
+//! | [`pauses`] | `pauses` | read-stats.db |
+//! | [`marks`] | `reader_marks` | read-stats.db |
+//! | [`covers`] | `work_covers` | read-stats.db |
+//! | [`lines`] | `lines` | knowledge.db |
+//! | [`works`] | `works` | knowledge.db |
+//! | [`sessions`] | `manual_sessions` | knowledge.db |
+//! | [`anki_notes`] | `anki_notes` | knowledge.db |
+//! | [`word_days`] | `word_days` | knowledge.db |
+//! | [`lookups`] | `lookups` | knowledge.db |
+//!
+//! The split follows `spec/knowledge-db.md`: what is *about the reading* is
+//! shared, because other tools ask questions of it; what is about this app's
+//! own behaviour stays local. Only two places straddle the line —
+//! [`works::current_work_vn_window`] and [`covers::fetch_work_covers`] — and
+//! both do the join in memory rather than attaching one database to the other.
 
 pub mod anki_notes;
 pub mod covers;
@@ -48,7 +54,7 @@ pub use lines::{
 pub use lookups::{LookupTerm, fetch_lookup_events, fetch_lookup_terms, insert_lookup};
 pub use marks::{fetch_reader_marks, insert_reader_mark};
 pub use pauses::{fetch_pauses, is_pause_open, toggle_pause};
-pub use pool::create_pool;
+pub use pool::{check_migrated, create_pool, open_knowledge};
 pub use sessions::{ManualSession, delete_session, fetch_sessions, insert_session};
 pub use settings::{SETTING_KEYS, Settings, get_setting_raw, load_settings, save_setting};
 pub use word_days::{WordDayHit, add_word_day_counts, fetch_mined_word_days};

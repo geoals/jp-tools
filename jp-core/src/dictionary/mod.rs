@@ -69,7 +69,7 @@ impl Dictionary {
                 entries.get(term).cloned().unwrap_or_default()
             }
             DictionaryStorage::Sqlite { pool, dict_id } => {
-                crate::db::lookup_dictionary_entries(pool, *dict_id, term)
+                crate::knowledge::dictionaries::lookup_dictionary_entries(pool, *dict_id, term)
                     .await
                     .unwrap_or_default()
             }
@@ -83,7 +83,7 @@ impl Dictionary {
                 pitch.get(term).cloned().unwrap_or_default()
             }
             DictionaryStorage::Sqlite { pool, dict_id } => {
-                crate::db::lookup_pitch_entries(pool, *dict_id, term)
+                crate::knowledge::dictionaries::lookup_pitch_entries(pool, *dict_id, term)
                     .await
                     .unwrap_or_default()
             }
@@ -95,7 +95,7 @@ impl Dictionary {
         match &self.storage {
             DictionaryStorage::InMemory { freq, .. } => freq.get(term).copied(),
             DictionaryStorage::Sqlite { pool, dict_id } => {
-                crate::db::lookup_frequency(pool, *dict_id, term)
+                crate::knowledge::dictionaries::lookup_frequency(pool, *dict_id, term)
                     .await
                     .unwrap_or_default()
             }
@@ -609,7 +609,7 @@ impl Dictionary {
         pool: &sqlx::SqlitePool,
         path: &Path,
     ) -> Result<Self, DictionaryError> {
-        use crate::db;
+        use crate::knowledge::dictionaries as db;
 
         let path_str = path.to_string_lossy();
 

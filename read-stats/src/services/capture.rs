@@ -44,12 +44,11 @@ pub async fn run(state: &AppState) -> Result<Value, AppError> {
     //
     // The current work's own window comes first; the global `vn_window` setting
     // is a legacy fallback for setups that predate per-work windows.
-    let vn_window = match db::current_work_vn_window(&state.pool).await {
+    let settings = db::load_settings(&state.local).await.unwrap_or_default();
+    let vn_window = match db::current_work_vn_window(&state.knowledge, &settings.current_work).await
+    {
         Ok(Some(w)) if !w.trim().is_empty() => w,
-        _ => db::load_settings(&state.pool)
-            .await
-            .map(|s| s.vn_window)
-            .unwrap_or_default(),
+        _ => settings.vn_window,
     };
 
     let mut cmd = tokio::process::Command::new(&script);

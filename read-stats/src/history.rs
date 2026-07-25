@@ -63,12 +63,12 @@ pub struct History {
 
 impl History {
     pub async fn load(state: &AppState) -> Result<Self, AppError> {
-        let settings = db::load_settings(&state.pool).await?;
+        let settings = db::load_settings(&state.local).await?;
         let tz = tz_offset_secs();
         let today = date_key(now_ts(), settings.day_rollover_hour, tz);
-        let pauses = db::fetch_pauses(&state.pool).await?;
+        let pauses = db::fetch_pauses(&state.local).await?;
 
-        let classified = db::fetch_classified_lines(&state.pool, 0.0, f64::MAX).await?;
+        let classified = db::fetch_classified_lines(&state.knowledge, 0.0, f64::MAX).await?;
         let mut lines = Vec::with_capacity(classified.len());
         let mut line_works = Vec::with_capacity(classified.len());
         for c in classified {
@@ -78,17 +78,17 @@ impl History {
             }
         }
 
-        let mut lookups = db::fetch_lookup_events(&state.pool, 0.0, f64::MAX).await?;
+        let mut lookups = db::fetch_lookup_events(&state.knowledge, 0.0, f64::MAX).await?;
         lookups.retain(|ts| !stats::is_paused(*ts, &pauses));
 
-        let note_ids = db::fetch_anki_note_ids(&state.pool).await?;
+        let note_ids = db::fetch_anki_note_ids(&state.knowledge).await?;
         // Note ids are epoch milliseconds, so they double as card creation times.
         let cards: Vec<f64> = note_ids.iter().map(|id| *id as f64 / 1000.0).collect();
-        let reader = db::fetch_reader_marks(&state.pool, 0.0, f64::MAX).await?;
+        let reader = db::fetch_reader_marks(&state.local, 0.0, f64::MAX).await?;
         let mut marks = stats::presence_marks(&lookups, &cards, &reader);
         marks.retain(|ts| !stats::is_paused(*ts, &pauses));
 
-        let manual = db::fetch_sessions(&state.pool, 0.0, f64::MAX).await?;
+        let manual = db::fetch_sessions(&state.knowledge, 0.0, f64::MAX).await?;
 
         let pace = stats::measure_pace(&lines, &marks, settings.afk_secs);
 

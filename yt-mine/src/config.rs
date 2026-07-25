@@ -5,6 +5,13 @@ pub use jp_mine_core::config::AnkiConfig;
 
 pub struct Config {
     pub db_path: String,
+    /// jp-core's shared knowledge database: the dictionary cache and the
+    /// reading record. Separate from this app's own DB — see
+    /// spec/knowledge-db.md.
+    pub knowledge_db_path: String,
+    /// Which loaded dictionary defines the vocabulary scale. Matched against
+    /// the end of a dictionary's source path, or its exact title.
+    pub master_dictionary: String,
     pub audio_dir: String,
     pub listen_addr: String,
     pub anki_url: String,
@@ -32,6 +39,12 @@ impl Config {
     /// Load config from environment variables, falling back to defaults.
     pub fn from_env() -> Self {
         Self {
+            knowledge_db_path: env::var("JP_TOOLS_KNOWLEDGE_DB_PATH").unwrap_or_else(|_| {
+                let home = env::var("HOME").expect("HOME not set");
+                format!("{home}/.local/share/jp-tools/knowledge.db")
+            }),
+            master_dictionary: env::var("JP_TOOLS_MASTER_DICTIONARY")
+                .unwrap_or_else(|_| jp_core::knowledge::dictionaries::DEFAULT_MASTER.to_string()),
             db_path: env::var("JP_TOOLS_DB_PATH").unwrap_or_else(|_| {
                 let home = env::var("HOME").expect("HOME not set");
                 format!("{home}/.local/share/jp-tools/yt-mine.db")

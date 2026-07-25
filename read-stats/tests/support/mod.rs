@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use axum::Router;
 use axum::body::Body;
 use axum::http::Request;
+use jp_core::knowledge::Knowledge;
 use read_stats::app::{AppState, build_router};
 use read_stats::db;
 use serde_json::Value;
@@ -16,9 +17,12 @@ use sqlx::SqlitePool;
 use tower::ServiceExt;
 
 pub struct TestApp {
-    pub pool: SqlitePool,
+    /// read-stats' own database.
+    pub local: SqlitePool,
+    /// The shared knowledge database — where the line stream lives.
+    pub knowledge: Knowledge,
     pub router: Router,
-    db_path: PathBuf,
+    paths: Vec<PathBuf>,
 }
 
 impl TestApp {
@@ -30,10 +34,16 @@ impl TestApp {
             .unwrap()
             .as_nanos();
         let db_path = std::env::temp_dir().join(format!("read-stats-test-{nanos}.db"));
-        let pool = db::create_pool(db_path.to_str().unwrap()).await.unwrap();
+        let knowledge_path =
+            std::env::temp_dir().join(format!("read-stats-test-knowledge-{nanos}.db"));
+        let local = db::create_pool(db_path.to_str().unwrap()).await.unwrap();
+        let knowledge = db::open_knowledge(knowledge_path.to_str().unwrap())
+            .await
+            .unwrap();
 
         let state = AppState {
-            pool: pool.clone(),
+            local: local.clone(),
+            knowledge: knowledge.clone(),
             covers_dir: std::env::temp_dir().join("read-stats-test-covers"),
             http: reqwest::Client::new(),
             // Pointed at the discard port: no test may reach a real service.
@@ -50,8 +60,9 @@ impl TestApp {
         };
         TestApp {
             router: build_router(state),
-            pool,
-            db_path,
+            local,
+            knowledge,
+            paths: vec![db_path, knowledge_path],
         }
     }
 
@@ -105,21 +116,21 @@ impl TestApp {
             .bind(jp_core::text::chars::count_chars(text))
             .bind(text)
             .bind(work)
-            .execute(&self.pool)
+            .execute(self.knowledge.pool())
             .await
             .unwrap();
     }
 
     pub async fn add_lookup(&self, ts: f64, term: &str) {
         // dedupe window 0 so fixtures get exactly the rows they ask for.
-        db::insert_lookup(&self.pool, ts, term, None, 0.0)
+        db::insert_lookup(&self.knowledge, ts, term, None, 0.0)
             .await
             .unwrap();
     }
 
     pub async fn add_note(&self, note_id: i64, vocab: &str) {
         db::replace_anki_notes(
-            &self.pool,
+            &self.knowledge,
             &[db::AnkiNote {
                 note_id,
                 vocab: vocab.into(),
@@ -132,8 +143,10 @@ impl TestApp {
 
 impl Drop for TestApp {
     fn drop(&mut self) {
-        for suffix in ["", "-wal", "-shm"] {
-            let _ = std::fs::remove_file(format!("{}{suffix}", self.db_path.display()));
+        for path in &self.paths {
+            for suffix in ["", "-wal", "-shm"] {
+                let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+            }
         }
     }
 }

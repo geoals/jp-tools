@@ -9,7 +9,8 @@
 //! which is why mined-card timestamps can be derived without a second query —
 //! and why ids are kept sorted, so a window count is a pair of binary searches.
 
-use sqlx::{Row, SqlitePool};
+use jp_core::knowledge::Knowledge;
+use sqlx::Row;
 
 #[derive(Debug, Clone)]
 pub struct AnkiNote {
@@ -19,8 +20,8 @@ pub struct AnkiNote {
 }
 
 /// Replace the deck snapshot wholesale (it mirrors, never owns, the deck).
-pub async fn replace_anki_notes(pool: &SqlitePool, notes: &[AnkiNote]) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin().await?;
+pub async fn replace_anki_notes(k: &Knowledge, notes: &[AnkiNote]) -> Result<(), sqlx::Error> {
+    let mut tx = k.pool().begin().await?;
     sqlx::query("DELETE FROM anki_notes")
         .execute(&mut *tx)
         .await?;
@@ -34,9 +35,9 @@ pub async fn replace_anki_notes(pool: &SqlitePool, notes: &[AnkiNote]) -> Result
     tx.commit().await
 }
 
-pub async fn fetch_anki_notes(pool: &SqlitePool) -> Result<Vec<AnkiNote>, sqlx::Error> {
+pub async fn fetch_anki_notes(k: &Knowledge) -> Result<Vec<AnkiNote>, sqlx::Error> {
     let rows = sqlx::query("SELECT note_id, vocab FROM anki_notes ORDER BY note_id")
-        .fetch_all(pool)
+        .fetch_all(k.pool())
         .await?;
     Ok(rows
         .iter()
@@ -47,9 +48,9 @@ pub async fn fetch_anki_notes(pool: &SqlitePool) -> Result<Vec<AnkiNote>, sqlx::
         .collect())
 }
 
-pub async fn fetch_anki_note_ids(pool: &SqlitePool) -> Result<Vec<i64>, sqlx::Error> {
+pub async fn fetch_anki_note_ids(k: &Knowledge) -> Result<Vec<i64>, sqlx::Error> {
     let rows = sqlx::query("SELECT note_id FROM anki_notes ORDER BY note_id")
-        .fetch_all(pool)
+        .fetch_all(k.pool())
         .await?;
     Ok(rows.iter().map(|r| r.get("note_id")).collect())
 }

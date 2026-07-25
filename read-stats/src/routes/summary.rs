@@ -30,7 +30,7 @@ pub async fn summary(State(state): State<AppState>) -> Result<Json<Value>, AppEr
     let today_focus = h.focus_days().get(&today).copied().unwrap_or_default();
 
     Ok(Json(json!({
-        "paused": db::is_pause_open(&state.pool).await?,
+        "paused": db::is_pause_open(&state.local).await?,
         "today": {
             "date": today.to_string(),
             "chars": today_total.chars,

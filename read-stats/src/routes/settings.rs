@@ -11,7 +11,7 @@ use crate::db::{self, Settings};
 use crate::error::AppError;
 
 pub async fn get_settings(State(state): State<AppState>) -> Result<Json<Settings>, AppError> {
-    Ok(Json(db::load_settings(&state.pool).await?))
+    Ok(Json(db::load_settings(&state.local).await?))
 }
 
 /// Settings whose value is free text rather than a number. Everything else must
@@ -41,13 +41,13 @@ pub async fn put_settings(
             };
             num.to_string()
         };
-        db::save_setting(&state.pool, key, &stored).await?;
+        db::save_setting(&state.local, key, &stored).await?;
     }
-    Ok(Json(db::load_settings(&state.pool).await?))
+    Ok(Json(db::load_settings(&state.local).await?))
 }
 
 /// Toggle the tracking pause. Returns `{"paused": bool}`.
 pub async fn toggle_pause(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
-    let paused = db::toggle_pause(&state.pool, now_ts()).await?;
+    let paused = db::toggle_pause(&state.local, now_ts()).await?;
     Ok(Json(json!({ "paused": paused })))
 }
