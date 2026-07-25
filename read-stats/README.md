@@ -211,6 +211,28 @@ The line feed is read from the `lines` table that `vn-ws-logger.py` already
 writes, not from Textractor's WebSocket — its plugin can crash Textractor when a
 client disconnects abortively, so a second WS client would be a risk for nothing.
 
+## The dashboard
+
+Three tabs, one per question, all fed by the same single poll — the tabs choose
+what renders, never what is fetched, so two of them can't disagree about a day.
+
+- **Today** (`#today`) — Currently reading first: which VN, how far in, and what
+  it projects. Under it the day itself — the goal meter, the day's totals, its
+  intra-day curve and its sittings, all following one date. The date nav steps
+  the whole card, so "yesterday" is the same card rather than a different one;
+  the totals come from the already-loaded `/api/days` window, so stepping costs
+  one timeline fetch and nothing else.
+- **Trends** (`#trends`) — one range (7/30/60d) over the summary tiles, the
+  daily bars, the speed panel and the lookup/card-rate panel. The two line
+  panels are stacked on a shared x-position rather than merged, for the same
+  reason the day timeline keeps two panels: chars/hour and events/hour can't
+  share a y-axis honestly. Stacked, a speed dip and a lookup spike on the same
+  day line up vertically, which is the lookup-tax argument in one glance.
+- **Library** (`#library`) — the works, the vocabulary funnel (lookups and Anki
+  re-encounters, toggled), dialogue vs narration, and the manual log form. The
+  log form is an *action*, so it is a disclosure at the bottom rather than a
+  permanent card in a column of statistics.
+
 ## Settings (`/#settings`)
 
 Everything that used to be a constant, with the reason it exists written under

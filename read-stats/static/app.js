@@ -193,16 +193,16 @@ function App({ view }) {
                 onSaved=${load}
               />`
             : html`
-                <${DayCard}
-                  days=${days}
-                  todayDate=${summary.today.date}
-                  goal=${summary.goal}
-                />
                 <${CurrentReading}
                   works=${works}
                   settings=${settings}
                   days=${days}
                   onSaved=${load}
+                />
+                <${DayCard}
+                  days=${days}
+                  todayDate=${summary.today.date}
+                  goal=${summary.goal}
                 />
               `
     }

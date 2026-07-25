@@ -59,7 +59,8 @@ src/
   routes/         one module per resource; reader/ is the #read view
   services/       everything that crosses a process or network boundary
 static/           app.js + panels/ + charts/ + lib/ + css/
-                  three hash routes: the dashboard, #settings, #read
+                  hash routes: #today (default), #trends, #library,
+                  #settings, #read
 templates/spa.html
 migrations/       read-stats' own tables only
 ```
@@ -158,4 +159,18 @@ assumes".
   `snapshot0 minago`. Build the string in JS and interpolate it whole.
 - The dashboard polls once and passes the result down. Half the cards are
   different readings of the same days, and independent fetches would show a
-  stale streak beside a fresh chart.
+  stale streak beside a fresh chart. **Tabs choose what renders, never what is
+  fetched** — that is what keeps two tabs from disagreeing about the same day.
+- Three tabs, one per question. **Today** — `current-reading.js` over `day.js`:
+  what you are reading, then how the day against it went (the goal, the totals,
+  the curve and the sittings, all following one date). **Trends** —
+  `trends.js`, one range selector over the summary tiles, the daily bars, the
+  speed panel and the rate panel. **Library** — `library.js`: works,
+  vocabulary, dialogue, and the manual log form. The page was twelve cards in
+  one column before, with today and the last 30 days interleaved and four
+  slices of the same window each carrying its own hardcoded range.
+- Selected-state has one vocabulary: `background: var(--meter-track)` with
+  primary ink (`.segment-on`, `.toggle-on`, `.tab-on`). Not an accent border,
+  not a saturated fill — `--series-1` at full strength is spent on the paused
+  alarm alone, and only stays legible as an alarm while nothing else claims
+  it.
