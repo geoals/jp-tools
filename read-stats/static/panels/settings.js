@@ -17,6 +17,7 @@
 import { html } from "htm/preact";
 import { useState } from "preact/hooks";
 import { api } from "../api.js";
+import { SegmentedControl } from "../components/controls.js";
 import { THEMES, setTheme, storedTheme } from "../lib/theme.js";
 
 /**
@@ -196,21 +197,12 @@ export function SettingsView({ settings, onSaved }) {
         <div class="settings-row">
           <label>Theme</label>
           <div class="settings-input">
-            <div class="segmented">
-              ${THEMES.map(
-                (t) => html`
-                  <button
-                    type="button"
-                    key=${t}
-                    class=${`segment${theme === t ? " on" : ""}`}
-                    aria-pressed=${theme === t}
-                    onClick=${() => pickTheme(t)}
-                  >
-                    ${t}
-                  </button>
-                `,
-              )}
-            </div>
+            <${SegmentedControl}
+              label="Theme"
+              value=${theme}
+              onChange=${pickTheme}
+              options=${THEMES.map((t) => ({ value: t, label: t }))}
+            />
           </div>
           <p class="settings-hint">
             Stored on this device only, so the phone can read dark while the

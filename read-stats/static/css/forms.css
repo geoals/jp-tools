@@ -126,6 +126,13 @@ table.days tr.today td {
 }
 .settings-input input {
   width: 110px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--page);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
 }
 .settings-unit {
   color: var(--muted);
@@ -146,34 +153,24 @@ table.days tr.today td {
   gap: 12px;
   margin-top: 18px;
 }
+/* The same primary submit as the log form — one idiom for "commit this form". */
+.settings-actions button[type="submit"] {
+  padding: 7px 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--series-1);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.settings-actions button[type="submit"]:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 .settings-err {
   color: var(--warn);
   font-size: 13px;
-}
-
-/* Segmented control: one choice of several, sharing a border. */
-.segmented {
-  display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
-}
-.segment {
-  border: 0;
-  border-left: 1px solid var(--border);
-  background: var(--surface-1);
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: 13px;
-  padding: 5px 12px;
-  cursor: pointer;
-}
-.segment:first-child {
-  border-left: 0;
-}
-.segment.on {
-  background: var(--series-1);
-  color: #fff;
 }
 
 @media (max-width: 560px) {
