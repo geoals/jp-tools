@@ -1,0 +1,377 @@
+/* Charts: the SVG marks, the legend that doubles as a series toggle, the
+   card header controls, and the day-detail panel. */
+
+/* Charts */
+.chart-wrap {
+  position: relative;
+}
+.chart-wrap svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.chart-empty {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 8px 0;
+}
+
+.gridline {
+  stroke: var(--grid);
+  stroke-width: 1;
+}
+.baseline {
+  stroke: var(--baseline);
+  stroke-width: 1;
+}
+.goal-line {
+  stroke: var(--baseline);
+  stroke-width: 1;
+}
+.crosshair {
+  stroke: var(--baseline);
+  stroke-width: 1;
+}
+.tick {
+  fill: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.end-label {
+  fill: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Where the dominant VN changed — a quiet dashed rule so a speed step reads as
+   a switch, not a slump. Muted, behind the trend line, never a data mark. */
+.work-divider {
+  stroke: var(--baseline);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.work-divider-label {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+.trend-line {
+  fill: none;
+  stroke: var(--series-1);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.trend-dot {
+  fill: var(--series-1);
+  stroke: var(--surface-1);
+  stroke-width: 2;
+}
+
+/* Legend doubles as the series toggle. Colour follows the entity, so a hidden
+   series never repaints the one still showing. */
+.chart-legend {
+  display: flex;
+  gap: 14px;
+  margin: 0 0 4px 4px;
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.legend-item:hover {
+  color: var(--text-primary);
+}
+.legend-item:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 1px;
+}
+.legend-off {
+  color: var(--muted);
+}
+/* Hidden series keeps its hue but drains to an outline, so the swatch still
+   identifies it while reading as off. */
+.legend-off .legend-swatch {
+  background: transparent !important;
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+.legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: none;
+}
+.tooltip-sub {
+  color: var(--muted);
+}
+
+/* Card header with controls on the right ---------------------------------- */
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.card-head h2 {
+  margin-bottom: 10px;
+}
+.card-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.segment {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.segment:hover {
+  color: var(--text-primary);
+}
+.segment-on {
+  background: var(--meter-track);
+  color: var(--text-primary);
+}
+.segment:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: -2px;
+}
+
+.toggle-btn {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.toggle-btn:hover {
+  color: var(--text-primary);
+}
+.toggle-on {
+  background: var(--meter-track);
+  color: var(--text-primary);
+}
+.toggle-btn:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: -2px;
+}
+
+/* Dialogue vs narration ---------------------------------------------------
+   Dialogue takes slot 1 and narration slot 2 — a categorical pair, validated
+   for CVD separation against both surfaces. Every bar carries a text label and
+   its own value, so identity and magnitude never rest on colour alone. */
+.split-bar {
+  display: flex;
+  gap: 2px; /* surface gap between segments, per the mark spec */
+  height: 14px;
+  margin: 12px 0 6px;
+}
+.split-seg {
+  border-radius: 3px;
+  min-width: 3px;
+}
+.split-caption {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.split-caption .legend-swatch {
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: baseline;
+}
+
+.compare {
+  margin-top: 16px;
+}
+.compare-title {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 7px;
+}
+.compare-row {
+  display: grid;
+  grid-template-columns: 72px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 5px;
+  font-size: 13px;
+}
+.compare-name {
+  color: var(--text-secondary);
+}
+.compare-track {
+  background: var(--grid);
+  border-radius: 3px;
+  height: 10px;
+}
+.compare-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  min-width: 2px;
+}
+.compare-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.compare-unit {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+/* Day detail ------------------------------------------------------------- */
+
+.panel-title {
+  fill: var(--muted);
+  font-size: 11px;
+}
+.chart-note {
+  margin: 6px 4px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+/* Reading speed owns slot 3 everywhere it appears, so lookups (slot 1) and
+   cards (slot 2) keep their hues when speed shares a panel with them. */
+.trend-line-speed {
+  stroke: var(--series-3);
+}
+.trend-dot-speed {
+  fill: var(--series-3);
+}
+/* The counterfactual speed: same hue as the measured line (one measure, two
+   conditions), dashed because it is a "would have been", not a reading. */
+.trend-line-raw {
+  stroke-dasharray: 5 3;
+  opacity: 0.75;
+}
+/* Gap between the two speeds = the lookup tax. Tinted, not outlined, so it
+   reads as the area it is rather than a third series. */
+.tax-band {
+  fill: var(--series-3);
+  opacity: 0.14;
+  stroke: none;
+}
+/* Shape-only overlay: deliberately recessive, since its amplitude is
+   normalised and carries no magnitude. */
+.overlay-line {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-dasharray: 2 3;
+  opacity: 0.45;
+  stroke-linejoin: round;
+}
+/* Legend entries that label a line style rather than toggle a series. */
+.legend-static {
+  cursor: default;
+}
+.legend-line {
+  width: 14px;
+  height: 0;
+  border-radius: 0;
+  border-top: 2px solid var(--series-3);
+}
+.legend-line-dashed {
+  border-top-style: dashed;
+}
+.legend-off .legend-line {
+  background: transparent !important;
+  box-shadow: none;
+}
+
+/* Controls above the day-detail chart. */
+.day-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.day-controls input[type="date"] {
+  font: inherit;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+.day-nav {
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font: inherit;
+}
+.day-nav:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+.day-nav:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.smooth-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.smooth-control input[type="range"] {
+  width: 130px;
+  accent-color: var(--series-1);
+}
+.smooth-value {
+  font-variant-numeric: tabular-nums;
+  min-width: 46px;
+}
+
+.chart-tooltip {
+  position: absolute;
+  transform: translateX(-50%);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.chart-tooltip strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}

@@ -1,0 +1,93 @@
+/* The log form, and the tables that are the charts' accessible fallback. */
+
+/* Log form */
+details.log summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 14px;
+  user-select: none;
+}
+/* Matches both a form nested in a .log details block and a form that is
+   itself .log (the work editor, which has no disclosure wrapper). */
+.log form,
+form.log {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.log label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+.log input,
+.log select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--page);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+}
+.log .actions {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+}
+.log button {
+  padding: 7px 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--series-1);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.log button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.log .form-msg {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.log .form-msg.error {
+  color: #d03b3b;
+}
+.log .form-msg.ok {
+  color: var(--good);
+}
+
+/* Table view (the charts' accessible fallback) */
+table.days {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+table.days th {
+  text-align: right;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--grid);
+}
+table.days th:first-child,
+table.days td:first-child {
+  text-align: left;
+}
+table.days td {
+  text-align: right;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--grid);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+table.days tr.today td {
+  color: var(--text-primary);
+  font-weight: 500;
+}

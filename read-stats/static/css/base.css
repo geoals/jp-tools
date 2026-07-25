@@ -1,0 +1,142 @@
+/* Palette, theme, page shell and typography — everything every other
+   sheet assumes is already set. */
+
+/* Palette roles (dataviz reference palette): light values, dark under both the
+   OS signal and an explicit data-theme stamp, so a toggle wins both ways. */
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface-1: #fcfcfb;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.1);
+  --series-1: #2a78d6;
+  --series-2: #008300;
+  --series-3: #db2777;
+  --meter-track: #cde2fb;
+  --good: #006300;
+  --warn: #b3261e;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface-1: #1a1a19;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.1);
+    --series-1: #3987e5;
+    --series-2: #008300;
+    --series-3: #e0407f;
+    --meter-track: #0d366b;
+    --good: #0ca30c;
+    --warn: #cf3b31;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface-1: #1a1a19;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --baseline: #383835;
+  --border: rgba(255, 255, 255, 0.1);
+  --series-1: #3987e5;
+  --series-2: #008300;
+  --series-3: #e0407f;
+  --meter-track: #0d366b;
+  --good: #0ca30c;
+  --warn: #cf3b31;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text-primary);
+  font-family: "IBM Plex Sans", "Noto Sans JP", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+#app {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 20px 16px 48px;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+header h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+}
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.streak {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.streak strong {
+  color: var(--text-primary);
+}
+
+.pause-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.pause-btn.paused {
+  background: var(--series-1);
+  border-color: transparent;
+  color: #fff;
+}
+.paused-banner {
+  background: var(--surface-1);
+  border: 1px solid var(--series-1);
+  border-radius: 8px;
+  padding: 8px 14px;
+  margin-bottom: 14px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+.card h2 {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin: 0 0 10px;
+  text-transform: none;
+}

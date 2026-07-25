@@ -1,0 +1,288 @@
+/* The #read reading view: the line feed, the mine and explain controls, and
+   the paused state. Loaded on the dashboard too — one stylesheet, two views. */
+
+/* ── Reading view (#read) ────────────────────────────────────────────────
+   Sized for a phone in split-screen beside a Moonlight stream: fixed to the
+   viewport so #app's dashboard padding doesn't apply, lines scrolling between
+   a thin status bar and a thumb-sized action row. */
+.reader {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--page);
+}
+
+.reader-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  /* Match the footer's height: its buttons are 44px inside 8px top/bottom
+     padding, so 60px total. */
+  min-height: 60px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  color: var(--text-secondary);
+  flex: none;
+}
+.reader-back {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 19px;
+  padding: 0 4px;
+}
+/* The work title takes the slack and truncates; the status and buttons after
+   it must never be pushed off a narrow screen. */
+.reader-work {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.reader-live {
+  color: var(--muted);
+}
+.reader-live.on {
+  color: var(--good);
+}
+/* Sentence trim unavailable — quiet, since mining still works without it. */
+.reader-trimoff {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.reader-lines {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 14px 16px;
+  /* Yomitan needs a real selection to scan; browsers otherwise treat a
+     long-press in a scroller as the start of a drag. */
+  user-select: text;
+  -webkit-user-select: text;
+}
+.reader-line {
+  margin: 0 0 0.75em;
+  line-height: 1.75;
+  font-family: "Noto Sans JP", "IBM Plex Sans", sans-serif;
+  color: var(--text-primary);
+}
+/* The newest line is the one being read — the rest is context behind it. */
+.reader-line:last-child {
+  color: var(--text-primary);
+}
+.reader-line:not(:last-child) {
+  color: var(--text-secondary);
+}
+.reader-empty {
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  margin-top: 24px;
+}
+
+.reader-toast {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  border-top: 1px solid var(--border);
+}
+/* The only route back to a cleared line, and the toast holding it expires —
+   so it's a full thumb target rather than a text-sized link. */
+.reader-undo {
+  flex: none;
+  font: inherit;
+  font-size: 13px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.reader-toast.ok {
+  color: var(--good);
+}
+.reader-toast.err {
+  color: var(--text-primary);
+  background: rgba(200, 60, 60, 0.14);
+}
+
+.reader-actions {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  /* Clear of the Android gesture bar when this is the bottom split pane. */
+  padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--surface-1);
+}
+.reader-actions button {
+  font: inherit;
+  border-radius: 8px;
+  cursor: pointer;
+  /* Comfortable thumb target — this gets pressed once per mined card. */
+  min-height: 44px;
+}
+.reader-pause {
+  flex: none;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+.reader-pause.paused {
+  background: var(--series-1);
+  border-color: transparent;
+  color: #fff;
+}
+/* Sits next to the mine button, which is the one pressed constantly — so it is
+   kept narrow and quiet, and every press is undoable. */
+.reader-clear {
+  flex: none;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+.reader-clear:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.reader-mine {
+  flex: 1;
+  border: none;
+  background: var(--series-1);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 500;
+}
+.reader-mine:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* Quiet square next to the loud mine button — pressed occasionally, not every
+   line, so it stays out of the way and reads as a secondary action. */
+.reader-explain-btn {
+  flex: none;
+  width: 44px;
+  padding: 0;
+  font-size: 19px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+}
+.reader-explain-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* The model's read on the current line. Sits above the actions like the toast,
+   but stays until dismissed and scrolls internally — an explanation is a few
+   sentences and the reader may want to keep it up while looking back. */
+.reader-explain {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 40vh;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-1);
+  font-size: 14px;
+}
+.reader-explain.err .reader-explain-body {
+  color: var(--text-primary);
+}
+.reader-explain-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: none;
+}
+.reader-explain-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.reader-explain-close {
+  flex: none;
+  min-height: 32px;
+  min-width: 32px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+.reader-explain-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  line-height: 1.6;
+  color: var(--text-primary);
+  /* A returned explanation can hold Japanese — match the line feed's font. */
+  font-family: "Noto Sans JP", "IBM Plex Sans", sans-serif;
+}
+/* Tight blocks — the reply is a few short lines, so no big paragraph gaps. */
+.reader-explain-body p {
+  margin: 0 0 0.5em;
+}
+.reader-explain-body p:last-child {
+  margin-bottom: 0;
+}
+.reader-explain-body ul {
+  margin: 0 0 0.5em;
+  padding-left: 1.2em;
+}
+.reader-explain-body ul:last-child {
+  margin-bottom: 0;
+}
+.reader-explain-body li {
+  margin: 0.15em 0;
+}
+.reader-explain-body strong {
+  font-weight: 600;
+}
+
+/* Paused state on the reading view. Pause never auto-resumes — a skip-pause
+   has to survive lines flying past — so a forgotten one silently costs a whole
+   session. Loud on purpose: a full-width bar plus a frame around the page, so
+   it reads as wrong at a glance even in the corner of your eye. */
+.reader.is-paused {
+  box-shadow: inset 0 0 0 3px var(--warn);
+}
+.reader-paused {
+  flex: none;
+  display: block;
+  width: 100%;
+  border: none;
+  border-radius: 0;
+  background: var(--warn);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 10px 14px;
+  text-align: center;
+  cursor: pointer;
+}

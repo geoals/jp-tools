@@ -1,0 +1,198 @@
+/* Works: currently reading, the library table, the Anki re-encounter card
+   and the now-reading switch. */
+
+/* Currently reading */
+.current-work {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.current-work .cover {
+  width: 140px;
+  height: auto;
+  align-self: flex-start;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.current-work .info {
+  flex: 1;
+  min-width: 0;
+}
+.current-work .title {
+  font-size: 17px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.current-work .meter {
+  margin: 8px 0 4px;
+}
+.progress-caption {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.meta-hint {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 6px 0 12px;
+}
+.card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.card-head h2 {
+  margin-bottom: 0;
+}
+button.ghost {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+button.ghost:hover {
+  color: var(--text-primary);
+  border-color: var(--muted);
+}
+.work-meta-form {
+  margin: 12px 0 4px;
+}
+/* Long CJK titles in a grid cell would otherwise set the column's min width
+   and blow the whole form out past the card. */
+.work-meta-form > div {
+  min-width: 0;
+}
+/* The actions cell has no label above it, so it needs the label's height
+   back to sit on the same baseline as the inputs it follows. */
+.work-meta-form .actions {
+  padding-top: 18px;
+  flex-wrap: wrap;
+}
+/* The editor spans a row of .days, which right-aligns and pads for numbers. */
+td.work-editor-cell {
+  text-align: left;
+  padding: 0 8px 10px;
+  font-variant-numeric: normal;
+}
+td.row-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+td.row-actions button + button {
+  margin-left: 6px;
+}
+/* Neutral tint so it reads the same in both themes. */
+tr.row-current td {
+  background: rgba(127, 127, 127, 0.07);
+}
+.status-tag {
+  color: var(--muted);
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 5px;
+  margin-left: 4px;
+}
+
+/* Anki re-encounters */
+.value-sub {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+.word-list-label {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 14px;
+}
+.word-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.chip {
+  background: var(--page);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 13px;
+}
+.chip b {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+/* Secondary fact on a chip (card age, outcome) — recedes so the word leads. */
+.chip-note {
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: 4px;
+}
+details.never-seen {
+  margin-top: 12px;
+}
+details.never-seen summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 13px;
+  user-select: none;
+}
+.anki-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Now reading */
+.now-reading label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.now-reading-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.now-reading input,
+.now-reading select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--page);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+}
+.now-reading button {
+  padding: 7px 14px;
+  border: none;
+  border-radius: 6px;
+  background: var(--series-1);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.now-reading .form-msg.ok {
+  color: var(--good);
+  font-size: 14px;
+}
+
+td.work-name {
+  text-align: left;
+  color: var(--text-primary);
+}
