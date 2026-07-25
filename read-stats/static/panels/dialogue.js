@@ -1,10 +1,32 @@
 // Speech against prose: how much of the reading was people talking, and
 // whether the two read at different speeds.
+//
+// Japanese marks speech with 「」, so the split is already in the raw text and
+// costs nothing to derive. Two measures, two categories — and the measures are
+// in different units (chars/hour against lookups per 1000 chars), so they get a
+// bar group each rather than one plot with two scales. Each group is scaled to
+// its own max, which is what makes the *comparison* legible; the absolute
+// number sits at the end of every bar so the scaling can't mislead.
+//
+// A work whose script carries no 「」 at all is not 100% narration — it is
+// unmeasurable, and the card says so rather than drawing a full bar. See
+// `hasMarkup` below.
 
 import { html } from "htm/preact";
 import { useEffect, useState } from "preact/hooks";
 import { api } from "../api.js";
 import { SegmentedControl } from "../components/controls.js";
+
+/** Below this share of the text inside 「」, the split is not a finding.
+ *
+ *  A script that marks speech runs 40–60% dialogue — the pooled figure across
+ *  every work here is 51%. 魔法少女ノ魔女裁判 measures 1.3%: a handful of
+ *  quoted phrases inside prose, not speech, because the engine puts its
+ *  dialogue in a separate box and the hook sees it with the markers already
+ *  gone. Reporting that as "98.7% narration" states a measurement that was
+ *  never taken, so under this line the card says what happened instead. */
+
+const MIN_DIALOGUE_SHARE = 0.05;
 
 const DIALOGUE_COLOR = "var(--series-1)";
 
@@ -120,6 +142,23 @@ export function DialogueCard({ dialogue, currentWork }) {
     return html`<div class="card">
       ${head}
       <p class="chart-empty">Loading…</p>
+    </div>`;
+  }
+  // A share this low means the markers aren't marking speech in this script —
+  // see MIN_DIALOGUE_SHARE. Said plainly, with the number, rather than drawn
+  // as a near-full narration bar that looks like a result.
+  const overallShare = data.overall.share;
+  if (overallShare !== null && overallShare < MIN_DIALOGUE_SHARE) {
+    const pct = `${(overallShare * 100).toFixed(1)}%`;
+    const what = scope === "work" ? currentWork : "This reading";
+    const note = `Only ${pct} of ${what}'s text sits inside 「」 — a script that marks speech runs closer to half. The hook is seeing dialogue with its markers already stripped, so speech and prose can't be told apart here.`;
+    return html`<div class="card">
+      ${head}
+      <p class="chart-empty">${note}</p>
+      <div class="meta-hint">
+        Not a problem with the reading — the VN just doesn't put 「」 in the
+        text Textractor captures. Works that do will still show their split.
+      </div>
     </div>`;
   }
   if (data.overall.share === null) {

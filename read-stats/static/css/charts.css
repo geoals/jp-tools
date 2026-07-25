@@ -393,3 +393,45 @@
   color: var(--text-primary);
   font-weight: 500;
 }
+
+/* ── Section headings inside a merged card ───────────────────────────────
+   The tabs collapsed several cards into one, so what used to be a card title
+   is now a heading over a chart. Quieter than an <h2>, and it carries the
+   chart's own controls on the right. */
+.day-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 26px 0 6px;
+}
+.day-chart-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+/* Detail under a card: the day's sessions, the day-by-day numbers. Closed by
+   default — it is the backing for what the chart above already showed. */
+.day-sessions {
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.day-sessions > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 13px;
+  list-style-position: outside;
+}
+.day-sessions > summary:hover {
+  color: var(--text-primary);
+}
+.day-sessions table {
+  margin-top: 10px;
+}
+.day-nav-wide {
+  width: auto;
+  padding: 0 8px;
+}

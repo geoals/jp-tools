@@ -103,6 +103,13 @@ class CleanLine(unittest.TestCase):
     def test_runaway_capture_dropped(self):
         self.assertIsNone(wl.clean_line("あ" * (wl.MAX_READING_CHARS + 1)))
 
+    def test_emphasis_brackets_survive_a_markerless_line(self):
+        # Not every 【】 is a speaker. A game that carries none of Dohna Dohna's
+        # markers passes through whole, emphasis included — stripping it here
+        # would remove exactly the term the writer was pointing at.
+        line = "私の魔法は【幻視】なの。"
+        self.assertEqual(wl.clean_line(wl.normalize(line)), line)
+
     def test_non_japanese_dropped(self):
         self.assertIsNone(wl.clean_line("OK Cancel Button"))
         self.assertIsNone(wl.clean_line(f"{U}[Alpha:255 0|Time:1000]"))
@@ -129,8 +136,15 @@ class RealLogInvariants(unittest.TestCase):
             if out is None:
                 continue
             kept += 1
-            for junk in ("Section:", "Button\\d", "${", "\\$\\{", "【"):
+            for junk in ("Section:", "Button\\d", "${", "\\$\\{"):
                 self.assertNotIn(junk, out, f"leaked {junk!r} from: {raw[:80]}")
+            # 【】 is a *speaker tag* only in the script-layer captures that
+            # carry Dohna Dohna's markers, and only there is it stripped. In a
+            # marker-less capture it is ordinary emphasis — 魔法少女ノ魔女裁判
+            # writes 私の魔法は【幻視】なの — so asserting it never survives
+            # would be asserting that the word it marks gets eaten.
+            if len(wl._SEGMENT.split(raw)) > 1:
+                self.assertNotIn("【", out, f"speaker tag leaked from: {raw[:80]}")
         self.assertGreater(kept, 0, "expected at least some dialogue in the log")
 
 

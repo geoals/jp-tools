@@ -1,4 +1,6 @@
 // The mining funnel — which lookups became cards, and which keep coming back.
+//
+// A body, not a card — see anki.js: it shares the Vocabulary card.
 
 import { html } from "htm/preact";
 
@@ -8,22 +10,17 @@ const LOOKUP_STATUS = {
   unmined: "not carded",
 };
 
-export function LookupsCard({ lookups }) {
+export function LookupsPanel({ lookups }) {
   if (!lookups || lookups.terms === 0) {
     return html`
-      <div class="card">
-        <h2>Lookups</h2>
-        <p class="chart-empty">
-          No lookups recorded yet. Point Yomitan's server address at
-          /anki-proxy.
-        </p>
-      </div>
+      <p class="chart-empty">
+        No lookups recorded yet. Point Yomitan's server address at /anki-proxy.
+      </p>
     `;
   }
   const pct = (n) => Math.round((n / lookups.terms) * 100);
   return html`
-    <div class="card">
-      <h2>Lookups · what they turn into</h2>
+    <div class="panel-body">
       <div class="tile-row" style="margin-top:0">
         <div class="tile">
           <div class="label">words looked up</div>
@@ -125,12 +122,3 @@ export function LookupsCard({ lookups }) {
     </div>
   `;
 }
-
-/* Dialogue vs narration ----------------------------------------------------
-
-   Japanese marks speech with 「」, so the split is already in the raw text and
-   costs nothing to derive. Two measures, two categories — and the measures are
-   in different units (chars/hour against lookups per 1000 chars), so they get a
-   bar group each rather than one plot with two scales. Each group is scaled to
-   its own max, which is what makes the *comparison* legible; the absolute
-   number sits at the end of every bar so the scaling can't mislead. */

@@ -3,34 +3,42 @@
 //
 // Everything that draws a card lives in ./panels; everything that draws an SVG
 // lives in ./charts.js. What stays here is what genuinely belongs to the whole
-// page — the single poll that feeds all of it, and which of the three views
-// (dashboard, #settings or #read) is on screen.
+// page — the single poll that feeds all of it, and which view is on screen.
 //
 // Loading it once and passing it down, rather than each panel fetching its own,
 // is deliberate: half the cards are different readings of the same days, and
 // letting them fetch independently would show a stale streak beside a fresh
-// chart for as long as the requests disagreed.
+// chart for as long as the requests disagreed. **The tabs choose what renders,
+// never what is fetched** — switching tabs must not be able to show two panels
+// disagreeing about the same day.
+//
+// The page used to be twelve cards in one column: today and the last 30 days
+// interleaved, four slices of the same window each with its own hardcoded
+// range, and an action card in the middle of the statistics. It is three tabs
+// now, one per question — how is today going, how is it trending, what am I
+// reading — and the merges live in ./panels/day.js, trends.js and library.js.
 
 import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { html } from "htm/preact";
 import { api } from "./api.js";
 import { Reader } from "./reader.js";
-import { RateTrendChart, SpeedTrendChart } from "./charts.js";
-import { AnkiCard } from "./panels/anki.js";
 import { CurrentReading } from "./panels/current-reading.js";
-import { DailyChartCard, WeekTiles } from "./panels/daily.js";
-import { DayDetailCard } from "./panels/day-detail.js";
-import { DaysTable } from "./panels/days-table.js";
-import { DialogueCard } from "./panels/dialogue.js";
-import { LogForm } from "./panels/log-form.js";
-import { LookupsCard } from "./panels/lookups.js";
-import { SessionsToday } from "./panels/sessions.js";
+import { DayCard } from "./panels/day.js";
+import { LibraryView } from "./panels/library.js";
 import { SettingsView } from "./panels/settings.js";
-import { TodayCard } from "./panels/today.js";
-import { WorksTable } from "./panels/works-table.js";
+import { TrendsCard } from "./panels/trends.js";
 
 const REFRESH_MS = 60_000;
+
+/** The tabs, and the hash each answers to. Order is the order of the question:
+ *  what is happening now, what it adds up to, what produced it. */
+
+const TABS = [
+  { id: "today", label: "Today" },
+  { id: "trends", label: "Trends" },
+  { id: "library", label: "Library" },
+];
 
 function App({ view }) {
   const [summary, setSummary] = useState(null);
@@ -109,19 +117,35 @@ function App({ view }) {
     }
   }
 
+  const isSettings = view === "settings";
+  const tab = TABS.some((t) => t.id === view) ? view : "today";
+
   return html`
     <header>
       <h1>read-stats</h1>
+      <nav class="tabs">
+        ${TABS.map(
+          (t) => html`
+            <a
+              key=${t.id}
+              class=${`tab${!isSettings && tab === t.id ? " tab-on" : ""}`}
+              href=${`#${t.id}`}
+              aria-current=${!isSettings && tab === t.id ? "page" : null}
+              >${t.label}</a
+            >
+          `,
+        )}
+      </nav>
       <div class="header-right">
         <a class="pause-btn" href="#read" title="Live line feed + explain button">
           📖 read
         </a>
         <a
-          class="pause-btn"
-          href=${view === "settings" ? "#" : "#settings"}
+          class=${`pause-btn${isSettings ? " paused" : ""}`}
+          href=${isSettings ? "#today" : "#settings"}
           title="Goal, thresholds and theme"
         >
-          ${view === "settings" ? "← dashboard" : "⚙ settings"}
+          ⚙
         </a>
         <button
           class="pause-btn ${summary.paused ? "paused" : ""}"
@@ -148,42 +172,39 @@ function App({ view }) {
       </div>`
     }
     ${
-      view === "settings"
+      isSettings
         ? html`<${SettingsView} settings=${settings} onSaved=${load} />`
-        : html`
-    <${TodayCard} summary=${summary} />
-    <${CurrentReading}
-      works=${works}
-      settings=${settings}
-      days=${days}
-      onSaved=${load}
-    />
-    <${WeekTiles} days=${days} />
-    <${DailyChartCard}
-      days=${days}
-      dialogue=${dialogue}
-      targetMins=${summary.goal.target_mins}
-    />
-    <div class="card">
-      <h2>Reading speed · chars/hour, last 30 days</h2>
-      <${SpeedTrendChart} days=${days.slice(-30)} />
-    </div>
-    <div class="card">
-      <h2>Lookups & cards · per hour read, last 30 days</h2>
-      <${RateTrendChart} days=${days.slice(-30)} />
-    </div>
-    <${DayDetailCard} todayDate=${summary.today.date} />
-    <${SessionsToday} sessions=${sessions} />
-    <${AnkiCard} anki=${anki} onRefresh=${refreshAnki} busy=${ankiBusy} />
-    <${LookupsCard} lookups=${lookups} />
-    <${DialogueCard}
-      dialogue=${dialogue}
-      currentWork=${settings.current_work}
-    />
-    <${WorksTable} works=${works} settings=${settings} onSaved=${load} />
-    <${LogForm} onLogged=${load} />
-    <${DaysTable} days=${days} todayDate=${summary.today.date} />
-          `
+        : tab === "trends"
+          ? html`<${TrendsCard}
+              days=${days}
+              dialogue=${dialogue}
+              targetMins=${summary.goal.target_mins}
+              todayDate=${summary.today.date}
+            />`
+          : tab === "library"
+            ? html`<${LibraryView}
+                works=${works}
+                settings=${settings}
+                anki=${anki}
+                lookups=${lookups}
+                dialogue=${dialogue}
+                onRefreshAnki=${refreshAnki}
+                ankiBusy=${ankiBusy}
+                onSaved=${load}
+              />`
+            : html`
+                <${DayCard}
+                  days=${days}
+                  todayDate=${summary.today.date}
+                  goal=${summary.goal}
+                />
+                <${CurrentReading}
+                  works=${works}
+                  settings=${settings}
+                  days=${days}
+                  onSaved=${load}
+                />
+              `
     }
   `;
 }
@@ -205,7 +226,7 @@ function useHashRoute() {
 function Root() {
   const hash = useHashRoute();
   if (hash === "#read") return html`<${Reader} />`;
-  return html`<${App} view=${hash === "#settings" ? "settings" : "dashboard"} />`;
+  return html`<${App} view=${hash.replace(/^#/, "") || "today"} />`;
 }
 
 render(html`<${Root} />`, document.getElementById("app"));

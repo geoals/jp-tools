@@ -41,6 +41,11 @@ function dailyActiveHours(days, settings) {
   return win.reduce((a, d) => a + d.active_secs, 0) / 3600 / win.length;
 }
 
+/** This work's own reading speed in chars/hour, or null below a 10-minute
+ *  floor where the denominator is noise. This is the number that halves when
+ *  you switch to a harder VN — kept per-work so nothing averages it against
+ *  another title. */
+
 export function workSpeedPerHour(w) {
   return w.active_secs >= 600 ? w.chars / (w.active_secs / 3600) : null;
 }

@@ -3,6 +3,8 @@
 
 import { html } from "htm/preact";
 
+/** A row of mutually exclusive choices, styled as one segmented control. */
+
 export function SegmentedControl({ value, options, onChange, label }) {
   return html`
     <div class="segmented" role="group" aria-label=${label}>
@@ -21,13 +23,3 @@ export function SegmentedControl({ value, options, onChange, label }) {
     </div>
   `;
 }
-
-/* The daily bar chart, over two independent choices: which measure (time or
-   characters) and whether to stack it by dialogue.
-
-   Minutes and characters get one chart with a switch rather than two charts,
-   because they are the same question — how much reading happened — asked in
-   the two units it has. They are deliberately never overlaid: that would need
-   a second y-scale, and where two scales line up is a choice rather than a
-   fact. Reading speed is exactly the relationship between them and already
-   has its own chart. */

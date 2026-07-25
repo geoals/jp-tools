@@ -1,16 +1,17 @@
 // The mined deck: how much of it the reading has shown you again.
+//
+// A body, not a card — it shares the Vocabulary card with the lookup funnel,
+// because both answer "what happened to the words", not "how much time".
 
 import { html } from "htm/preact";
 
-export function AnkiCard({ anki, onRefresh, busy }) {
+export function AnkiPanel({ anki, onRefresh, busy }) {
   if (!anki) return null;
   if (!anki.available) {
     return html`
-      <div class="card">
-        <h2>Anki · mined-word re-encounters</h2>
-        <div class="meta-hint">
-          No deck snapshot yet — open Anki (desktop or phone) and refresh.
-        </div>
+      <div class="meta-hint">
+        No deck snapshot yet — open Anki (desktop or phone) and refresh.
+        ${" "}
         <button class="pause-btn" onClick=${onRefresh} disabled=${busy}>
           ${busy ? "refreshing…" : "↻ refresh from Anki"}
         </button>
@@ -26,8 +27,7 @@ export function AnkiCard({ anki, onRefresh, busy }) {
     ageMins < 60 ? `${ageMins} min` : `${Math.round(ageMins / 60)} h`
   } ago`;
   return html`
-    <div class="card">
-      <h2>Anki · mined-word re-encounters</h2>
+    <div class="panel-body">
       <div class="tile-row" style="margin-top:0">
         <div class="tile">
           <div class="label">mined words</div>
