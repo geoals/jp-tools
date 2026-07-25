@@ -205,14 +205,7 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value) {
     if !state.anki_compact_def_field.is_empty() && !word.is_empty() && !sentence.is_empty() {
         match &state.anthropic_api_key {
             Some(api_key) => {
-                match crate::compactdef::compact_def(
-                    &state.http,
-                    api_key,
-                    &word,
-                    &sentence,
-                )
-                .await
-                {
+                match crate::compactdef::compact_def(&state.http, api_key, &word, &sentence).await {
                     Ok(def) if !def.is_empty() => {
                         let fields = serde_json::json!({ &state.anki_compact_def_field: def });
                         if let Err(e) = crate::anki::update_note_fields(
@@ -369,7 +362,10 @@ mod tests {
     #[test]
     fn new_note_id_reads_legacy_bare_response() {
         // Yomitan omits "version": 6, so AnkiConnect returns the bare id...
-        assert_eq!(new_note_id(&Bytes::from("1784933649618")), Some(1784933649618));
+        assert_eq!(
+            new_note_id(&Bytes::from("1784933649618")),
+            Some(1784933649618)
+        );
         // ...and a bare null on a duplicate/failure.
         assert_eq!(new_note_id(&Bytes::from("null")), None);
     }
@@ -377,7 +373,9 @@ mod tests {
     #[test]
     fn new_note_id_ignores_duplicate_and_error() {
         // Duplicate: AnkiConnect returns null result with an error string.
-        let dup = Bytes::from(r#"{"result": null, "error": "cannot create note because it is a duplicate"}"#);
+        let dup = Bytes::from(
+            r#"{"result": null, "error": "cannot create note because it is a duplicate"}"#,
+        );
         assert_eq!(new_note_id(&dup), None);
         // No result at all.
         let empty = Bytes::from(r#"{"error": null}"#);

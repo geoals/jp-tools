@@ -48,7 +48,9 @@ pub async fn reconcile_missing(http: &reqwest::Client, pool: &SqlitePool, covers
             continue;
         }
         match fetch_and_store(http, pool, covers_dir, work_id, &vndb_id).await {
-            Ok(f) => info!(work_id, vndb_id, file = %f, "cover reconcile: re-fetched missing cover"),
+            Ok(f) => {
+                info!(work_id, vndb_id, file = %f, "cover reconcile: re-fetched missing cover")
+            }
             Err(e) => warn!(work_id, vndb_id, error = %e, "cover reconcile: re-fetch failed"),
         }
     }

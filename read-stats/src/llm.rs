@@ -163,7 +163,11 @@ mod tests {
         let out = explain(&http, &api_key, &context, "承知").await.unwrap();
         println!("Explain:\n{out}");
         // A focus word was given, so it must end with the two-axis Tags line.
-        let tags = out.lines().rev().find(|l| l.contains("Tags:")).expect("no Tags: line");
+        let tags = out
+            .lines()
+            .rev()
+            .find(|l| l.contains("Tags:"))
+            .expect("no Tags: line");
         assert!(
             ["CORE", "COMMON", "UNCOMMON", "RARE", "OBSCURE"]
                 .iter()
@@ -171,6 +175,9 @@ mod tests {
             "Tags line should carry a familiarity token, got: {tags}"
         );
         // Old single-register scheme must be gone.
-        assert!(!out.contains("Register:"), "still emitting old Register line: {out}");
+        assert!(
+            !out.contains("Register:"),
+            "still emitting old Register line: {out}"
+        );
     }
 }

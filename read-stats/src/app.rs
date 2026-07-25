@@ -8,7 +8,9 @@ use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 
 use crate::ankiproxy;
-use crate::routes::{api, reader};
+use crate::routes::{
+    anki, days, dialogue, lookups, reader, sessions, settings, summary, timeline, works,
+};
 
 const SPA_HTML: &str = include_str!("../templates/spa.html");
 const STATIC_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
@@ -38,28 +40,28 @@ async fn spa_shell() -> Html<&'static str> {
 pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/", get(spa_shell))
-        .route("/api/summary", get(api::summary))
-        .route("/api/days", get(api::days))
+        .route("/api/summary", get(summary::summary))
+        .route("/api/days", get(days::days))
         .route(
             "/api/sessions",
-            get(api::list_sessions).post(api::create_session),
+            get(sessions::list_sessions).post(sessions::create_session),
         )
-        .route("/api/sessions/{id}", delete(api::delete_session))
-        .route("/api/day/timeline", get(api::day_timeline))
-        .route("/api/works", get(api::works).post(api::upsert_work))
+        .route("/api/sessions/{id}", delete(sessions::delete_session))
+        .route("/api/day/timeline", get(timeline::day_timeline))
+        .route("/api/works", get(works::works).post(works::upsert_work))
         .route(
             "/api/works/{id}",
-            axum::routing::put(api::update_work).delete(api::delete_work),
+            axum::routing::put(works::update_work).delete(works::delete_work),
         )
         .nest_service("/covers", ServeDir::new(state.covers_dir.clone()))
-        .route("/api/pause", axum::routing::post(api::toggle_pause))
-        .route("/api/anki/refresh", axum::routing::post(api::anki_refresh))
-        .route("/api/anki/summary", get(api::anki_summary))
-        .route("/api/lookups/summary", get(api::lookups_summary))
-        .route("/api/dialogue/summary", get(api::dialogue_summary))
+        .route("/api/pause", axum::routing::post(settings::toggle_pause))
+        .route("/api/anki/refresh", axum::routing::post(anki::anki_refresh))
+        .route("/api/anki/summary", get(anki::anki_summary))
+        .route("/api/lookups/summary", get(lookups::lookups_summary))
+        .route("/api/dialogue/summary", get(dialogue::dialogue_summary))
         .route(
             "/api/settings",
-            get(api::get_settings).put(api::put_settings),
+            get(settings::get_settings).put(settings::put_settings),
         )
         // Reading view (phone): live line feed + the mine trigger.
         .route("/api/lines/stream", get(reader::lines_stream))

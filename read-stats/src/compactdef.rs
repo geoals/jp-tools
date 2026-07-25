@@ -170,7 +170,10 @@ mod tests {
 
     #[test]
     fn clean_gloss_strips_wrapping_quotes_and_blank_lines() {
-        assert_eq!(clean_gloss("\"incinerator\"\n\nCOMMON · PLAIN"), "incinerator<br>COMMON · PLAIN");
+        assert_eq!(
+            clean_gloss("\"incinerator\"\n\nCOMMON · PLAIN"),
+            "incinerator<br>COMMON · PLAIN"
+        );
     }
 
     #[test]
@@ -208,10 +211,20 @@ mod tests {
         assert!(!out.is_empty());
         assert!(out.chars().count() < 300, "should be compact, got: {out}");
         // The <meaning>/<usage> schema placeholders must never leak onto the card.
-        assert!(!out.contains("<meaning>") && !out.contains("<usage>"), "tag leak: {out}");
+        assert!(
+            !out.contains("<meaning>") && !out.contains("<usage>"),
+            "tag leak: {out}"
+        );
         // Meaning line, then a two-axis tag line, joined by <br>.
         let (_, tags) = out.rsplit_once("<br>").expect("expected a <br> tag line");
-        let fam = tags.split('·').next().unwrap().trim().split_whitespace().next().unwrap();
+        let fam = tags
+            .split('·')
+            .next()
+            .unwrap()
+            .trim()
+            .split_whitespace()
+            .next()
+            .unwrap();
         assert!(
             ["CORE", "COMMON", "UNCOMMON", "RARE", "OBSCURE"].contains(&fam),
             "tag line should start with a familiarity token, got: {out}"

@@ -23,16 +23,16 @@
 //! time through it, and keeping that rule in one place is what stops two views
 //! of the same day disagreeing.
 
+pub mod day;
 pub mod dialogue;
 pub mod focus;
 pub mod line;
 pub mod pause;
 pub mod presence;
+pub mod rate;
 pub mod session;
 pub mod timeline;
 pub mod work;
-
-pub mod day;
 
 #[cfg(test)]
 pub(crate) mod testutil;
