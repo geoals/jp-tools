@@ -6,7 +6,7 @@ import { DailyBarChart } from "../charts.js";
 import { SegmentedControl } from "../components/controls.js";
 import { fmtChars, fmtMins } from "../lib/format.js";
 
-export function DailyChartCard({ days, dialogue, floorMins, targetMins }) {
+export function DailyChartCard({ days, dialogue, targetMins }) {
   const [metric, setMetric] = useState("minutes");
   const [split, setSplit] = useState(false);
 
@@ -44,7 +44,6 @@ export function DailyChartCard({ days, dialogue, floorMins, targetMins }) {
         dialogueByDate=${byDate}
         metric=${metric}
         split=${split}
-        floorMins=${floorMins}
         targetMins=${targetMins}
       />
     </div>

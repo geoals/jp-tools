@@ -18,8 +18,13 @@ pub struct Settings {
     pub session_gap_secs: f64,
     /// Hour at which a calendar day starts (late-night reading counts back).
     pub day_rollover_hour: i64,
-    pub goal_floor_mins: i64,
+    /// Daily reading target, in minutes — the one goal the meter draws.
     pub goal_target_mins: i64,
+    /// Minutes a day needs before it extends the streak. Deliberately separate
+    /// from the target: the streak asks "did you show up", the target asks
+    /// "did you do the day's work", and one number cannot answer both without
+    /// making a short day either free or worthless.
+    pub streak_min_mins: i64,
     /// Estimated characters per physical page (bunkobon default).
     pub chars_per_page: f64,
     /// Title stamped onto incoming hooked lines (set from the dashboard).
@@ -32,6 +37,12 @@ pub struct Settings {
     /// VN_WINDOW so it screenshots the VN by id rather than whatever has
     /// focus. Empty = capture the focused window (the old behaviour).
     pub vn_window: String,
+    /// Capture is suspended: vn-ws-logger.py closes its Textractor WebSocket
+    /// and stays disconnected while this is set, so nothing reaches the line
+    /// stream at all. This replaced the old `pauses` interval log — excluding
+    /// spans after the fact meant the raw stream still filled up with text the
+    /// reader had explicitly said wasn't reading.
+    pub capture_paused: bool,
 }
 
 impl Default for Settings {
@@ -43,12 +54,13 @@ impl Default for Settings {
             afk_secs: 30.0,
             session_gap_secs: 600.0,
             day_rollover_hour: 4,
-            goal_floor_mins: 60,
             goal_target_mins: 120,
+            streak_min_mins: 60,
             chars_per_page: 550.0,
             current_work: String::new(),
             pace_start_date: String::new(),
             vn_window: String::new(),
+            capture_paused: false,
         }
     }
 }
@@ -57,13 +69,17 @@ pub const SETTING_KEYS: &[&str] = &[
     "afk_secs",
     "session_gap_secs",
     "day_rollover_hour",
-    "goal_floor_mins",
     "goal_target_mins",
+    "streak_min_mins",
     "chars_per_page",
     "current_work",
     "pace_start_date",
     "vn_window",
+    "capture_paused",
 ];
+
+/// Settings whose stored value is `"1"`/`"0"` rather than a number or free text.
+pub const BOOL_SETTING_KEYS: &[&str] = &["capture_paused"];
 
 pub async fn load_settings(pool: &SqlitePool) -> Result<Settings, sqlx::Error> {
     let mut settings = Settings::default();
@@ -81,11 +97,11 @@ pub async fn load_settings(pool: &SqlitePool) -> Result<Settings, sqlx::Error> {
             "day_rollover_hour" => {
                 settings.day_rollover_hour = value.parse().unwrap_or(settings.day_rollover_hour)
             }
-            "goal_floor_mins" => {
-                settings.goal_floor_mins = value.parse().unwrap_or(settings.goal_floor_mins)
-            }
             "goal_target_mins" => {
                 settings.goal_target_mins = value.parse().unwrap_or(settings.goal_target_mins)
+            }
+            "streak_min_mins" => {
+                settings.streak_min_mins = value.parse().unwrap_or(settings.streak_min_mins)
             }
             "chars_per_page" => {
                 settings.chars_per_page = value.parse().unwrap_or(settings.chars_per_page)
@@ -93,6 +109,7 @@ pub async fn load_settings(pool: &SqlitePool) -> Result<Settings, sqlx::Error> {
             "current_work" => settings.current_work = value,
             "pace_start_date" => settings.pace_start_date = value,
             "vn_window" => settings.vn_window = value,
+            "capture_paused" => settings.capture_paused = value == "1",
             _ => {}
         }
     }

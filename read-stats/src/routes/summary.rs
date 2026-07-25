@@ -6,7 +6,6 @@ use axum::extract::State;
 use serde_json::{Value, json};
 
 use crate::app::AppState;
-use crate::db;
 use crate::error::AppError;
 use crate::history::History;
 use crate::routes::json::focus_json;
@@ -23,14 +22,14 @@ pub async fn summary(State(state): State<AppState>) -> Result<Json<Value>, AppEr
     let today_vn = vn.get(&today).copied().unwrap_or_default();
     let today_manual = manual.get(&today).copied().unwrap_or_default();
 
-    let (current, best) = stats::streaks(&total, h.settings.goal_floor_mins as f64 * 60.0, today);
+    let (current, best) = stats::streaks(&total, h.settings.streak_min_mins as f64 * 60.0, today);
 
     let day_start = h.day_start(today);
     let today_lookups = h.lookup_days().get(&today).copied().unwrap_or(0);
     let today_focus = h.focus_days().get(&today).copied().unwrap_or_default();
 
     Ok(Json(json!({
-        "paused": db::is_pause_open(&state.local).await?,
+        "paused": h.settings.capture_paused,
         "today": {
             "date": today.to_string(),
             "chars": today_total.chars,
@@ -43,8 +42,8 @@ pub async fn summary(State(state): State<AppState>) -> Result<Json<Value>, AppEr
             "focus": focus_json(&today_focus),
         },
         "goal": {
-            "floor_mins": h.settings.goal_floor_mins,
             "target_mins": h.settings.goal_target_mins,
+            "streak_min_mins": h.settings.streak_min_mins,
         },
         "streak": { "current": current, "best": best },
     })))

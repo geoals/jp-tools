@@ -1,6 +1,11 @@
 /** Phone reading view: the live Textractor line feed, sized for a split-screen
- *  half next to a Moonlight stream, with the mine button that fires
- *  vn-capture.sh back on the PC.
+ *  half next to a Moonlight stream.
+ *
+ *  There is no mine button. Adding a card in Yomitan goes through this server's
+ *  AnkiConnect proxy, and the proxy fires vn-capture.sh itself once Anki has
+ *  accepted the note — so the audio and screenshot attach to every mine
+ *  automatically, including the ones made from the desktop. A button would only
+ *  be a second, manual way to do what already happened.
  *
  *  Lines are plain text nodes on purpose — Yomitan scans the DOM, so anything
  *  clever here (virtualized rows, per-token spans) would break lookups. */
@@ -33,7 +38,6 @@ export function Reader() {
   const [lines, setLines] = useState([]);
   const [live, setLive] = useState(false);
   const [state, setState] = useState(null);
-  const [mining, setMining] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [explaining, setExplaining] = useState(false);
   const [explain, setExplain] = useState(null);
@@ -121,23 +125,6 @@ export function Reader() {
     });
   }
 
-  async function mine() {
-    setMining(true);
-    setToast(null);
-    try {
-      const r = await api("/api/vn/capture", { method: "POST", body: {} });
-      setToast(
-        r.ok
-          ? { ok: true, text: successText(r) }
-          : { ok: false, text: r.error || "capture failed" },
-      );
-    } catch (err) {
-      setToast({ ok: false, text: err.message });
-    } finally {
-      setMining(false);
-    }
-  }
-
   /** Send the last few lines to the model for a short read on the newest one.
    *  A word selected in the feed becomes the focus — captured first thing, so
    *  the tap that opens this doesn't matter, and cleared afterwards so the next
@@ -213,7 +200,7 @@ export function Reader() {
 
   async function togglePause() {
     try {
-      const r = await api("/api/pause", { method: "POST", body: {} });
+      const r = await api("/api/capture/pause", { method: "POST", body: {} });
       setState((s) => ({ ...s, paused: r.paused }));
     } catch (err) {
       setToast({ ok: false, text: err.message });
@@ -226,27 +213,29 @@ export function Reader() {
   const workTitle = (state && state.current_work) || "";
   const work = workTitle || "no work set";
   const liveLabel = live ? "live" : "reconnecting…";
-  const mineLabel = mining ? "mining…" : "⛏ mine last line";
-  const pauseLabel = paused ? "▶ resume" : "⏸ pause";
+  const explainLabel = explaining ? "explaining…" : "ℹ explain last line";
+  const pauseLabel = paused ? "▶ resume capture" : "⏸ pause capture";
   const clearLabel = clearing ? "…" : "✕ clear last";
   const emptyLabel = live
     ? "Waiting for the next hooked line…"
     : "Not connected — is read-stats reachable?";
-  const captureOff = state && state.capture_available === false;
   const explainOff = state && state.explain_available === false;
   // Quality-only: mining still works, so this is a quiet hint, not a disable.
   const trimOff = state && state.trim_available === false;
   const trimTitle =
     "whisper-service is down — mined clips are VAD-trimmed but not narrowed to the single mined sentence";
+  const pauseTitle = paused
+    ? "Reconnect to Textractor and start recording lines again"
+    : "Disconnect from Textractor — no lines are recorded at all while this is off";
   // Built whole rather than split around the focus word — htm collapses the
   // whitespace where literal text meets an interpolation across a line break.
   const explainTitle = explain && explain.focus
     ? `“${explain.focus}” in the last line`
     : "the last line";
-  // Deliberately loud. Pause doesn't auto-resume (a skip-pause has to survive
-  // lines flying past), so the only thing standing between a forgotten pause
-  // and an evening of uncounted reading is noticing it.
-  const pausedBanner = "⏸ PAUSED — nothing is counting. Tap to resume.";
+  // Deliberately loud, and more so than when a pause merely voided the span:
+  // the feed goes silent while paused, so a forgotten pause costs the lines
+  // themselves rather than just their credit. Nothing can recover them.
+  const pausedBanner = "⏸ PAUSED — no lines are being recorded. Tap to resume.";
 
   return html`
     <div class="reader ${paused ? "is-paused" : ""}">
@@ -301,6 +290,7 @@ export function Reader() {
         <button
           class="reader-pause ${paused ? "paused" : ""}"
           onClick=${togglePause}
+          title=${pauseTitle}
         >
           ${pauseLabel}
         </button>
@@ -318,15 +308,7 @@ export function Reader() {
           onClick=${explainLine}
           title="Explain the last line (select a word first to focus on it)"
         >
-          ${explaining ? "…" : "ℹ"}
-        </button>
-        <button
-          class="reader-mine"
-          disabled=${mining || captureOff}
-          onClick=${mine}
-          title="Attach the last voiceline's audio + a screenshot to the newest Anki note"
-        >
-          ${mineLabel}
+          ${explainLabel}
         </button>
       </div>
     </div>
@@ -375,15 +357,4 @@ function inlineMd(text) {
  *  collapses the whitespace where literal text meets an interpolation. */
 function clearedText(n) {
   return `cleared ${n} ${n === 1 ? "line" : "lines"}`;
-}
-
-/** "2.4s audio + screenshot attached · ✂" — the trim note only when there is one.
- *  A null duration means VAD found no speech in the line, so only the screenshot
- *  was attached. */
-function successText(r) {
-  const base =
-    r.duration == null
-      ? "screenshot attached"
-      : `${r.duration}s audio + screenshot attached`;
-  return r.note ? `${base} · ${r.note}` : base;
 }

@@ -1,6 +1,6 @@
 //! Opening the two databases, and the migrations read-stats owns.
 //!
-//! read-stats holds two: its own (`settings`, `pauses`, `reader_marks`,
+//! read-stats holds two: its own (`settings`, `reader_marks`,
 //! `work_covers`) and jp-core's shared `knowledge.db` (`lines`, `works`,
 //! `manual_sessions`, `anki_notes`, `word_days`, `lookups`, and the dictionary
 //! cache). Only the first is migrated here — the shared schema has one owner,
@@ -14,7 +14,7 @@ use jp_core::knowledge::Knowledge;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{Row, SqlitePool};
 
-const MIGRATION_LOCAL: &str = include_str!("../../migrations/001_settings_and_pauses.sql");
+const MIGRATION_LOCAL: &str = include_str!("../../migrations/001_settings.sql");
 const MIGRATION_READER_MARKS: &str = include_str!("../../migrations/002_reader_marks.sql");
 const MIGRATION_WORK_COVERS: &str = include_str!("../../migrations/003_work_covers.sql");
 
@@ -44,39 +44,6 @@ pub async fn open_knowledge(db_path: &str) -> Result<Knowledge, sqlx::Error> {
     let knowledge = Knowledge::open(db_path).await?;
     recount_line_chars(&knowledge).await?;
     Ok(knowledge)
-}
-
-/// Refuse to run against a half-migrated pair of databases.
-///
-/// Both files are created on demand, so pointing at the wrong path does not
-/// fail — it silently produces an empty `knowledge.db` and a dashboard showing
-/// a lifetime of zero. The one shape that cannot be innocent is old rows still
-/// sitting in the local database while the shared one is empty: that is a
-/// migration which has not been run, and continuing would start a second
-/// history beside the real one.
-pub async fn check_migrated(local: &SqlitePool, knowledge: &Knowledge) -> Result<(), String> {
-    let stale: Option<(i64,)> = sqlx::query_as("SELECT COUNT(*) FROM lines")
-        .fetch_optional(local)
-        .await
-        .unwrap_or(None);
-    // No `lines` table locally: already migrated, or a fresh install.
-    let Some((stale_lines,)) = stale else {
-        return Ok(());
-    };
-    if stale_lines == 0 {
-        return Ok(());
-    }
-    let (migrated,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM lines")
-        .fetch_one(knowledge.pool())
-        .await
-        .map_err(|e| format!("knowledge database unreadable: {e}"))?;
-    if migrated > 0 {
-        return Ok(());
-    }
-    Err(format!(
-        "{stale_lines} lines are still in read-stats' own database, and knowledge.db is empty. \
-         Run scripts/migrate-knowledge-db.sh (with the VN and vn-buffer stopped) first."
-    ))
 }
 
 /// Bring `lines.chars` in line with `jp_core::text::chars::count_chars`, which

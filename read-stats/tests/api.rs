@@ -2,8 +2,8 @@
 //!
 //! The unit tests in `src/stats/` pin the derivation rules against synthetic
 //! line streams. These pin the layer under them: that the SQL actually selects
-//! what the derivations assume, that a paused or discarded line is gone from
-//! *every* figure, and that two endpoints looking at the same day agree.
+//! what the derivations assume, that a discarded line is gone from *every*
+//! figure, and that two endpoints looking at the same day agree.
 
 mod support;
 
@@ -59,25 +59,68 @@ async fn punctuation_does_not_count_as_characters() {
 }
 
 #[tokio::test]
-async fn a_paused_span_removes_its_lines_from_every_figure() {
+async fn pausing_capture_is_a_flag_and_does_not_touch_the_history() {
     let app = TestApp::new().await;
     let base = today_start() + 3600.0;
     three_lines(&app, base, None).await;
-    // Pause covering the last two lines only.
+
+    let s = app.get("/api/summary").await;
+    assert_eq!(s["paused"], false);
+    let chars_before = s["today"]["chars"].clone();
+
+    let (status, body) = app.send("POST", "/api/capture/pause", json!({})).await;
+    assert_eq!(status, 200);
+    assert_eq!(body["paused"], true);
+
+    // Pausing stops the *logger*, so lines already recorded keep counting —
+    // the opposite of the old interval log, which voided them retroactively.
+    let s = app.get("/api/summary").await;
+    assert_eq!(s["paused"], true);
+    assert_eq!(s["today"]["chars"], chars_before, "history is untouched");
+    assert_eq!(app.get("/api/reader/state").await["paused"], true);
+
+    let (_, body) = app.send("POST", "/api/capture/pause", json!({})).await;
+    assert_eq!(body["paused"], false, "toggles back");
+}
+
+#[tokio::test]
+async fn retiring_the_pauses_table_discards_the_lines_it_covered() {
+    let app = TestApp::new().await;
+    let base = today_start() + 3600.0;
+    three_lines(&app, base, None).await;
+
+    // Recreate the old table exactly as it was, covering the last two lines.
+    sqlx::raw_sql("CREATE TABLE pauses (id INTEGER PRIMARY KEY, start_ts REAL NOT NULL, end_ts REAL)")
+        .execute(&app.local)
+        .await
+        .unwrap();
     sqlx::query("INSERT INTO pauses (start_ts, end_ts) VALUES (?, ?)")
         .bind(base + 5.0)
         .bind(base + 100.0)
-        // pauses are read-stats' own, not knowledge
         .execute(&app.local)
         .await
         .unwrap();
 
+    read_stats::db::retire_pauses(&app.local, &app.knowledge)
+        .await
+        .unwrap();
+
     let s = app.get("/api/summary").await;
-    assert_eq!(s["today"]["chars"], 20, "only the line before the pause");
     assert_eq!(
-        s["today"]["active_secs"], 0.0,
-        "one surviving line has no gap to credit"
+        s["today"]["chars"], 20,
+        "the covered lines are discarded, not merely filtered"
     );
+    let discarded: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM lines WHERE discarded = 1")
+            .fetch_one(app.knowledge.pool())
+            .await
+            .unwrap();
+    assert_eq!(discarded, 2);
+
+    // Second run is a no-op rather than an error: the table is gone.
+    read_stats::db::retire_pauses(&app.local, &app.knowledge)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]

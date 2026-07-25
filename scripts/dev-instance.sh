@@ -41,16 +41,9 @@ freeze() {
   fi
   rm -f "$WORK"/frozen/*.db*
   [ -f "$LIVE_STATS" ] && sqlite3 "$LIVE_STATS" ".backup '$WORK/frozen/read-stats.db'"
-  if [ -f "$LIVE_KNOWLEDGE" ]; then
-    sqlite3 "$LIVE_KNOWLEDGE" ".backup '$WORK/frozen/knowledge.db'"
-  else
-    # Pre-cutover: build the knowledge half from the copy, which also rehearses
-    # the migration against real data.
-    JP_TOOLS_KNOWLEDGE_DB_PATH="$WORK/frozen/knowledge.db" \
-      JP_TOOLS_STATS_DB_PATH="$WORK/frozen/read-stats.db" \
-      "$REPO/scripts/migrate-knowledge-db.sh" reading >"$WORK/migrate.log" 2>&1 ||
-      { tail -5 "$WORK/migrate.log"; die "migration of the copy failed"; }
-  fi
+  [ -f "$LIVE_KNOWLEDGE" ] ||
+    die "no knowledge database at $LIVE_KNOWLEDGE — nothing to freeze"
+  sqlite3 "$LIVE_KNOWLEDGE" ".backup '$WORK/frozen/knowledge.db'"
   say "froze a copy of the live databases in $WORK/frozen"
 }
 
@@ -186,7 +179,6 @@ cmd_browser() {
 
   chromium --headless --disable-gpu --no-sandbox --dump-dom --virtual-time-budget=15000 \
     "http://127.0.0.1:$PORT/" >"$WORK/dom.html" 2>"$WORK/console.log"
-  stop_server
 
   grep -q '<div id="app"></div>' "$WORK/dom.html" &&
     die "the dashboard rendered nothing — see $WORK/console.log"
@@ -205,6 +197,9 @@ cmd_browser() {
     [ "$code" = 200 ] || { echo "unresolved import in $file: $spec"; fail=1; }
   done < <(grep -rnoE 'from "(\.[^"]+)"' "$REPO/read-stats/static" --include="*.js" |
            sed -E 's/:[0-9]+:from "/ /; s/"$//')
+  # Only now: the loop above serves every specifier off the running instance,
+  # and stopping first turned the whole check into 000s reported as failures.
+  stop_server
   [ $fail -eq 0 ] || die "some module imports do not resolve"
 }
 

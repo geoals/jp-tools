@@ -47,7 +47,6 @@ src/
   stats/          pure derivation, one module per question
     presence.rs     how much of a gap counts as reading  ← read this first
     line.rs         the one input type
-    pause.rs        which lines count at all
     session.rs      where one sitting ends
     day.rs          the rollover boundary, per-day totals, streaks
     timeline.rs     a day sliced into buckets
@@ -60,6 +59,7 @@ src/
   routes/         one module per resource; reader/ is the #read view
   services/       everything that crosses a process or network boundary
 static/           app.js + panels/ + charts/ + lib/ + css/
+                  three hash routes: the dashboard, #settings, #read
 templates/spa.html
 migrations/       read-stats' own tables only
 ```
@@ -69,7 +69,7 @@ migrations/       read-stats' own tables only
 | | |
 |---|---|
 | `knowledge.db` | shared, schema owned by `jp_core::knowledge`: `lines`, `works`, `manual_sessions`, `anki_notes`, `word_days`, `lookups`, and the dictionary cache |
-| `read-stats.db` | this app's own: `settings`, `pauses`, `reader_marks`, `work_covers` |
+| `read-stats.db` | this app's own: `settings`, `reader_marks`, `work_covers` |
 
 The split is `spec/knowledge-db.md`'s: what is *about the reading* is shared,
 because other tools ask questions of it; what is about this app's behaviour is
@@ -91,16 +91,26 @@ taught to `vn-capture.sh`.
 - **Pace is a property of the reader, not of a request.** `History` derives it
   once over all history. Deriving it per-endpoint is what made the dashboard
   and the day timeline disagree about the same day.
-- **Nothing is deleted.** A line that shouldn't count gets `discarded = 1`; a
-  span that shouldn't count gets a `pauses` row. Both are filtered on read, so
-  either can be undone and neither loses the raw stream.
+- **Nothing is deleted.** A line that shouldn't count gets `discarded = 1`,
+  filtered on read — so it can be undone and the raw stream is never lost.
+- **Pausing stops capture, it does not filter.** `settings.capture_paused` is
+  polled by vn-ws-logger.py, which closes its Textractor WebSocket and stays
+  disconnected while it is set. There is no interval log any more: a paused
+  span has no lines in it, so nothing needs excluding. The old `pauses` table
+  is retired on startup by `db::retire_pauses` (see its module doc for what
+  happened to the rows it covered).
 - **Anki owns mined-state.** `anki_notes` is a snapshot, replaced wholesale.
   Never write back.
 - **Note ids are epoch milliseconds.** That is why a card's creation time needs
   no extra column, and why the id list is kept sorted.
-- **Only engagement actions leave `reader_marks`.** Explain and mine do; clear
-  and pause deliberately do not — a mark would re-credit exactly the span they
-  exist to remove.
+- **Only engagement actions leave `reader_marks`.** Explain does; clear
+  deliberately does not — a mark would re-credit exactly the span it exists to
+  remove. Mining needs no mark of its own: the note id is already a timestamp,
+  so a mined card is presence by construction.
+- **Mining is implicit.** Yomitan's `addNote` goes through `routes/ankiproxy`,
+  which fires vn-capture.sh once Anki accepts the note (`auto_capture_on_add`,
+  on by default). There is no mine button; a card added anywhere gets its audio
+  and screenshot.
 - **`chars` excludes punctuation** (`jp_core::text::chars`), matched to
   texthooker-ui so speeds are comparable with other people's. Both this crate
   and `vn-ws-logger.py` write that column, and startup recounts it.

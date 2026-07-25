@@ -26,11 +26,12 @@ async fn main() {
         .expect("failed to open knowledge database");
     info!(path = %config.knowledge_db_path, "knowledge database ready");
 
-    // Starting against a half-migrated pair would silently write a second
-    // history beside the real one.
-    if let Err(problem) = db::check_migrated(&local, &knowledge).await {
-        panic!("{problem}");
-    }
+    // One-time: settle what the old pause intervals covered, then drop the
+    // table. Must run before anything reads the history, or a retired pause's
+    // lines would count for one request.
+    db::retire_pauses(&local, &knowledge)
+        .await
+        .expect("failed to retire the pauses table");
 
     let http = reqwest::Client::new();
 

@@ -1,4 +1,4 @@
-/* The #read reading view: the line feed, the mine and explain controls, and
+/* The #read reading view: the line feed, the explain and clear controls, and
    the paused state. Loaded on the dashboard too — one stylesheet, two views. */
 
 /* ── Reading view (#read) ────────────────────────────────────────────────
@@ -18,10 +18,12 @@
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  /* Match the footer's height: its buttons are 44px inside 8px top/bottom
-     padding, so 60px total. */
+  /* Match the footer: same height (its buttons are 44px inside 8px top/bottom
+     padding, so 60px total) and the same surface. The bar used to fall through
+     to --page, which left the two ends of the view in different colours. */
   min-height: 60px;
   border-bottom: 1px solid var(--border);
+  background: var(--surface-1);
   font-size: 14px;
   color: var(--text-secondary);
   flex: none;
@@ -148,8 +150,7 @@
   border-color: transparent;
   color: #fff;
 }
-/* Sits next to the mine button, which is the one pressed constantly — so it is
-   kept narrow and quiet, and every press is undoable. */
+/* Narrow and quiet beside the explain button, and every press is undoable. */
 .reader-clear {
   flex: none;
   padding: 0 12px;
@@ -162,28 +163,16 @@
   opacity: 0.4;
   cursor: default;
 }
-.reader-mine {
+/* The row's one deliberate action now that mining happens by itself, so it
+   takes the slack and the series hue the mine button used to hold. */
+.reader-explain-btn {
   flex: 1;
+  padding: 0 12px;
+  font-size: 17px;
+  font-weight: 500;
   border: none;
   background: var(--series-1);
   color: #fff;
-  font-size: 17px;
-  font-weight: 500;
-}
-.reader-mine:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-/* Quiet square next to the loud mine button — pressed occasionally, not every
-   line, so it stays out of the way and reads as a secondary action. */
-.reader-explain-btn {
-  flex: none;
-  width: 44px;
-  padding: 0;
-  font-size: 19px;
-  border: 1px solid var(--border);
-  background: var(--surface-1);
-  color: var(--text-secondary);
 }
 .reader-explain-btn:disabled {
   opacity: 0.4;

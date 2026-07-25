@@ -8,6 +8,16 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+JP:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
+    <!-- Stamp the saved theme before first paint. A module runs after the
+         document is parsed, which is late enough to flash light on a dark
+         device, so this one small thing is inline and blocking. -->
+    <script>
+        try {
+            var t = localStorage.getItem("read-stats-theme");
+            if (t === "light" || t === "dark")
+                document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {}
+    </script>
 </head>
 <body>
     <div id="app"></div>

@@ -5,7 +5,7 @@ import { html } from "htm/preact";
 import { useEffect, useState } from "preact/hooks";
 import { ProgressBar } from "../charts.js";
 import { api } from "../api.js";
-import { fmtChars } from "../lib/format.js";
+import { fmtChars, fmtHours } from "../lib/format.js";
 import { workProgress } from "../lib/pace.js";
 import { WorkMetaForm, setCurrentWork } from "../panels/work-form.js";
 
@@ -31,6 +31,9 @@ export function CurrentReading({ works, settings, days, onSaved }) {
   // tracker hasn't stamped any lines with yet. Worth saying out loud —
   // silently rendering an empty card just looks broken.
   const unmatched = title && !current;
+  // Built whole: htm collapses the whitespace where literal text meets an
+  // interpolation across a line break.
+  const hoursRead = current ? fmtHours(current.active_secs) : "—";
 
   async function pick(e) {
     const next = e.currentTarget.value;
@@ -96,6 +99,17 @@ export function CurrentReading({ works, settings, days, onSaved }) {
                 <span>${prog.pct.toFixed(1)}%</span>
               </div>
               <div class="tile-row">
+                <div class="tile">
+                  <div class="label">characters read</div>
+                  <div class="value">${fmtChars(current.chars)}</div>
+                </div>
+                <div
+                  class="tile has-hint"
+                  title="Time credited to this VN, by the same presence rule the dashboard uses — gaps count up to the cap, dictionary detours included."
+                >
+                  <div class="label">hours read</div>
+                  <div class="value">${hoursRead}</div>
+                </div>
                 ${
                   prog.started &&
                   html`
@@ -173,8 +187,18 @@ export function CurrentReading({ works, settings, days, onSaved }) {
           <div class="current-work">
             <div class="info">
               <div class="title">${current.work}</div>
+              <div class="tile-row">
+                <div class="tile">
+                  <div class="label">characters read</div>
+                  <div class="value">${fmtChars(current.chars)}</div>
+                </div>
+                <div class="tile">
+                  <div class="label">hours read</div>
+                  <div class="value">${hoursRead}</div>
+                </div>
+              </div>
               <div class="meta-hint">
-                ${fmtChars(current.chars)} read so far. No total length set —
+                No total length set —
                 add the jpdb character count with <strong>edit</strong> to get
                 progress, hours left and a finish date.
               </div>

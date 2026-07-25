@@ -1,14 +1,29 @@
 // One day's reading curve at minute resolution: speed, lookups and cards
-// against the clock, with the session bands behind them.
+// against the clock, with the lookup-tax band between the two speed lines.
 //
 // Smoothing happens here rather than on the server, over buckets deliberately
 // finer than anything worth plotting, so the granularity control is instant.
+// Zooming is client-side for the same reason: the whole day is already loaded,
+// so dragging out a range is a change of scale, not a request.
 
 import { html } from "htm/preact";
 import { useState } from "preact/hooks";
 import { Tooltip, W, bandPath, clockHM, niceTicks, segments } from "./svg.js";
 
+/** Smoothed window needs at least this much reading time to report a rate. */
+
 const DAY_MIN_ACTIVE_SECS = 45;
+
+/** Drags shorter than this are a click that missed, not a range selection. */
+
+const MIN_BRUSH_PX = 6;
+
+/**
+ * Centred rolling window over the raw buckets, never crossing a session
+ * boundary. Rates are a ratio of sums (total chars ÷ total seconds), not a mean
+ * of per-bucket rates — averaging ratios would weight a 4-second bucket the
+ * same as a full minute and let the quiet edges of a session dominate.
+ */
 
 function smoothBuckets(buckets, win) {
   const half = Math.floor(win / 2);
@@ -93,19 +108,53 @@ function lookupOverhead(cleanChars, cleanSecs, lookupChars, lookupSecs) {
   return Math.max(0, lookupSecs - baseline);
 }
 
-/** Split points into drawable runs, breaking on a null value or a new session. */
-
 const DAY_RATE_SERIES = [
   { key: "lookups", label: "lookups/h", color: "var(--series-1)" },
   { key: "cards", label: "cards/h", color: "var(--series-2)" },
 ];
 
-/** Area between the two speed lines — the lookup tax, in chars/hour. */
+/**
+ * Clock gridlines at a spacing that keeps roughly four to eight of them on the
+ * axis whatever the zoom, down to a minute. Chosen from the visible span rather
+ * than the day's, or a ten-minute selection would inherit the two-hour ticks
+ * and draw none at all.
+ */
+
+function tickSpacing(spanSecs) {
+  const hours = spanSecs / 3600;
+  if (hours > 6) return 7200;
+  if (hours > 3) return 3600;
+  if (hours > 1.5) return 1800;
+  if (hours > 0.75) return 900;
+  if (hours > 0.3) return 300;
+  return 60;
+}
+
+/**
+ * One day's reading, minute by minute: speed above, lookup and mining rate
+ * below, on a shared clock axis.
+ *
+ * Two panels rather than one overlay on purpose. Chars/hour runs in the
+ * thousands and events/hour in the tens, so putting them on one plot would need
+ * two y-scales — and where those two scales line up is a choice, not a fact, so
+ * the picture would imply a correlation the data never stated. Stacked on a
+ * shared x-axis, a dip in speed and a spike in lookups sit in the same vertical
+ * slice and the comparison stays the reader's to make.
+ *
+ * Drag across either panel to zoom to that span; double-click, or the button in
+ * the legend, restores the day. Both y-axes and the summary line below rescale
+ * to the selection, which is the point of it — a morning and an evening session
+ * on one axis compress each other into flat lines.
+ */
 
 export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
   const [hover, setHover] = useState(null);
   const [off, setOff] = useState({});
   const [overlay, setOverlay] = useState(false);
+  // [from, to] in epoch seconds, or null for the whole day.
+  const [zoom, setZoom] = useState(null);
+  // The in-progress drag, as {from, to} in seconds; null when not dragging.
+  const [brush, setBrush] = useState(null);
 
   // Right margin holds the two direct labels on the speed panel.
   const m = { top: 16, right: 82, bottom: 30, left: 48 };
@@ -124,25 +173,66 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
   }
 
   const win = Math.max(1, Math.round((windowMins * 60) / bucketSecs));
+  // Smoothing runs over the whole day even when zoomed in: a window at the edge
+  // of the selection still needs the buckets just outside it, or the curve would
+  // taper to nothing at both ends of every zoom.
   const pts = smoothBuckets(buckets, win);
 
-  const t0 = buckets[0].t;
-  const t1 = buckets[buckets.length - 1].t + bucketSecs;
+  const dayT0 = buckets[0].t;
+  const dayT1 = buckets[buckets.length - 1].t + bucketSecs;
+  // A zoom from another day is not a zoom here. The date can change under this
+  // component without remounting it, and a range in yesterday's seconds would
+  // otherwise render an empty plot — so a stale one falls back to the full day
+  // rather than being cleared, which would also throw away the series toggles.
+  const zoomed = zoom !== null && zoom[1] > dayT0 && zoom[0] < dayT1;
+  const [t0, t1] = zoomed ? zoom : [dayT0, dayT1];
   const x = (ts) => m.left + ((ts - t0) / (t1 - t0)) * plotW;
+  const tsAt = (px) =>
+    Math.min(t1, Math.max(t0, t0 + ((px - m.left) / plotW) * (t1 - t0)));
+  const pxAt = (e) => {
+    const r = e.currentTarget.closest("svg").getBoundingClientRect();
+    return ((e.clientX - r.left) / r.width) * W;
+  };
 
   const shown = DAY_RATE_SERIES.filter((s) => !off[s.key]);
 
-  const speeds = pts.map((p) => p.speed).filter((v) => v !== null);
+  // Everything scales to what is on screen — that is what the zoom is for. The
+  // drawn set keeps one point beyond each edge so a line enters and leaves the
+  // plot at the right slope instead of starting at the first visible bucket.
+  const firstVis = pts.findIndex((p) => p.t >= t0);
+  const lastVis = pts.reduce((a, p, i) => (p.t <= t1 ? i : a), -1);
+  const vis =
+    firstVis < 0 || lastVis < firstVis ? [] : pts.slice(firstVis, lastVis + 1);
+  const drawn = pts.slice(Math.max(0, firstVis - 1), lastVis + 2);
+
+  const speeds = vis.map((p) => p.speed).filter((v) => v !== null);
   if (speeds.length < 2) {
-    return html`<p class="chart-empty">
-      Not enough continuous reading this day to draw a curve — try a smaller
-      smoothing window.
-    </p>`;
+    return html`
+      <p class="chart-empty">
+        ${
+          zoomed
+            ? "Not enough continuous reading in this range to draw a curve."
+            : "Not enough continuous reading this day to draw a curve — try a smaller smoothing window."
+        }
+      </p>
+      ${
+        zoomed &&
+        html`<div class="chart-legend">
+          <button
+            type="button"
+            class="legend-item"
+            onClick=${() => setZoom(null)}
+          >
+            ⤢ whole day
+          </button>
+        </div>`
+      }
+    `;
   }
-  const raws = pts.map((p) => p.raw).filter((v) => v !== null);
+  const raws = vis.map((p) => p.raw).filter((v) => v !== null);
   const speedAxis = niceTicks(Math.max(...speeds, ...raws) * 1.1, 6);
   const rateVals = shown.flatMap((s) =>
-    pts.map((p) => p[s.key]).filter((v) => v !== null),
+    vis.map((p) => p[s.key]).filter((v) => v !== null),
   );
   const rateAxis = niceTicks(Math.max(...rateVals, 1) * 1.05, 5);
 
@@ -156,20 +246,21 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
         .join(" "),
     );
 
-  const speedPaths = toPath(segments(pts, "speed"), yA, "speed");
-  const rawPaths = toPath(segments(pts, "raw"), yA, "raw");
+  const speedPaths = toPath(segments(drawn, "speed"), yA, "speed");
+  const rawPaths = toPath(segments(drawn, "raw"), yA, "raw");
   // The band needs both lines defined, so mark the points where they overlap
   // and reuse the same segmenting.
-  const paired = pts.map((p) => ({
+  const paired = drawn.map((p) => ({
     ...p,
     both: p.raw !== null && p.speed !== null ? 1 : null,
   }));
   const bands = segments(paired, "both").map((seg) => bandPath(seg, x, yA));
 
   // Direct labels at each line's last defined point, nudged apart when the two
-  // speeds finish close enough to overprint.
+  // speeds finish close enough to overprint. From the visible points, not the
+  // drawn ones, so a label can't land outside the plot when zoomed.
   const lastOf = (key) =>
-    [...pts].reverse().find((p) => p[key] !== null) ?? null;
+    [...vis].reverse().find((p) => p[key] !== null) ?? null;
   const lastSpeed = lastOf("speed");
   let lastRaw = lastOf("raw");
   if (
@@ -183,11 +274,14 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
     };
   }
 
-  // Day-level tax, stated as a number rather than left to the eye.
-  const totActive = buckets.reduce((a, b) => a + b.active_secs, 0);
-  const totLookup = buckets.reduce((a, b) => a + b.lookup_secs, 0);
-  const totClean = buckets.reduce((a, b) => a + b.clean_chars, 0);
-  const totLookupChars = buckets.reduce((a, b) => a + b.lookup_chars, 0);
+  // Tax over what is on screen, stated as a number rather than left to the eye.
+  // Zoomed, this is the honest summary of the selection: the raw buckets are
+  // summed, so it is not the smoothed curve's average but the real ratio.
+  const inView = buckets.filter((b) => b.t >= t0 && b.t < t1);
+  const totActive = inView.reduce((a, b) => a + b.active_secs, 0);
+  const totLookup = inView.reduce((a, b) => a + b.lookup_secs, 0);
+  const totClean = inView.reduce((a, b) => a + b.clean_chars, 0);
+  const totLookupChars = inView.reduce((a, b) => a + b.lookup_chars, 0);
   const dayOverhead = lookupOverhead(
     totClean,
     totActive - totLookup,
@@ -200,10 +294,11 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
   const dayEffective = (totClean + totLookupChars) / (totActive / 3600);
   const dayRaw =
     totActive > totLookup ? totClean / ((totActive - totLookup) / 3600) : null;
+  const scopeLabel = zoomed
+    ? `${clockHM(t0)}–${clockHM(t1)}`
+    : "Whole day";
 
-  // Hour gridlines, or half-hour when the day is short enough to need them.
-  const spanHours = (t1 - t0) / 3600;
-  const tickSecs = spanHours > 6 ? 7200 : spanHours > 3 ? 3600 : 1800;
+  const tickSecs = tickSpacing(t1 - t0);
   const timeTicks = [];
   for (let t = Math.ceil(t0 / tickSecs) * tickSecs; t < t1; t += tickSecs)
     timeTicks.push(t);
@@ -242,6 +337,17 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
       >
         ⇕ overlay shape
       </button>
+      ${
+        zoomed &&
+        html`<button
+          type="button"
+          class="legend-item"
+          title="Back to the whole day (or double-click the chart)"
+          onClick=${() => setZoom(null)}
+        >
+          ⤢ whole day
+        </button>`
+      }
     </div>
   `;
 
@@ -254,23 +360,34 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
   const overlayPaths = !overlay
     ? []
     : shown.map((s) => {
-        const peak = Math.max(...pts.map((p) => p[s.key] ?? 0), 1e-9);
+        const peak = Math.max(...vis.map((p) => p[s.key] ?? 0), 1e-9);
         const yN = (v) => aTop + aH - (v / peak) * aH * 0.92;
         return {
           s,
-          paths: toPath(segments(pts, s.key), yN, s.key),
+          paths: toPath(segments(drawn, s.key), yN, s.key),
         };
       });
 
-  const hp = hover !== null ? pts[hover] : null;
+  const hp = hover !== null ? (vis[hover] ?? null) : null;
 
   return html`
-    <div class="chart-wrap" onMouseLeave=${() => setHover(null)}>
+    <div
+      class=${`chart-wrap${brush ? " chart-brushing" : ""}`}
+      onMouseLeave=${() => setHover(null)}
+    >
       <svg
         viewBox="0 0 ${W} ${H}"
         role="img"
         aria-label="Reading speed, lookup rate and mining rate across the day"
       >
+        <clipPath id="day-plot-clip">
+          <rect
+            x=${m.left}
+            y=${aTop}
+            width=${plotW}
+            height=${bTop + bH - aTop}
+          />
+        </clipPath>
         <text x=${m.left} y=${aTop - 3} class="panel-title">chars/hour</text>
         ${speedAxis.ticks.map(
           (t) => html`
@@ -286,16 +403,22 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
             </text>
           `,
         )}
-        ${bands.map((d) => html`<path d=${d} class="tax-band" />`)}
-        ${overlayPaths.map(({ s, paths }) =>
-          paths.map(
-            (d) => html`
-              <path d=${d} class="overlay-line" style=${`stroke:${s.color}`} />
-            `,
-          ),
-        )}
-        ${rawPaths.map((d) => html`<path d=${d} class="trend-line trend-line-speed trend-line-raw" />`)}
-        ${speedPaths.map((d) => html`<path d=${d} class="trend-line trend-line-speed" />`)}
+        <g clip-path="url(#day-plot-clip)">
+          ${bands.map((d) => html`<path d=${d} class="tax-band" />`)}
+          ${overlayPaths.map(({ s, paths }) =>
+            paths.map(
+              (d) => html`
+                <path
+                  d=${d}
+                  class="overlay-line"
+                  style=${`stroke:${s.color}`}
+                />
+              `,
+            ),
+          )}
+          ${rawPaths.map((d) => html`<path d=${d} class="trend-line trend-line-speed trend-line-raw" />`)}
+          ${speedPaths.map((d) => html`<path d=${d} class="trend-line trend-line-speed" />`)}
+        </g>
         ${
           lastSpeed &&
           html`
@@ -343,15 +466,17 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
             >
           `,
         )}
-        ${shown.map(
-          (s) => html`
-            ${toPath(segments(pts, s.key), yB, s.key).map(
-            (d) => html`
-              <path d=${d} class="trend-line" style=${`stroke:${s.color}`} />
+        <g clip-path="url(#day-plot-clip)">
+          ${shown.map(
+            (s) => html`
+              ${toPath(segments(drawn, s.key), yB, s.key).map(
+              (d) => html`
+                <path d=${d} class="trend-line" style=${`stroke:${s.color}`} />
+              `,
+            )}
             `,
           )}
-          `,
-        )}
+        </g>
         <line
           x1=${m.left}
           x2=${W - m.right}
@@ -403,24 +528,59 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
           )}
           `
         }
+        ${
+          brush &&
+          html`
+            <rect
+              x=${Math.min(x(brush.from), x(brush.to))}
+              y=${aTop}
+              width=${Math.abs(x(brush.to) - x(brush.from))}
+              height=${bTop + bH - aTop}
+              class="brush-sel"
+            />
+          `
+        }
         <rect
           x=${m.left}
           y=${aTop}
           width=${plotW}
           height=${bTop + bH - aTop}
           fill="transparent"
-          onMouseMove=${(e) => {
-                const rect = e.currentTarget
-                  .closest("svg")
-                  .getBoundingClientRect();
-                const px = ((e.clientX - rect.left) / rect.width) * W;
+          class="plot-surface"
+          onPointerDown=${(e) => {
+                // Capture, so a drag that runs off the plot keeps reporting and
+                // still ends on release. Without it the events stop at the edge,
+                // which made a selection reaching the first or last minute of
+                // the day almost impossible to land — `tsAt` clamps to the
+                // domain, so overshooting the edge now simply means "to the end".
+                e.currentTarget.setPointerCapture(e.pointerId);
+                const ts = tsAt(pxAt(e));
+                setBrush({ from: ts, to: ts });
+                setHover(null);
+              }}
+          onPointerMove=${(e) => {
+                const px = pxAt(e);
+                if (brush) {
+                  setBrush({ ...brush, to: tsAt(px) });
+                  return;
+                }
                 let nearest = 0;
-                pts.forEach((p, k) => {
-                  if (Math.abs(x(p.t) - px) < Math.abs(x(pts[nearest].t) - px))
+                vis.forEach((p, k) => {
+                  if (Math.abs(x(p.t) - px) < Math.abs(x(vis[nearest].t) - px))
                     nearest = k;
                 });
                 setHover(nearest);
               }}
+          onPointerUp=${() => {
+                if (!brush) return;
+                const [lo, hi] = [brush.from, brush.to].sort((a, b) => a - b);
+                // A click that moved a pixel or two is a click, not a range —
+                // zooming on it would drop the whole day for a stray twitch.
+                if (Math.abs(x(hi) - x(lo)) >= MIN_BRUSH_PX) setZoom([lo, hi]);
+                setBrush(null);
+              }}
+          onPointerCancel=${() => setBrush(null)}
+          onDblClick=${() => setZoom(null)}
         />
       </svg>
       ${
@@ -458,7 +618,7 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
       dayRaw !== null &&
       html`
         <p class="chart-note">
-          ${`Whole day: ${Math.round(dayEffective).toLocaleString("en")} chars/h as read, ${Math.round(dayRaw).toLocaleString("en")} without lookups — a lookup tax of ${Math.round(dayRaw - dayEffective).toLocaleString("en")} chars/h (${Math.round(((dayRaw - dayEffective) / dayRaw) * 100)}%).`}
+          ${`${scopeLabel}: ${Math.round(dayEffective).toLocaleString("en")} chars/h as read, ${Math.round(dayRaw).toLocaleString("en")} without lookups — a lookup tax of ${Math.round(dayRaw - dayEffective).toLocaleString("en")} chars/h (${Math.round(((dayRaw - dayEffective) / dayRaw) * 100)}%).`}
           ${" "}
           ${`Lookups cost about ${Math.round(dayOverhead / 60)} min: ${Math.round(totLookup / 60)} min sat in gaps holding one, but ${Math.round((totLookup - dayOverhead) / 60)} min of that was reading the line itself.`}
           ${" "}
@@ -471,5 +631,3 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
     }
   `;
 }
-
-/** Plain progress bar (same visual language as the goal meter, no marker). */

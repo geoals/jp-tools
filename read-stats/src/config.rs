@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 pub struct Config {
-    /// read-stats' own database (settings, pauses, reader marks, cover sources).
+    /// read-stats' own database (settings, reader marks, cover sources).
     pub db_path: String,
     /// jp-core's shared knowledge database: the line stream, works, manual
     /// sessions, the Anki mirror, lookups, and the dictionary cache.
@@ -19,8 +19,11 @@ pub struct Config {
     /// Field CompactDef is written to. Empty disables CompactDef enrichment.
     pub anki_compact_def_field: String,
     /// Fire vn-capture.sh (audio + picture) after a card is added through the
-    /// proxy, folding the mine button into the card-add. Off by default: it
-    /// only makes sense on the one machine that runs the VN + capture stack.
+    /// proxy. This *is* mining now — the reader's mine button is gone, because
+    /// every card Yomitan adds through the proxy comes from a line that is on
+    /// screen, which is exactly when a capture is wanted. Set to 0 on a machine
+    /// that serves the dashboard but doesn't run the VN; where the capture
+    /// script is simply absent it already no-ops with a warning.
     pub auto_capture_on_add: bool,
     /// Sudachi system dictionary for tokenizing the line stream.
     pub sudachi_dict_path: PathBuf,
@@ -67,8 +70,8 @@ impl Config {
             anki_compact_def_field: std::env::var("JP_TOOLS_ANKI_FIELD_COMPACT_DEF")
                 .unwrap_or_else(|_| "CompactDef".to_string()),
             auto_capture_on_add: std::env::var("JP_TOOLS_AUTO_CAPTURE_ON_ADD")
-                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-                .unwrap_or(false),
+                .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
+                .unwrap_or(true),
             sudachi_dict_path: std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
                 .unwrap_or_else(|_| "system_full.dic".to_string())
                 .into(),

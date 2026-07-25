@@ -1,4 +1,4 @@
-//! `/api/settings` and `/api/pause` — the knobs.
+//! `/api/settings` and `/api/capture/pause` — the knobs.
 
 use axum::Json;
 use axum::extract::State;
@@ -6,7 +6,6 @@ use chrono::NaiveDate;
 use serde_json::{Value, json};
 
 use crate::app::AppState;
-use crate::clock::now_ts;
 use crate::db::{self, Settings};
 use crate::error::AppError;
 
@@ -26,7 +25,12 @@ pub async fn put_settings(
         if !db::SETTING_KEYS.contains(&key.as_str()) {
             return Err(AppError::BadRequest(format!("unknown setting: {key}")));
         }
-        let stored = if TEXT_KEYS.contains(&key.as_str()) {
+        let stored = if db::BOOL_SETTING_KEYS.contains(&key.as_str()) {
+            let Some(b) = value.as_bool() else {
+                return Err(AppError::BadRequest(format!("{key} must be true or false")));
+            };
+            if b { "1" } else { "0" }.to_string()
+        } else if TEXT_KEYS.contains(&key.as_str()) {
             let Some(s) = value.as_str() else {
                 return Err(AppError::BadRequest(format!("{key} must be a string")));
             };
@@ -46,8 +50,14 @@ pub async fn put_settings(
     Ok(Json(db::load_settings(&state.local).await?))
 }
 
-/// Toggle the tracking pause. Returns `{"paused": bool}`.
-pub async fn toggle_pause(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
-    let paused = db::toggle_pause(&state.local, now_ts()).await?;
+/// Toggle capture. Returns `{"paused": bool}`.
+///
+/// This does not filter anything: it flips `settings.capture_paused`, which
+/// vn-ws-logger.py polls and answers by closing its Textractor WebSocket. While
+/// it is set, no line reaches the stream at all — which is why there is nothing
+/// to exclude on read and no interval log to keep.
+pub async fn toggle_capture(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
+    let paused = !db::load_settings(&state.local).await?.capture_paused;
+    db::save_setting(&state.local, "capture_paused", if paused { "1" } else { "0" }).await?;
     Ok(Json(json!({ "paused": paused })))
 }

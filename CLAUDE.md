@@ -21,8 +21,6 @@ Cargo workspace for Japanese language learning tools.
 - `scripts/dev-instance.sh` — run read-stats in isolation (copy of the data,
   port 3299) and diff its endpoints before/after a change. Use this instead of
   restarting the live one.
-- `scripts/migrate-knowledge-db.sh` — moves the shared tables into
-  `knowledge.db`. One-time, and it refuses to run while the stack is up.
 
 ```sh
 cargo build              # all members
@@ -36,7 +34,7 @@ cargo run -p manga-mine  # server on :3100
 | file | holds | owner |
 |---|---|---|
 | `knowledge.db` | dictionary cache (+ role), `works`, `lines`, `manual_sessions`, `anki_notes`, `word_days`, `lookups` | `jp_core::knowledge` |
-| `read-stats.db` | `settings`, `pauses`, `reader_marks`, `work_covers` | read-stats |
+| `read-stats.db` | `settings`, `reader_marks`, `work_covers` | read-stats |
 | `yt-mine.db` | `mining_jobs`, `mining_sentences` | yt-mine |
 
 All under `~/.local/share/jp-tools/`. The split is by what the data *is*, not

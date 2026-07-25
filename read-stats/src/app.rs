@@ -18,7 +18,7 @@ const STATIC_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
 
 #[derive(Clone)]
 pub struct AppState {
-    /// read-stats' own database: settings, pauses, reader marks, cover sources.
+    /// read-stats' own database: settings, reader marks, cover sources.
     pub local: SqlitePool,
     /// jp-core's shared knowledge database: the line stream, works, manual
     /// sessions, the Anki mirror, lookups — and the dictionary cache. A
@@ -60,7 +60,7 @@ pub fn build_router(state: AppState) -> Router {
             axum::routing::put(works::update_work).delete(works::delete_work),
         )
         .nest_service("/covers", ServeDir::new(state.covers_dir.clone()))
-        .route("/api/pause", axum::routing::post(settings::toggle_pause))
+        .route("/api/capture/pause", axum::routing::post(settings::toggle_capture))
         .route("/api/anki/refresh", axum::routing::post(anki::anki_refresh))
         .route("/api/anki/summary", get(anki::anki_summary))
         .route("/api/lookups/summary", get(lookups::lookups_summary))

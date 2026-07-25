@@ -12,6 +12,15 @@ export function fmtMins(secs) {
     : `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, "0")}m`;
 }
 
+/** Hours read, for totals that run to tens or hundreds of them — where
+ *  `fmtMins`' "72h 14m" is more precision than the number can carry. */
+
+export function fmtHours(secs) {
+  const hours = secs / 3600;
+  if (hours < 1) return `${Math.round(secs / 60)} min`;
+  return `${hours < 10 ? hours.toFixed(1) : Math.round(hours)} h`;
+}
+
 export function fmtChars(n) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
   return n >= 10_000 ? `${(n / 1000).toFixed(1)}k` : n.toLocaleString("en");

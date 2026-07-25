@@ -1,8 +1,8 @@
 //! The reading history, loaded once per request.
 //!
-//! Every dashboard endpoint needs the same four things — the line stream, the
-//! evidence that the reader was present, the pauses that void parts of it, and
-//! the settings that price it — and each of them used to fetch that itself.
+//! Every dashboard endpoint needs the same three things — the line stream, the
+//! evidence that the reader was present, and the settings that price it — and
+//! each of them used to fetch that itself.
 //! `/api/summary` alone ran the full-history line query three times and derived
 //! the reading pace twice, because `day_maps`, `focus_days` and `lookup_days`
 //! were written independently and each opened with the same six lines of setup.
@@ -27,9 +27,7 @@ use crate::app::AppState;
 use crate::clock::{now_ts, tz_offset_secs};
 use crate::db::{self, ManualSession, Settings};
 use crate::error::AppError;
-use crate::stats::{
-    self, DayBucket, FocusDay, LineEvent, PauseInterval, Presence, WorkLine, date_key,
-};
+use crate::stats::{self, DayBucket, FocusDay, LineEvent, Presence, WorkLine, date_key};
 
 /// A work must account for at least this fraction of a day's characters to
 /// count as that day's reading rather than a passing glance at another VN.
@@ -41,17 +39,18 @@ pub struct History {
     /// keyed against the same boundary.
     pub tz: i64,
     pub today: NaiveDate,
-    pub pauses: Vec<PauseInterval>,
-    /// The whole line stream with paused spans already removed, oldest first.
+    /// The whole line stream, oldest first. Discarded lines are already gone —
+    /// filtered in SQL — and nothing else is excluded: capture stops at the
+    /// source now, so a line that exists is a line that counts.
     pub lines: Vec<LineEvent>,
     /// Work title for each entry of [`Self::lines`] — same order, same length.
     /// Kept alongside rather than inside `LineEvent` so the derivations stay
     /// `Copy` and never carry a string they don't look at.
     pub line_works: Vec<Option<String>>,
-    /// Yomitan lookup timestamps, unpaused, sorted.
+    /// Yomitan lookup timestamps, sorted.
     pub lookups: Vec<f64>,
     /// Everything proving the reader was at the keyboard — lookups, mined
-    /// cards, and deliberate #read actions — merged, unpaused, sorted.
+    /// cards, and deliberate #read actions — merged and sorted.
     pub marks: Vec<f64>,
     /// Mined note ids, ascending. These are epoch *milliseconds*, so they
     /// double as card creation times.
@@ -66,27 +65,22 @@ impl History {
         let settings = db::load_settings(&state.local).await?;
         let tz = tz_offset_secs();
         let today = date_key(now_ts(), settings.day_rollover_hour, tz);
-        let pauses = db::fetch_pauses(&state.local).await?;
 
         let classified = db::fetch_classified_lines(&state.knowledge, 0.0, f64::MAX).await?;
         let mut lines = Vec::with_capacity(classified.len());
         let mut line_works = Vec::with_capacity(classified.len());
         for c in classified {
-            if !stats::is_paused(c.event.ts, &pauses) {
-                lines.push(c.event);
-                line_works.push(c.work);
-            }
+            lines.push(c.event);
+            line_works.push(c.work);
         }
 
-        let mut lookups = db::fetch_lookup_events(&state.knowledge, 0.0, f64::MAX).await?;
-        lookups.retain(|ts| !stats::is_paused(*ts, &pauses));
+        let lookups = db::fetch_lookup_events(&state.knowledge, 0.0, f64::MAX).await?;
 
         let note_ids = db::fetch_anki_note_ids(&state.knowledge).await?;
         // Note ids are epoch milliseconds, so they double as card creation times.
         let cards: Vec<f64> = note_ids.iter().map(|id| *id as f64 / 1000.0).collect();
         let reader = db::fetch_reader_marks(&state.local, 0.0, f64::MAX).await?;
-        let mut marks = stats::presence_marks(&lookups, &cards, &reader);
-        marks.retain(|ts| !stats::is_paused(*ts, &pauses));
+        let marks = stats::presence_marks(&lookups, &cards, &reader);
 
         let manual = db::fetch_sessions(&state.knowledge, 0.0, f64::MAX).await?;
 
@@ -96,7 +90,6 @@ impl History {
             settings,
             tz,
             today,
-            pauses,
             lines,
             line_works,
             lookups,

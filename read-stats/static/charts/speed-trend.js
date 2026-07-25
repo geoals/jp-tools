@@ -5,9 +5,9 @@ import { html } from "htm/preact";
 import { useState } from "preact/hooks";
 import { Tooltip, W, shortDate, truncWork, workChanges } from "./svg.js";
 
-const SPEED_STEPS = [500, 1000, 2000, 2500, 5000, 10000];
+/** Candidate y-axis steps for the speed chart, finest first. */
 
-/** VN titles are long; a divider label only needs enough to recognise it. */
+const SPEED_STEPS = [500, 1000, 2000, 2500, 5000, 10000];
 
 /** Chars/hour trend over days with ≥10 min read. days: [{date, active_secs, chars, work}] */
 
@@ -169,7 +169,3 @@ export function SpeedTrendChart({ days }) {
     </div>
   `;
 }
-
-// Both series are events per hour, so they share one y-axis. Minutes read is a
-// different unit and stays in its own chart — overlaying it here would mean two
-// y-scales, whose alignment is arbitrary and invents correlations.

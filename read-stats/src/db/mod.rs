@@ -16,7 +16,6 @@
 //! |---|---|---|
 //! | [`pool`] | — | opens both |
 //! | [`settings`] | `settings` | read-stats.db |
-//! | [`pauses`] | `pauses` | read-stats.db |
 //! | [`marks`] | `reader_marks` | read-stats.db |
 //! | [`covers`] | `work_covers` | read-stats.db |
 //! | [`lines`] | `lines` | knowledge.db |
@@ -37,8 +36,8 @@ pub mod covers;
 pub mod lines;
 pub mod lookups;
 pub mod marks;
-pub mod pauses;
 pub mod pool;
+pub mod retire_pauses;
 pub mod sessions;
 pub mod settings;
 pub mod word_days;
@@ -53,10 +52,12 @@ pub use lines::{
 };
 pub use lookups::{LookupTerm, fetch_lookup_events, fetch_lookup_terms, insert_lookup};
 pub use marks::{fetch_reader_marks, insert_reader_mark};
-pub use pauses::{fetch_pauses, is_pause_open, toggle_pause};
-pub use pool::{check_migrated, create_pool, open_knowledge};
+pub use pool::{create_pool, open_knowledge};
+pub use retire_pauses::retire as retire_pauses;
 pub use sessions::{ManualSession, delete_session, fetch_sessions, insert_session};
-pub use settings::{SETTING_KEYS, Settings, get_setting_raw, load_settings, save_setting};
+pub use settings::{
+    BOOL_SETTING_KEYS, SETTING_KEYS, Settings, get_setting_raw, load_settings, save_setting,
+};
 pub use word_days::{WordDayHit, add_word_day_counts, fetch_mined_word_days};
 pub use works::{
     WORK_STATUSES, Work, current_work_vn_window, delete_work, fetch_work, fetch_works_meta,

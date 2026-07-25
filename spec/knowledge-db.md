@@ -168,7 +168,8 @@ honest.
 
 Only tables that never join the knowledge layer:
 
-- `pauses` — derivation input: which lines count. Never joined to knowledge.
+- ~~`pauses`~~ — retired. Pausing stops capture at the logger now, so there
+  is no interval to filter and no table to keep.
 - `settings` — `current_work`, ingest watermarks, app state.
 - `reader_marks` — presence/AFK proof only; deliberately kept out of word
   metrics so it can't inflate lookup counts.
@@ -209,7 +210,7 @@ Done (2026-07-25):
 
 1. ✅ `dictionaries` / `dictionary_*` moved out of `yt-mine.db`, and `works` /
    `lines` / `sessions` / `word_days` / `anki_notes` / `lookups` out of
-   `stats.db`, into `knowledge.db` — `scripts/migrate-knowledge-db.sh`.
+   `stats.db`, into `knowledge.db`, by a one-time script since deleted.
    `vocabulary` was **left in `yt-mine.db`**: it is empty, and the ledger that
    replaces it is designed here but not built, so moving the stub would only
    have moved a decision that hasn't been made.

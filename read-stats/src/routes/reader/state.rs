@@ -27,7 +27,7 @@ async fn whisper_reachable(state: &AppState) -> bool {
 pub async fn reader_state(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     let settings = db::load_settings(&state.local).await?;
     Ok(Json(json!({
-        "paused": db::is_pause_open(&state.local).await?,
+        "paused": settings.capture_paused,
         "current_work": settings.current_work,
         "capture_available": state.vn_capture_script.is_file(),
         "explain_available": state.anthropic_api_key.is_some(),

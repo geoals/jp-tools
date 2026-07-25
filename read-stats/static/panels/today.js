@@ -18,6 +18,7 @@ export function TodayCard({ summary }) {
   // change the rendered spacing.
   const lookupRate =
     lookupsPerHour !== null ? `(${lookupsPerHour.toFixed(1)}/h)` : null;
+  const targetLabel = `${goal.target_mins} min`;
   const bestStretch =
     today.focus.longest_stretch_secs > 0
       ? `(${fmtMins(today.focus.longest_stretch_secs)} best)`
@@ -31,21 +32,13 @@ export function TodayCard({ summary }) {
           ${
             mins >= goal.target_mins
               ? html`<span class="goal-met">target met</span>`
-              : mins >= goal.floor_mins
-                ? html`<span class="goal-met">floor met</span> ·
-                    ${Math.ceil(goal.target_mins - mins)} min to target`
-                : `${Math.ceil(goal.floor_mins - mins)} min to floor`
+              : `${Math.ceil(goal.target_mins - mins)} min to target`
           }
         </span>
       </div>
-      <${GoalMeter}
-        mins=${mins}
-        floorMins=${goal.floor_mins}
-        targetMins=${goal.target_mins}
-      />
+      <${GoalMeter} mins=${mins} targetMins=${goal.target_mins} />
       <div class="meter-caption">
-        <span>0</span><span>floor ${goal.floor_mins}</span
-        ><span>${goal.target_mins} min</span>
+        <span>0</span><span>${targetLabel}</span>
       </div>
       <div class="tile-row">
         <div class="tile">
@@ -86,5 +79,3 @@ export function TodayCard({ summary }) {
     </div>
   `;
 }
-
-/** A row of mutually exclusive choices, styled as one segmented control. */

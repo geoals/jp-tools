@@ -46,24 +46,11 @@ export function kChars(n) {
   return n >= 1000 ? `${+(n / 1000).toFixed(n < 10000 ? 1 : 0)}k` : String(n);
 }
 
-/* The three segments a day's bar can split into. Dialogue and narration keep
-   the hues they carry on the dialogue card — colour follows the entity, so the
-   same green means narration wherever it appears.
-
-   "no line text" is the remainder, and it is a real category rather than a
-   rounding bucket: manually logged sessions have no hooked text to classify,
-   so a day of physical-book reading is legitimately all remainder. Drawing it
-   in muted ink rather than a fourth hue says that — it is the absence of the
-   measurement, not a third kind of reading. */
+/** VN titles are long; a divider label only needs enough to recognise it. */
 
 export function truncWork(title, n = 10) {
   return title.length > n ? `${title.slice(0, n)}…` : title;
 }
-
-/** Days where the dominant work changed from the previous reading day — the
- *  points a chart marks so a speed step reads as "switched VN", not a slump.
- *  The first work to appear isn't a switch, so it gets no marker. A day with no
- *  reading (no `work`) is skipped, never treated as a change. */
 
 export function rateStep(max) {
   if (max <= 10) return 2;
@@ -72,22 +59,12 @@ export function rateStep(max) {
   return 20;
 }
 
-/**
- * Lookups and mined cards per hour of reading, toggleable.
- * days: [{date, active_secs, lookups, cards}]
- */
-
 export function clockHM(ts) {
   const d = new Date(ts * 1000);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-/**
- * Centred rolling window over the raw buckets, never crossing a session
- * boundary. Rates are a ratio of sums (total chars ÷ total seconds), not a mean
- * of per-bucket rates — averaging ratios would weight a 4-second bucket the
- * same as a full minute and let the quiet edges of a session dominate.
- */
+/** Split points into drawable runs, breaking on a null value or a new session. */
 
 export function segments(pts, key) {
   const out = [];
@@ -115,6 +92,8 @@ export function niceTicks(max, count) {
   return { ticks, top };
 }
 
+/** Area between the two speed lines — the lookup tax, in chars/hour. */
+
 export function bandPath(seg, x, y) {
   const up = seg
     .map((p, k) => `${k === 0 ? "M" : "L"}${x(p.t)},${y(p.raw)}`)
@@ -126,17 +105,10 @@ export function bandPath(seg, x, y) {
   return `${up} ${back} Z`;
 }
 
-/**
- * One day's reading, minute by minute: speed above, lookup and mining rate
- * below, on a shared clock axis.
- *
- * Two panels rather than one overlay on purpose. Chars/hour runs in the
- * thousands and events/hour in the tens, so putting them on one plot would need
- * two y-scales — and where those two scales line up is a choice, not a fact, so
- * the picture would imply a correlation the data never stated. Stacked on a
- * shared x-axis, a dip in speed and a spike in lookups sit in the same vertical
- * slice and the comparison stays the reader's to make.
- */
+/** Days where the dominant work changed from the previous reading day — the
+ *  points a chart marks so a speed step reads as "switched VN", not a slump.
+ *  The first work to appear isn't a switch, so it gets no marker. A day with no
+ *  reading (no `work`) is skipped, never treated as a change. */
 
 export function workChanges(days) {
   const out = [];

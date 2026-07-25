@@ -5,6 +5,16 @@ import { html } from "htm/preact";
 import { useState } from "preact/hooks";
 import { Tooltip, W, barPath, kChars, niceCeil, niceTicks, segments, shortDate } from "./svg.js";
 
+/* The three segments a day's bar can split into. Dialogue and narration keep
+   the hues they carry on the dialogue card — colour follows the entity, so the
+   same green means narration wherever it appears.
+
+   "no line text" is the remainder, and it is a real category rather than a
+   rounding bucket: manually logged sessions have no hooked text to classify,
+   so a day of physical-book reading is legitimately all remainder. Drawing it
+   in muted ink rather than a fourth hue says that — it is the absence of the
+   measurement, not a third kind of reading. */
+
 const DAY_SPLIT = [
   { key: "dialogue", label: "dialogue", color: "var(--series-1)" },
   { key: "narration", label: "narration", color: "var(--series-2)" },
@@ -29,12 +39,11 @@ export function DailyBarChart({
   dialogueByDate,
   metric,
   split,
-  floorMins,
   targetMins,
 }) {
   const [hover, setHover] = useState(null);
   const H = 300;
-  // Right margin holds the "goal 120" / "floor 60" labels — wide enough that
+  // Right margin holds the "goal 120" label — wide enough that
   // three-digit goals don't run off the viewBox.
   const m = { top: 16, right: 56, bottom: 24, left: 44 };
   const plotW = W - m.left - m.right;
@@ -105,7 +114,6 @@ export function DailyBarChart({
         ${
           isMins &&
           [
-            [floorMins, "floor"],
             [targetMins, "goal"],
           ].map(
             ([v, name]) => html`
@@ -228,5 +236,3 @@ function DayBarTooltip({ day, parts, split, isMins }) {
     }
   `;
 }
-
-/** Candidate y-axis steps for the speed chart, finest first. */

@@ -91,3 +91,96 @@ table.days tr.today td {
   color: var(--text-primary);
   font-weight: 500;
 }
+
+/* ── Settings view ───────────────────────────────────────────────────────
+   A form of thresholds, each with the reason it exists underneath it. The
+   hint is not decoration: a number nobody can explain is a number nobody
+   should be turning. */
+.settings-group {
+  margin-top: 20px;
+}
+.settings-group h3 {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+.settings-row {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 4px 14px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.settings-row label {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.settings-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings-input input {
+  width: 110px;
+}
+.settings-unit {
+  color: var(--muted);
+  font-size: 13px;
+}
+/* Hint sits under the input, aligned to it rather than to the label. */
+.settings-hint {
+  grid-column: 2;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  max-width: 62ch;
+}
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+.settings-err {
+  color: var(--warn);
+  font-size: 13px;
+}
+
+/* Segmented control: one choice of several, sharing a border. */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.segment {
+  border: 0;
+  border-left: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.segment:first-child {
+  border-left: 0;
+}
+.segment.on {
+  background: var(--series-1);
+  color: #fff;
+}
+
+@media (max-width: 560px) {
+  .settings-row {
+    grid-template-columns: 1fr;
+  }
+  .settings-hint {
+    grid-column: 1;
+  }
+}

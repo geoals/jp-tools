@@ -28,8 +28,7 @@ silero-VAD finds where the speech ends.
 
   **The logger cannot be restarted while Textractor is attached** — its WS
   plugin crashes Textractor when a client disconnects abortively. Any change to
-  where it writes therefore only takes effect at the next reading break, which
-  is why `scripts/migrate-knowledge-db.sh` refuses to run while it is up.
+  where it writes therefore only takes effect at the next reading break.
 - `vn-capture.sh` — bind to a hotkey. Screenshots the active window, cuts
   audio from the last hooked line's timestamp to the VAD speech end, encodes
   Ogg Vorbis, uploads both via AnkiConnect (`Image` / `SentAudio` fields).
@@ -69,7 +68,8 @@ before advancing** (a new hooked line becomes "the last line"). Click back to
 the VN window first so the screenshot captures it.
 
 Reading from a phone instead? read-stats' `#read` view shows the same line feed
-over the LAN and has a mine button that runs this script — the VN never loses
+over the LAN, and read-stats' Anki proxy runs this script on every card add —
+  the VN never loses
 desktop focus that way, so the "click back first" step disappears.
 
 Set `VN_WINDOW` (or the current work's window in read-stats) and the "click back

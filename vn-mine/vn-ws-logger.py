@@ -18,7 +18,14 @@ Two databases are involved, and the split is jp-core's (see
 spec/knowledge-db.md): `lines` is knowledge, shared with every tool that asks
 what has been read, while `settings.current_work` — the title stamped on each
 line — is read-stats' own. The knowledge DB is the connection; read-stats' is
-attached read-only-in-practice for that one lookup.
+attached read-only-in-practice for two settings: `current_work` and
+`capture_paused`.
+
+Pausing is a *source* stop, not a filter. While `settings.capture_paused` is
+set, this closes the Textractor connection and stays disconnected, so nothing
+enters the line stream at all. The close is a proper close frame — the same
+path SIGTERM takes — because an abortive disconnect crashes Textractor's WS
+plugin and takes Textractor with it.
 
 Env:
   VN_RUNDIR                   run dir (default: $XDG_RUNTIME_DIR/vn-mine or /run/user/$UID/...)
@@ -42,6 +49,12 @@ RUNDIR = os.environ.get("VN_RUNDIR") or os.path.join(
 )
 LINES_LOG = os.path.join(RUNDIR, "lines.log")
 WS_URL = os.environ.get("VN_WS_URL", "ws://localhost:6677")
+
+# How often the capture-paused flag is re-read, and how long to wait before
+# retrying a connection that failed. Both are cheap: one indexed SQLite read
+# and one localhost socket.
+PAUSE_POLL_SECS = 2.0
+RECONNECT_SECS = 2.0
 
 # only Japanese text marks a voiceline; ignore stray latin/punctuation hooks
 JP = re.compile(r"[぀-ヿ一-鿿]")
@@ -184,7 +197,8 @@ class StatsSink:
             self.db.execute("PRAGMA journal_mode=WAL")
             self.db.execute("PRAGMA busy_timeout=5000")
             self.db.executescript(KNOWLEDGE_SCHEMA)
-            # read-stats' own DB, for the current_work setting only.
+            # read-stats' own DB, for the current_work and capture_paused
+            # settings only.
             self.db.execute("ATTACH DATABASE ? AS stats", (STATS_DB,))
             self.db.executescript(STATS_SCHEMA)
             for column in (
@@ -199,6 +213,24 @@ class StatsSink:
         except (OSError, sqlite3.Error) as e:
             log(f"stats sink unavailable ({e}) — reading stats disabled")
             self.db = None
+
+    def capture_paused(self):
+        """Whether the dashboard has capture switched off.
+
+        Fails *open* — an unreadable flag means keep capturing. Losing lines to
+        a database hiccup would be silent and unrecoverable; capturing a few
+        that should have been paused is visible and clearable from the reader.
+        """
+        if self.db is None:
+            return False
+        try:
+            row = self.db.execute(
+                "SELECT value FROM stats.settings WHERE key = 'capture_paused'"
+            ).fetchone()
+            return bool(row) and row[0] == "1"
+        except sqlite3.Error as e:
+            log(f"pause flag unreadable ({e}) — continuing to capture")
+            return False
 
     def add(self, ts, text):
         if self.db is None:
@@ -237,37 +269,69 @@ def normalize(msg):
     return text[:4000]
 
 
+async def read_lines(ws, out, stats, last_text):
+    """Drain one connection into the log and the stats sink."""
+    async for raw in ws:
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", "replace")
+        text = clean_line(normalize(raw))
+        if not text:
+            continue
+        # A re-hook of the line still on screen (Textractor double-fire,
+        # focus change) must not move the anchor. Only the immediately
+        # preceding line is suppressed, so a genuine later repeat of the
+        # same short line — separated by other dialogue — still logs.
+        if text == last_text:
+            continue
+        ts = time.time()
+        out.write(f"{ts:.9f}\t{text}\n")
+        out.flush()
+        stats.add(ts, text)
+        last_text = text
+    return last_text
+
+
+async def watch_pause(ws, stats):
+    """Close the connection cleanly once capture is paused.
+
+    A separate task because the read loop is parked in `async for`: this is what
+    turns the flag into an actual disconnect rather than a filter.
+    """
+    while True:
+        await asyncio.sleep(PAUSE_POLL_SECS)
+        if stats.capture_paused():
+            log("capture paused — closing the Textractor connection")
+            await ws.close()
+            return
+
+
 async def pump(out, stats, state):
     last_text = None
-    async for msg in websockets.connect(
-        WS_URL, max_size=None, ping_interval=20, ping_timeout=20
-    ):
-        log(f"connected to {WS_URL}")
-        state["ws"] = msg
+    # An explicit loop rather than `async for ws in websockets.connect(...)`:
+    # that form reconnects on its own, which is exactly what a pause must not
+    # do. Reconnecting is now a decision made here, once per iteration, after
+    # the flag has been checked.
+    while True:
+        if stats.capture_paused():
+            await asyncio.sleep(PAUSE_POLL_SECS)
+            continue
         try:
-            async for raw in msg:
-                if isinstance(raw, bytes):
-                    raw = raw.decode("utf-8", "replace")
-                text = clean_line(normalize(raw))
-                if not text:
-                    continue
-                # A re-hook of the line still on screen (Textractor double-fire,
-                # focus change) must not move the anchor. Only the immediately
-                # preceding line is suppressed, so a genuine later repeat of the
-                # same short line — separated by other dialogue — still logs.
-                if text == last_text:
-                    continue
-                ts = time.time()
-                out.write(f"{ts:.9f}\t{text}\n")
-                out.flush()
-                stats.add(ts, text)
-                last_text = text
-        except websockets.ConnectionClosed:
-            log("connection closed, reconnecting")
-        finally:
-            state["ws"] = None
-        # websockets.connect(...) as an async iterator auto-reconnects with
-        # backoff on the next loop iteration.
+            async with websockets.connect(
+                WS_URL, max_size=None, ping_interval=20, ping_timeout=20
+            ) as ws:
+                log(f"connected to {WS_URL}")
+                state["ws"] = ws
+                watcher = asyncio.create_task(watch_pause(ws, stats))
+                try:
+                    last_text = await read_lines(ws, out, stats, last_text)
+                except websockets.ConnectionClosed:
+                    log("connection closed")
+                finally:
+                    watcher.cancel()
+                    state["ws"] = None
+        except (OSError, websockets.WebSocketException) as e:
+            log(f"connect failed ({e}), retrying")
+            await asyncio.sleep(RECONNECT_SECS)
 
 
 async def run(out, stats):

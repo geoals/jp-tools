@@ -34,10 +34,8 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);
 
-    let pauses = db::fetch_pauses(&state.local).await?;
-    let mut lines = db::fetch_lines_after(&state.knowledge, watermark).await?;
+    let lines = db::fetch_lines_after(&state.knowledge, watermark).await?;
     let max_id = lines.last().map(|l| l.id);
-    lines.retain(|l| !stats::is_paused(l.ts, &pauses));
     let Some(max_id) = max_id else {
         return Ok(IngestOutcome { lines: 0, words: 0 });
     };

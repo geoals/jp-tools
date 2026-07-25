@@ -1,7 +1,8 @@
-// The two non-chart indicators: a progress bar, and the goal meter with its
-// floor and target marks.
+// The two non-chart indicators: a progress bar, and the goal meter.
 
 import { html } from "htm/preact";
+
+/** Plain progress bar (same visual language as the goal meter, no marker). */
 
 export function ProgressBar({ pct, label }) {
   return html`
@@ -18,11 +19,13 @@ export function ProgressBar({ pct, label }) {
   `;
 }
 
-/** Goal meter: fill in the series hue, unfilled track a lighter step of the same ramp. */
+/** Goal meter: fill in the series hue, unfilled track a lighter step of the
+ *  same ramp. One target, no intermediate mark — a second threshold on the same
+ *  bar asked the reader to hold two goals at once and made the first one the
+ *  real one. */
 
-export function GoalMeter({ mins, floorMins, targetMins }) {
+export function GoalMeter({ mins, targetMins }) {
   const pct = Math.min(100, (mins / targetMins) * 100);
-  const floorPct = Math.min(100, (floorMins / targetMins) * 100);
   return html`
     <div
       class="meter"
@@ -33,11 +36,6 @@ export function GoalMeter({ mins, floorMins, targetMins }) {
       aria-label="Minutes read toward ${targetMins}-minute target"
     >
       <div class="meter-fill" style="width:${pct}%"></div>
-      <div
-        class="meter-marker"
-        style="left:${floorPct}%"
-        title="floor ${floorMins} min"
-      ></div>
     </div>
   `;
 }

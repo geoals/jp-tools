@@ -5,6 +5,10 @@ import { html } from "htm/preact";
 import { useState } from "preact/hooks";
 import { Tooltip, W, niceCeil, rateStep, shortDate, truncWork, workChanges } from "./svg.js";
 
+// Both series are events per hour, so they share one y-axis. Minutes read is a
+// different unit and stays in its own chart — overlaying it here would mean two
+// y-scales, whose alignment is arbitrary and invents correlations.
+
 const RATE_SERIES = [
   {
     key: "lookups",
@@ -23,6 +27,11 @@ const RATE_SERIES = [
 /** Minimum active time before a per-hour rate means anything. */
 
 const RATE_MIN_SECS = 600;
+
+/**
+ * Lookups and mined cards per hour of reading, toggleable.
+ * days: [{date, active_secs, lookups, cards}]
+ */
 
 export function RateTrendChart({ days }) {
   const [hover, setHover] = useState(null);
@@ -238,9 +247,3 @@ export function RateTrendChart({ days }) {
     </div>
   `;
 }
-
-// ---------------------------------------------------------------------------
-// Intra-day detail
-// ---------------------------------------------------------------------------
-
-/** Smoothed window needs at least this much reading time to report a rate. */

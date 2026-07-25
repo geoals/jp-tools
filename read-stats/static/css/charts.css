@@ -10,6 +10,24 @@
   width: 100%;
   height: auto;
 }
+/* Dragging out a zoom range would otherwise select the axis labels as text. */
+.chart-brushing svg {
+  user-select: none;
+}
+/* The drag surface advertises itself; the selection is a tint rather than an
+   outline, for the same reason the tax band is — it is an area, not a mark. */
+.plot-surface {
+  cursor: col-resize;
+  /* Horizontal drags are the zoom and must not become a scroll gesture; the
+     page still scrolls vertically from on top of the chart. */
+  touch-action: pan-y;
+}
+.brush-sel {
+  fill: var(--series-3);
+  opacity: 0.16;
+  stroke: none;
+  pointer-events: none;
+}
 .chart-empty {
   color: var(--muted);
   font-size: 14px;

@@ -20,7 +20,7 @@ narration* card that splits the reading on 「」.
   Two databases are in play: `knowledge.db` holds what was read (`lines`,
   `works`, `manual_sessions`, `anki_notes`, `word_days`, `lookups`) plus the
   dictionary cache, and is jp-core's; `read-stats.db` holds this app's own
-  state (`settings`, `pauses`, `reader_marks`, `work_covers`). See
+  state (`settings`, `reader_marks`, `work_covers`). See
   `spec/knowledge-db.md` for why the line falls there.
 - **Characters are counted like texthooker-ui does**
   (`jp_core::text::chars`, mirrored
@@ -84,13 +84,20 @@ narration* card that splits the reading on 「」.
   98.5 minutes, zero interruptions** — which is what the reading actually was.
   A metric that counts using a dictionary as losing focus is measuring the
   wrong thing.
-- **Pause** (`POST /api/pause` toggle, dashboard button, or bind
-  `jp-stats-pause.sh` to a hotkey) for skipping scenes / replaying read text:
-  lines are still captured raw but derivation ignores those inside a pause
-  interval, so a forgotten pause can be fixed retroactively by editing the
-  `pauses` table.
-- **Clear last line** (`✕ clear last` on `#read`) is the retroactive version of
-  pause: it flags the newest line `discarded`, and every read of the stream
+- **Pause capture** (`POST /api/capture/pause` toggle, dashboard or `#read`
+  button) for skipping scenes / replaying read text. This stops the *source*:
+  it sets `settings.capture_paused`, which vn-ws-logger.py polls and answers by
+  closing its Textractor WebSocket, so no line is recorded at all while it is
+  set. Nothing is filtered afterwards, and nothing can be recovered — a
+  forgotten pause costs the lines themselves, which is why the reading view
+  says so in red across the top.
+
+  It used to be an interval log (`pauses`) that every read filtered. That was
+  the wrong half: the raw stream still filled with text the reader had said was
+  not reading, and every query paid to remove it again. The old table is
+  retired on startup, its lines flagged `discarded`.
+- **Clear last line** (`✕ clear last` on `#read`) is the retroactive version:
+  it flags the newest line `discarded`, and every read of the stream
   filters that out. It covers the two things pause is always remembered too
   late for — the handful of lines Textractor hooks while you are still finding
   the route, which are otherwise enough to open a session, and a stretch
@@ -102,9 +109,8 @@ narration* card that splits the reading on 「」.
   between the tap and the request isn't swept up with them. Consecutive taps
   accumulate into one undo, offered on the toast for 15s.
 
-  Nothing is deleted — the flag is soft, for the same reason pauses don't
-  delete: the raw stream is what lets every threshold here stay tunable after
-  the fact. A clear can be undone past the toast with
+  Nothing is deleted — the flag is soft, because the raw stream is what lets
+  every threshold here stay tunable after the fact. A clear can be undone past the toast with
   `UPDATE lines SET discarded = 0 WHERE id = ?`.
 
   Clearing widens the gap around what it removed, and that is the point: with
@@ -162,17 +168,18 @@ the PC while the phone does the looking-up. The setup:
   `http://<pc-ip>:3200/anki-proxy` exactly as on the desktop, so phone lookups
   are counted too and cards land in the **PC's** Anki.
 - **✕ clear last** drops the newest hooked line from the stats — see *Clear
-  last line* above. Deliberately narrow and quiet next to the mine button,
-  which is the one being pressed constantly; every press is undoable.
-- **⛏ mine last line** runs `vn-mine/vn-capture.sh` on the PC, attaching the
-  voiceline audio and a screenshot to the note Yomitan just added, and reports
-  the outcome on the page instead of via `notify-send` on a desktop nobody is
-  looking at. **whisper-service is optional here:** it only narrows the clip to
-  the single mined sentence within a multi-sentence line. When it's down the
-  mine still works — the clip is attached VAD-trimmed — and the reader bar shows
-  a muted **✂ off** hint (from `trim_available` in `/api/reader/state`, probed
-  each poll) so you know the sentence trim isn't running.
-- **ℹ explain** sends the newest line (with the previous few for context) to the
+  last line* above. Deliberately narrow and quiet; every press is undoable.
+- **Mining has no button.** Adding a card in Yomitan goes through
+  `/anki-proxy`, and the proxy runs `vn-mine/vn-capture.sh` itself once Anki
+  accepts the note — so the voiceline audio and a screenshot attach to every
+  mine, from the phone or the desktop, without a second deliberate tap. A
+  button would only have been a manual way to redo what already happened.
+  **whisper-service is optional here:** it only narrows the clip to the single
+  mined sentence within a multi-sentence line. When it's down the capture still
+  works — the clip is attached VAD-trimmed — and the reader bar shows a muted
+  **✂ off** hint (from `trim_available` in `/api/reader/state`, probed each
+  poll) so you know the sentence trim isn't running.
+- **ℹ explain last line** sends the newest line (with the previous few for context) to the
   Anthropic API and shows a short read on it — a natural rendering plus any
   nuance or grammar a plain translation misses. **Select a word in the line
   first** and the explanation is centred on that word instead; the selection is
@@ -203,6 +210,27 @@ and the usual "click back to the VN window first" caveat doesn't apply. The
 The line feed is read from the `lines` table that `vn-ws-logger.py` already
 writes, not from Textractor's WebSocket — its plugin can crash Textractor when a
 client disconnects abortively, so a second WS client would be a risk for nothing.
+
+## Settings (`/#settings`)
+
+Everything that used to be a constant, with the reason it exists written under
+it. Two kinds of thing, and the split is deliberate:
+
+- **server settings** — rows in `settings`, applied at *query* time. The goal
+  (daily target, streak minimum) and the derivation thresholds (gap cap,
+  session break, day rollover, chars per page). Because nothing is baked into a
+  stored number, changing one re-reads the whole history under the new value:
+  raise the gap cap and every hour you have ever read is re-priced, and lowering
+  it again puts them back.
+- **this browser** — the theme (system / light / dark), in `localStorage` and
+  applied as `data-theme` on `<html>`. Not a row anywhere: the phone reading in
+  a dark room should not have to agree with the desktop. Stamped by a small
+  blocking script in `spa.html` before first paint, so a dark device doesn't
+  flash light on load.
+
+The current work and the VN capture window are deliberately *not* here — both
+are per-work workflow rather than configuration, and they live beside the work
+they describe (Currently reading, Library).
 
 ## Run
 
@@ -266,7 +294,7 @@ it but doesn't manage it.
   and return its result. A capture that fails for an ordinary reason (stale
   line, Anki closed) is `200 {"ok": false, "error": ...}`; only an unrunnable
   or unparseable script is a 5xx
-- `POST /api/pause` — toggle an open-ended pause interval
+- `POST /api/capture/pause` — toggle capture at the source (`settings.capture_paused`)
 - `POST /api/anki/refresh` — probe AnkiConnect (client IP, then fallback),
   snapshot the deck, tokenize new lines
 - `GET  /api/anki/summary` — mined count, re-encountered count, 7-day
@@ -400,15 +428,15 @@ keyboard, and the answer comes from evidence rather than a flat rate:
   *after* the event — so a 45-second detour is credited 45, not truncated to 30
   the way the old flat cap did it.
 
-  The engagement actions are the reader's **ℹ explain** and **⛏ mine** buttons,
-  recorded as `reader_marks` when tapped (see *Reading from a phone*). They fill
-  the one gap the other two signals leave: reading an explanation, or mining a
-  line you didn't also look up in Yomitan, is real presence the line stream has
-  no other trace of. Kept in their own table, not `lookups`, so they credit
-  *time* without touching the lookups/h or unknown-word-rate metrics. The
-  *suppress* actions — **clear** and **pause** — deliberately leave no mark: they
-  exist to stop counting a span, so crediting presence for them would undo their
-  own purpose.
+  The engagement action is the reader's **ℹ explain last line** button, recorded
+  as a `reader_mark` when tapped (see *Reading from a phone*). It fills the one
+  gap the other two signals leave: reading an explanation is real presence the
+  line stream has no other trace of. Kept in its own table, not `lookups`, so it
+  credits *time* without touching the lookups/h or unknown-word-rate metrics.
+  Mining needs no mark — a note id is already a timestamp, so a mined card is
+  presence by construction. The *suppress* actions — **clear** and **pause
+  capture** — deliberately leave no mark: they exist to stop counting a span, so
+  crediting presence for them would undo their own purpose.
 - **Nothing in the gap** means only the line itself can be claimed, priced at
   your uninterrupted pace. A 15-character line earns about four seconds whether
   you were gone 35 seconds or seven minutes.
@@ -436,8 +464,8 @@ correction. And a stream too sparse to establish a pace falls back to the flat
 cap, which is the right thing to degrade to.
 
 You should not have to think about the afk timer, and with this you don't:
-walking away costs nothing and is never credited, so the pause button is now a
-convenience rather than something the numbers depend on.
+walking away costs nothing and is never credited, so pausing capture is about
+keeping junk out of the stream, not about protecting the numbers.
 
 Two panels rather than one overlay, because chars/hour runs in the thousands and
 events/hour in the tens: one plot would need two y-scales, and where two scales
@@ -556,15 +584,17 @@ curl -X POST localhost:3200/api/sessions -H 'Content-Type: application/json' \
   generates a ≤2-second CompactDef gloss from the note's word + sentence and
   writes it to that field. Needs `JP_TOOLS_ANTHROPIC_API_KEY`; set the field
   name empty to disable. See `spec/anki-compactdef.md`.
-- `JP_TOOLS_AUTO_CAPTURE_ON_ADD` (default off) — also fire `vn-capture.sh` after
-  a proxied card add, folding the mine button into the add (audio + picture,
-  best-effort). Only enable on the machine running the VN + capture stack.
+- `JP_TOOLS_AUTO_CAPTURE_ON_ADD` (default **on**) — fire `vn-capture.sh` after a
+  proxied card add (audio + picture, best-effort). This *is* mining now; there
+  is no button. Set to `0` on a machine that serves the dashboard but doesn't
+  run the VN — where the capture script is simply absent it already no-ops with
+  a warning.
 - `JP_TOOLS_SUDACHI_DICT_PATH` (default `system_full.dic` in the working dir)
 - `JP_TOOLS_VN_CAPTURE_SH` (default `../vn-mine/vn-capture.sh` relative to the
-  crate) — what `#read`'s mine button runs. It needs the desktop session's
+  crate) — what the proxy runs after a card add. It needs the desktop session's
   environment (`spectacle` screenshots the active window), so read-stats has to
   be started from within the session, as `scripts/start-all.sh` does.
-- `JP_TOOLS_ANTHROPIC_API_KEY` — enables `#read`'s ℹ explain button; unset
+- `JP_TOOLS_ANTHROPIC_API_KEY` — enables `#read`'s ℹ explain last line button; unset
   leaves it disabled. `JP_TOOLS_LLM_MODEL` (default `claude-haiku-4-5`) — the
   model it asks. Both are shared with yt-mine, so a root `.env` covers both.
 - `JP_TOOLS_WHISPER_URL` (default `http://localhost:8100`) — whisper-service,

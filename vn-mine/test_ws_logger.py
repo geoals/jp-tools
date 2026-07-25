@@ -7,7 +7,9 @@ Run: python3 vn-mine/test_ws_logger.py
 """
 import importlib.util
 import os
+import sqlite3
 import sys
+import tempfile
 import types
 import unittest
 
@@ -130,6 +132,44 @@ class RealLogInvariants(unittest.TestCase):
             for junk in ("Section:", "Button\\d", "${", "\\$\\{", "【"):
                 self.assertNotIn(junk, out, f"leaked {junk!r} from: {raw[:80]}")
         self.assertGreater(kept, 0, "expected at least some dialogue in the log")
+
+
+class CapturePausedFlag(unittest.TestCase):
+    """The one contract shared with read-stats: it writes the flag, this reads
+    it. A regression here doesn't fail loudly — it silently keeps capturing."""
+
+    def sink(self, value):
+        tmp = tempfile.mkdtemp()
+        knowledge = os.path.join(tmp, "knowledge.db")
+        stats = os.path.join(tmp, "read-stats.db")
+        db = sqlite3.connect(stats, isolation_level=None)
+        db.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        if value is not None:
+            db.execute("INSERT INTO settings VALUES ('capture_paused', ?)", (value,))
+        db.close()
+        self.addCleanup(os.environ.pop, "JP_TOOLS_STATS_DISABLE", None)
+        os.environ.pop("JP_TOOLS_STATS_DISABLE", None)
+        old = (wl.KNOWLEDGE_DB, wl.STATS_DB)
+        wl.KNOWLEDGE_DB, wl.STATS_DB = knowledge, stats
+        self.addCleanup(lambda: setattr(wl, "KNOWLEDGE_DB", old[0]))
+        self.addCleanup(lambda: setattr(wl, "STATS_DB", old[1]))
+        return wl.StatsSink()
+
+    def test_paused_when_flag_is_one(self):
+        self.assertTrue(self.sink("1").capture_paused())
+
+    def test_not_paused_when_flag_is_zero(self):
+        self.assertFalse(self.sink("0").capture_paused())
+
+    def test_not_paused_when_row_absent(self):
+        self.assertFalse(self.sink(None).capture_paused())
+
+    def test_fails_open_with_no_database(self):
+        sink = self.sink("1")
+        sink.db = None
+        self.assertFalse(
+            sink.capture_paused(), "an unreadable flag must keep capturing"
+        )
 
 
 if __name__ == "__main__":
