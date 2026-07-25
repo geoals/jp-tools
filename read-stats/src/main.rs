@@ -26,7 +26,7 @@ async fn main() {
         let http = http.clone();
         let pool = pool.clone();
         let covers_dir = config.covers_dir.clone();
-        async move { read_stats::covers::reconcile_missing(&http, &pool, &covers_dir).await }
+        async move { read_stats::services::covers::reconcile_missing(&http, &pool, &covers_dir).await }
     });
 
     let router = build_router(AppState {

@@ -12,7 +12,7 @@ use std::sync::LazyLock;
 use serde_json::Value;
 
 use crate::error::AppError;
-use crate::tags::{FAMILIARITY_RUBRIC, FLAVOR_RUBRIC};
+use crate::services::tags::{FAMILIARITY_RUBRIC, FLAVOR_RUBRIC};
 
 /// Built once from the shared tag rubric (`crate::tags`) plus the explain-path
 /// framing. The FAMILIARITY/FLAVOR definitions are the same source of truth

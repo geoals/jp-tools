@@ -26,8 +26,8 @@ pub async fn anki_refresh(
         state.anki_url
     ));
     let mut snapshot = None;
-    for url in crate::anki::candidate_urls(Some(addr.ip()), &state.anki_url) {
-        match crate::anki::fetch_deck_vocab(
+    for url in crate::services::anki::candidate_urls(Some(addr.ip()), &state.anki_url) {
+        match crate::services::anki::fetch_deck_vocab(
             &state.http,
             &url,
             &state.anki_deck,

@@ -194,21 +194,28 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value) {
     let word = fields
         .and_then(|f| f.get(&state.anki_vocab_field))
         .and_then(Value::as_str)
-        .map(crate::anki::clean_field)
+        .map(crate::services::anki::clean_field)
         .unwrap_or_default();
     let sentence = fields
         .and_then(|f| f.get(&state.anki_sentence_field))
         .and_then(Value::as_str)
-        .map(crate::anki::clean_field)
+        .map(crate::services::anki::clean_field)
         .unwrap_or_default();
 
     if !state.anki_compact_def_field.is_empty() && !word.is_empty() && !sentence.is_empty() {
         match &state.anthropic_api_key {
             Some(api_key) => {
-                match crate::compactdef::compact_def(&state.http, api_key, &word, &sentence).await {
+                match crate::services::compactdef::compact_def(
+                    &state.http,
+                    api_key,
+                    &word,
+                    &sentence,
+                )
+                .await
+                {
                     Ok(def) if !def.is_empty() => {
                         let fields = serde_json::json!({ &state.anki_compact_def_field: def });
-                        if let Err(e) = crate::anki::update_note_fields(
+                        if let Err(e) = crate::services::anki::update_note_fields(
                             &state.http,
                             &state.anki_url,
                             note_id,
@@ -242,7 +249,7 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value) {
     // most recently added note itself, so it needs no id — it just has to run
     // after the add lands, which is exactly here.
     if state.auto_capture_on_add {
-        match crate::routes::reader::run_vn_capture(state).await {
+        match crate::services::capture::run(state).await {
             Ok(result) => info!(note_id, result = %result, "auto-capture after add"),
             Err(e) => warn!(note_id, error = %e, "auto-capture after add failed"),
         }

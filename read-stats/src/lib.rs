@@ -22,19 +22,13 @@
 //! `jp_core::text`, shared with the other tools, because a character counted by
 //! this crate's speed figures has to be the same character everywhere else.
 
-pub mod anki;
-pub mod ankiproxy;
 pub mod app;
 pub mod clock;
-pub mod compactdef;
 pub mod config;
-pub mod covers;
 pub mod db;
 pub mod error;
 pub mod history;
 pub mod ingest;
-pub mod llm;
 pub mod routes;
+pub mod services;
 pub mod stats;
-pub mod tags;
-pub mod vndb;

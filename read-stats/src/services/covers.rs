@@ -10,7 +10,8 @@ use std::path::Path;
 use sqlx::SqlitePool;
 use tracing::{info, warn};
 
-use crate::{db, error::AppError, vndb};
+use crate::services::vndb;
+use crate::{db, error::AppError};
 
 /// Fetch `vndb_id`'s cover into `covers_dir` as `w{work_id}.<ext>`, record the
 /// filename on the work row and the id in `work_covers`. Returns the filename.

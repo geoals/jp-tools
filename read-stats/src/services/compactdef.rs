@@ -12,7 +12,7 @@ use std::sync::LazyLock;
 use serde_json::Value;
 
 use crate::error::AppError;
-use crate::tags::{FAMILIARITY_RUBRIC, FLAVOR_RUBRIC};
+use crate::services::tags::{FAMILIARITY_RUBRIC, FLAVOR_RUBRIC};
 
 /// Pinned to Opus 5. The tag-axis experiment (see `spec/anki-compactdef.md` →
 /// "Why no external signals") was run on Opus 4.8 and found no thinking and no

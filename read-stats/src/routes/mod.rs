@@ -18,6 +18,7 @@
 //! | [`reader`] | the phone-side `#read` view: line feed, mine, explain |
 
 pub mod anki;
+pub mod ankiproxy;
 pub mod days;
 pub mod dialogue;
 pub mod json;

@@ -119,12 +119,12 @@ async fn apply_work_meta(state: &AppState, id: i64, req: &WorkMetaReq) -> Result
             db::clear_work_cover_vndb(&state.pool, id).await?;
             None
         } else {
-            let vid = crate::vndb::normalize_id(raw)
+            let vid = crate::services::vndb::normalize_id(raw)
                 .ok_or_else(|| AppError::BadRequest(format!("bad vndb id: {raw}")))?;
             // Fetches the cover and records both the filename (on the work) and
             // the vndb id (in work_covers), so a lost file can be re-fetched.
             Some(
-                crate::covers::fetch_and_store(
+                crate::services::covers::fetch_and_store(
                     &state.http,
                     &state.pool,
                     &state.covers_dir,

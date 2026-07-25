@@ -7,7 +7,7 @@ use sqlx::SqlitePool;
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 
-use crate::ankiproxy;
+use crate::routes::ankiproxy;
 use crate::routes::{
     anki, days, dialogue, lookups, reader, sessions, settings, summary, timeline, works,
 };
@@ -64,21 +64,24 @@ pub fn build_router(state: AppState) -> Router {
             get(settings::get_settings).put(settings::put_settings),
         )
         // Reading view (phone): live line feed + the mine trigger.
-        .route("/api/lines/stream", get(reader::lines_stream))
-        .route("/api/reader/state", get(reader::reader_state))
+        .route("/api/lines/stream", get(reader::stream::lines_stream))
+        .route("/api/reader/state", get(reader::state::reader_state))
         .route(
             "/api/lines/discard",
-            axum::routing::post(reader::discard_lines),
+            axum::routing::post(reader::lines::discard_lines),
         )
         .route(
             "/api/lines/undiscard",
-            axum::routing::post(reader::undiscard_lines),
+            axum::routing::post(reader::lines::undiscard_lines),
         )
-        .route("/api/vn/capture", axum::routing::post(reader::vn_capture))
-        .route("/api/vn/windows", get(reader::vn_windows))
+        .route(
+            "/api/vn/capture",
+            axum::routing::post(reader::capture::vn_capture),
+        )
+        .route("/api/vn/windows", get(reader::capture::vn_windows))
         .route(
             "/api/reader/explain",
-            axum::routing::post(reader::explain_line),
+            axum::routing::post(reader::explain::explain_line),
         )
         // Yomitan's AnkiConnect endpoint: forwards to Anki, counts lookups.
         .route(
