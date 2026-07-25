@@ -26,9 +26,13 @@ silero-VAD finds where the speech ends.
   `JP_TOOLS_STATS_DISABLE=1`. read-stats' own DB is attached alongside for the
   `current_work` setting, which is the title stamped on each line.
 
-  **The logger cannot be restarted while Textractor is attached** — its WS
-  plugin crashes Textractor when a client disconnects abortively. Any change to
-  where it writes therefore only takes effect at the next reading break.
+  **Restarting the logger with Textractor attached is safe**, as long as it
+  goes through SIGTERM: `run()` sends a proper close frame before exiting, and
+  the capture-pause path reuses the same `ws.close()`. Verified 2026-07-25 —
+  `systemctl --user restart vn-buffer` plus a pause/resume cycle, Textractor
+  alive throughout. What the WS plugin cannot survive is an **abortive**
+  disconnect (`kill -9`, or a crash that skips the close frame), so don't hard-
+  kill it and don't drop the signal handler.
 - `vn-capture.sh` — bind to a hotkey. Screenshots the active window, cuts
   audio from the last hooked line's timestamp to the VAD speech end, encodes
   Ogg Vorbis, uploads both via AnkiConnect (`Image` / `SentAudio` fields).
@@ -85,10 +89,9 @@ a stale anchor, or audio playing on a different output than the one the daemon
 recorded (restart vn-buffer after switching outputs).
 
 - The daemon binds the default sink at startup — `systemctl --user restart
-  vn-buffer` after switching audio outputs. **Restart while Textractor is
-  closed if possible**: the WS plugin can crash Textractor on an abortive
-  client disconnect. The logger now sends a clean close frame on SIGTERM to
-  mitigate this, but a hard kill still bypasses that.
+  vn-buffer` after switching audio outputs. Safe to do with Textractor open —
+  the logger closes the WebSocket cleanly on SIGTERM. A hard kill bypasses
+  that, and an abortive disconnect is what crashes the WS plugin.
 - `VN_WS_URL` (default `ws://localhost:6677`) — Textractor WebSocket server.
 - `VN_DRY=1 ./vn-capture.sh` — build clip + screenshot, skip Anki, keep files.
 - `VN_JSON=1 ./vn-capture.sh` — print a result object

@@ -46,10 +46,16 @@ shared. `spec/knowledge-db.md` has the reasoning.
 
 - Commit straight to `master`. This is a solo repo — don't create a feature
   branch for a change unless asked.
-- **Never restart the stack or touch `~/.local/share/jp-tools` while a VN is
-  being read.** vn-ws-logger.py cannot be restarted while Textractor is
-  attached to the game. `scripts/dev-instance.sh` exists so read-stats can be
-  worked on regardless.
+- **Don't restart the stack or touch `~/.local/share/jp-tools` while a VN is
+  actually being read** — not because anything breaks, but because it
+  interrupts a session in progress. `scripts/dev-instance.sh` exists so
+  read-stats can be worked on regardless.
+
+  Restarting `vn-buffer` *is* safe with Textractor open, verified 2026-07-25:
+  the logger sends a proper close frame on SIGTERM, and Textractor survived a
+  restart plus a full capture pause/resume cycle. What crashes its WS plugin is
+  an **abortive** disconnect — a `kill -9` that skips the close frame — so
+  don't hard-kill the logger and don't remove that signal handler.
 - In the Preact/htm SPAs (`read-stats`, `yt-mine`), never let literal text and
   `${...}` straddle a line break inside an ``html`` `` template. htm collapses
   the whitespace at the break, and prettier reflows markup there freely — that

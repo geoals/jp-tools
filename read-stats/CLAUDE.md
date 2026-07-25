@@ -117,9 +117,12 @@ taught to `vn-capture.sh`.
 
 ## Working on it
 
-Never restart the live stack or touch `~/.local/share/jp-tools` while a VN is
-being read — the logger cannot be restarted while Textractor is attached. Use
-an isolated instance instead:
+Don't restart the live stack or touch `~/.local/share/jp-tools` while a VN is
+actually being read — it interrupts the session, and a half-written window is
+awkward to reason about afterwards. (Restarting `vn-buffer` with Textractor
+open is itself safe: the logger closes the WebSocket cleanly on SIGTERM, and
+only an abortive disconnect crashes the plugin.) Use an isolated instance
+instead:
 
 ```sh
 scripts/dev-instance.sh run             # :3299, on a frozen copy of the data
