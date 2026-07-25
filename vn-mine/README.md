@@ -19,10 +19,17 @@ silero-VAD finds where the speech ends.
 - `vn-ws-logger.py` — connects to the Textractor WebSocket server
   (`ws://localhost:6677`, override with `VN_WS_URL`) and appends each hooked
   Japanese line to `lines.log` with a timestamp. Auto-reconnects if Textractor
-  restarts. Also inserts each line into the read-stats DB
-  (`~/.local/share/jp-tools/read-stats.db`) so reading time/chars are tracked
+  restarts. Also inserts each line into the shared knowledge DB
+  (`~/.local/share/jp-tools/knowledge.db`, override with
+  `JP_TOOLS_KNOWLEDGE_DB_PATH`) so reading time/chars are tracked
   automatically — best-effort, never blocks mining; disable with
-  `JP_TOOLS_STATS_DISABLE=1`.
+  `JP_TOOLS_STATS_DISABLE=1`. read-stats' own DB is attached alongside for the
+  `current_work` setting, which is the title stamped on each line.
+
+  **The logger cannot be restarted while Textractor is attached** — its WS
+  plugin crashes Textractor when a client disconnects abortively. Any change to
+  where it writes therefore only takes effect at the next reading break, which
+  is why `scripts/migrate-knowledge-db.sh` refuses to run while it is up.
 - `vn-capture.sh` — bind to a hotkey. Screenshots the active window, cuts
   audio from the last hooked line's timestamp to the VAD speech end, encodes
   Ogg Vorbis, uploads both via AnkiConnect (`Image` / `SentAudio` fields).

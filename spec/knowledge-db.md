@@ -1,10 +1,11 @@
 # Knowledge DB & module architecture
 
-> **Status: current, decided direction (2026-07).** Unlike the other files in
-> `spec/` (which are the superseded pre-implementation design), this reflects
-> the architecture the codebase is actually moving toward. It records decisions
-> reached about how the tools share data. Not all of it is built yet — sections
-> mark what exists today vs. what is planned.
+> **Status: current architecture (2026-07).** Unlike the other files in `spec/`
+> (which are the superseded pre-implementation design), this describes how the
+> code is actually organised. The database layout, the `role` column and the
+> module boundaries below are **built**; the `vocabulary` ledger, the
+> `encounters` log and the `#read` highlighter are **not** — see *Migration
+> notes* at the end for exactly where the line falls.
 
 ## The two-axis model
 
@@ -57,7 +58,7 @@ Three jobs all need the dictionaries:
   noise (っ, あああ, route-finding fragments) so `#read` highlighting doesn't
   surface garbage as "unknown words." *Exists today* as `in_dictionary` in
   yt-mine (`state.dictionary_forms.contains(&lemma)`), built from
-  `get_all_dictionary_forms` (all terms + readings across loaded dicts). Not yet
+  `jp_core::knowledge::dictionaries::get_all_dictionary_forms` (all terms + readings across loaded dicts). Not yet
   wired into read-stats.
 - **Canonical normalization** — map a surface token to its `(headword, reading)`
   so counts aggregate correctly. Must be **master-relative** (see below) so
@@ -93,7 +94,7 @@ adding a dict changes classification, never the vocabulary denominator.
 ## Mined-state: Anki stays the source
 
 "Is this word in Anki" is **owned by Anki**, synced into the ledger as a
-snapshot (the pattern read-stats' `anki.rs` already uses: `notesInfo` →
+snapshot (the pattern read-stats' `services/anki.rs` already uses: `notesInfo` →
 `anki_notes`, replaced wholesale). The ledger *caches* mined-state for fast
 highlighting; a resync fixes drift. No new write paths — yt/manga/Yomitan just
 make cards, Anki holds that fact.
@@ -124,7 +125,7 @@ Time-windowed variants (e.g. "encounters this week") are **not needed** and are
 not a design constraint.
 
 `word_days` exists today only because there was no ledger to compute its one
-consumer from — the mined-word re-encounter panel (`api.rs`, `fetch_mined_word_days`).
+consumer from — the mined-word re-encounter panel (`routes/anki.rs`, `fetch_mined_word_days`).
 That panel is recomputed from `lines` + the ledger; `word_days` is dropped.
 
 ## Database layout
@@ -138,34 +139,32 @@ The dictionary cache + the knowledge ledger + the raw streams and source
 dimension that feed it. Everything here is dictionary-gated or joins the ledger.
 
 - `dictionaries` (+ **role** column), `dictionary_entries`, `dictionary_pitch`,
-  `dictionary_frequency` — *exist today, currently misfiled in `yt-mine.db`*.
+  `dictionary_frequency` — *moved here 2026-07*.
 - `vocabulary` — the ledger, one row per `(headword, reading)`: status, mined
-  flag, aggregate counts. *Table exists in `yt-mine.db` but is empty — the false
-  start this design fills.*
+  flag, aggregate counts. *Still the empty stub in `yt-mine.db`; this design replaces it rather than
+  moving it.*
 - `encounters` — append-only, per-term, tagged `source_type` + `source_title` +
   `ts`. Generalizes today's VN-only `lookups`. *Planned.*
-- `anki_notes` — mined-deck snapshot mirror. *Exists in `stats.db` today.*
-- `word_days` — per-day content-word counts from the line stream. *Exists in
-  `stats.db`.*
+- `anki_notes` — mined-deck snapshot mirror. *Moved here 2026-07.*
+- `word_days` — per-day content-word counts from the line stream. *Moved here 2026-07.*
 - `works` — the **source dimension** of encounters (a VN/video/book is a
   source). Joined by `lines.work` / `manual_sessions.work`. Kotodex's encounter
   map aggregates by it. Carries display fields (cover, status, queue_pos) too,
-  but its identity is the knowledge layer. *Exists in `stats.db`.*
+  but its identity is the knowledge layer. *Moved here 2026-07.*
 - `lines` — raw hooked VN lines; tokenized into the ledger's counts and joined
-  against the dict for the planned `#read` highlighting. *Exists in `stats.db`.*
+  against the dict for the planned `#read` highlighting. *Moved here 2026-07.*
 - `manual_sessions` — manually entered reading time (renamed from `sessions`).
   Gains a `content TEXT` column holding the actual text read (online article,
   ebook, YouTube transcript, a physically-read book typed/pasted later). Import
   = tokenize that `content` into the ledger's counts, so manual and live reading
   feed the same knowledge state. The content lives on the session row itself —
-  it is **not** expanded into `lines` rows. *Exists in `stats.db` as `sessions`;
-  `content` is new.*
+  it is **not** expanded into `lines` rows. *Moved here 2026-07 and renamed; `content` is still to do.*
 
 Consequence: **read-stats writes into the shared DB** (line ingestion, the
 highlighter's status reads). It is not a pure reader — stated so ownership is
 honest.
 
-### `read-stats.db` (or keep `stats.db`) — read-stats internal
+### `read-stats.db` — read-stats internal
 
 Only tables that never join the knowledge layer:
 
@@ -177,7 +176,7 @@ Only tables that never join the knowledge layer:
 ### The AnkiConnect proxy is split across layers
 
 Yomitan points its "server address" at read-stats' proxy endpoint
-(`ankiproxy.rs`), which forwards byte-for-byte to real AnkiConnect and records
+(`routes/ankiproxy.rs`), which forwards byte-for-byte to real AnkiConnect and records
 each lookup. This is two concerns with two homes:
 
 - **The lookup write** (`insert_lookup` → the `lookups` ledger) is core knowledge
@@ -204,14 +203,33 @@ each lookup. This is two concerns with two homes:
 - **front ends** — yt-mine, manga-mine, read-stats, future kotodex: compose the
   above; own their activity-specific event streams.
 
-## Migration notes (not yet done)
+## Migration notes
 
-1. Move `dictionaries` / `dictionary_*` and the `vocabulary` stub out of
-   `yt-mine.db` into `knowledge.db`; move `works` / `lines` / `sessions` /
-   `word_days` / `anki_notes` out of `stats.db` into `knowledge.db`.
-2. Add `dictionaries.role` (`master` / `name` / `reference`); mark Sankoku
-   master.
-3. Rename `sessions` → `manual_sessions`.
+Done (2026-07-25):
+
+1. ✅ `dictionaries` / `dictionary_*` moved out of `yt-mine.db`, and `works` /
+   `lines` / `sessions` / `word_days` / `anki_notes` / `lookups` out of
+   `stats.db`, into `knowledge.db` — `scripts/migrate-knowledge-db.sh`.
+   `vocabulary` was **left in `yt-mine.db`**: it is empty, and the ledger that
+   replaces it is designed here but not built, so moving the stub would only
+   have moved a decision that hasn't been made.
+2. ✅ `dictionaries.role` (`master` / `name` / `reference`) exists;
+   `jp_core::knowledge::dictionaries::ensure_master` marks Sankoku at startup
+   from `JP_TOOLS_MASTER_DICTIONARY`. Nothing reads the role yet — it is
+   schema and plumbing, waiting for the denominator that needs it.
+3. ✅ `sessions` → `manual_sessions`.
+
+Not done, in dependency order:
+
 4. Build the `encounters` log; generalize `lookups`' source tag; populate
    `vocabulary`.
 5. Wire the wordhood gate + status lookup into read-stats' `#read` highlighter.
+
+### Where the queries live
+
+The schema for the shared tables is jp-core's — it has to have one owner — but
+the *query helpers* for the reading tables are still in read-stats (`db/`),
+because read-stats is still their only caller. Moving them up before a second
+consumer exists would be inventing an interface with nothing to test it
+against. When kotodex or the highlighter needs them, they move; the tables
+won't have to.

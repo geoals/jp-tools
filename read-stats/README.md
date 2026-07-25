@@ -13,10 +13,17 @@ narration* card that splits the reading on 「」.
 
 - **Ingestion is passive.** `vn-ws-logger.py` (running under the `vn-buffer`
   systemd unit) inserts every hooked line — timestamp, char count, text — into
-  `~/.local/share/jp-tools/read-stats.db`. The web service only reads that DB, so
-  stats are captured whenever you read, whether or not the dashboard is
-  running.
-- **Characters are counted like texthooker-ui does** (`charcount.rs`, mirrored
+  the shared `~/.local/share/jp-tools/knowledge.db`. The web service only reads
+  that table, so stats are captured whenever you read, whether or not the
+  dashboard is running.
+
+  Two databases are in play: `knowledge.db` holds what was read (`lines`,
+  `works`, `manual_sessions`, `anki_notes`, `word_days`, `lookups`) plus the
+  dictionary cache, and is jp-core's; `read-stats.db` holds this app's own
+  state (`settings`, `pauses`, `reader_marks`, `work_covers`). See
+  `spec/knowledge-db.md` for why the line falls there.
+- **Characters are counted like texthooker-ui does**
+  (`jp_core::text::chars`, mirrored
   in `vn-ws-logger.py`): an allowlist of kana, kanji, radicals and
   alphanumerics, so punctuation and brackets don't inflate chars/h. Startup
   recomputes `lines.chars` for any row that disagrees, so a change to the rule
@@ -32,7 +39,8 @@ narration* card that splits the reading on 「」.
   - a gap over `session_gap_secs` (600) closes the session;
   - days roll over at `day_rollover_hour` (04:00) — late-night reading counts
     toward the evening's day.
-- **Dialogue is separated from narration by bracket depth** (`dialogue.rs`).
+- **Dialogue is separated from narration by bracket depth**
+  (`jp_core::text::dialogue`).
   Japanese marks speech with 「…」 (and 『…』 nested or for titles), so the
   distinction is already in the hooked text and costs nothing to derive. The
   split is per *character*, not per line, so `「そうか」と彼は言った` is three
@@ -45,11 +53,12 @@ narration* card that splits the reading on 「」.
   Bracket depth **carries across lines**: a long speech is hooked as several
   text boxes, so its 「 opens on one row and closes on a later one. Resetting
   per line would file every continuation as narration. It is dropped across a
-  gap over `dialogue::CARRY_GAP_SECS` (300), which is far past any real
+  gap over `jp_core::text::dialogue::CARRY_GAP_SECS` (300), which is far past any real
   continuation, so one dropped 」 can't recolor a whole session as speech.
 
   See *Dialogue vs narration* below for what the numbers say.
-- **Yomitan lookups are counted by proxying AnkiConnect** (`ankiproxy.rs`).
+- **Yomitan lookups are counted by proxying AnkiConnect**
+  (`routes/ankiproxy.rs`).
   Yomitan checks Anki for duplicates every time it shows a definition popup, so
   with its server address pointed at `/anki-proxy` each popup becomes a row in
   `lookups`. Requests are forwarded to the real AnkiConnect byte-for-byte, so
@@ -58,7 +67,7 @@ narration* card that splits the reading on 「」.
   collapse into one lookup (a single popup fires several). See *Counting
   lookups* below.
 - **Focus measures how continuous the reading was**, not how much of it there
-  was (`stats.rs::aggregate_focus_days`). Credited time hides fragmentation by
+  was (`stats::focus`). Credited time hides fragmentation by
   design, so focus keeps the *uncapped* span beside it and reports
   `active / span`. 100% means every gap was reading; 60% means two fifths of
   your at-desk time went somewhere else. Gaps over `session_gap_secs` are
@@ -297,7 +306,7 @@ be the field named in `JP_TOOLS_ANKI_FIELD_VOCAB` (`VocabKanji`) for the term to
 be recorded. To confirm it's working, do a lookup and:
 
 ```sh
-sqlite3 ~/.local/share/jp-tools/read-stats.db 'SELECT ts, term, work FROM lookups ORDER BY id DESC LIMIT 5;'
+sqlite3 ~/.local/share/jp-tools/knowledge.db 'SELECT ts, term, work FROM lookups ORDER BY id DESC LIMIT 5;'
 ```
 
 An empty table with popups appearing means the request shape wasn't recognized —
@@ -532,6 +541,9 @@ curl -X POST localhost:3200/api/sessions -H 'Content-Type: application/json' \
 
 ## Config
 
+- `JP_TOOLS_KNOWLEDGE_DB_PATH` (default `~/.local/share/jp-tools/knowledge.db`) —
+  the shared database holding the line stream; must match what
+  `vn-ws-logger.py` writes to
 - `JP_TOOLS_STATS_DB_PATH` (default `~/.local/share/jp-tools/read-stats.db`) — must
   match what `vn-ws-logger.py` uses (same env var).
 - `JP_TOOLS_STATS_LISTEN_ADDR` (default `0.0.0.0:3200`)
