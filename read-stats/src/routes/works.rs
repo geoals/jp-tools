@@ -44,10 +44,11 @@ pub async fn works(State(state): State<AppState>) -> Result<Json<Value>, AppErro
             first_ts: s.start_ts,
             ..Default::default()
         });
+        let secs = h.duration_of(s).0;
         entry.chars += s.chars;
-        entry.active_secs += (s.end_ts - s.start_ts).max(0.0);
+        entry.active_secs += secs;
         entry.first_ts = entry.first_ts.min(s.start_ts);
-        entry.last_ts = entry.last_ts.max(s.end_ts);
+        entry.last_ts = entry.last_ts.max(s.start_ts + secs);
     }
 
     // Metadata joins by exact title; leftovers (queued works with no lines

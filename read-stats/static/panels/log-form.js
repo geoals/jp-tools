@@ -6,6 +6,11 @@
 // anything on a screen the paste is strictly better, and it is what a later
 // import will tokenize into the knowledge layer.
 //
+// Minutes are optional throughout. A book or an article is read without a
+// stopwatch, and requiring the number only produces made-up ones; left blank,
+// the duration is derived from the characters at the reader's own recent
+// effective pace (`History::duration_of`).
+//
 // The count under the textarea comes from the server (`/api/text/count`)
 // rather than from a `length` here: which characters count is a rule this
 // codebase keeps in exactly one place, and a preview that disagreed with the
@@ -62,7 +67,7 @@ export function LogForm({ onLogged }) {
     preview =
       mins > 0
         ? `${chars} chars · ${Math.round((counted / mins) * 60).toLocaleString()} chars/h`
-        : `${chars} chars`;
+        : `${chars} chars · time estimated from your recent pace`;
   }
 
   async function submit(e) {
@@ -70,7 +75,7 @@ export function LogForm({ onLogged }) {
     const f = e.currentTarget;
     const body = {
       date: f.date.value || undefined,
-      minutes: Number(f.minutes.value),
+      minutes: f.minutes.value ? Number(f.minutes.value) : undefined,
       work: f.work.value || undefined,
       source: f.source.value,
     };
@@ -130,12 +135,12 @@ export function LogForm({ onLogged }) {
         <form onSubmit=${submit}>
           <div><label>date</label><input name="date" type="date" /></div>
           <div>
-            <label>minutes *</label
+            <label>minutes</label
             ><input
               name="minutes"
               type="number"
               min="1"
-              required
+              placeholder="estimated"
               value=${minutes}
               onInput=${(e) => setMinutes(e.currentTarget.value)}
             />

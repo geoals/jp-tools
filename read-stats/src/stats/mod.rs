@@ -42,7 +42,7 @@ pub use dialogue::{DialogueDay, Side, aggregate_dialogue_days};
 pub use focus::{FocusDay, INTERRUPTION_SECS, aggregate_focus_days};
 pub use kanji::{KanjiLine, KanjiStats, TermTimes, aggregate_kanji};
 pub use line::LineEvent;
-pub use presence::{Presence, measure_pace, presence_marks};
+pub use presence::{Presence, measure_effective_pace, measure_pace, presence_marks};
 pub use session::{Session, derive_sessions};
 pub use timeline::{Bucket, EventKind, add_events, bucket_lines};
 pub use work::{WorkAgg, WorkLine, aggregate_works};

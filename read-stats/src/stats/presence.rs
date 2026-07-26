@@ -115,6 +115,49 @@ pub fn measure_pace(lines: &[LineEvent], marks: &[f64], afk_secs: f64) -> Option
     (secs > 0.0 && chars > 0).then(|| chars as f64 / secs)
 }
 
+/// Minimum credited time in the window before an effective pace is trusted.
+/// Below an hour the ratio is one sitting's worth of noise, and a session
+/// duration derived from it would be worse than admitting there isn't one.
+const EFFECTIVE_PACE_FLOOR_SECS: f64 = 3600.0;
+
+/// Chars per second *including* everything reading actually costs — the gaps
+/// spent in a dictionary, the re-reads, the pauses short enough to still be
+/// reading. Total characters over total credited time.
+///
+/// Deliberately not [`measure_pace`], which measures the opposite quantity: the
+/// undisputed sub-cap gaps only, i.e. how fast text goes by when nothing
+/// interrupts. That one prices a *gap* and must exclude the interruptions it is
+/// deciding about. This one answers "how long did that take me", so it has to
+/// include them — using the raw figure here would understate every estimated
+/// session by however much the lookups cost.
+///
+/// `since_ts` bounds it to recent reading: unlike the presence pace, this is
+/// used to estimate untimed sessions being logged *now*, and a year-old speed
+/// is not the speed they were read at. `None` when the window holds less than
+/// [`EFFECTIVE_PACE_FLOOR_SECS`] of reading.
+pub fn measure_effective_pace(
+    lines: &[LineEvent],
+    presence: &Presence,
+    session_gap_secs: f64,
+    since_ts: f64,
+) -> Option<f64> {
+    let (mut chars, mut secs) = (0i64, 0.0);
+    let mut prev: Option<LineEvent> = None;
+    for line in lines {
+        if line.ts >= since_ts {
+            chars += line.chars;
+            if let Some(prev) = prev {
+                let gap = line.ts - prev.ts;
+                if gap > 0.0 && gap <= session_gap_secs {
+                    secs += presence.credit(&prev, gap);
+                }
+            }
+        }
+        prev = Some(*line);
+    }
+    (secs >= EFFECTIVE_PACE_FLOOR_SECS && chars > 0).then(|| chars as f64 / secs)
+}
+
 /// Merge lookup, card and #read-action timestamps into one sorted evidence
 /// stream. All three are equally proof the reader was at the keyboard.
 pub fn presence_marks(lookups: &[f64], cards: &[f64], reader: &[f64]) -> Vec<f64> {

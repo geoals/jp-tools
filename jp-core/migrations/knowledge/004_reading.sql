@@ -56,10 +56,16 @@ CREATE INDEX IF NOT EXISTS idx_lines_ts ON lines(ts);
 -- it is what a later import tokenizes into the knowledge layer's counts. It
 -- lives on this row and is deliberately *not* expanded into `lines`: these are
 -- not hooked lines and have no per-line timestamps to invent.
+-- `end_ts` is nullable: reading off a screen is timed by the hooker, but a
+-- book or an article read on a phone is not timed at all, and demanding a
+-- minute count to log one is demanding a number that gets made up. NULL means
+-- "unknown", and the duration is *derived* from the reader's own effective
+-- pace at query time — the same rule the rest of the dashboard follows, and
+-- the reason it is not frozen into this column at insert.
 CREATE TABLE IF NOT EXISTS manual_sessions (
     id       INTEGER PRIMARY KEY,
     start_ts REAL    NOT NULL,
-    end_ts   REAL    NOT NULL,
+    end_ts   REAL,
     chars    INTEGER NOT NULL,
     source   TEXT    NOT NULL DEFAULT 'book',
     work     TEXT,

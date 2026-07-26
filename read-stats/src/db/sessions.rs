@@ -24,7 +24,10 @@ use sqlx::Row;
 pub struct ManualSession {
     pub id: i64,
     pub start_ts: f64,
-    pub end_ts: f64,
+    /// When the reading stopped, when it was actually timed. `None` for a
+    /// session logged without minutes; the duration is derived instead. See
+    /// `History::duration_of`.
+    pub end_ts: Option<f64>,
     pub chars: i64,
     pub source: String,
     pub work: Option<String>,
@@ -74,7 +77,7 @@ pub async fn fetch_sessions(
 #[derive(Debug, Default)]
 pub struct NewSession<'a> {
     pub start_ts: f64,
-    pub end_ts: f64,
+    pub end_ts: Option<f64>,
     pub chars: i64,
     pub source: &'a str,
     pub work: Option<&'a str>,

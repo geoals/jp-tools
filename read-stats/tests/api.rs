@@ -241,6 +241,103 @@ async fn pasted_text_counts_itself_and_outranks_the_estimate() {
 }
 
 #[tokio::test]
+async fn an_untimed_session_gets_its_minutes_from_the_readers_own_pace() {
+    let app = TestApp::new().await;
+    // Enough hooked reading to establish an effective pace: 800 lines, 20
+    // counted chars each, 5s apart — 16000 chars over ~4000s credited, which
+    // clears the one-hour floor and works out at ~4 chars/sec.
+    let base = today_start() - 3600.0 * 4.0;
+    for i in 0..800 {
+        app.add_line(
+            base + i as f64 * 5.0,
+            "あいうえおかきくけこさしすせそたちつてと",
+            None,
+        )
+        .await;
+    }
+
+    let (status, session) = app
+        .send(
+            "POST",
+            "/api/sessions",
+            json!({ "chars": 8000, "work": "時間を計っていない本" }),
+        )
+        .await;
+    assert_eq!(status, 200, "minutes are not required");
+    assert!(
+        session["end_ts"].is_null(),
+        "nothing measured, so nothing stored"
+    );
+
+    // 8000 chars at ~4 chars/sec is ~2000s. The assertion is a band, not a
+    // point: what must hold is that the estimate comes from the measured pace
+    // at all, not that the fixture's arithmetic is reproduced here.
+    let listed = app.get("/api/sessions").await;
+    let manual = &listed["manual"][0];
+    assert_eq!(manual["estimated"], true);
+    let secs = manual["active_secs"].as_f64().unwrap();
+    assert!(
+        (1500.0..2500.0).contains(&secs),
+        "derived from ~8000 chars at the measured pace, got {secs}s"
+    );
+    assert_eq!(
+        manual["end_ts"].as_f64().unwrap(),
+        manual["start_ts"].as_f64().unwrap() + secs,
+        "the span the client draws is the resolved one"
+    );
+
+    // And it reaches the day total, which is what the goal meter reads.
+    let s = app.get("/api/summary").await;
+    assert_eq!(s["today"]["manual"]["active_secs"].as_f64().unwrap(), secs);
+}
+
+#[tokio::test]
+async fn a_timed_session_keeps_the_time_it_was_given() {
+    let app = TestApp::new().await;
+    let (_, session) = app
+        .send(
+            "POST",
+            "/api/sessions",
+            json!({ "minutes": 45, "chars": 8000 }),
+        )
+        .await;
+    assert_eq!(
+        session["end_ts"].as_f64().unwrap() - session["start_ts"].as_f64().unwrap(),
+        2700.0
+    );
+
+    let manual = &app.get("/api/sessions").await["manual"][0];
+    assert_eq!(manual["estimated"], false, "measured, not derived");
+    assert_eq!(manual["active_secs"], 2700.0);
+
+    let (status, _) = app
+        .send(
+            "POST",
+            "/api/sessions",
+            json!({ "minutes": 0, "chars": 10 }),
+        )
+        .await;
+    assert_eq!(status, 400, "given, it still has to be a real duration");
+}
+
+#[tokio::test]
+async fn an_untimed_session_with_no_pace_behind_it_claims_no_time() {
+    // A fresh database has no reading to measure a pace from. The session is
+    // still logged — its characters are real — but it must not invent minutes
+    // that would land in the streak.
+    let app = TestApp::new().await;
+    let (status, _) = app
+        .send("POST", "/api/sessions", json!({ "chars": 8000 }))
+        .await;
+    assert_eq!(status, 200);
+
+    let manual = &app.get("/api/sessions").await["manual"][0];
+    assert_eq!(manual["estimated"], true);
+    assert_eq!(manual["active_secs"], 0.0);
+    assert_eq!(manual["chars"], 8000, "the characters still count");
+}
+
+#[tokio::test]
 async fn the_count_endpoint_agrees_with_what_a_session_stores() {
     let app = TestApp::new().await;
     let content = "本日は快晴なり、風もない。";

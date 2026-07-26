@@ -61,12 +61,20 @@ pub async fn list_sessions(
             with_cards(start, end, serde_json::to_value(s).unwrap())
         })
         .collect();
+    // A manual session's duration may be derived rather than recorded, so the
+    // span is resolved here and served alongside — the client is never handed
+    // a null `end_ts` and left to decide what it means.
     let manual: Vec<Value> = db::fetch_sessions(&state.knowledge, day_start, day_end)
         .await?
         .into_iter()
         .map(|s| {
-            let (start, end) = (s.start_ts, s.end_ts);
-            with_cards(start, end, serde_json::to_value(s).unwrap())
+            let (secs, estimated) = h.duration_of(&s);
+            let (start, end) = (s.start_ts, s.start_ts + secs);
+            let mut v = with_cards(start, end, serde_json::to_value(s).unwrap());
+            v["end_ts"] = json!(end);
+            v["active_secs"] = json!(secs);
+            v["estimated"] = json!(estimated);
+            v
         })
         .collect();
 
@@ -82,7 +90,10 @@ pub struct CreateSession {
     /// Day the session belongs to (defaults to today); ignored when start_ts given.
     pub date: Option<String>,
     pub start_ts: Option<f64>,
-    pub minutes: f64,
+    /// How long it took, when that is actually known. Omit it for reading that
+    /// was never timed — a book, an article on a phone — and the duration is
+    /// derived from the characters at your own recent pace instead.
+    pub minutes: Option<f64>,
     /// Exact character count; when absent, pages × chars_per_page is used.
     pub chars: Option<i64>,
     pub pages: Option<f64>,
@@ -99,7 +110,7 @@ pub async fn create_session(
     State(state): State<AppState>,
     Json(req): Json<CreateSession>,
 ) -> Result<Json<db::ManualSession>, AppError> {
-    if !(req.minutes > 0.0) {
+    if req.minutes.is_some_and(|m| !(m > 0.0)) {
         return Err(AppError::BadRequest("minutes must be > 0".into()));
     }
     let settings = db::load_settings(&state.local).await?;
@@ -125,7 +136,9 @@ pub async fn create_session(
             // mid-day anchor: rollover hour + 8h (12:00 local at the default 04)
             stats::day_start_ts(date, settings.day_rollover_hour, tz) + 8.0 * 3600.0
         }
-        (None, None) => now_ts() - req.minutes * 60.0,
+        // No date either: it was read up to now. An untimed session has no
+        // span to walk back, so it anchors at the moment it was logged.
+        (None, None) => now_ts() - req.minutes.unwrap_or(0.0) * 60.0,
     };
 
     let url = req.url.as_deref().filter(|u| !u.trim().is_empty());
@@ -140,7 +153,7 @@ pub async fn create_session(
         &state.knowledge,
         db::NewSession {
             start_ts,
-            end_ts: start_ts + req.minutes * 60.0,
+            end_ts: req.minutes.map(|m| start_ts + m * 60.0),
             chars,
             source: req.source.as_deref().unwrap_or(default_source),
             work: req.work.as_deref(),

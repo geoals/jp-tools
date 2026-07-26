@@ -58,7 +58,15 @@ pub struct History {
     pub manual: Vec<ManualSession>,
     /// Chars per second over undisputed gaps, across all history.
     pub pace: Option<f64>,
+    /// Chars per second over recent reading, interruptions included — what an
+    /// untimed session's duration is derived from. See [`Self::duration_of`].
+    pub effective_pace: Option<f64>,
 }
+
+/// How far back [`History::effective_pace`] looks. Recent enough to be the
+/// speed the untimed reading actually happened at, long enough to average over
+/// hard days and easy ones.
+const EFFECTIVE_PACE_DAYS: f64 = 30.0;
 
 impl History {
     pub async fn load(state: &AppState) -> Result<Self, AppError> {
@@ -85,6 +93,14 @@ impl History {
         let manual = db::fetch_sessions(&state.knowledge, 0.0, f64::MAX).await?;
 
         let pace = stats::measure_pace(&lines, &marks, settings.afk_secs);
+        // Needs the presence rule, which needs the pace — so it is built here
+        // rather than in the struct literal below.
+        let effective_pace = stats::measure_effective_pace(
+            &lines,
+            &Presence::new(&marks, pace, settings.afk_secs),
+            settings.session_gap_secs,
+            now_ts() - EFFECTIVE_PACE_DAYS * 86400.0,
+        );
 
         Ok(History {
             settings,
@@ -97,7 +113,32 @@ impl History {
             note_ids,
             manual,
             pace,
+            effective_pace,
         })
+    }
+
+    /// How long a manually logged session took, and whether that is a measured
+    /// number or an estimate.
+    ///
+    /// A logged session may carry no duration at all: a book or an article is
+    /// read without a stopwatch, and requiring a minute count only produces
+    /// invented ones. When `end_ts` is absent the time is derived from the
+    /// characters at the reader's own recent effective pace — the same "derive
+    /// it, don't store it" rule the rest of the dashboard follows, so the
+    /// estimate improves as the measured pace does.
+    ///
+    /// Zero when there is no pace to divide by yet. That is deliberately not a
+    /// guess: with no measured reading behind it, any duration here would be a
+    /// number nobody could account for, and it would land in the goal meter and
+    /// the streak.
+    pub fn duration_of(&self, s: &db::ManualSession) -> (f64, bool) {
+        match s.end_ts {
+            Some(end) => ((end - s.start_ts).max(0.0), false),
+            None => match self.effective_pace {
+                Some(p) if p > 0.0 => (s.chars as f64 / p, true),
+                _ => (0.0, true),
+            },
+        }
     }
 
     /// The one presence rule, with the one pace. Everything that credits gap
@@ -174,7 +215,7 @@ impl History {
         for s in &self.manual {
             let day = manual.entry(self.date_of(s.start_ts)).or_default();
             day.chars += s.chars;
-            day.active_secs += (s.end_ts - s.start_ts).max(0.0);
+            day.active_secs += self.duration_of(s).0;
         }
         (vn, manual)
     }

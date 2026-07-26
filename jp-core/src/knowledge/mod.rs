@@ -134,8 +134,49 @@ impl Knowledge {
                 .await?;
             }
         }
+        // `manual_sessions.end_ts` was NOT NULL when every session carried a
+        // minute count. SQLite cannot drop a NOT NULL in place, so the table is
+        // rebuilt — the one case in this file that needs more than an ALTER.
+        // Existing rows keep their `end_ts`: they *were* timed, and a real
+        // duration must never be replaced by an estimate.
+        if column_is_not_null(&self.0, "manual_sessions", "end_ts").await? {
+            sqlx::raw_sql(
+                "BEGIN;\
+                 CREATE TABLE manual_sessions_new (\
+                     id INTEGER PRIMARY KEY, start_ts REAL NOT NULL, end_ts REAL,\
+                     chars INTEGER NOT NULL, source TEXT NOT NULL DEFAULT 'book',\
+                     work TEXT, pages REAL, note TEXT, content TEXT, url TEXT);\
+                 INSERT INTO manual_sessions_new \
+                     SELECT id, start_ts, end_ts, chars, source, work, pages, note, content, url \
+                     FROM manual_sessions;\
+                 DROP TABLE manual_sessions;\
+                 ALTER TABLE manual_sessions_new RENAME TO manual_sessions;\
+                 CREATE INDEX IF NOT EXISTS idx_manual_sessions_start_ts \
+                     ON manual_sessions(start_ts);\
+                 COMMIT;",
+            )
+            .execute(&self.0)
+            .await?;
+        }
         Ok(())
     }
+}
+
+/// Whether `table.column` is declared NOT NULL. Used to detect a schema that
+/// predates a column being made optional, which SQLite can only fix by
+/// rebuilding the table.
+async fn column_is_not_null(
+    pool: &SqlitePool,
+    table: &str,
+    column: &str,
+) -> Result<bool, sqlx::Error> {
+    let rows = sqlx::query(&format!("PRAGMA table_info({table})"))
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.iter().any(|r| {
+        let name: &str = r.get("name");
+        name == column && r.get::<i64, _>("notnull") != 0
+    }))
 }
 
 pub async fn has_column(pool: &SqlitePool, table: &str, column: &str) -> Result<bool, sqlx::Error> {
