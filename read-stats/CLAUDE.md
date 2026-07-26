@@ -44,7 +44,7 @@ much of a gap counts as reading is the decision everything else is built on.
 
 | | |
 |---|---|
-| `knowledge.db` | shared, schema owned by `jp_core::knowledge`: `lines`, `works`, `manual_sessions`, `anki_notes`, `word_days`, `lookups`, and the dictionary cache |
+| `knowledge.db` | shared, schema owned by `jp_core::knowledge`: `lines`, `works`, `manual_sessions`, `anki_notes`, `word_days`, `lookups`, `vocabulary`, and the dictionary cache |
 | `read-stats.db` | this app's own: `settings`, `reader_marks`, `work_covers` |
 
 The split is `spec/knowledge-db.md`'s: what is *about the reading* is shared,
@@ -100,7 +100,21 @@ taught to `vn-capture.sh`.
   reports that pace back exactly; in a speed chart it would be measuring its
   own output. Totals, goals and streaks still count everything read.
 - **Anki owns mined-state.** `anki_notes` is a snapshot, replaced wholesale.
-  Never write back.
+  Never write back. The same applies one layer up: `vocabulary.mined` is
+  recomputed from that snapshot on every refresh, and is a flag *beside*
+  `status`, never written into it.
+- **Only the reader writes `vocabulary.status`.** Not ingest, not the Anki
+  sync, not the lookup sync — a resync must never demote a word marked known,
+  and an encounter count must never promote one (`spec/cold-start.md` Pass 4).
+  If you add a writer to that column, it needs a person behind it.
+- **Each ingest sink has its own watermark.** One tokenization pass fills both
+  `word_days` and the ledger, but `tokenized_through_line_id` and
+  `vocab_through_line_id` move independently (and the same pair for sessions).
+  Both sinks are additive and neither is idempotent, so a row goes to a sink
+  only when its id is past *that sink's* mark. That is what lets
+  `POST /api/vocab/rebuild` re-derive the ledger from the full history without
+  double-counting a single day — and it is the repair path for any future
+  re-tokenization.
 - **Note ids are epoch milliseconds.** That is why a card's creation time needs
   no extra column, and why the id list is kept sorted.
 - **Only engagement actions leave `reader_marks`.** Explain does; clear

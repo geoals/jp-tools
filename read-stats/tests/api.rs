@@ -626,6 +626,36 @@ async fn the_mining_funnel_sorts_terms_into_mined_known_and_unmined() {
 }
 
 #[tokio::test]
+async fn the_vocabulary_scale_counts_master_terms_not_ledger_rows() {
+    let app = TestApp::new().await;
+    // Two known words, but only one of them is vocabulary: the other is a
+    // phrase Jitendex happens to give a headword to. The scale must not count
+    // it — that is the whole reason `in_master` exists (spec/knowledge-db.md).
+    sqlx::query(
+        "INSERT INTO vocabulary (headword, reading, status, in_master) VALUES \
+             ('読む', 'よむ', 'known', 1), ('ああ見えても', '', 'known', 0), \
+             ('憂鬱', 'ゆううつ', 'new', 1), ('五月蝿い', 'うるさい', 'unknown', 1)",
+    )
+    .execute(app.knowledge.pool())
+    .await
+    .unwrap();
+
+    let v = app.get("/api/vocab/summary").await;
+    assert_eq!(v["total"], 4, "every row, whatever its status");
+    assert_eq!(v["known_in_master"], 1, "known *and* vocabulary");
+
+    let known = v["by_status"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["status"] == "known")
+        .unwrap()
+        .clone();
+    assert_eq!(known["total"], 2);
+    assert_eq!(known["in_master"], 1);
+}
+
+#[tokio::test]
 async fn dialogue_splits_a_line_by_its_corner_brackets() {
     let app = TestApp::new().await;
     let base = today_start() + 3600.0;

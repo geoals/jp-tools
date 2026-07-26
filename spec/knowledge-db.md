@@ -2,10 +2,10 @@
 
 > **Status: current architecture (2026-07).** Unlike the other files in `spec/`
 > (which are the superseded pre-implementation design), this describes how the
-> code is actually organised. The database layout, the `role` column and the
-> module boundaries below are **built**; the `vocabulary` ledger, the
-> `encounters` log and the `#read` highlighter are **not** — see *Migration
-> notes* at the end for exactly where the line falls.
+> code is actually organised. The database layout, the `role` column, the
+> module boundaries and the `vocabulary` ledger below are **built**; the
+> `#read` highlighter and the triage UI that fills the ledger's `status` are
+> **not** — see *Migration notes* at the end for exactly where the line falls.
 
 ## The two-axis model
 
@@ -51,6 +51,20 @@ The ledger is keyed on a canonical **`(headword, reading)`** pair, not on
 per-dictionary entries and not on raw tokens. Establishing that identity
 requires the dictionary layer, which is why dictionaries and the knowledge
 ledger are **one subsystem** (owned by `jp-core`), not separable data.
+
+The reading is in the key because a homograph is two words: 空 is そら or から,
+辛い is からい or つらい, and marking one known must not mark the other. Over
+the reading history so far that is 667 headwords carrying more than one
+reading — not an edge case. `Term::new` is the only way to build the key, and
+it applies two normalizations without which two writers would disagree about
+which row they mean:
+
+- **Readings fold to hiragana** (`jp_core::text::kana`). Sudachi emits katakana
+  (ヨム), every Yomitan dictionary holds hiragana (よむ), and the ledger joins
+  them.
+- **A kana-only headword stores an empty reading.** There the two strings are
+  the same fact; storing both would make ください depend on which writer got
+  there first.
 
 Three jobs all need the dictionaries:
 
@@ -99,9 +113,47 @@ snapshot (the pattern read-stats' `services/anki.rs` already uses: `notesInfo` �
 highlighting; a resync fixes drift. No new write paths — yt/manga/Yomitan just
 make cards, Anki holds that fact.
 
-The ledger owns only what Anki can't tell you: lookup counts, encounter counts,
-and derived status (`unseen` / `seen` / `learning` / `known` / `blacklisted` /
-`name`).
+**Mined is a flag, not a status.** `vocabulary.mined` sits beside `status`
+rather than being written into it. A freshly mined word is `mined = 1,
+status = 'new'`, which is accurate — it was mined *because* it wasn't known —
+and it means a resync can never demote a word the reader marked known. Each
+feature picks its own rule over the pair; `VocabRow::is_known` is the default,
+not the law.
+
+Both wholesale syncs match on **headword alone**, because that is all their
+sources have: Anki's VocabKanji field and Yomitan's AnkiConnect request are
+dictionary forms with no reading beside them. A homograph therefore takes its
+mined flag and its lookup count across all its readings. That is the honest
+limit of the source rather than a guess, and it fails safe for the highlighter
+(a mined word is not highlighted). The fix, if it ever matters, is a reading on
+the card.
+
+### Status is assertions only
+
+`status` holds what the reader has said and nothing else:
+
+| | |
+|---|---|
+| `new` | ingested from reading, never judged — **the default** |
+| `known` | I know this word |
+| `unknown` | I looked at it and I don't |
+| `learning` | actively being learned (set by hand, never by the Anki sync) |
+| `blacklisted` | never surface this again |
+| `name` | a proper noun, not vocabulary |
+
+`new` is kept distinct from `unknown` deliberately. The two are the same to
+i+1 counting and to the highlighter, so it would be tempting to collapse them —
+but once ingest has written `unknown` across every word ever read, no later
+migration can reconstruct which of them were actually judged. That distinction
+is what makes cold-start.md's Pass 4 ("seen 12 times, never judged, do you know
+it?") and the seed page's progress figure answerable at all. It costs one extra
+allowed value in a TEXT column.
+
+No writer other than the reader touches `status` — not ingest, not the Anki
+sync, not the lookup sync. Encountering a word again says nothing about whether
+it is known, which is exactly Pass 4's caveat; auto-promotion on encounter
+count is the one thing cold-start.md rules out, and the schema is arranged so
+it can't happen by accident.
 
 ## Encounters are implicit — counts live on the ledger row
 
@@ -112,10 +164,22 @@ content — see below). Storing a derived copy violates "don't store what you ca
 derive."
 
 Instead, the `vocabulary` ledger row carries running aggregates —
-`encounter_count`, `lookup_count`, `last_seen_ts` — incremented by the same
-incremental ingest that tokenizes new lines today (`read-stats/src/ingest.rs`,
-watermarked on `settings`). This is what the planned `#read` highlighter needs:
-an O(1) per-token status lookup, viable to run as each line arrives.
+`encounter_count`, `lookup_count`, `first_seen`, `last_seen` — written by the
+same ingest that tokenizes new lines (`read-stats/src/ingest.rs`, watermarked
+on `settings`). This is what the planned `#read` highlighter needs: an O(1)
+per-token status lookup, viable to run as each line arrives.
+
+**Each sink has its own watermark.** `word_days` and the ledger are filled by
+one tokenization pass but tracked separately (`tokenized_through_line_id` vs
+`vocab_through_line_id`, and the same pair for sessions). That is what made the
+ledger backfillable at all: it arrived 11,859 lines into a history `word_days`
+had already counted, so it had to be filled from text one sink was done with —
+and a single shared watermark would have forced a choice between an empty
+ledger and double-counted days. Both sinks are additive and neither is
+idempotent, so the rule is absolute: a row is written to a sink only when its
+id is past *that sink's* watermark. `POST /api/vocab/rebuild` rewinds the
+ledger's pair alone, which is also the repair path for any future
+re-tokenization (a Sudachi upgrade, a change to `is_content_word`).
 
 The highlighter reads the ledger's aggregate counts + status per token — no
 history scan. Any dashboard stat that a plain count can't answer (e.g. "mined
@@ -141,10 +205,10 @@ dimension that feed it. Everything here is dictionary-gated or joins the ledger.
 - `dictionaries` (+ **role** column), `dictionary_entries`, `dictionary_pitch`,
   `dictionary_frequency` — *moved here 2026-07*.
 - `vocabulary` — the ledger, one row per `(headword, reading)`: status, mined
-  flag, aggregate counts. *Still the empty stub in `yt-mine.db`; this design replaces it rather than
-  moving it.*
-- `encounters` — append-only, per-term, tagged `source_type` + `source_title` +
-  `ts`. Generalizes today's VN-only `lookups`. *Planned.*
+  flag, aggregate counts, dictionary flags. *Built 2026-07-26.* The empty stub
+  that sat in `yt-mine.db` is superseded, not moved: it was keyed on lemma
+  alone and carried a `user_id` this workspace has no use for. yt-mine's
+  `routes/vocab` still writes that stub and is the next consumer to migrate.
 - `anki_notes` — mined-deck snapshot mirror. *Moved here 2026-07.*
 - `word_days` — per-day content-word counts from the line stream. *Moved here 2026-07.*
 - `works` — the **source dimension** of encounters (a VN/video/book is a
@@ -234,11 +298,32 @@ Done (2026-07-25):
    schema and plumbing, waiting for the denominator that needs it.
 3. ✅ `sessions` → `manual_sessions`.
 
+Done (2026-07-26):
+
+4. ✅ The `vocabulary` ledger exists and is populated
+   (`jp_core::knowledge::vocabulary`, migration `005`). Ingest is
+   reading-aware; the three wholesale syncs (mined, lookup counts, dictionary
+   flags) run after every Anki refresh; `POST /api/vocab/rebuild` backfills
+   from the whole history. First backfill, 2026-07-26: 7,949 terms from 10,649
+   lines + 1 session, 6,347 of them master-dictionary vocabulary.
+
 Not done, in dependency order:
 
-4. Build the `encounters` log; generalize `lookups`' source tag; populate
-   `vocabulary`.
-5. Wire the wordhood gate + status lookup into read-stats' `#read` highlighter.
+5. **Triage** — the UI that fills `status`. Nothing asserts anything yet, so
+   every row is `new` and no downstream feature can distinguish known from
+   unknown. This is `spec/cold-start.md`'s passes 1–3, and it is the gate on
+   everything below.
+6. **Anki import (Pass 1) as its own pass.** The mined sync only *flags rows
+   that exist*, and a mined word never met in the line stream has no row: at
+   the first backfill, 431 of 1,995 deck words matched. The rest are multi-word
+   expressions Sudachi never emits whole (腹を探る, 相好を崩す) and words mined
+   from yt/manga rather than read. Importing the deck directly has to resolve a
+   reading per note against the master dictionary — Anki has none — which is
+   why it is a pass of its own and not a line in the sync.
+7. Wire the wordhood gate + status lookup into read-stats' `#read` highlighter.
+8. Migrate yt-mine's `routes/vocab` off its own `yt-mine.db` stub onto this
+   ledger — the second consumer, and what makes "how many unknown words are in
+   this video" answerable.
 
 ### Where the queries live
 

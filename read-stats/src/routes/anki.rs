@@ -51,12 +51,16 @@ pub async fn anki_refresh(
     db::save_setting(&state.local, "anki_source", &source).await?;
     let ingest = crate::ingest::ingest_new_lines(&state).await?;
     let session_ingest = crate::ingest::ingest_new_sessions(&state).await?;
+    // After the ingest, never before: the syncs mark rows the ingest may have
+    // only just created.
+    let mined = crate::ingest::sync_vocabulary(&state).await?;
 
     Ok(Json(json!({
         "notes": notes.len(),
         "source": source,
         "ingest": ingest,
         "session_ingest": session_ingest,
+        "mined_terms": mined,
     })))
 }
 

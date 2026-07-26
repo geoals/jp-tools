@@ -8,7 +8,8 @@ Cargo workspace for Japanese language learning tools.
   `scripts/gen-bccwj-table.py`), `tokenize`
   (Sudachi, hybrid Mode C/B with dictionary validation), `dictionary` (Yomitan
   zip parsing), and `knowledge` — the schema and handle for the shared
-  `knowledge.db`
+  `knowledge.db`, including `knowledge::vocabulary`, the ledger of what is
+  known
 - `jp-mine-core/` — shared mining back half: dictionary lookup, card formatting, AnkiConnect export (used by yt-mine and manga-mine)
 - `yt-mine/` — YouTube sentence mining (Axum JSON API + Preact SPA, SQLite, Anki export). See `yt-mine/CLAUDE.md`
 - `manga-mine/` — physical manga sentence mining (photo inbox → crop → OCR → Anki, stateless). See `manga-mine/CLAUDE.md`
@@ -28,14 +29,29 @@ Cargo workspace for Japanese language learning tools.
 
 | file | holds | owner |
 |---|---|---|
-| `knowledge.db` | dictionary cache (+ role), `works`, `lines`, `manual_sessions`, `anki_notes`, `word_days`, `lookups` | `jp_core::knowledge` |
+| `knowledge.db` | dictionary cache (+ role), `works`, `lines`, `manual_sessions`, `anki_notes`, `word_days`, `lookups`, `vocabulary` | `jp_core::knowledge` |
 | `read-stats.db` | `settings`, `reader_marks`, `work_covers` | read-stats |
 | `yt-mine.db` | `mining_jobs`, `mining_sentences` | yt-mine |
 
 All under `~/.local/share/jp-tools/`. The split is by what the data *is*, not
 by which app wrote it first: anything other tools will ask questions of —
-what has been read, what has been looked up, what the dictionaries say — is
-shared. `spec/knowledge-db.md` has the reasoning.
+what has been read, what has been looked up, what the dictionaries say, what is
+known — is shared. `spec/knowledge-db.md` has the reasoning.
+
+`vocabulary` is the newest of those and the one everything planned depends on:
+one row per `(headword, reading)`, carrying the reader's asserted `status`, a
+`mined` flag mirrored from Anki, and running encounter/lookup counts. Two rules
+about it are worth knowing before touching any of it:
+
+- **Only the reader writes `status`.** Ingest and all three syncs leave it
+  alone, so re-syncing can never demote a word and encounter counts can never
+  auto-promote one (`spec/cold-start.md` Pass 4 rules that out explicitly).
+- **`new` ≠ `unknown`.** `new` means never judged. Collapsing them is
+  irreversible and breaks the triage progress figure and the "seen often, never
+  judged" review query.
+
+yt-mine still writes an older, lemma-keyed `vocabulary` stub in its own
+database; it is superseded and awaiting migration onto this one.
 
 ## Working here
 

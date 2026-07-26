@@ -12,6 +12,8 @@
 //! - [`dialogue`] — splitting a line into spoken dialogue and narration by
 //!   corner-bracket depth.
 //! - [`sentences`] — segmenting a block of text into sentences.
+//! - [`kana`] — katakana/hiragana normalization, so a Sudachi reading and a
+//!   dictionary reading are the same string.
 //! - [`kanji`] — which codepoints are kanji, and the grade/frequency reference
 //!   tables behind the kanji statistics: KANJIDIC's school grades and
 //!   newspaper ranks, plus BCCWJ's balanced-corpus counts.
@@ -19,6 +21,7 @@
 mod bccwj_data;
 pub mod chars;
 pub mod dialogue;
+pub mod kana;
 pub mod kanji;
 mod kanji_data;
 pub mod sentences;

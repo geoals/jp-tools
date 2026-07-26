@@ -10,7 +10,8 @@ use tower_http::set_header::SetResponseHeaderLayer;
 
 use crate::routes::ankiproxy;
 use crate::routes::{
-    anki, days, dialogue, kanji, lookups, reader, sessions, settings, summary, timeline, works,
+    anki, days, dialogue, kanji, lookups, reader, sessions, settings, summary, timeline, vocab,
+    works,
 };
 
 const SPA_HTML: &str = include_str!("../templates/spa.html");
@@ -68,6 +69,11 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/api/anki/refresh", axum::routing::post(anki::anki_refresh))
         .route("/api/anki/summary", get(anki::anki_summary))
+        .route("/api/vocab/summary", get(vocab::vocab_summary))
+        .route(
+            "/api/vocab/rebuild",
+            axum::routing::post(vocab::vocab_rebuild),
+        )
         .route("/api/lookups/summary", get(lookups::lookups_summary))
         .route("/api/kanji", get(kanji::kanji))
         .route("/api/dialogue/summary", get(dialogue::dialogue_summary))

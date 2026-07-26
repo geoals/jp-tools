@@ -15,6 +15,7 @@
 //! | [`lookups`] | `/api/lookups/summary` — the mining funnel |
 //! | [`kanji`] | `/api/kanji` — every kanji read, and how well each is known |
 //! | [`anki`] | `/api/anki/*` — deck snapshot + re-encounter stats |
+//! | [`vocab`] | `/api/vocab/*` — the knowledge ledger: status counts, rebuild |
 //! | [`settings`] | `/api/settings`, `/api/pause` |
 //! | [`reader`] | the `#read` view: line feed, mine, explain |
 
@@ -30,4 +31,5 @@ pub mod sessions;
 pub mod settings;
 pub mod summary;
 pub mod timeline;
+pub mod vocab;
 pub mod works;

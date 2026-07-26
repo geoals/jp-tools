@@ -6,6 +6,8 @@
 //! - the dictionary cache ([`dictionaries`]) — terms, readings, pitch, frequency
 //! - the reading record — `works`, `lines`, `manual_sessions`, `anki_notes`,
 //!   `word_days`, `lookups`
+//! - the knowledge ledger ([`vocabulary`]) — one row per term: what I know,
+//!   what I have met, and how often
 //!
 //! These belong together because term identity is **dictionary-gated**: "is this
 //! token a word", "what is its canonical `(headword, reading)`", and "is it a
@@ -31,6 +33,7 @@
 //! move, and the tables will not have to.
 
 pub mod dictionaries;
+pub mod vocabulary;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{Row, SqlitePool};
@@ -39,6 +42,7 @@ const MIGRATION_DICT: &str = include_str!("../../migrations/knowledge/001_dictio
 const MIGRATION_PITCH: &str = include_str!("../../migrations/knowledge/002_pitch.sql");
 const MIGRATION_FREQ: &str = include_str!("../../migrations/knowledge/003_frequency.sql");
 const MIGRATION_READING: &str = include_str!("../../migrations/knowledge/004_reading.sql");
+const MIGRATION_VOCAB: &str = include_str!("../../migrations/knowledge/005_vocabulary.sql");
 
 /// A connection pool for `knowledge.db`.
 ///
@@ -91,6 +95,7 @@ impl Knowledge {
             MIGRATION_PITCH,
             MIGRATION_FREQ,
             MIGRATION_READING,
+            MIGRATION_VOCAB,
         ] {
             sqlx::raw_sql(sql).execute(&self.0).await?;
         }
@@ -219,6 +224,7 @@ mod tests {
             "anki_notes",
             "word_days",
             "lookups",
+            "vocabulary",
         ] {
             let count: (i64,) = sqlx::query_as(&format!("SELECT COUNT(*) FROM {table}"))
                 .fetch_one(k.pool())
