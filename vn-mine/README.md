@@ -71,14 +71,12 @@ Read the line → look things up → create the Anki card → **press the hotkey
 before advancing** (a new hooked line becomes "the last line"). Click back to
 the VN window first so the screenshot captures it.
 
-Reading from a phone instead? read-stats' `#read` view shows the same line feed
-over the LAN, and read-stats' Anki proxy runs this script on every card add —
-  the VN never loses
-desktop focus that way, so the "click back first" step disappears.
+read-stats' `#read` view shows the same line feed and runs this script itself
+on every card add, so there is no hotkey to press there.
 
 Set `VN_WINDOW` (or the current work's window in read-stats) and the "click back
-first" step disappears on the desktop too: the screenshot then targets the VN
-window directly instead of whatever happens to be focused.
+first" step disappears: the screenshot then targets the VN window directly
+instead of whatever happens to be focused.
 
 The voiceline anchor is the moment Textractor hooks the line (a re-hook of the
 line still on screen — a double-fire — does not move it). The audio must still
@@ -87,6 +85,14 @@ no speech is detected in the window, the note gets the screenshot only (no
 audio) and a warning notification says so — usual causes are an unvoiced line,
 a stale anchor, or audio playing on a different output than the one the daemon
 recorded (restart vn-buffer after switching outputs).
+
+The trimmed clip is then checked twice more before it is attached, because
+silero is stateful and a loud transient partway through the window can cross
+the threshold on state the preceding audio warmed up: the clip has to peak
+above `VN_MIN_PEAK_DB`, and it has to still read as speech when the model
+scores it on its own from a cold state. Either failing makes the capture
+screenshot-only. Measured over a day of mining, voiced clips score ~1.00
+standalone; the sound effect that prompted the check scored 0.35.
 
 - The daemon binds the default sink at startup — `systemctl --user restart
   vn-buffer` after switching audio outputs. Safe to do with Textractor open —
@@ -97,15 +103,14 @@ recorded (restart vn-buffer after switching outputs).
 - `VN_JSON=1 ./vn-capture.sh` — print a result object
   (`{ok, note_id, duration, note, line}` or `{ok: false, error}`) on stdout and
   suppress every `notify-send`. This is how read-stats' `#read` view runs the
-  script when you mine from your phone, where a desktop notification would go
-  unseen; see `read-stats/README.md`.
+  script — the result goes back to the browser that mined, which may not be on
+  this desktop; see `read-stats/README.md`.
 - `VN_WINDOW` — substring of the VN window's title (e.g. `素晴らしき日々`).
   When set, the screenshot is taken of *that window by id* rather than of
   whatever has focus, so it stays correct no matter what was focused when the
   capture fired. Needed to mine from read-stats' `#read` page in a browser on
   this machine — the browser is focused at that moment, so the default would
-  capture the browser. (From a phone it doesn't matter: the VN never loses
-  focus here.) Requires `xdotool` and ImageMagick's `import`; Wine/Proton
+  capture the browser. Requires `xdotool` and ImageMagick's `import`; Wine/Proton
   windows are XWayland, so this works under a Wayland session even though
   `xdotool getactivewindow` does not. Unset, unmatched, or missing tools fall
   back to the active window and say so in the result. **Unset, it falls back to
@@ -116,8 +121,15 @@ recorded (restart vn-buffer after switching outputs).
   *Currently reading* card (under **edit**), which offers a picker of open
   windows. Because it's tied to the work, switching VNs switches the capture
   target with it — no second place to keep in sync.
-- `VN_MAX_LEN` (default 20) — max seconds considered after the line appears.
+- `VN_MAX_LEN` (default 10) — max seconds considered after the line appears.
+  No voiceline runs that long; a wider window only gives a false positive more
+  room to be found in.
 - `VN_VAD_THRESHOLD` (default 0.5) — raise if BGM vocals leak in, lower if
   quiet lines get cut.
+- `VN_VAD_MIN_SPEECH` (default 0.5) — ignore detected speech shorter than this.
+  Above the length of a sound effect, below the length of even a one-word line.
+- `VN_MIN_PEAK_DB` (default -25) — reject a clip whose peak never reaches this.
+  A silence floor, not a voice test: real voicelines peak around -6 to -16
+  dBFS, but so do sound effects.
 - `VN_WHISPER_URL` (default `http://localhost:8100`) — whisper-service used
   for the sentence trim. If unreachable, clips are attached untrimmed.

@@ -8,9 +8,11 @@
 # Env: VN_DRY=1        build the clip + screenshot but skip Anki, keep files
 #                      (also skips the sentence trim — it needs the note)
 #      VN_JSON=1       print a JSON result object instead of notifying the
-#                      desktop — for read-stats' reader view, where the person
-#                      pressing the button is on their phone
-#      VN_MAX_LEN=20   max seconds of audio considered after the line appears
+#                      desktop — for read-stats' reader view, which shows the
+#                      result in the browser that mined
+#      VN_MAX_LEN=10   max seconds of audio considered after the line appears
+#      VN_MIN_PEAK_DB  reject a clip whose peak is quieter than this (default
+#                      -25 dBFS — a silence floor, not a voice test)
 #      VN_WHISPER_URL  whisper-service for sentence trim (default :8100)
 #      VN_WINDOW       name (substring) of the VN's window — capture it by id
 #                      instead of whatever has focus. Needed when mining from
@@ -23,7 +25,10 @@ BPS=192000 # 48000 Hz * 2 ch * 2 bytes/sample
 WAV_HDR=44 # bytes; vn-buffer.sh records with -fflags +bitexact
 PRE_PAD=0.30
 POST_PAD=0.25
-MAX_LEN="${VN_MAX_LEN:-20}"
+# 10s, not 20: a voiceline that long doesn't exist, so the extra ten seconds
+# only ever widen the window a false positive can be found in.
+MAX_LEN="${VN_MAX_LEN:-10}"
+MIN_PEAK_DB="${VN_MIN_PEAK_DB:--25}"
 ANKI_CONNECT_URL="http://localhost:8765"
 WHISPER_URL="${VN_WHISPER_URL:-http://localhost:8100}"
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
@@ -89,8 +94,7 @@ LINE_TEXT=${LAST_LINE#*$'\t'}
 # === SCREENSHOT (capture the window state at the moment of the press) ===
 # `spectacle -a` grabs whatever has focus, which is only the VN when the hotkey
 # was pressed with the VN focused. Mining from read-stats' #read page focuses
-# the browser instead — on the phone that's a different machine so the VN keeps
-# focus, but from a browser on this PC it would capture the browser.
+# the browser instead, so the default would capture the browser.
 #
 # VN_WINDOW sidesteps focus entirely: find the VN's window by name and grab it
 # by id. Wine/Proton windows are XWayland, so xdotool can still address them
@@ -102,7 +106,9 @@ VN_WID=""
 if [ -n "$VN_WINDOW" ]; then
   if command -v xdotool &>/dev/null && command -v import &>/dev/null; then
     VN_WID=$(xdotool search --name "$VN_WINDOW" 2>/dev/null | head -n 1)
-    [ -n "$VN_WID" ] && import -window "$VN_WID" "$TMP/$SCREENSHOT_FILE" 2>/dev/null
+    # -silent: import rings the X bell around every capture, which Plasma turns
+    # into an audible system beep — one per mine, while reading.
+    [ -n "$VN_WID" ] && import -silent -window "$VN_WID" "$TMP/$SCREENSHOT_FILE" 2>/dev/null
     if [ ! -s "$TMP/$SCREENSHOT_FILE" ]; then
       SHOT_NOTE=" (⚠ no window matching '$VN_WINDOW' — captured the focused window)"
     fi
@@ -161,17 +167,29 @@ CLIP_BYTES=$(stat -c %s "$TMP/clip.raw")
 # window is still the best guess and gets attached as before.
 TRIM_NOTE=""
 NO_AUDIO=""
-if [ -x "$VAD_PYTHON" ] && [ -f "$VAD_SCRIPT" ]; then
+
+# 16 kHz mono WAV of the current clip — what both VAD passes want.
+vad_wav() { # out.wav
   ffmpeg -nostdin -loglevel error -f s16le -ar 48000 -ac 2 -i "$TMP/clip.raw" \
-    -ac 1 -ar 16000 -c:a pcm_s16le "$TMP/vad.wav" -y
+    -ac 1 -ar 16000 -c:a pcm_s16le "$1" -y
+}
+
+# Give up on the audio and keep the screenshot. $1 is the short reason for the
+# card note, $2 the longer one for the desktop; in JSON mode the note is all
+# that comes back, since nobody is looking at this desktop.
+drop_audio() { # short long
+  NO_AUDIO=1
+  TRIM_NOTE=" ($1 — screenshot only)"
+  [ -z "$VN_JSON" ] && notify-send "⚠️ VN Mine" "$2
+If the line was voiced, check the audio output or press sooner after it plays."
+}
+
+if [ -x "$VAD_PYTHON" ] && [ -f "$VAD_SCRIPT" ]; then
+  vad_wav "$TMP/vad.wav"
   VAD_OUT=$("$VAD_PYTHON" "$VAD_SCRIPT" "$TMP/vad.wav" 2>"$TMP/vad.err")
   if [ "$VAD_OUT" == "none" ]; then
-    NO_AUDIO=1
-    TRIM_NOTE=" (no speech detected — screenshot only)"
-    # In JSON mode the warning rides back on the result instead: nobody is
-    # looking at this desktop.
-    [ -z "$VN_JSON" ] && notify-send "⚠️ VN Mine" "No speech detected in the ${MAX_LEN}s after the hooked line — attaching the screenshot only.
-If the line was voiced, check the audio output or press sooner after it plays."
+    drop_audio "no speech detected" \
+      "No speech detected in the ${MAX_LEN}s after the hooked line."
   elif [ -z "$VAD_OUT" ]; then
     TRIM_NOTE=" (⚠ VAD failed — kept full window)"
     [ -z "$VN_JSON" ] && notify-send -u critical "⚠️ VN Mine" "VAD script failed — attaching the untrimmed window.
@@ -189,6 +207,36 @@ $(tail -n 1 "$TMP/vad.err" 2>/dev/null)"
       }')"
     tail -c "+$((TRIM_SKIP + 1))" "$TMP/clip.raw" | head -c "$TRIM_LEN" >"$TMP/clip2.raw"
     mv "$TMP/clip2.raw" "$TMP/clip.raw"
+
+    # === CONFIRM THE TRIM ===
+    # Two checks on what actually came out, because the pass above judged it
+    # inside the whole window and both failure modes only show up once the
+    # clip stands alone.
+    #
+    # Silence floor: a clip that never rises above MIN_PEAK_DB is room tone.
+    # This does not separate voice from sound effects — measured over a day of
+    # mining, real voicelines peak between -6 and -16 dBFS and the sound effect
+    # that prompted this peaked at -15 — it only catches a window that holds
+    # nothing at all.
+    PEAK_DB=$(ffmpeg -nostdin -f s16le -ar 48000 -ac 2 -i "$TMP/clip.raw" \
+      -af volumedetect -f null - 2>&1 | grep -oE 'max_volume: -?[0-9.]+' | grep -oE '\-?[0-9.]+$')
+    if [ -n "$PEAK_DB" ] && LC_ALL=C awk -v p="$PEAK_DB" -v min="$MIN_PEAK_DB" \
+      'BEGIN { exit !(p < min) }'; then
+      drop_audio "clip is silent (${PEAK_DB} dBFS)" \
+        "The ${MAX_LEN}s after the hooked line peak at only ${PEAK_DB} dBFS — there is nothing on the clip."
+    else
+      # Cold re-run. silero is stateful, so a loud transient partway through a
+      # long window can cross the threshold on state warmed by the preceding
+      # audio; scored on its own from a zero state the same clip does not.
+      # That is the check that actually separates the two — over the same day's
+      # clips, every voiced one peaks at ~1.00 confidence standalone and the
+      # sound effect reached 0.35.
+      vad_wav "$TMP/vad2.wav"
+      if [ "$("$VAD_PYTHON" "$VAD_SCRIPT" "$TMP/vad2.wav" 2>/dev/null)" == "none" ]; then
+        drop_audio "no speech on its own" \
+          "What VAD found in the ${MAX_LEN}s after the hooked line does not read as speech on its own — a sound effect, most likely."
+      fi
+    fi
   fi
 else
   TRIM_NOTE=" (VAD unavailable — kept full window)"

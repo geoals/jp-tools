@@ -4,7 +4,8 @@
 # Prints "FIRST_START LAST_END" in seconds, or "none" if no speech found.
 # With --segments: one "START END" line per speech segment, finer merging —
 # used by vn-trim.py to snap sentence cuts to real silence boundaries.
-# Env: VN_VAD_THRESHOLD (default 0.5), VN_VAD_MODEL (path to onnx model)
+# Env: VN_VAD_THRESHOLD (default 0.5), VN_VAD_MODEL (path to onnx model),
+#      VN_VAD_MIN_SPEECH (default 0.5s — see MIN_SPEECH)
 
 import os
 import sys
@@ -21,7 +22,11 @@ MODEL = os.environ.get(
     "VN_VAD_MODEL",
     os.path.expanduser("~/.local/share/vn-mine/silero_vad.onnx"),
 )
-MIN_SPEECH = 0.25    # ignore blips shorter than this
+# Ignore blips shorter than this. Set well above a plausible sound effect
+# rather than just above the noise floor: the model is stateful, so a loud
+# transient partway through a long window can cross the threshold on warmed-up
+# state alone. A real voiceline — even 「え？」 — runs longer than half a second.
+MIN_SPEECH = float(os.environ.get("VN_VAD_MIN_SPEECH", "0.5"))
 MERGE_GAP = 1.0      # merge speech segments separated by less than this
 
 
