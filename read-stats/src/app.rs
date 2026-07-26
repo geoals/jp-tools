@@ -60,7 +60,10 @@ pub fn build_router(state: AppState) -> Router {
             axum::routing::put(works::update_work).delete(works::delete_work),
         )
         .nest_service("/covers", ServeDir::new(state.covers_dir.clone()))
-        .route("/api/capture/pause", axum::routing::post(settings::toggle_capture))
+        .route(
+            "/api/capture/pause",
+            axum::routing::post(settings::toggle_capture),
+        )
         .route("/api/anki/refresh", axum::routing::post(anki::anki_refresh))
         .route("/api/anki/summary", get(anki::anki_summary))
         .route("/api/lookups/summary", get(lookups::lookups_summary))

@@ -58,6 +58,11 @@ pub async fn put_settings(
 /// to exclude on read and no interval log to keep.
 pub async fn toggle_capture(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     let paused = !db::load_settings(&state.local).await?.capture_paused;
-    db::save_setting(&state.local, "capture_paused", if paused { "1" } else { "0" }).await?;
+    db::save_setting(
+        &state.local,
+        "capture_paused",
+        if paused { "1" } else { "0" },
+    )
+    .await?;
     Ok(Json(json!({ "paused": paused })))
 }
