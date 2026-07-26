@@ -40,15 +40,16 @@ VAD_SCRIPT = Path(__file__).resolve().parent / "vn-vad.py"
 # One voiceline breathes; segments closer than this are the same utterance.
 # Deliberately tighter than vn-capture.sh's 1.0s merge, which is wide enough to
 # swallow the following line — the thing being measured here.
-MERGE = 0.35
+MERGE = float(os.environ.get("VN_CAL_MERGE", "0.35"))
 
 # How far from the hook a candidate utterance may start to be considered at
 # all. Wide on purpose: the point is to see the distribution, not enforce a rule.
 SEARCH = (-1.5, 4.0)
 
-# Inside this, an utterance counts as "started at the hook" for the rate
-# statistics. Also deliberately loose — tightening it is what the numbers are for.
-VOICED = 1.0
+# NOTE: no "is it voiced" threshold is applied before the statistics. Selecting
+# the sample by |onset| < x and then reporting that onsets fall within x is
+# circular, and that is exactly what the first version of this did. Every
+# matched line is reported; the shape of the raw column is the evidence.
 
 KANA = re.compile(r"[ぁ-ゟァ-ヿ]")
 KANJI = re.compile(r"[一-鿿]")
@@ -135,7 +136,7 @@ def main():
         stream_end = stream_start + w.getnframes() / w.getframerate()
     merged = utterances(wav, stream_start)
 
-    rows = []
+    lines = []
     for raw_line in LINES.read_text(errors="replace").splitlines():
         ts_s, _, text = raw_line.partition("\t")
         try:
@@ -146,22 +147,43 @@ def main():
         # audio the ring no longer holds.
         if not (stream_start + 1 < ts < stream_end - 4):
             continue
-        cand = [u for u in merged if SEARCH[0] <= u[0] - ts <= SEARCH[1]]
-        rows.append((ts, text, morae(text), cand[0] if cand else None))
+        lines.append([ts, text, morae(text), None])
 
-    if not rows:
+    if not lines:
         sys.exit("no hooked lines inside the ring's window — read for a few "
                  "minutes and run this again")
+    lines.sort(key=lambda r: r[0])
+
+    # Assign each utterance to exactly ONE line: the last line hooked at or
+    # just before it starts. Letting every line search the window independently
+    # is what the capture bug *is* — an unvoiced narration line happily claims
+    # the following line's voice — and a measuring tool that reproduces it
+    # reports every silent line as voiced and invents impossible speaking
+    # rates. One utterance, one owner, nearest preceding line.
+    unclaimed = 0
+    for u_start, u_end in merged:
+        owner = None
+        for row in lines:
+            if row[0] <= u_start - SEARCH[0]:
+                owner = row
+            else:
+                break
+        # An utterance may legitimately start a little before its line is
+        # hooked, but not after the *next* line has been.
+        if owner is None or (owner[3] is not None) or u_start - owner[0] > SEARCH[1]:
+            unclaimed += 1
+            continue
+        owner[3] = (u_start, u_end)
 
     print(f"\n{'onset':>7} {'dur':>6} {'morae':>6} {'mora/s':>7}  line")
     print("-" * 78)
     onsets, rates, silent = [], [], 0
-    for ts, text, m, cand in rows:
+    for ts, text, m, cand in lines:
         onset = dur = None
         if cand:
             onset, dur = cand[0] - ts, cand[1] - cand[0]
         rate = ""
-        if onset is not None and abs(onset) < VOICED and dur and m:
+        if onset is not None and dur and m:
             onsets.append(onset)
             rates.append(m / dur)
             rate = f"{m / dur:.1f}"
@@ -171,8 +193,9 @@ def main():
         shown_dur = f"{dur:.2f}" if dur is not None else "—"
         print(f"{shown_onset:>7} {shown_dur:>6} {m:>6} {rate:>7}  {text[:44]}")
 
-    print(f"\nlines in window: {len(rows)}   voiced-looking: {len(onsets)}   "
-          f"no utterance at the hook: {silent}")
+    print(f"\nlines in window: {len(lines)}   matched an utterance: "
+          f"{len(onsets)}   silent at the hook: {silent}   "
+          f"utterances claimed by no line: {unclaimed}")
     if not onsets:
         print("nothing started at a hook — was there dialogue in this window?")
         return
