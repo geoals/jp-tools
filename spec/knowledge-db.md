@@ -163,11 +163,16 @@ dimension that feed it. Everything here is dictionary-gated or joins the ledger.
   expanded into `lines` rows. *Moved here 2026-07 and renamed; `content` +
   `url` landed 2026-07-26.*
 
+  `end_ts` is nullable: reading off paper is not timed, and an untimed
+  session's duration is derived from the reader's own effective pace rather
+  than stored (`History::duration_of`). *2026-07-26.*
+
   Still to do: **import** — tokenize that `content` into the ledger's counts,
   so manual and live reading feed the same knowledge state. It is deliberately
-  a second step, because the counts it would move are the denominator of a
-  lookup rate whose numerator excludes articles today (see the lookup guard in
-  `read-stats/CLAUDE.md`); numerator and denominator have to change together.
+  a second step: article *lookups* are never captured (the guard in
+  `read-stats/CLAUDE.md` is staying), so letting article characters into a
+  lookup rate's denominator would dilute it. `spec/manual-session-content.md`
+  is the plan.
 
 Consequence: **read-stats writes into the shared DB** (line ingestion, the
 highlighter's status reads). It is not a pure reader — stated so ownership is
