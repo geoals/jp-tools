@@ -1,9 +1,9 @@
 #!/bin/bash
 # VN mine capture — bind this to a single hotkey.
 # Cuts the last voiceline out of the vn-buffer ring buffer (start = timestamp
-# of the last Japanese line Textractor hooked, end = silero-VAD end of
-# speech), screenshots the active window, and attaches both to the most
-# recently added "Japanese sentences" Anki note.
+# of the last Japanese line Textractor hooked, end = silero-VAD end of speech,
+# never past the *next* hooked line), screenshots the active window, and
+# attaches both to the most recently added "Japanese sentences" Anki note.
 # Requires: vn-buffer.service running, curl, jq, spectacle, ffmpeg
 # Env: VN_DRY=1        build the clip + screenshot but skip Anki, keep files
 #                      (also skips the sentence trim — it needs the note)
@@ -36,6 +36,11 @@ POST_PAD=0.25
 # 10s, not 20: a voiceline that long doesn't exist, so the extra ten seconds
 # only ever widen the window a false positive can be found in.
 MAX_LEN="${VN_MAX_LEN:-10}"
+# Shortest window worth running VAD over, once the next hooked line has bounded
+# it. Below this the reader advanced almost at once, so there was no voiceline
+# to hear — or it was not waited for — and whatever is in the ring from there on
+# is the next line's.
+MIN_LEN="${VN_MIN_LEN:-0.6}"
 MIN_PEAK_DB="${VN_MIN_PEAK_DB:--25}"
 ANKI_CONNECT_URL="http://localhost:8765"
 WHISPER_URL="${VN_WHISPER_URL:-http://localhost:8100}"
@@ -113,6 +118,16 @@ fi
 LINE_TS=${LAST_LINE%%$'\t'*}
 LINE_TEXT=${LAST_LINE#*$'\t'}
 
+# The line *after* the anchor, if one has been hooked since. Whatever plays
+# from that moment on belongs to that line, not to this one, so it bounds the
+# search window — otherwise the window runs MAX_LEN seconds forward through
+# however many lines were advanced past, and the first voice it finds wins. An
+# unvoiced line mined just before a voiced one is the sharp case: its own span
+# holds no speech, so the clip becomes the next line's voice entirely.
+# Empty when the anchor is still the newest line, which is the hotkey's normal
+# case and leaves the window unbounded as before.
+NEXT_TS=$(LC_ALL=C awk -F'\t' -v t="$LINE_TS" '$1 > t { print $1; exit }' "$LINES_LOG")
+
 # === SCREENSHOT (capture the window state at the moment of the press) ===
 # `spectacle -a` grabs whatever has focus, which is only the VN when the hotkey
 # was pressed with the VN focused. Mining from read-stats' #read page focuses
@@ -150,9 +165,11 @@ SEG_SNAPSHOT=$(find "$SEGDIR" -name 'seg*.wav' -printf '%T@ %s %p\n' 2>/dev/null
 
 # The ring is one contiguous PCM stream; anchor its end at the newest
 # segment's mtime and work back by byte count to place [START,END] in it.
-read -r SKIP_BYTES LEN_BYTES CLIP_START <<<"$(echo "$SEG_SNAPSHOT" | awk \
-  -v line_ts="$LINE_TS" -v now="$NOW" -v bps="$BPS" -v hdr="$WAV_HDR" \
-  -v pre="$PRE_PAD" -v maxlen="$MAX_LEN" '
+# LC_ALL=C: the timestamps are fractional, and a comma-decimal locale reads
+# them as whole seconds — which silently rounds the window to the wrong second.
+read -r SKIP_BYTES LEN_BYTES CLIP_START <<<"$(echo "$SEG_SNAPSHOT" | LC_ALL=C awk \
+  -v line_ts="$LINE_TS" -v next_ts="$NEXT_TS" -v now="$NOW" -v bps="$BPS" -v hdr="$WAV_HDR" \
+  -v pre="$PRE_PAD" -v maxlen="$MAX_LEN" -v minlen="$MIN_LEN" '
   { total += $2 - hdr; last_mtime = $1 }
   END {
     stream_end = last_mtime
@@ -161,25 +178,28 @@ read -r SKIP_BYTES LEN_BYTES CLIP_START <<<"$(echo "$SEG_SNAPSHOT" | awk \
     if (start < stream_start) { printf "STALE %.0f %.0f", now - line_ts, total / bps; exit }
     end = start + pre + maxlen
     if (end > stream_end) end = stream_end
+    # Nothing from the next line onwards can be this line’s voice.
+    if (next_ts != "" && end > next_ts) end = next_ts
     if (end <= start) { print "EMPTY"; exit }
+    # Bounded so tightly there is no room for a voiceline: the reader advanced
+    # almost immediately, so this line either was not voiced or was not heard.
+    # Screenshot-only rather than an error — the card still wants its picture.
+    # Measured from the line, not from the padded window start: the pre-pad is
+    # audio from *before* the line and can never hold its voice.
+    if (end - line_ts < minlen) { printf "SHORT %.2f", end - line_ts; exit }
     skip = int((start - stream_start) * bps / 4) * 4
     len  = int((end - start) * bps / 4) * 4
     printf "%d %d %.6f", skip, len, start
   }')"
 
 # on STALE, awk printed "STALE <line-age-s> <ring-coverage-s>" into the next two fields
+NO_ROOM=""
 case "$SKIP_BYTES" in
 STALE) die "Last hooked line is ${LEN_BYTES}s old but the ring only holds the last ${CLIP_START}s of audio — press the hotkey sooner after the voiceline plays:
 $LINE_TEXT" ;;
 EMPTY) die "No audio available after the hooked line yet" ;;
+SHORT) NO_ROOM="${LEN_BYTES}s" ;;
 esac
-
-# Concatenate segment payloads (skipping WAV headers) and cut the window
-echo "$SEG_SNAPSHOT" | while read -r _ _ f; do tail -c "+$((WAV_HDR + 1))" "$f"; done |
-  tail -c "+$((SKIP_BYTES + 1))" | head -c "$LEN_BYTES" >"$TMP/clip.raw"
-
-CLIP_BYTES=$(stat -c %s "$TMP/clip.raw")
-[ "$CLIP_BYTES" -ge 19200 ] || die "Extracted clip is too short (${CLIP_BYTES} bytes)"
 
 # === VAD TRIM ===
 # NO_AUDIO: VAD is confident there was no voice at all (an unvoiced line, a
@@ -206,7 +226,25 @@ drop_audio() { # short long
 If the line was voiced, check the audio output or press sooner after it plays."
 }
 
-if [ -x "$VAD_PYTHON" ] && [ -f "$VAD_SCRIPT" ]; then
+# The next line arrived too soon for anything in between to be this line's
+# voice. Nothing to extract, nothing to trim — take the screenshot and go.
+if [ -n "$NO_ROOM" ]; then
+  drop_audio "next line ${NO_ROOM} later" \
+    "The next line was hooked ${NO_ROOM} after this one, which leaves no room for a voiceline — anything playing by then belongs to that line."
+fi
+
+# Concatenate segment payloads (skipping WAV headers) and cut the window
+if [ -z "$NO_AUDIO" ]; then
+  echo "$SEG_SNAPSHOT" | while read -r _ _ f; do tail -c "+$((WAV_HDR + 1))" "$f"; done |
+    tail -c "+$((SKIP_BYTES + 1))" | head -c "$LEN_BYTES" >"$TMP/clip.raw"
+
+  CLIP_BYTES=$(stat -c %s "$TMP/clip.raw")
+  [ "$CLIP_BYTES" -ge 19200 ] || die "Extracted clip is too short (${CLIP_BYTES} bytes)"
+fi
+
+if [ -n "$NO_AUDIO" ]; then
+  : # already decided against audio above — skip VAD entirely
+elif [ -x "$VAD_PYTHON" ] && [ -f "$VAD_SCRIPT" ]; then
   vad_wav "$TMP/vad.wav"
   VAD_OUT=$("$VAD_PYTHON" "$VAD_SCRIPT" "$TMP/vad.wav" 2>"$TMP/vad.err")
   if [ "$VAD_OUT" == "none" ]; then

@@ -86,6 +86,17 @@ audio) and a warning notification says so — usual causes are an unvoiced line,
 a stale anchor, or audio playing on a different output than the one the daemon
 recorded (restart vn-buffer after switching outputs).
 
+The window also **ends at the next hooked line**, when one has been hooked by
+the time the capture runs. `VN_MAX_LEN` alone bounds it at ten seconds, which
+is ten seconds of reading on — so a line mined and advanced past would take the
+*following* line's voiceline, and an unvoiced line would take it entirely,
+since its own span holds no speech to prefer. Nothing from the next line
+onwards can be this line's voice, so nothing from there on is searched. If that
+leaves less than `VN_MIN_LEN` of audio after the line, the capture is
+screenshot-only: the reader advanced at once, so either the line was not voiced
+or its voice was not waited for. Pressing the hotkey while the line is still on
+screen is unaffected — there is no next line yet to bound anything.
+
 The trimmed clip is then checked twice more before it is attached, because
 silero is stateful and a loud transient partway through the window can cross
 the threshold on state the preceding audio warmed up: the clip has to peak
@@ -123,7 +134,12 @@ standalone; the sound effect that prompted the check scored 0.35.
   target with it — no second place to keep in sync.
 - `VN_MAX_LEN` (default 10) — max seconds considered after the line appears.
   No voiceline runs that long; a wider window only gives a false positive more
-  room to be found in.
+  room to be found in. The next hooked line cuts the window short of this
+  whenever it lands first.
+- `VN_MIN_LEN` (default 0.6) — once the next line has bounded the window, the
+  least audio after the line still worth running VAD over. Below it the capture
+  is screenshot-only rather than a guess at a voiceline that had no time to
+  play.
 - `VN_VAD_THRESHOLD` (default 0.5) — raise if BGM vocals leak in, lower if
   quiet lines get cut.
 - `VN_VAD_MIN_SPEECH` (default 0.5) — ignore detected speech shorter than this.
