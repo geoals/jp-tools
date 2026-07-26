@@ -15,7 +15,10 @@ use crate::app::AppState;
 use crate::clock::tz_offset_secs;
 use crate::db;
 use crate::error::AppError;
-use crate::stats::{TermTimes, aggregate_kanji, kanji::SOLID_ENCOUNTERS};
+use crate::stats::{
+    TermTimes, aggregate_kanji,
+    kanji::{OUTLIER_ENCOUNTERS, OUTLIER_MULTIPLE, SOLID_ENCOUNTERS},
+};
 
 pub async fn kanji(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     let settings = db::load_settings(&state.local).await?;
@@ -53,5 +56,10 @@ pub async fn kanji(State(state): State<AppState>) -> Result<Json<Value>, AppErro
         // The threshold the tinting, the coverage meters and the gap list all
         // share, sent rather than duplicated in JS.
         "solid_encounters": SOLID_ENCOUNTERS,
+        // What `struggling` was decided by, so the legend can say it out loud
+        // instead of the client re-deriving a rule the server already applied.
+        "baseline_lookup_rate": stats.baseline_lookup_rate,
+        "outlier_encounters": OUTLIER_ENCOUNTERS,
+        "outlier_multiple": OUTLIER_MULTIPLE,
     })))
 }

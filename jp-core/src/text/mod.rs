@@ -13,8 +13,10 @@
 //!   corner-bracket depth.
 //! - [`sentences`] — segmenting a block of text into sentences.
 //! - [`kanji`] — which codepoints are kanji, and the grade/frequency reference
-//!   table behind the kanji statistics.
+//!   tables behind the kanji statistics: KANJIDIC's school grades and
+//!   newspaper ranks, plus BCCWJ's balanced-corpus counts.
 
+mod bccwj_data;
 pub mod chars;
 pub mod dialogue;
 pub mod kanji;

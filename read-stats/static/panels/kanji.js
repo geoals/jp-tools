@@ -2,11 +2,14 @@
 //
 // The grid is the card the others explain. A kanji's chip is tinted by how
 // often it has been read — on a log scale, because linear would leave
-// everything but 人事言 invisible — and ringed by what it cost: a lookup ring
-// when words containing it have been looked up, a mined ring when a card in the
-// deck carries it. Exposure and effort on the same mark, because "read often"
-// and "read easily" are different things and the interesting kanji are the ones
-// where they disagree.
+// everything but 人事言 invisible — and ringed twice over: green when the
+// target word of a card in the deck contains it, red when it has been looked up
+// out of all proportion to how often it was met.
+//
+// Both rings are deliberately rare. A ring on every kanji ever looked up says
+// nothing — one lookup is what reading is — so the red ring is a threshold on
+// the lookup rate against your own average (routes/kanji.rs decides it), not a
+// mark for "has been looked up at all".
 //
 // One payload feeds all of it (see routes/kanji.rs). Everything below is a
 // re-slice in JS, which is what keeps the grid and the coverage meters from
@@ -18,7 +21,8 @@ import { KanjiCoverageChart, KanjiDiscoveryChart } from "../charts.js";
 import { SegmentedControl } from "../components/controls.js";
 
 const SORTS = [
-  { value: "count", label: "frequency" },
+  { value: "count", label: "yours" },
+  { value: "bccwj", label: "BCCWJ" },
   { value: "grade", label: "grade" },
   { value: "recent", label: "newest" },
   { value: "hard", label: "lookup rate" },
@@ -37,9 +41,6 @@ const GRADE_LABEL = {
   0: "non-jōyō",
 };
 
-/** A kanji needs this many encounters before its lookup rate is a rate rather
- *  than an accident of one hard sentence. */
-const HARD_FLOOR = 6;
 const HARD_LEN = 15;
 const GAP_LEN = 40;
 
@@ -57,6 +58,12 @@ export function KanjiView({ kanji }) {
 
   const rows = kanji.kanji;
   const solidAt = kanji.solid_encounters;
+  // The red ring's rule, as the server applied it.
+  const rule = {
+    baseline: kanji.baseline_lookup_rate,
+    multiple: kanji.outlier_multiple,
+    floor: kanji.outlier_encounters,
+  };
   const joyo = kanji.grades.filter((g) => g.grade !== 0);
   const joyoMet = joyo.reduce((n, g) => n + g.met, 0);
   const joyoTotal = joyo.reduce((n, g) => n + g.total, 0);
@@ -98,7 +105,7 @@ export function KanjiView({ kanji }) {
       </div>
     </div>
 
-    <${GridCard} rows=${rows} solidAt=${solidAt} />
+    <${GridCard} rows=${rows} solidAt=${solidAt} rule=${rule} />
     <${GradeCard} grades=${kanji.grades} solidAt=${solidAt} />
 
     <div class="card">
@@ -120,7 +127,7 @@ export function KanjiView({ kanji }) {
       <${KanjiDiscoveryChart} days=${kanji.days} />
     </div>
 
-    <${HardestCard} rows=${rows} />
+    <${HardestCard} rows=${rows} rule=${rule} />
     <${GapCard} rows=${rows} solidAt=${solidAt} />
     <${WorksCard} works=${kanji.works} />
   `;
@@ -136,28 +143,33 @@ function tint(count, max) {
   return 0.08 + 0.5 * t;
 }
 
-function GridCard({ rows, solidAt }) {
+function GridCard({ rows, solidAt, rule }) {
   const [sort, setSort] = useState("count");
   const [onlyUnmined, setOnlyUnmined] = useState(false);
-  const [onlyLooked, setOnlyLooked] = useState(false);
+  const [onlyStruggling, setOnlyStruggling] = useState(false);
   const [picked, setPicked] = useState(null);
 
   const max = rows[0].count;
   const shown = useMemo(() => {
     let list = rows;
     if (onlyUnmined) list = list.filter((r) => !r.mined);
-    if (onlyLooked) list = list.filter((r) => r.lookups > 0);
+    if (onlyStruggling) list = list.filter((r) => r.struggling);
     const by = {
       // Ungraded kanji sort last rather than first: 0 means "no grade", not
       // "easiest".
       grade: (a, b) => (a.grade ?? 99) - (b.grade ?? 99) || b.count - a.count,
+      // Kanji BCCWJ never saw sort last, after every ranked one — "unlisted"
+      // is rarer than rank 6937, not commoner than rank 1.
+      bccwj: (a, b) =>
+        (a.bccwj_rank ?? Infinity) - (b.bccwj_rank ?? Infinity) ||
+        b.count - a.count,
       recent: (a, b) => b.first_ts - a.first_ts,
       hard: (a, b) =>
         b.lookups / b.count - a.lookups / a.count || b.count - a.count,
       count: (a, b) => b.count - a.count,
     }[sort];
     return [...list].sort(by);
-  }, [rows, sort, onlyUnmined, onlyLooked]);
+  }, [rows, sort, onlyUnmined, onlyStruggling]);
 
   const detail = picked && shown.find((r) => r.kanji === picked);
 
@@ -185,11 +197,11 @@ function GridCard({ rows, solidAt }) {
         </button>
         <button
           type="button"
-          class=${onlyLooked ? "toggle-btn toggle-on" : "toggle-btn"}
-          aria-pressed=${onlyLooked}
-          onClick=${() => setOnlyLooked(!onlyLooked)}
+          class=${onlyStruggling ? "toggle-btn toggle-on" : "toggle-btn"}
+          aria-pressed=${onlyStruggling}
+          onClick=${() => setOnlyStruggling(!onlyStruggling)}
         >
-          looked up
+          struggling with
         </button>
         <span class="kanji-count"
           >${shown.length.toLocaleString("en")} shown</span
@@ -199,11 +211,12 @@ function GridCard({ rows, solidAt }) {
       <div class="kanji-grid">
         ${shown.map((r) => {
           const classes = ["kanji-cell"];
-          if (r.lookups > 0) classes.push("kanji-looked");
+          if (r.struggling) classes.push("kanji-struggling");
           if (r.mined) classes.push("kanji-mined");
           if (r.kanji === picked) classes.push("kanji-picked");
           if (r.count >= solidAt) classes.push("kanji-solid");
-          const title = `${r.kanji} · ${r.count}×`;
+          const rank = r.bccwj_rank ? `BCCWJ #${r.bccwj_rank}` : "not in BCCWJ";
+          const title = `${r.kanji} · read ${r.count}× · ${rank}`;
           return html`
             <button
               type="button"
@@ -218,12 +231,20 @@ function GridCard({ rows, solidAt }) {
         })}
       </div>
 
-      ${detail ? html`<${Inspector} row=${detail} />` : html`<${GridLegend} />`}
+      ${
+        detail
+          ? html`<${Inspector} row=${detail} />`
+          : html`<${GridLegend} rule=${rule} />`
+      }
     </div>
   `;
 }
 
-function GridLegend() {
+function GridLegend({ rule }) {
+  // The red ring's rule, spelled out in the numbers it actually used — a ring
+  // whose threshold you cannot see is a ring you cannot trust.
+  const bar = (rule.baseline * rule.multiple * 100).toFixed(0);
+  const struggling = `looked up over ${bar}% as often as read — ${rule.multiple}× your average, over ${rule.floor}+ readings`;
   return html`
     <div class="chart-legend kanji-legend">
       ${[0.12, 0.3, 0.45, 0.58].map(
@@ -235,10 +256,11 @@ function GridLegend() {
       )}
       <span class="legend-item legend-static">rarely → constantly read</span>
       <span class="legend-item legend-static">
-        <span class="legend-swatch kanji-swatch kanji-looked"></span>looked up
+        <span class="legend-swatch kanji-swatch kanji-mined"></span>on a card
       </span>
       <span class="legend-item legend-static">
-        <span class="legend-swatch kanji-swatch kanji-mined"></span>on a card
+        <span class="legend-swatch kanji-swatch kanji-struggling"></span
+        >${struggling}
       </span>
     </div>
   `;
@@ -249,13 +271,25 @@ function Inspector({ row }) {
   const last = new Date(row.last_ts * 1000).toISOString().slice(0, 10);
   const seen = `${row.count.toLocaleString("en")}× over ${row.days} day${row.days === 1 ? "" : "s"}`;
   const grade = GRADE_LABEL[row.grade ?? 0];
-  const freq = row.freq ? `#${row.freq} in newspapers` : "outside the top 2500";
   const strokes = row.strokes ? `${row.strokes} strokes` : "";
+  // BCCWJ ranks the whole tail, so it can say "rare" where the newspaper list
+  // can only say "unlisted" — which is why it leads and the other follows.
+  const bccwj = row.bccwj_rank
+    ? `BCCWJ #${row.bccwj_rank.toLocaleString("en")}`
+    : "not once in BCCWJ";
+  const share = row.bccwj_per_million
+    ? `${row.bccwj_per_million.toFixed(1)} per million`
+    : "";
   const first = `first met ${met}, last ${last}`;
   const looked =
     row.lookups > 0
       ? `${row.lookups} lookup${row.lookups === 1 ? "" : "s"} on words with it`
       : "never looked up";
+  const rate =
+    row.lookups > 0 ? `${((row.lookups / row.count) * 100).toFixed(0)}%` : "";
+  const cost = row.struggling
+    ? `${looked} — ${rate} of readings, well past your average`
+    : looked;
   const card = row.mined ? "on a card" : "no card";
   return html`
     <div class="kanji-detail">
@@ -264,11 +298,11 @@ function Inspector({ row }) {
         <div class="kanji-detail-head">
           <strong>${row.gloss || "—"}</strong>
           <span class="kanji-detail-meta">
-            ${[grade, strokes, freq].filter(Boolean).join(" · ")}
+            ${[grade, strokes, bccwj, share].filter(Boolean).join(" · ")}
           </span>
         </div>
         <div class="kanji-detail-meta">${seen} · ${first}</div>
-        <div class="kanji-detail-meta">${looked} · ${card}</div>
+        <div class="kanji-detail-meta">${cost} · ${card}</div>
         ${
           row.top_work &&
           html`<div class="kanji-detail-meta">mostly in ${row.top_work}</div>`
@@ -343,9 +377,11 @@ function GradeCard({ grades, solidAt }) {
 
 /* The two cost lists ------------------------------------------------------ */
 
-function HardestCard({ rows }) {
+function HardestCard({ rows, rule }) {
+  // Same encounter floor the red ring uses, so the top of this list is exactly
+  // the ringed kanji rather than a second, differently-drawn answer.
   const hard = rows
-    .filter((r) => r.count >= HARD_FLOOR && r.lookups > 0)
+    .filter((r) => r.count >= rule.floor && r.lookups > 0)
     .sort((a, b) => b.lookups / b.count - a.lookups / a.count)
     .slice(0, HARD_LEN);
   if (!hard.length) {
@@ -359,6 +395,9 @@ function HardestCard({ rows }) {
     `;
   }
   const worst = hard[0].lookups / hard[0].count;
+  const pct = (rule.baseline * 100).toFixed(1);
+  const bar = (rule.baseline * rule.multiple * 100).toFixed(0);
+  const average = `Across everything you read the rate is ${pct}%; past ${bar}% the grid rings the kanji red.`;
   return html`
     <div class="card">
       <h2>What costs you most</h2>
@@ -387,7 +426,7 @@ function HardestCard({ rows }) {
       <p class="chart-note">
         Lookups on words containing each kanji, per time the kanji was read.
         Compounds credit both halves, so this is not "which kanji I don't know"
-        — it is which ones keep turning up in words that stop you.
+        — it is which ones keep turning up in words that stop you. ${average}
       </p>
     </div>
   `;

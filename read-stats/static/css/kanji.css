@@ -48,13 +48,16 @@
 .kanji-solid {
   font-weight: 600;
 }
-/* The two cost rings. Inset, so they never change the grid's rhythm, and
-   distinguishable from each other when a chip carries both. */
-.kanji-looked {
-  box-shadow: inset 0 0 0 1.5px var(--series-3);
-}
+/* The two rings. Inset, so they never change the grid's rhythm, and
+   distinguishable from each other when a chip carries both. Both are rare by
+   construction — a card's target word contains it, or it costs lookups out of
+   all proportion to how often it is read — which is what lets a ring mean
+   something at a glance across two thousand chips. */
 .kanji-mined {
   border-color: var(--series-2);
+}
+.kanji-struggling {
+  box-shadow: inset 0 0 0 1.5px var(--series-3);
 }
 .kanji-picked {
   outline: 2px solid var(--text-primary);

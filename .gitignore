@@ -15,3 +15,6 @@ manga-ocr-service/*.jpg
 *.zip
 *.dic
 __pycache__/
+# Reference data downloaded by hand and reduced into a generated table —
+# scripts/gen-bccwj-table.py records where it came from.
+*.xlsx

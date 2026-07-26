@@ -5,6 +5,7 @@
 //! rather than in a stats crate because "is this a kanji" has to mean the same
 //! thing wherever it is asked.
 
+use super::bccwj_data::{BCCWJ, BCCWJ_TOTAL};
 use super::kanji_data::KANJI;
 
 /// True for CJK unified ideographs — the ranges [`super::chars::is_counted`]
@@ -46,6 +47,38 @@ pub fn info(c: char) -> Option<KanjiInfo> {
     })
 }
 
+/// How common a kanji is in written Japanese at large, from the BCCWJ
+/// character table.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BccwjFreq {
+    /// Rank among the 6937 kanji of the corpus, 1 = commonest.
+    pub rank: u16,
+    /// Occurrences in the corpus.
+    pub count: u32,
+}
+
+impl BccwjFreq {
+    /// Occurrences per million kanji — the form that compares against your own
+    /// reading, where the totals are nothing alike.
+    pub fn per_million(&self) -> f64 {
+        self.count as f64 * 1e6 / BCCWJ_TOTAL as f64
+    }
+}
+
+/// What a balanced corpus of written Japanese makes of this kanji. `None` for
+/// the ones BCCWJ never saw — which, for a visual novel reader, is a real
+/// answer rather than missing data: nothing in a hundred million words of
+/// books, magazines, newspapers and blogs used it once.
+///
+/// This is a different question from [`KanjiInfo::freq`], which ranks only the
+/// top 2501 of a newspaper corpus. Newspapers are one genre and stop early;
+/// BCCWJ covers the whole tail, so it can tell "rare" from "unlisted".
+pub fn bccwj(c: char) -> Option<BccwjFreq> {
+    let i = BCCWJ.binary_search_by_key(&c, |r| r.0).ok()?;
+    let (_, count, rank) = BCCWJ[i];
+    Some(BccwjFreq { rank, count })
+}
+
 /// The jōyō grades, in teaching order. 8 is the secondary-school remainder —
 /// over half the set, which is why it is worth showing as its own band rather
 /// than folded into a single jōyō percentage.
@@ -76,6 +109,26 @@ mod tests {
         assert_eq!(one.strokes, Some(1));
         assert!(one.freq.unwrap() < 10);
         assert!(info('あ').is_none());
+    }
+
+    #[test]
+    fn bccwj_ranks_the_commonest_kanji_first() {
+        // 人 heads the BCCWJ kanji table; 一 and 日 are the next two.
+        assert_eq!(bccwj('人').unwrap().rank, 1);
+        assert!(bccwj('一').unwrap().rank <= 3);
+        // 人 is a bit over 1% of all kanji written in Japanese.
+        assert!((10_000.0..12_000.0).contains(&bccwj('人').unwrap().per_million()));
+        // Kana are not in the table, and neither are iteration marks.
+        assert!(bccwj('あ').is_none());
+        assert!(bccwj('々').is_none());
+    }
+
+    #[test]
+    fn bccwj_reaches_past_the_newspaper_list() {
+        // 邂 is far outside KANJIDIC's top-2501 newspaper ranking, but a
+        // balanced corpus still saw it — that gap is the point of the table.
+        assert!(info('邂').unwrap().freq.is_none());
+        assert!(bccwj('邂').unwrap().rank > 2501);
     }
 
     #[test]
