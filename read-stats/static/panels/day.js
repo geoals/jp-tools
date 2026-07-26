@@ -18,7 +18,12 @@ import { fmtChars, fmtMins } from "../lib/format.js";
 
 /** Smoothing windows offered by the granularity slider, in minutes. */
 
-const SMOOTH_STEPS = [1, 2, 3, 5, 8, 12, 20, 30, 45];
+const SMOOTH_STEPS = [1, 2, 3, 5, 8, 10, 12, 20, 30, 45];
+
+/** Where the slider starts: enough window to read as a trend rather than as
+ *  noise, without flattening a genuine slow patch into the hour around it. */
+
+const DEFAULT_SMOOTH_MINS = 10;
 
 /** Below this much reading a per-hour rate is noise, not a measurement. */
 
@@ -26,7 +31,11 @@ const MIN_RATE_SECS = 600;
 
 export function DayCard({ days, todayDate, goal }) {
   const [date, setDate] = useState(todayDate);
-  const [smoothIdx, setSmoothIdx] = useState(3); // 5 min
+  // Looked up rather than hardcoded, so inserting a step can't silently move
+  // the default onto a neighbouring window.
+  const [smoothIdx, setSmoothIdx] = useState(
+    SMOOTH_STEPS.indexOf(DEFAULT_SMOOTH_MINS),
+  );
   const [timeline, setTimeline] = useState(null);
   const [sessions, setSessions] = useState(null);
   const [err, setErr] = useState(null);
