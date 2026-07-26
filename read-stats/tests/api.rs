@@ -90,10 +90,12 @@ async fn retiring_the_pauses_table_discards_the_lines_it_covered() {
     three_lines(&app, base, None).await;
 
     // Recreate the old table exactly as it was, covering the last two lines.
-    sqlx::raw_sql("CREATE TABLE pauses (id INTEGER PRIMARY KEY, start_ts REAL NOT NULL, end_ts REAL)")
-        .execute(&app.local)
-        .await
-        .unwrap();
+    sqlx::raw_sql(
+        "CREATE TABLE pauses (id INTEGER PRIMARY KEY, start_ts REAL NOT NULL, end_ts REAL)",
+    )
+    .execute(&app.local)
+    .await
+    .unwrap();
     sqlx::query("INSERT INTO pauses (start_ts, end_ts) VALUES (?, ?)")
         .bind(base + 5.0)
         .bind(base + 100.0)
@@ -110,11 +112,10 @@ async fn retiring_the_pauses_table_discards_the_lines_it_covered() {
         s["today"]["chars"], 20,
         "the covered lines are discarded, not merely filtered"
     );
-    let discarded: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM lines WHERE discarded = 1")
-            .fetch_one(app.knowledge.pool())
-            .await
-            .unwrap();
+    let discarded: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM lines WHERE discarded = 1")
+        .fetch_one(app.knowledge.pool())
+        .await
+        .unwrap();
     assert_eq!(discarded, 2);
 
     // Second run is a no-op rather than an error: the table is gone.
@@ -461,4 +462,61 @@ async fn kanji_counts_the_glyphs_and_joins_lookups_and_cards_to_them() {
     assert_eq!(g1["met"], 2, "人 and 手");
     assert_eq!(g1["solid"], 0, "neither reaches the solid threshold");
     assert_eq!(s["days"].as_array().unwrap()[0]["new"], 4);
+}
+
+#[tokio::test]
+async fn a_lookup_only_counts_when_a_line_arrived_recently() {
+    // The rule the AnkiConnect proxy applies before recording a lookup: Yomitan
+    // fires for anything looked up in the browser, and only the ones made while
+    // a VN was being read belong to the reading. `record` cannot be driven from
+    // here without an AnkiConnect to forward to, so this pins the decision it
+    // makes — see routes/ankiproxy.rs.
+    let app = TestApp::new().await;
+    let base = today_start() + 3600.0;
+    app.add_line(base, "あいうえお", Some("読んでる")).await;
+
+    let gap = 600.0; // the default session_gap_secs
+    assert!(
+        read_stats::db::line_within(&app.knowledge, base + 60.0, gap)
+            .await
+            .unwrap(),
+        "a minute after a line is mid-session"
+    );
+    assert!(
+        read_stats::db::line_within(&app.knowledge, base + gap, gap)
+            .await
+            .unwrap(),
+        "the window is inclusive at its edge"
+    );
+    assert!(
+        !read_stats::db::line_within(&app.knowledge, base + gap + 1.0, gap)
+            .await
+            .unwrap(),
+        "past the session gap the reader is somewhere else"
+    );
+    assert!(
+        !read_stats::db::line_within(&app.knowledge, base - 1.0, gap)
+            .await
+            .unwrap(),
+        "a line that has not happened yet is no evidence"
+    );
+}
+
+#[tokio::test]
+async fn a_discarded_line_is_no_evidence_of_a_session() {
+    // Discarding is how a line that should not count is removed everywhere; a
+    // lookup must not be admitted by a line the reader has thrown away.
+    let app = TestApp::new().await;
+    let base = today_start() + 3600.0;
+    app.add_line(base, "あいうえお", None).await;
+    sqlx::query("UPDATE lines SET discarded = 1")
+        .execute(app.knowledge.pool())
+        .await
+        .unwrap();
+
+    assert!(
+        !read_stats::db::line_within(&app.knowledge, base + 60.0, 600.0)
+            .await
+            .unwrap()
+    );
 }

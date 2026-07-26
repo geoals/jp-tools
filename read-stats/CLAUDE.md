@@ -75,6 +75,15 @@ taught to `vn-capture.sh`.
   span has no lines in it, so nothing needs excluding. The old `pauses` table
   is retired on startup by `db::retire_pauses` (see its module doc for what
   happened to the rows it covered).
+- **A lookup only exists if it happened while reading.** Yomitan points at the
+  proxy from the *browser*, so it fires for anything looked up anywhere.
+  `ankiproxy::record` records a lookup only when a line arrived within
+  `session_gap_secs`, so reading a news article never puts a term in a VN's
+  funnel, never inflates the day's per-1000-character rate, and never adds to a
+  kanji lookup rate whose denominator the line stream cannot see. The guard is
+  at the write and nowhere else — don't add a second filter downstream, and
+  don't remove this one and expect the readers to cope. It also means a long
+  enough `capture_paused` stops lookups: no lines arrive, so nothing is recent.
 - **Anki owns mined-state.** `anki_notes` is a snapshot, replaced wholesale.
   Never write back.
 - **Note ids are epoch milliseconds.** That is why a card's creation time needs
@@ -116,6 +125,14 @@ The browser check exists because the client is unbundled ES modules loaded
 straight from disk: a bad import path renders *nothing at all* while every JSON
 endpoint still passes.
 
+`run` holds the terminal and has no `stop`, so a backgrounded instance outlives
+the session and the next `run` refuses with "something is already serving
+:3299". Take a free port (`DEV_PORT=3298`) rather than clearing it. **Never
+`pkill -f` your way out of that** — the dev instance and the live :3200 service
+are the same binary path, so every pattern that matches one matches the other,
+and killing the live one interrupts whatever is being read. If you must stop a
+specific instance, resolve its PID from the port (`ss -ltnp | grep :3299`).
+
 ```sh
 cargo test -p read-stats     # 53 unit + 16 integration (tests/api.rs)
 ```
@@ -142,8 +159,13 @@ assumes".
   `trends.js`, one range selector over the summary tiles, the daily bars, the
   speed panel and the rate panel. **Library** — `library.js`: works,
   vocabulary, dialogue, and the manual log form. **Kanji** — `kanji.js` over
-  `/api/kanji`: the grid of every kanji ever read, tinted by encounter count
-  and ringed by what it cost, plus grade coverage, the corpus-coverage curve,
+  `/api/kanji`: the grid of every kanji ever read, tinted by encounter count,
+  sortable by your own frequency or BCCWJ's, and ringed twice — green for a
+  card's target word, red for a lookup rate past three times your own average
+  over six-plus readings (`stats::kanji::OUTLIER_*`, applied server-side so the
+  legend can state the threshold it used). A ring for "has been looked up at
+  all" was the first attempt and said nothing: one lookup is what reading is.
+  Plus grade coverage, the corpus-coverage curve,
   discovery per day, the lookup-rate ranking and the per-work fingerprints. The
   page was twelve cards in one column before, with today and the last 30 days
   interleaved and four slices of the same window each carrying its own

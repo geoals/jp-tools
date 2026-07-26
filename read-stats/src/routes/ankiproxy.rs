@@ -256,15 +256,47 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value) {
     }
 }
 
+/// Record a lookup, but only one made while a VN was actually being read.
+///
+/// Yomitan is pointed at this proxy from the browser, not from the VN, so it
+/// fires for anything looked up anywhere — an article, a tweet, a forum post.
+/// Those are real lookups, but they are not *this* reading, and admitting them
+/// puts a term the VN never contained into the per-work funnel, inflates the
+/// day's lookup count and the per-1000-character rate, and adds to the
+/// numerator of every kanji lookup rate while the line stream adds nothing to
+/// the denominator. The kanji tab's red ring is the sharpest case: it compares
+/// lookups against encounters, and an encounter that happened in a browser is
+/// invisible to it.
+///
+/// The test is a line in the last `session_gap_secs` — the same threshold that
+/// decides where a reading session ends everywhere else, so "inside a session"
+/// means one thing in this crate. It falls out of this that a paused capture
+/// stops lookups too, once the pause outlasts the gap: no lines arrive while
+/// `capture_paused` is set, so nothing is recent any more.
 async fn record(state: &AppState, term: &str) {
-    let work = match db::load_settings(&state.local).await {
-        Ok(s) => s.current_work,
+    let settings = match db::load_settings(&state.local).await {
+        Ok(s) => s,
         Err(e) => {
-            warn!(error = %e, "lookup work lookup failed, recording without work");
-            String::new()
+            // Without settings there is no window to test against and no work
+            // to stamp. Dropping the lookup is the safe half of the trade: a
+            // missed lookup understates a rate, a stray one corrupts a work.
+            warn!(error = %e, term, "settings unavailable, not recording lookup");
+            return;
         }
     };
-    let work = (!work.is_empty()).then_some(work);
+
+    match db::line_within(&state.knowledge, now_ts(), settings.session_gap_secs).await {
+        Ok(true) => {}
+        Ok(false) => {
+            debug!(term, "lookup outside a reading session, not recorded");
+            return;
+        }
+        // Counting lookups must never break mining, and it must not silently
+        // drop them either: if the question cannot be asked, keep the row.
+        Err(e) => warn!(error = %e, term, "session check failed, recording anyway"),
+    }
+
+    let work = (!settings.current_work.is_empty()).then_some(settings.current_work);
 
     match db::insert_lookup(
         &state.knowledge,

@@ -111,6 +111,30 @@ pub async fn max_line_id(k: &Knowledge) -> Result<i64, sqlx::Error> {
     Ok(row.get("max_id"))
 }
 
+/// Whether a line arrived in the last `within_secs` — "is a VN being read right
+/// now", asked at the moment a lookup comes in.
+///
+/// Only looks backwards, because at write time there is no forward to look at.
+/// A lookup fired in the seconds *before* a session's first line is therefore
+/// dropped, which is the right way round to be wrong: the alternative admits
+/// every lookup made while the reader was elsewhere.
+pub async fn line_within(
+    k: &Knowledge,
+    now_ts: f64,
+    within_secs: f64,
+) -> Result<bool, sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT EXISTS(
+             SELECT 1 FROM lines WHERE discarded = 0 AND ts >= ? AND ts <= ?
+         ) AS recent",
+    )
+    .bind(now_ts - within_secs)
+    .bind(now_ts)
+    .fetch_one(k.pool())
+    .await?;
+    Ok(row.get::<i64, _>("recent") == 1)
+}
+
 /// A classified line paired with the work it was stamped for, so the dialogue
 /// summary can scope its split to one VN. The 「」 classification comes from the
 /// same scanner `fetch_line_events` uses.
