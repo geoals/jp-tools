@@ -10,6 +10,7 @@
 //! |---|---|
 //! | [`anki`] | AnkiConnect, read-only — snapshots the mined deck |
 //! | [`capture`] | vn-mine's `vn-capture.sh`, and `xdotool` for window titles |
+//! | [`chime`] | `paplay` — the one sound a finished mine makes |
 //! | [`llm`] | the Anthropic API |
 //! | [`compactdef`] | — (builds the prompt [`llm`] sends, then the field value) |
 //! | [`tags`] | — (the two-axis tag rubric both prompts share) |
@@ -18,6 +19,7 @@
 
 pub mod anki;
 pub mod capture;
+pub mod chime;
 pub mod compactdef;
 pub mod covers;
 pub mod llm;

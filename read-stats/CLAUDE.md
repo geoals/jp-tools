@@ -111,6 +111,15 @@ taught to `vn-capture.sh`.
   which fires vn-capture.sh once Anki accepts the note (`auto_capture_on_add`,
   on by default). There is no mine button; a card added anywhere gets its audio
   and screenshot.
+- **The chime is the only report a mine gets.** All of the enrichment happens in
+  a detached task behind a browser tab nobody is watching, so
+  `services::chime::mine_complete` plays once at the end of
+  `enrich_added_note` — and only when the capture reported `ok` *and* the
+  CompactDef write verified. Keep it that strict: a sound that also plays on a
+  half-finished card reports nothing, and silence is the signal to go and look
+  at the log. (`JP_TOOLS_MINE_CHIME` overrides the file; empty mines in
+  silence.) This is the `import` X-bell that `-silent` removed, made
+  deliberate.
 - **A capture is anchored at the add, not at the capture.** vn-capture.sh picks
   the line to cut audio around by reading the newest entry in `lines.log`, so
   anything that delays it re-anchors it onto whatever is on screen by then —

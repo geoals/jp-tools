@@ -204,11 +204,13 @@ fn new_note_id(resp_bytes: &Bytes) -> Option<i64> {
 /// after the add rather than four.
 ///
 /// So the LLM call runs *alongside* the capture and its result is written
-/// afterwards. Both writes are `updateNoteFields` on the same note, and
-/// AnkiConnect does a read-modify-write of the whole note — issued
-/// concurrently, one would drop the other's fields. Overlapping the waiting
-/// while keeping the writes ordered is the only arrangement that gets all
-/// three properties.
+/// afterwards. Overlapping the waiting while leaving the two `updateNoteFields`
+/// strictly ordered is what gets both properties; two concurrent writes to one
+/// note have not been tested and there is nothing to gain by starting.
+///
+/// Whether both halves landed is the one thing worth reporting out loud, since
+/// all of this happens behind a browser tab nobody is looking at — hence the
+/// chime at the end, and only when nothing failed.
 async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_ts: f64) {
     // CompactDef: only when a target field and an API key are configured.
     let fields = req.pointer("/params/note/fields");
@@ -226,15 +228,27 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_t
     // Auto-capture: fold the mine button into the add. The note id and the
     // anchor both come from the add itself, so neither depends on what has
     // happened on screen or in Anki since.
+    //
+    // Reports whether the media actually landed. `ok: false` is the script's
+    // normal way of saying a capture was not possible (a stale ring, no speech
+    // on the clip), which is a real outcome for the card even though it is not
+    // an error for us — so it counts as "did not fully succeed" for the chime.
     let capture = async {
-        if state.auto_capture_on_add {
-            let target = crate::services::capture::Target {
-                anchor_ts: Some(anchor_ts),
-                note_id: Some(note_id),
-            };
-            match crate::services::capture::run(state, target).await {
-                Ok(result) => info!(note_id, result = %result, "auto-capture after add"),
-                Err(e) => warn!(note_id, error = %e, "auto-capture after add failed"),
+        if !state.auto_capture_on_add {
+            return true;
+        }
+        let target = crate::services::capture::Target {
+            anchor_ts: Some(anchor_ts),
+            note_id: Some(note_id),
+        };
+        match crate::services::capture::run(state, target).await {
+            Ok(result) => {
+                info!(note_id, result = %result, "auto-capture after add");
+                result.get("ok").and_then(Value::as_bool) == Some(true)
+            }
+            Err(e) => {
+                warn!(note_id, error = %e, "auto-capture after add failed");
+                false
             }
         }
     };
@@ -260,20 +274,24 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_t
             state.anthropic_api_key.as_deref()
         };
 
+    // No definition to fetch: the capture is the whole of the enrichment, so it
+    // alone decides whether this card came out complete.
     let Some(api_key) = api_key else {
-        capture.await;
+        if capture.await {
+            crate::services::chime::mine_complete();
+        }
         return;
     };
 
-    let (def, ()) = tokio::join!(
+    let (def, captured) = tokio::join!(
         crate::services::compactdef::compact_def(&state.http, api_key, &word, &sentence),
         capture,
     );
 
-    match def {
+    let defined = match def {
         Ok(def) if !def.is_empty() => {
             // Verified, not fire-and-forget: see `update_note_field_verified`.
-            if let Err(e) = crate::services::anki::update_note_field_verified(
+            match crate::services::anki::update_note_field_verified(
                 &state.http,
                 &state.anki_url,
                 note_id,
@@ -282,13 +300,30 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_t
             )
             .await
             {
-                warn!(note_id, error = %e, "CompactDef write failed");
-            } else {
-                info!(note_id, word = %word, "CompactDef written and verified");
+                Ok(()) => {
+                    info!(note_id, word = %word, "CompactDef written and verified");
+                    true
+                }
+                Err(e) => {
+                    warn!(note_id, error = %e, "CompactDef write failed");
+                    false
+                }
             }
         }
-        Ok(_) => warn!(note_id, word, "CompactDef came back empty"),
-        Err(e) => warn!(note_id, word, error = %e, "CompactDef generation failed"),
+        Ok(_) => {
+            warn!(note_id, word, "CompactDef came back empty");
+            false
+        }
+        Err(e) => {
+            warn!(note_id, word, error = %e, "CompactDef generation failed");
+            false
+        }
+    };
+
+    // The card is complete: media attached and the definition verified onto the
+    // note. Anything less stays silent, so the sound means one thing only.
+    if captured && defined {
+        crate::services::chime::mine_complete();
     }
 }
 
