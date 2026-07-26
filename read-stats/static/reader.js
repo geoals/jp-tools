@@ -1,5 +1,5 @@
-/** Phone reading view: the live Textractor line feed, sized for a split-screen
- *  half next to a Moonlight stream.
+/** The reading view: the live Textractor line feed, sized to sit beside the
+ *  running VN.
  *
  *  There is no mine button. Adding a card in Yomitan goes through this server's
  *  AnkiConnect proxy, and the proxy fires vn-capture.sh itself once Anki has

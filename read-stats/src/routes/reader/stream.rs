@@ -42,7 +42,7 @@ pub struct StreamQuery {
 /// Server-sent events, one per hooked line, `data` being the line JSON.
 ///
 /// Each event carries its line id, so a browser that drops the connection
-/// (phone screen off, tab backgrounded) reconnects with `Last-Event-ID` and
+/// (screen off, tab backgrounded) reconnects with `Last-Event-ID` and
 /// resumes exactly where it left off rather than replaying the backlog.
 pub async fn lines_stream(
     State(state): State<AppState>,
@@ -97,7 +97,7 @@ pub async fn lines_stream(
         }
     };
 
-    // Comment pings keep the connection open through the phone's idle timeouts.
+    // Comment pings keep the connection open through idle timeouts.
     Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
 }
 

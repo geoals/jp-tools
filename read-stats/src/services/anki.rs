@@ -1,6 +1,6 @@
-//! Read-only AnkiConnect client: probe for a reachable instance (dashboard
-//! client first — mining is phone-first in this stack — then the configured
-//! fallback) and snapshot the mined deck's vocab field.
+//! Read-only AnkiConnect client: probe for a reachable instance (the dashboard
+//! client first, then the configured fallback) and snapshot the mined deck's
+//! vocab field.
 
 use std::net::IpAddr;
 use std::time::Duration;
@@ -51,7 +51,7 @@ async fn reachable(client: &reqwest::Client, url: &str) -> bool {
 }
 
 /// Candidate AnkiConnect URLs in preference order: the dashboard client's IP
-/// (phone with AnkiconnectAndroid), then the configured fallback (desktop).
+/// (a device running AnkiconnectAndroid), then the configured fallback.
 pub fn candidate_urls(client_ip: Option<IpAddr>, fallback: &str) -> Vec<String> {
     let mut urls = Vec::new();
     if let Some(ip) = client_ip {

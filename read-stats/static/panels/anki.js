@@ -10,7 +10,7 @@ export function AnkiPanel({ anki, onRefresh, busy }) {
   if (!anki.available) {
     return html`
       <div class="meta-hint">
-        No deck snapshot yet — open Anki (desktop or phone) and refresh.
+        No deck snapshot yet — open Anki and refresh.
         ${" "}
         <button class="pause-btn" onClick=${onRefresh} disabled=${busy}>
           ${busy ? "refreshing…" : "↻ refresh from Anki"}

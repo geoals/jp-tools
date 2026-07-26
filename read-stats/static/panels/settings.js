@@ -7,8 +7,8 @@
 //     and the whole history re-derives under the new value on the next request.
 //     That is the point of them being settings at all.
 //   - **this browser** — the theme. Not a row anywhere: it is a property of the
-//     device you are looking at, and the phone reading in the dark should not
-//     have to agree with the desktop.
+//     device you are looking at, and a device reading in the dark should not
+//     have to agree with one that isn't.
 //
 // What is deliberately *not* here: the current work and the VN window. Both are
 // per-work workflow rather than configuration, and they belong next to the work
@@ -205,8 +205,8 @@ export function SettingsView({ settings, onSaved }) {
             />
           </div>
           <p class="settings-hint">
-            Stored on this device only, so the phone can read dark while the
-            desktop stays light. “system” follows the OS setting as it changes.
+            Stored on this device only, so one device can read dark while
+            another stays light. “system” follows the OS setting as it changes.
           </p>
         </div>
       </div>

@@ -1,5 +1,5 @@
 //! Daily reading tracker: characters and active time derived from the raw line
-//! stream a texthooker writes, plus the phone-side reading view.
+//! stream a texthooker writes, plus the reading view.
 //!
 //! The layers, outermost first:
 //!

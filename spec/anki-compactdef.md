@@ -212,7 +212,7 @@ Two card-creation paths exist; they inject CompactDef in different places.
 
 ### Daily driver: VN reading → Yomitan → read-stats `/anki-proxy` (DONE)
 
-The daily flow reads a VN over Moonlight on the phone, Yomitan scans the line
+The daily flow reads a VN with `#read` open beside it, Yomitan scans the line
 feed, and **Yomitan creates the card**, POSTing `addNote` to read-stats'
 `/anki-proxy`, which forwards to Anki. Rust never builds these notes, so
 CompactDef can't be added at build time — it is added *after* the note exists:

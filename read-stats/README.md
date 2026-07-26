@@ -144,8 +144,8 @@ narration* card that splits the reading on 「」.
   compare directly, and the speed chart marks where reading switched VNs.
 
 - **Anki integration (read-only).** On dashboard load (or the refresh button)
-  the server probes for AnkiConnect — the dashboard client's IP first (phone
-  running AnkiconnectAndroid), then `JP_TOOLS_ANKI_URL` — and snapshots the
+  the server probes for AnkiConnect — the dashboard client's IP first (for a
+  device running AnkiconnectAndroid), then `JP_TOOLS_ANKI_URL` — and snapshots the
   mined deck's `VocabKanji` fields into `anki_notes`. Note ids double as
   creation timestamps, giving **cards per session** (cards added inside each
   session's timespan, cards/h) with no extra bookkeeping. New raw lines are
@@ -156,24 +156,21 @@ narration* card that splits the reading on 「」.
   words. `word_days` is deck-independent, so words mined later still match
   past reading.
 
-## Reading from a phone (`/#read`)
+## The reading view (`/#read`)
 
-`#read` is a live feed of the lines Textractor hooks, meant for reading a VN on
-the PC while the phone does the looking-up. The setup:
+`#read` is a live feed of the lines Textractor hooks, read beside the VN while
+it runs — the lines stay visible and selectable, so there is no reaching into
+the game window for a lookup. The setup:
 
-- **Sunshine** on the PC + **Moonlight** on the phone streams the VN. Put the
-  two in Android split-screen — Moonlight above, Firefox on `#read` below — so
-  the lines are always visible and there is no app-switching per lookup.
-- **Yomitan in Firefox Android** scans the lines. Point its *Server address* at
-  `http://<pc-ip>:3200/anki-proxy` exactly as on the desktop, so phone lookups
-  are counted too and cards land in the **PC's** Anki.
+- **Yomitan** scans the lines. Point its *Server address* at
+  `/anki-proxy` so lookups are counted and cards land in Anki.
 - **✕ clear last** drops the newest hooked line from the stats — see *Clear
   last line* above. Deliberately narrow and quiet; every press is undoable.
 - **Mining has no button.** Adding a card in Yomitan goes through
   `/anki-proxy`, and the proxy runs `vn-mine/vn-capture.sh` itself once Anki
   accepts the note — so the voiceline audio and a screenshot attach to every
-  mine, from the phone or the desktop, without a second deliberate tap. A
-  button would only have been a manual way to redo what already happened.
+  mine without a second deliberate tap. A button would only have been a manual
+  way to redo what already happened.
   **whisper-service is optional here:** it only narrows the clip to the single
   mined sentence within a multi-sentence line. When it's down the capture still
   works — the clip is attached VAD-trimmed — and the reader bar shows a muted
@@ -198,14 +195,17 @@ the dashboard takes effect without reloading the reader. If no work is set the
 title is left alone, and cards will be stamped "read-stats" — set the work
 first.
 
-Cards must land in the PC's collection, not the phone's, because that is what
-`vn-capture.sh` attaches media to — so the proxy forwards to `JP_TOOLS_ANKI_URL`
-unconditionally, deliberately *not* preferring the requesting client the way
-manga-mine's export does.
+Cards must land in the collection on the machine running the VN, because that is
+what `vn-capture.sh` attaches media to — so the proxy forwards to
+`JP_TOOLS_ANKI_URL` unconditionally, deliberately *not* preferring the
+requesting client the way manga-mine's export does.
 
-Input from Moonlight goes to the VN, so the VN keeps desktop focus throughout
-and the usual "click back to the VN window first" caveat doesn't apply. The
-5-minute ring-buffer limit still does: mine before advancing.
+The server listens on the LAN (and over Tailscale), so `#read` works from
+another device — a phone beside the screen — as well as from a browser on the
+machine itself. That second case is why `vn_window` exists: the screenshot has
+to name the VN's window rather than follow focus, which is the browser's.
+
+The 5-minute ring-buffer limit applies either way: mine before advancing.
 
 The line feed is read from the `lines` table that `vn-ws-logger.py` already
 writes, not from Textractor's WebSocket — its plugin can crash Textractor when a
@@ -245,10 +245,10 @@ it. Two kinds of thing, and the split is deliberate:
   raise the gap cap and every hour you have ever read is re-priced, and lowering
   it again puts them back.
 - **this browser** — the theme (system / light / dark), in `localStorage` and
-  applied as `data-theme` on `<html>`. Not a row anywhere: the phone reading in
-  a dark room should not have to agree with the desktop. Stamped by a small
-  blocking script in `spa.html` before first paint, so a dark device doesn't
-  flash light on load.
+  applied as `data-theme` on `<html>`. Not a row anywhere: a device reading in
+  a dark room should not have to agree with the one that isn't. Stamped by a
+  small blocking script in `spa.html` before first paint, so a dark device
+  doesn't flash light on load.
 
 The current work and the VN capture window are deliberately *not* here — both
 are per-work workflow rather than configuration, and they live beside the work
@@ -296,7 +296,7 @@ it but doesn't manage it.
 - `GET  /api/lines/stream` — SSE, one event per hooked line, `data` being
   `{id, ts, chars, text}` and the event id being the line id. Sends the last
   `?backlog=` lines (40) on open, or resumes after `?after=<id>` /
-  `Last-Event-ID` so a reconnecting phone doesn't replay or skip
+  `Last-Event-ID` so a reconnecting client doesn't replay or skip
 - `POST /api/lines/discard` — `{ids: [...]}` (max 500), flags those lines
   `discarded` so every derived figure drops them; returns the ids actually
   changed, which is what undo re-sends. `POST /api/lines/undiscard` is the
@@ -308,8 +308,7 @@ it but doesn't manage it.
 - `POST /api/reader/explain` — `{context: [oldest…newest], focus?}`; sends the
   lines to the Anthropic API and returns `{text}`, a short explanation of the
   last one centred on `focus` if given. 400 if no key is configured or the
-  context is empty; the context is capped server-side. See *Reading from a
-  phone*
+  context is empty; the context is capped server-side. See *The reading view*
 - `GET  /api/vn/windows` — open window titles (via xdotool, Wine/Qt/IME
   scaffolding filtered out), offered as a picker for a work's `vn_window`
 - `POST /api/vn/capture` — run `vn-capture.sh` (see `JP_TOOLS_VN_CAPTURE_SH`)
@@ -451,7 +450,7 @@ keyboard, and the answer comes from evidence rather than a flat rate:
   the way the old flat cap did it.
 
   The engagement action is the reader's **ℹ explain last line** button, recorded
-  as a `reader_mark` when tapped (see *Reading from a phone*). It fills the one
+  as a `reader_mark` when tapped (see *The reading view*). It fills the one
   gap the other two signals leave: reading an explanation is real presence the
   line stream has no other trace of. Kept in its own table, not `lookups`, so it
   credits *time* without touching the lookups/h or unknown-word-rate metrics.

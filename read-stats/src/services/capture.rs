@@ -38,9 +38,7 @@ pub async fn run(state: &AppState) -> Result<Value, AppError> {
     }
 
     // Which window to screenshot. Without it the script grabs whatever has
-    // focus — correct when mining from the phone (the VN never loses focus on
-    // this machine), wrong from a browser on this machine, which is what would
-    // be focused at the moment the button was pressed.
+    // focus, which is the browser `#read` is open in, not the VN.
     //
     // The current work's own window comes first; the global `vn_window` setting
     // is a legacy fallback for setups that predate per-work windows.
@@ -52,9 +50,9 @@ pub async fn run(state: &AppState) -> Result<Value, AppError> {
     };
 
     let mut cmd = tokio::process::Command::new(&script);
-    // The script normally reports through notify-send on the PC desktop, which
-    // nobody is looking at when reading from the phone; VN_JSON=1 makes it
-    // print a result object instead.
+    // The script normally reports through notify-send on the desktop it runs
+    // on, which is not necessarily where the mine came from; VN_JSON=1 makes it
+    // print a result object instead, and the reader shows that.
     cmd.env("VN_JSON", "1");
     // Left unset when empty so a VN_WINDOW inherited from the environment
     // still applies.

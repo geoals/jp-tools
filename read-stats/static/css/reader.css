@@ -2,9 +2,9 @@
    the paused state. Loaded on the dashboard too — one stylesheet, two views. */
 
 /* ── Reading view (#read) ────────────────────────────────────────────────
-   Sized for a phone in split-screen beside a Moonlight stream: fixed to the
+   Sized to sit beside the VN rather than to fill a page: fixed to the
    viewport so #app's dashboard padding doesn't apply, lines scrolling between
-   a thin status bar and a thumb-sized action row. */
+   a thin status bar and an action row big enough for touch. */
 .reader {
   position: fixed;
   inset: 0;

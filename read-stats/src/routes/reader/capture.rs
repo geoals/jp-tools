@@ -8,7 +8,7 @@ use crate::app::AppState;
 use crate::error::AppError;
 use crate::services::capture;
 
-/// Run vn-capture.sh and hand its result back to the phone.
+/// Run vn-capture.sh and hand its result back to the browser that asked.
 pub async fn vn_capture(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     // Pressing mine proves presence whether or not the capture lands (a stale
     // line still fails), and it attaches media to an existing note rather than

@@ -1,10 +1,11 @@
-//! The phone-side reading view (`#read`): a live feed of the lines Textractor
-//! hooks, plus the buttons that act on them.
+//! The reading view (`#read`): a live feed of the lines Textractor hooks, plus
+//! the buttons that act on them.
 //!
-//! The VN, Textractor and Anki all stay on the PC; the phone shows the line
-//! stream in a browser so Yomitan can scan it (its AnkiConnect endpoint is
-//! `/anki-proxy`, which forwards to the PC's Anki — the same collection
-//! vn-capture.sh attaches media to).
+//! Read in a browser beside the running VN, so Yomitan can scan the lines
+//! without reaching into the game window. Yomitan's AnkiConnect endpoint is
+//! `/anki-proxy`, which forwards to the Anki on the machine running the VN —
+//! the same collection vn-capture.sh attaches media to. The view is served over
+//! the LAN as well, so a second device beside the screen works the same way.
 //!
 //! Lines are read out of the `lines` table rather than from Textractor's
 //! WebSocket directly: vn-ws-logger.py is already writing them there, and its

@@ -69,7 +69,7 @@ async fn main() {
         .expect("failed to bind listener");
     info!(addr = %config.listen_addr, "read-stats ready, listening");
     // with_connect_info exposes the client address so the Anki refresh can
-    // probe the dashboard client (phone) for a local AnkiConnect first.
+    // probe the dashboard client for a local AnkiConnect first.
     axum::serve(
         listener,
         router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
