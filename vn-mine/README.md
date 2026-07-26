@@ -44,6 +44,12 @@ silero-VAD finds where the speech ends.
   at the matched span. Falls back to anchoring on `VocabKanji` and expanding
   to punctuation/silence boundaries; on any failure the VAD-trimmed clip is
   kept unchanged. Needs whisper-service running on :8100.
+- `vn-calibrate.py` — measurement tool, not part of a capture. Scores every
+  line in the ring's last ~5 minutes against the speech VAD finds, and reports
+  how closely a voiceline's onset tracks the hook and how well the line's mora
+  count predicts its duration. Those two spreads are what a stricter capture
+  rule would have to be built on; run it **during reading** (idle on a menu
+  gives a loud ring and no speech), and see `spec/vn-audio-attribution.md`.
 - `vn-record.sh` / `vn-screenshot.sh` — older replay-based scripts (press
   right-arrow to replay, record 8s). Still work for VNs with a replay key.
 
@@ -142,6 +148,7 @@ standalone; the sound effect that prompted the check scored 0.35.
   play.
 - `VN_VAD_THRESHOLD` (default 0.5) — raise if BGM vocals leak in, lower if
   quiet lines get cut.
+
 - `VN_VAD_MIN_SPEECH` (default 0.5) — ignore detected speech shorter than this.
   Above the length of a sound effect, below the length of even a one-word line.
 - `VN_MIN_PEAK_DB` (default -25) — reject a clip whose peak never reaches this.
