@@ -25,6 +25,27 @@ static CHIME: LazyLock<Option<PathBuf>> = LazyLock::new(|| {
     (!path.is_empty()).then(|| PathBuf::from(path))
 });
 
+/// PulseAudio's full-scale volume (`PA_VOLUME_NORM`), the unit `paplay
+/// --volume` counts in.
+const VOLUME_FULL: u32 = 65536;
+
+/// Half scale — the same place a volume slider sits at halfway, not half the
+/// amplitude (PulseAudio's scale is cubic, so this is a good deal quieter than
+/// "half as loud" would suggest). A notification that plays beside a VN should
+/// sit under it, and the default file is loud on its own.
+///
+/// `JP_TOOLS_MINE_CHIME_VOLUME` takes a percentage: `100` for the file as-is,
+/// and above 100 is allowed by paplay if the chime needs to carry over game
+/// audio.
+static VOLUME: LazyLock<u32> = LazyLock::new(|| {
+    let percent = std::env::var("JP_TOOLS_MINE_CHIME_VOLUME")
+        .ok()
+        .and_then(|v| v.trim().parse::<f64>().ok())
+        .filter(|p| *p >= 0.0)
+        .unwrap_or(50.0);
+    (VOLUME_FULL as f64 * percent / 100.0).round() as u32
+});
+
 /// Play the completion sound, if there is one to play.
 ///
 /// Detached and never awaited: a mine is finished whether or not a sound came
@@ -40,6 +61,7 @@ pub fn mine_complete() {
         return;
     }
     match tokio::process::Command::new("paplay")
+        .arg(format!("--volume={}", *VOLUME))
         .arg(path)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
