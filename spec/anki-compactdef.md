@@ -219,11 +219,29 @@ CompactDef can't be added at build time — it is added *after* the note exists:
 
 1. The proxy forwards the `addNote` byte-for-byte (its existing contract — it
    never alters the forwarded request).
-2. In the background, once Anki has assigned a note id, it:
+2. In the background, once Anki has assigned a note id, it starts both of these
+   at once (`tokio::join!`) and writes CompactDef when both have finished:
    - generates CompactDef from the note's word + sentence and writes it with
      `updateNoteFields`;
    - fires `vn-capture.sh` to attach audio + picture (best-effort — a stale ring
      buffer or missing audio just skips media; CompactDef still lands).
+
+   They overlap rather than run in sequence because each is several seconds and
+   each was, in turn, the thing making the other late. The capture is the one
+   that cannot be delayed at all: its screenshot shows the screen as it is when
+   taken, so an LLM call in front of it puts the *next* line's screen on the
+   card. (Its audio window is anchored separately, at the moment the `addNote`
+   arrived — `VN_ANCHOR_TS`, with `VN_NOTE_ID` naming the note — so that half is
+   immune to how long anything takes.)
+
+3. The CompactDef write is read back before it is called done
+   (`anki::update_note_field_verified`). Anki answering `error: null` means it
+   accepted the write, not that the value survives: a note open in Anki's
+   editor gets its in-memory copy saved back over anything AnkiConnect changed
+   meanwhile, silently. Verifying turns that into a logged failure naming the
+   note. There is no retry — the editor is still open a second later — so the
+   remedy is to leave a freshly mined card alone for a few seconds, or reopen it
+   after the definition lands.
 
 This is why CompactDef is owned by the proxy and **not** by `vn-capture.sh`:
 capture aborts early exactly in the no-audio case, but CompactDef must always be

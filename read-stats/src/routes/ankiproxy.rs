@@ -117,9 +117,13 @@ fn term_from_query(query: &str, field: &str) -> Option<String> {
 
 pub async fn proxy(State(state): State<AppState>, body: Bytes) -> Response {
     // Record before forwarding: a lookup happened whether or not Anki is up.
-    // Also remember an addNote so its *response* (the new note id) can trigger
-    // CompactDef + media enrichment once Anki has accepted it.
-    let mut added_note: Option<Value> = None;
+    // Also remember an addNote, with the moment it arrived, so its *response*
+    // (the new note id) can trigger media + CompactDef enrichment once Anki has
+    // accepted it. That moment is the anchor, and it is taken here rather than
+    // in the enrichment because this is the only point that still answers
+    // "which line was on screen when the card was added" — everything after it,
+    // Anki's own round-trip included, is time the reader can spend reading on.
+    let mut added_note: Option<(Value, f64)> = None;
     match serde_json::from_slice::<Value>(&body) {
         Ok(parsed) => {
             let action = parsed.get("action").and_then(Value::as_str).unwrap_or("");
@@ -130,7 +134,7 @@ pub async fn proxy(State(state): State<AppState>, body: Bytes) -> Response {
                     debug!(action, "lookup action with no extractable term");
                 }
             } else if action == "addNote" {
-                added_note = Some(parsed);
+                added_note = Some((parsed, now_ts()));
             }
         }
         // Not our business to reject what Anki might accept — forward it.
@@ -146,10 +150,10 @@ pub async fn proxy(State(state): State<AppState>, body: Bytes) -> Response {
     };
 
     match (added_note, new_note_id(&resp_bytes)) {
-        (Some(req), Some(note_id)) => {
+        (Some((req, anchor_ts)), Some(note_id)) => {
             let state = state.clone();
             // Detached: card creation must not wait on an LLM call or a capture.
-            tokio::spawn(async move { enrich_added_note(&state, note_id, &req).await });
+            tokio::spawn(async move { enrich_added_note(&state, note_id, &req, anchor_ts).await });
         }
         (Some(_), None) => warn!(
             resp = %String::from_utf8_lossy(&resp_bytes),
@@ -185,10 +189,27 @@ fn new_note_id(resp_bytes: &Bytes) -> Option<i64> {
     }
 }
 
-/// Write CompactDef onto a freshly added note and (optionally) fire vn-capture
-/// for audio + picture. All best-effort: any failure is logged, never surfaced —
-/// the card already exists and is usable without either.
-async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value) {
+/// Fire vn-capture for audio + picture and write CompactDef onto a freshly
+/// added note. All best-effort: any failure is logged, never surfaced — the
+/// card already exists and is usable without either.
+///
+/// The capture must not queue behind an LLM call, and the two Anki writes must
+/// not overlap — which is why this is neither sequential nor fully parallel.
+///
+/// The capture is what the timing bug was about: a screenshot can only show the
+/// screen as it is when it is taken, so anything ahead of it puts the *next*
+/// line on the card. (`anchor_ts` pins the audio window whenever the script
+/// runs; the picture has no such recourse.) But making CompactDef wait for the
+/// capture just moved the cost onto CompactDef, which then landed ten seconds
+/// after the add rather than four.
+///
+/// So the LLM call runs *alongside* the capture and its result is written
+/// afterwards. Both writes are `updateNoteFields` on the same note, and
+/// AnkiConnect does a read-modify-write of the whole note — issued
+/// concurrently, one would drop the other's fields. Overlapping the waiting
+/// while keeping the writes ordered is the only arrangement that gets all
+/// three properties.
+async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_ts: f64) {
     // CompactDef: only when a target field and an API key are configured.
     let fields = req.pointer("/params/note/fields");
     let word = fields
@@ -202,57 +223,72 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value) {
         .map(crate::services::anki::clean_field)
         .unwrap_or_default();
 
-    if !state.anki_compact_def_field.is_empty() && !word.is_empty() && !sentence.is_empty() {
-        match &state.anthropic_api_key {
-            Some(api_key) => {
-                match crate::services::compactdef::compact_def(
-                    &state.http,
-                    api_key,
-                    &word,
-                    &sentence,
-                )
-                .await
-                {
-                    Ok(def) if !def.is_empty() => {
-                        let fields = serde_json::json!({ &state.anki_compact_def_field: def });
-                        if let Err(e) = crate::services::anki::update_note_fields(
-                            &state.http,
-                            &state.anki_url,
-                            note_id,
-                            fields,
-                        )
-                        .await
-                        {
-                            warn!(note_id, error = %e, "CompactDef write failed");
-                        } else {
-                            info!(note_id, word = %word, "CompactDef written");
-                        }
-                    }
-                    Ok(_) => warn!(note_id, word, "CompactDef came back empty"),
-                    Err(e) => warn!(note_id, word, error = %e, "CompactDef generation failed"),
-                }
+    // Auto-capture: fold the mine button into the add. The note id and the
+    // anchor both come from the add itself, so neither depends on what has
+    // happened on screen or in Anki since.
+    let capture = async {
+        if state.auto_capture_on_add {
+            let target = crate::services::capture::Target {
+                anchor_ts: Some(anchor_ts),
+                note_id: Some(note_id),
+            };
+            match crate::services::capture::run(state, target).await {
+                Ok(result) => info!(note_id, result = %result, "auto-capture after add"),
+                Err(e) => warn!(note_id, error = %e, "auto-capture after add failed"),
             }
-            None => warn!(note_id, "enrich: no Anthropic API key; skipping CompactDef"),
         }
-    } else {
-        warn!(
-            note_id,
-            word = %word,
-            word_empty = word.is_empty(),
-            sentence_empty = sentence.is_empty(),
-            compact_field_empty = state.anki_compact_def_field.is_empty(),
-            "enrich: skipped CompactDef — empty word, sentence, or field"
-        );
-    }
+    };
 
-    // Auto-capture: fold the mine button into the add. vn-capture.sh finds the
-    // most recently added note itself, so it needs no id — it just has to run
-    // after the add lands, which is exactly here.
-    if state.auto_capture_on_add {
-        match crate::services::capture::run(state).await {
-            Ok(result) => info!(note_id, result = %result, "auto-capture after add"),
-            Err(e) => warn!(note_id, error = %e, "auto-capture after add failed"),
+    // Whether there is a definition to ask for at all, decided before anything
+    // is awaited so the capture never waits on a call that was not going to
+    // happen.
+    let api_key =
+        if state.anki_compact_def_field.is_empty() || word.is_empty() || sentence.is_empty() {
+            warn!(
+                note_id,
+                word = %word,
+                word_empty = word.is_empty(),
+                sentence_empty = sentence.is_empty(),
+                compact_field_empty = state.anki_compact_def_field.is_empty(),
+                "enrich: skipped CompactDef — empty word, sentence, or field"
+            );
+            None
+        } else if state.anthropic_api_key.is_none() {
+            warn!(note_id, "enrich: no Anthropic API key; skipping CompactDef");
+            None
+        } else {
+            state.anthropic_api_key.as_deref()
+        };
+
+    let Some(api_key) = api_key else {
+        capture.await;
+        return;
+    };
+
+    let (def, ()) = tokio::join!(
+        crate::services::compactdef::compact_def(&state.http, api_key, &word, &sentence),
+        capture,
+    );
+
+    match def {
+        Ok(def) if !def.is_empty() => {
+            // Verified, not fire-and-forget: see `update_note_field_verified`.
+            if let Err(e) = crate::services::anki::update_note_field_verified(
+                &state.http,
+                &state.anki_url,
+                note_id,
+                &state.anki_compact_def_field,
+                &def,
+            )
+            .await
+            {
+                warn!(note_id, error = %e, "CompactDef write failed");
+            } else {
+                info!(note_id, word = %word, "CompactDef written and verified");
+            }
         }
+        Ok(_) => warn!(note_id, word, "CompactDef came back empty"),
+        Err(e) => warn!(note_id, word, error = %e, "CompactDef generation failed"),
     }
 }
 

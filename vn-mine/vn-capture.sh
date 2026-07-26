@@ -11,6 +11,14 @@
 #                      desktop — for read-stats' reader view, which shows the
 #                      result in the browser that mined
 #      VN_MAX_LEN=10   max seconds of audio considered after the line appears
+#      VN_ANCHOR_TS    epoch seconds; anchor on the newest hooked line at *that*
+#                      instant rather than at the moment this script runs. What
+#                      read-stats passes when a card add triggers the capture,
+#                      so reading on while the capture works can't move the
+#                      anchor onto the next line.
+#      VN_NOTE_ID      attach to this note instead of the most recently added
+#                      one — again for the card-add path, which already knows
+#                      which note it just created.
 #      VN_MIN_PEAK_DB  reject a clip whose peak is quieter than this (default
 #                      -25 dBFS — a silence floor, not a voice test)
 #      VN_WHISPER_URL  whisper-service for sentence trim (default :8100)
@@ -36,6 +44,8 @@ VAD_PYTHON="$HOME/.local/share/vn-mine/venv/bin/python"
 VAD_SCRIPT="$SCRIPT_DIR/vn-vad.py"
 TRIM_SCRIPT="$SCRIPT_DIR/vn-trim.py"
 VN_WINDOW="${VN_WINDOW:-}"
+VN_ANCHOR_TS="${VN_ANCHOR_TS:-}"
+VN_NOTE_ID="${VN_NOTE_ID:-}"
 SHOT_NOTE=""
 
 # Unset, fall back to read-stats' per-work window, so the hotkey and the #read
@@ -87,7 +97,19 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 # === LOCATE THE VOICELINE START (before the screenshot — anchor the line at
 # the press so advancing to the next line immediately after can't re-anchor) ===
 [ -s "$LINES_LOG" ] || die "No hooked lines logged yet. Is vn-buffer running and Textractor copying to clipboard?"
-LAST_LINE=$(tail -n 1 "$LINES_LOG")
+# With VN_ANCHOR_TS, the newest line *as of that instant* — the line that was on
+# screen when the card was added, not whatever is on screen now. The card-add
+# path can take seconds to reach here (an LLM call, a screenshot, VAD), which is
+# long enough to read on, and then `tail -n 1` anchors the audio and the
+# screenshot on the following line. LC_ALL=C so a comma-decimal locale doesn't
+# truncate the timestamps to whole seconds when comparing.
+LAST_LINE=""
+if [ -n "$VN_ANCHOR_TS" ]; then
+  LAST_LINE=$(LC_ALL=C awk -F'\t' -v a="$VN_ANCHOR_TS" '$1 <= a { l = $0 } END { print l }' "$LINES_LOG")
+fi
+# No anchor, or an anchor older than everything the log still holds: the newest
+# line is the best guess left, which is also the hotkey's own behaviour.
+[ -n "$LAST_LINE" ] || LAST_LINE=$(tail -n 1 "$LINES_LOG")
 LINE_TS=${LAST_LINE%%$'\t'*}
 LINE_TEXT=${LAST_LINE#*$'\t'}
 
@@ -244,22 +266,29 @@ fi
 
 # === FIND NEWEST ANKI NOTE (before encode — the sentence trim needs its fields) ===
 if [ -z "$VN_DRY" ]; then
-  CARD_IDS=$(curl -s -X POST "$ANKI_CONNECT_URL" -d '{
-      "action": "findCards",
-      "version": 6,
-      "params": { "query": "note:\"Japanese sentences\" added:1" }
-  }') || die "AnkiConnect is not reachable. Is Anki running?"
-  MOST_RECENT_CARD=$(echo "$CARD_IDS" | jq -r '.result[-1]')
-  if [ "$MOST_RECENT_CARD" == "null" ] || [ -z "$MOST_RECENT_CARD" ]; then
-    die "No cards found with note type 'Japanese sentences'"
-  fi
+  # VN_NOTE_ID: the caller created the note and knows its id, so don't go
+  # looking for "the most recently added one" — that answer is only right while
+  # no other card is added in between.
+  if [ -n "$VN_NOTE_ID" ]; then
+    NOTE_ID="$VN_NOTE_ID"
+  else
+    CARD_IDS=$(curl -s -X POST "$ANKI_CONNECT_URL" -d '{
+        "action": "findCards",
+        "version": 6,
+        "params": { "query": "note:\"Japanese sentences\" added:1" }
+    }') || die "AnkiConnect is not reachable. Is Anki running?"
+    MOST_RECENT_CARD=$(echo "$CARD_IDS" | jq -r '.result[-1]')
+    if [ "$MOST_RECENT_CARD" == "null" ] || [ -z "$MOST_RECENT_CARD" ]; then
+      die "No cards found with note type 'Japanese sentences'"
+    fi
 
-  NOTE_ID=$(curl -s -X POST "$ANKI_CONNECT_URL" -d "{
-      \"action\": \"cardsInfo\",
-      \"version\": 6,
-      \"params\": { \"cards\": [$MOST_RECENT_CARD] }
-  }" | jq -r '.result[0].note')
-  [ -n "$NOTE_ID" ] && [ "$NOTE_ID" != "null" ] || die "Could not resolve note for card $MOST_RECENT_CARD"
+    NOTE_ID=$(curl -s -X POST "$ANKI_CONNECT_URL" -d "{
+        \"action\": \"cardsInfo\",
+        \"version\": 6,
+        \"params\": { \"cards\": [$MOST_RECENT_CARD] }
+    }" | jq -r '.result[0].note')
+    [ -n "$NOTE_ID" ] && [ "$NOTE_ID" != "null" ] || die "Could not resolve note for card $MOST_RECENT_CARD"
+  fi
 
   # === SENTENCE TRIM ===
   # A hooked line can hold several sentences while Yomitan mines just one;

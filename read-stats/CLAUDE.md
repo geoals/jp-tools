@@ -111,6 +111,34 @@ taught to `vn-capture.sh`.
   which fires vn-capture.sh once Anki accepts the note (`auto_capture_on_add`,
   on by default). There is no mine button; a card added anywhere gets its audio
   and screenshot.
+- **A capture is anchored at the add, not at the capture.** vn-capture.sh picks
+  the line to cut audio around by reading the newest entry in `lines.log`, so
+  anything that delays it re-anchors it onto whatever is on screen by then —
+  which is the next line, if you clicked add and read on. The proxy therefore
+  stamps `now_ts()` the moment the `addNote` arrives and passes it as
+  `VN_ANCHOR_TS`, and passes the note it just created as `VN_NOTE_ID` rather
+  than letting the script go looking for the most recently added one. The
+  screenshot has no such fix available — it can only show the screen as it is
+  when it is taken — so nothing may be awaited in front of the capture. In
+  `enrich_added_note` the CompactDef call therefore runs *alongside* it
+  (`tokio::join!`) and its Anki write happens after. Keep that shape: putting
+  the LLM call first is the original bug, and putting the capture first simply
+  moves the delay onto CompactDef, which then lands ten seconds after the add.
+  The two `updateNoteFields` are left strictly ordered rather than fired
+  together — the capture's inside vn-capture.sh, CompactDef's after the join.
+  Two concurrent writes to the same note have not been tested and there is
+  nothing to gain by starting.
+- **An accepted Anki write is not a stored value.** `updateNoteFields` returns
+  `{"result": null, "error": null}` for a write Anki accepted; if the note is
+  open in Anki's editor, the editor's next save writes its in-memory copy back
+  over it and the field is empty again with nothing logged. This was watched
+  happen: a card mined at 12:53:56, its CompactDef written at 12:54:03, the
+  note opened in between, the field empty afterwards. So the CompactDef path
+  goes through `anki::update_note_field_verified`, which reads the field back
+  and returns an error when it did not stick. It deliberately does not retry —
+  the editor is still open a second later — so the value is the warning, and
+  the fix is behavioural: don't open a freshly mined card for a few seconds, or
+  reopen it once the definition lands.
 - **`chars` excludes punctuation** (`jp_core::text::chars`), matched to
   texthooker-ui so speeds are comparable with other people's. Both this crate
   and `vn-ws-logger.py` write that column, and startup recounts it.

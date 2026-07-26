@@ -14,7 +14,11 @@ pub async fn vn_capture(State(state): State<AppState>) -> Result<Json<Value>, Ap
     // line still fails), and it attaches media to an existing note rather than
     // creating one, so it never shows up as a card mark.
     super::mark_presence(&state, "mine").await;
-    capture::run(&state).await.map(Json)
+    // No anchor and no note id: the button fires immediately, so "the newest
+    // line" and "the note added last" are exactly what it means.
+    capture::run(&state, capture::Target::default())
+        .await
+        .map(Json)
 }
 
 /// Window titles to choose the capture target from.

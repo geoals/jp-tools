@@ -22,13 +22,33 @@ use crate::error::AppError;
 /// sentence trim, so it is slow by design. Past this it is stuck, not working.
 const CAPTURE_TIMEOUT: Duration = Duration::from_secs(90);
 
+/// What the capture is *for*, when the caller knows more than "capture now".
+///
+/// The reader's mine button knows neither field: it fires the instant it is
+/// pressed, against whatever line is current, and attaches to whatever note was
+/// added last — which is what pressing it means. The card-add path knows both,
+/// and has to say so, because by the time the script runs the reader may well
+/// have moved on. See `Target::anchor_ts`.
+#[derive(Default)]
+pub struct Target {
+    /// Epoch seconds to resolve "the current line" as of. The capture is
+    /// anchored on the newest line at *this* instant rather than at the instant
+    /// the script gets to look, so reading on while the capture works cannot
+    /// pull the audio window and the screenshot onto the following line.
+    pub anchor_ts: Option<f64>,
+    /// The note to attach to, when the caller created it and knows its id.
+    /// Without one the script falls back to the most recently added note, which
+    /// is only the right answer while nothing else is added in between.
+    pub note_id: Option<i64>,
+}
+
 /// Run vn-capture.sh once and return its parsed JSON result.
 ///
 /// A failed capture is a normal outcome (a stale line, Anki closed) and comes
 /// back as `{"ok": false, ...}` rather than as an error — the reader shows the
 /// message and you press again. `Err` is reserved for the script not running at
 /// all.
-pub async fn run(state: &AppState) -> Result<Value, AppError> {
+pub async fn run(state: &AppState, target: Target) -> Result<Value, AppError> {
     let script = state.vn_capture_script.clone();
     if !script.is_file() {
         return Err(AppError::BadRequest(format!(
@@ -58,6 +78,14 @@ pub async fn run(state: &AppState) -> Result<Value, AppError> {
     // still applies.
     if !vn_window.is_empty() {
         cmd.env("VN_WINDOW", &vn_window);
+    }
+    // Six decimals: the same shape vn-ws-logger.py writes into lines.log, and
+    // finer than any gap between two hooked lines.
+    if let Some(ts) = target.anchor_ts {
+        cmd.env("VN_ANCHOR_TS", format!("{ts:.6}"));
+    }
+    if let Some(id) = target.note_id {
+        cmd.env("VN_NOTE_ID", id.to_string());
     }
     let out = match tokio::time::timeout(CAPTURE_TIMEOUT, cmd.output()).await {
         Ok(Ok(out)) => out,

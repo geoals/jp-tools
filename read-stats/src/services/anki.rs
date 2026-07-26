@@ -6,7 +6,7 @@ use std::net::IpAddr;
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::db::AnkiNote;
 use crate::error::AppError;
@@ -99,6 +99,57 @@ pub async fn update_note_fields(
     )
     .await
     .map(|_| ())
+}
+
+/// Set one field and read it back, so a write that did not stick is reported
+/// rather than logged as a success.
+///
+/// `updateNoteFields` answering `{"result": null, "error": null}` means Anki
+/// accepted the request, *not* that the note still holds the value afterwards.
+/// If the note is open in Anki's editor, the editor's own save writes its
+/// in-memory copy over anything AnkiConnect changed in the meantime — observed
+/// on a card whose CompactDef arrived four seconds after the mine, while the
+/// note was open.
+///
+/// Writing a second time is deliberately not attempted: the editor would still
+/// be open a second later and would clobber that too, so the retry would buy
+/// nothing but another API call. Detection is the whole point — reopen the note
+/// after the definition lands, or give it a few seconds before opening it.
+pub async fn update_note_field_verified(
+    client: &reqwest::Client,
+    url: &str,
+    note_id: i64,
+    field: &str,
+    value: &str,
+) -> Result<(), AppError> {
+    update_note_fields(client, url, note_id, json!({ field: value })).await?;
+    match note_field(client, url, note_id, field).await {
+        Ok(stored) if !stored.trim().is_empty() => Ok(()),
+        Ok(_) => Err(AppError::Upstream(format!(
+            "{field} is empty on note {note_id} despite a successful write — was the note open in Anki's editor?"
+        ))),
+        // Read-back failed: the write itself did not error, so nothing is known
+        // against it. Note the blind spot and take the write at its word.
+        Err(e) => {
+            warn!(note_id, field, error = %e, "could not verify field write");
+            Ok(())
+        }
+    }
+}
+
+/// The current value of one field on one note.
+async fn note_field(
+    client: &reqwest::Client,
+    url: &str,
+    note_id: i64,
+    field: &str,
+) -> Result<String, AppError> {
+    let resp = call(client, url, "notesInfo", json!({ "notes": [note_id] })).await?;
+    Ok(resp
+        .pointer(&format!("/0/fields/{field}/value"))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string())
 }
 
 /// Strip HTML tags and surrounding whitespace from a field value.
