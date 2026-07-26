@@ -127,6 +127,11 @@ pub async fn create_session(
         _ => return Err(AppError::BadRequest("need content, chars or pages".into())),
     };
 
+    // An untimed session has no span to walk back over, so it anchors at the
+    // moment it was logged.
+    let ends_now = now_ts() - req.minutes.unwrap_or(0.0) * 60.0;
+    let today = stats::date_key(now_ts(), settings.day_rollover_hour, tz);
+
     let start_ts = match (req.start_ts, &req.date) {
         (Some(ts), _) => ts,
         (None, Some(d)) => {
@@ -134,11 +139,23 @@ pub async fn create_session(
                 .parse::<NaiveDate>()
                 .map_err(|_| AppError::BadRequest(format!("bad date: {d}")))?;
             // mid-day anchor: rollover hour + 8h (12:00 local at the default 04)
-            stats::day_start_ts(date, settings.day_rollover_hour, tz) + 8.0 * 3600.0
+            let midday = stats::day_start_ts(date, settings.day_rollover_hour, tz) + 8.0 * 3600.0;
+            // "Today" is not a date being back-filled, it is now — and the form
+            // pre-fills it, so this is the common path. Anchoring it at mid-day
+            // would put an evening's reading in the morning of the timeline.
+            //
+            // The `midday > now` arm is the same case seen from the other side:
+            // between midnight and the 04:00 rollover the browser's calendar
+            // date is already tomorrow while the reading day is still today, so
+            // the pre-filled date is one ahead and its mid-day anchor lies in
+            // the future. Reading cannot have happened later than now.
+            if date == today || midday > now_ts() {
+                ends_now
+            } else {
+                midday
+            }
         }
-        // No date either: it was read up to now. An untimed session has no
-        // span to walk back, so it anchors at the moment it was logged.
-        (None, None) => now_ts() - req.minutes.unwrap_or(0.0) * 60.0,
+        (None, None) => ends_now,
     };
 
     let url = req.url.as_deref().filter(|u| !u.trim().is_empty());

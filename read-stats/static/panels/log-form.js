@@ -22,12 +22,25 @@ import { api } from "../api.js";
 
 const COUNT_DEBOUNCE_MS = 300;
 
+// Today in the browser's own timezone. `toISOString` would be UTC and shows
+// yesterday's date all evening at UTC+2. The server treats a date of today as
+// "now" rather than mid-day, so the pre-fill costs nothing in accuracy.
+function todayLocal() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 export function LogForm({ onLogged }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [mode, setMode] = useState("pages");
   const [content, setContent] = useState("");
   const [minutes, setMinutes] = useState("");
+  // Controlled, not a bare default: Preact rewrites an uncontrolled input's
+  // value on every re-render, so typing in any other field would snap the date
+  // back to today.
+  const [date, setDate] = useState(todayLocal());
   const [counted, setCounted] = useState(null);
   // Follows the mode — pasting text is nearly always an article — but stays
   // overridable, since an ebook chapter pastes the same way.
@@ -133,7 +146,15 @@ export function LogForm({ onLogged }) {
           </div>
         </div>
         <form onSubmit=${submit}>
-          <div><label>date</label><input name="date" type="date" /></div>
+          <div>
+            <label>date</label
+            ><input
+              name="date"
+              type="date"
+              value=${date}
+              onInput=${(e) => setDate(e.currentTarget.value)}
+            />
+          </div>
           <div>
             <label>minutes</label
             ><input

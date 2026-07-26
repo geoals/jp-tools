@@ -338,6 +338,65 @@ async fn an_untimed_session_with_no_pace_behind_it_claims_no_time() {
 }
 
 #[tokio::test]
+async fn todays_date_anchors_at_now_not_at_mid_day() {
+    // The form pre-fills today, so this is the ordinary path — and a session
+    // logged in the evening must not land in the morning of the day timeline.
+    let app = TestApp::new().await;
+    let tz = read_stats::clock::tz_offset_secs();
+    let today = read_stats::stats::date_key(now(), 4, tz);
+
+    let (status, session) = app
+        .send(
+            "POST",
+            "/api/sessions",
+            json!({ "date": today.to_string(), "minutes": 30, "chars": 5000 }),
+        )
+        .await;
+    assert_eq!(status, 200);
+    let end = session["end_ts"].as_f64().unwrap();
+    assert!(
+        (end - now()).abs() < 60.0,
+        "the reading ends about now, not at mid-day"
+    );
+
+    // A date genuinely in the past still anchors at mid-day: there is no
+    // better guess for when in that day it happened.
+    let then = today - chrono::Duration::days(9);
+    let (_, old) = app
+        .send(
+            "POST",
+            "/api/sessions",
+            json!({ "date": then.to_string(), "minutes": 30, "chars": 5000 }),
+        )
+        .await;
+    let expect = read_stats::stats::day_start_ts(then, 4, tz) + 8.0 * 3600.0;
+    assert_eq!(old["start_ts"].as_f64().unwrap(), expect);
+}
+
+#[tokio::test]
+async fn a_date_ahead_of_the_reading_day_does_not_land_in_the_future() {
+    // Between midnight and the 04:00 rollover the browser's calendar date is
+    // already tomorrow while the reading day is still today, so the pre-filled
+    // date is one ahead. Its mid-day anchor would be hours from now.
+    let app = TestApp::new().await;
+    let tz = read_stats::clock::tz_offset_secs();
+    let tomorrow = read_stats::stats::date_key(now(), 4, tz) + chrono::Duration::days(1);
+
+    let (status, session) = app
+        .send(
+            "POST",
+            "/api/sessions",
+            json!({ "date": tomorrow.to_string(), "chars": 5000 }),
+        )
+        .await;
+    assert_eq!(status, 200);
+    assert!(
+        session["start_ts"].as_f64().unwrap() <= now() + 1.0,
+        "reading cannot have happened later than now"
+    );
+}
+
+#[tokio::test]
 async fn the_count_endpoint_agrees_with_what_a_session_stores() {
     let app = TestApp::new().await;
     let content = "本日は快晴なり、風もない。";
