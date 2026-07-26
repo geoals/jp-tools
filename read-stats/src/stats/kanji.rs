@@ -58,6 +58,16 @@ pub struct KanjiLine {
     pub ts: f64,
     pub text: String,
     pub work: Option<String>,
+    /// Whether lookups made while reading this text are observable.
+    ///
+    /// True for hooked lines, false for text pasted into a logged session.
+    /// Yomitan's lookups are only recorded while the line stream is live, so
+    /// pasted text can enter a lookup rate's *denominator* but never its
+    /// numerator — every article read would push each of its kanji's rate down
+    /// with no way of pushing it up, and the outlier rings would stop marking
+    /// the kanji that actually cost something. Exposure counts take all text;
+    /// cost counts take only the metered part.
+    pub metered: bool,
 }
 
 /// A term the reader looked up, and how often.
@@ -70,7 +80,12 @@ pub struct TermTimes {
 #[derive(Debug, Clone, Serialize)]
 pub struct KanjiRow {
     pub kanji: String,
+    /// Every encounter, hooked or pasted — what "how much have you met this"
+    /// asks.
     pub count: i64,
+    /// Encounters in text whose lookups were observable. The denominator of
+    /// [`Self::lookup_rate`]; see [`KanjiLine::metered`].
+    pub metered_count: i64,
     pub first_ts: f64,
     pub last_ts: f64,
     /// Distinct days it was read on — a kanji met 40 times in one scene is not
@@ -105,7 +120,7 @@ impl KanjiRow {
     /// is only meaningful above a floor of encounters, which the caller of the
     /// "hardest" list applies rather than this being pre-filtered away.
     pub fn lookup_rate(&self) -> f64 {
-        self.lookups as f64 / self.count.max(1) as f64
+        self.lookups as f64 / self.metered_count.max(1) as f64
     }
 }
 
@@ -145,6 +160,9 @@ pub struct KanjiStats {
     pub days: Vec<KanjiDay>,
     pub works: Vec<WorkFingerprint>,
     pub total_encounters: i64,
+    /// Of those, the ones in text whose lookups were observable — the
+    /// denominator [`KanjiStats::baseline_lookup_rate`] is built on.
+    pub total_metered_encounters: i64,
     /// Lookups per kanji read, across everything — what a kanji costs on
     /// average. [`KanjiRow::struggling`] is a multiple of this, so it moves
     /// with the reader: as the baseline falls, the bar for "struggling" falls
@@ -157,6 +175,7 @@ pub struct KanjiStats {
 #[derive(Default)]
 struct Acc {
     count: i64,
+    metered_count: i64,
     first_ts: f64,
     last_ts: f64,
     days: HashSet<NaiveDate>,
@@ -182,6 +201,7 @@ pub fn aggregate_kanji(
     let mut first_day: HashMap<char, NaiveDate> = HashMap::new();
     let mut day_encounters: BTreeMap<NaiveDate, i64> = BTreeMap::new();
     let mut total = 0i64;
+    let mut total_metered = 0i64;
 
     for line in lines {
         let day = date_key(line.ts, rollover_hour, tz_offset_secs);
@@ -191,6 +211,9 @@ pub fn aggregate_kanji(
                 ..Default::default()
             });
             e.count += 1;
+            if line.metered {
+                e.metered_count += 1;
+            }
             e.last_ts = line.ts;
             e.days.insert(day);
             if let Some(w) = &line.work {
@@ -200,6 +223,9 @@ pub fn aggregate_kanji(
             first_day.entry(c).or_insert(day);
             *day_encounters.entry(day).or_default() += 1;
             total += 1;
+            if line.metered {
+                total_metered += 1;
+            }
         }
     }
 
@@ -238,6 +264,7 @@ pub fn aggregate_kanji(
             KanjiRow {
                 kanji: c.to_string(),
                 count: a.count,
+                metered_count: a.metered_count,
                 first_ts: a.first_ts,
                 last_ts: a.last_ts,
                 days: a.days.len(),
@@ -268,11 +295,14 @@ pub fn aggregate_kanji(
     // The baseline is your own average cost per kanji read, over everything.
     // Marking outliers against it rather than against a fixed rate means the
     // mark keeps meaning the same thing as the reading gets easier.
+    // Over *metered* encounters, so the bar and the rates it judges are the
+    // same measurement. Mixing them would compare a rate diluted by article
+    // reading against a baseline that was not.
     let total_lookups: i64 = rows.iter().map(|r| r.lookups).sum();
-    let baseline = total_lookups as f64 / total.max(1) as f64;
+    let baseline = total_lookups as f64 / total_metered.max(1) as f64;
     let bar = baseline * OUTLIER_MULTIPLE;
     for r in rows.iter_mut() {
-        r.struggling = r.count >= OUTLIER_ENCOUNTERS && r.lookup_rate() > bar;
+        r.struggling = r.metered_count >= OUTLIER_ENCOUNTERS && r.lookup_rate() > bar;
     }
 
     KanjiStats {
@@ -280,6 +310,7 @@ pub fn aggregate_kanji(
         days: discovery_days(&first_day, &day_encounters),
         works: fingerprints(&per_work),
         total_encounters: total,
+        total_metered_encounters: total_metered,
         baseline_lookup_rate: baseline,
         kanji: rows,
     }
@@ -405,6 +436,15 @@ mod tests {
             ts,
             text: text.to_string(),
             work: (!work.is_empty()).then(|| work.to_string()),
+            metered: true,
+        }
+    }
+
+    /// Pasted text: counts as read, but its lookups were never observable.
+    fn unmetered(ts: f64, text: &str, work: &str) -> KanjiLine {
+        KanjiLine {
+            metered: false,
+            ..line(ts, text, work)
         }
     }
 
@@ -419,6 +459,58 @@ mod tests {
         assert_eq!(row.count, 3);
         assert_eq!(s.total_encounters, 4);
         assert!(!s.kanji.iter().any(|r| r.kanji == "が"));
+    }
+
+    #[test]
+    fn pasted_text_counts_as_met_but_never_dilutes_a_lookup_rate() {
+        // 人 met 6 times in hooked text with 6 lookups, then 100 more times in
+        // a pasted article. Its *cost* is unchanged: those 100 encounters had
+        // no chance of producing a recorded lookup, so counting them would cut
+        // the rate to a sixteenth and unmark a kanji that plainly costs.
+        let mut lines = vec![line(0.0, "人", "A"); 6];
+        lines.push(unmetered(10.0, &"人".repeat(100), "Articles"));
+        let s = aggregate_kanji(
+            &lines,
+            &[TermTimes {
+                term: "人".into(),
+                times: 6,
+            }],
+            &[],
+            &[],
+            4,
+            0,
+        );
+        let row = s.kanji.iter().find(|r| r.kanji == "人").unwrap();
+        assert_eq!(row.count, 106, "every encounter counts as exposure");
+        assert_eq!(row.metered_count, 6, "only the observable ones cost");
+        assert_eq!(
+            row.lookup_rate(),
+            1.0,
+            "6 lookups over 6 metered encounters"
+        );
+        assert_eq!(s.total_encounters, 106);
+        assert_eq!(s.total_metered_encounters, 6);
+        assert_eq!(
+            s.baseline_lookup_rate, 1.0,
+            "the bar is measured over the same encounters the rates are"
+        );
+    }
+
+    #[test]
+    fn a_kanji_seen_only_in_articles_is_met_but_never_flagged() {
+        // No metered encounters at all: it cannot clear OUTLIER_ENCOUNTERS, so
+        // it can never be ringed however the baseline moves. Silence is the
+        // correct answer — nothing was measured about what it cost.
+        let s = stats(&[
+            line(0.0, "人", "A"),
+            unmetered(10.0, &"薔".repeat(50), "Articles"),
+        ]);
+        let row = s.kanji.iter().find(|r| r.kanji == "薔").unwrap();
+        assert_eq!(row.count, 50);
+        assert_eq!(row.metered_count, 0);
+        assert!(!row.struggling);
+        // Still fully present as exposure: grade coverage and the grid see it.
+        assert!(s.kanji.iter().any(|r| r.kanji == "薔"));
     }
 
     #[test]

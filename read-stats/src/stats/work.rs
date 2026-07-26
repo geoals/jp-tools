@@ -8,6 +8,31 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
+/// The one row every logged article aggregates under.
+///
+/// An article *is* a source, but it is not a work in the sense this view is
+/// about — a thing being read through, with a cover, a status and a position
+/// in the queue. Thirty of them would bury the four VNs the list exists for,
+/// and each would carry a kanji fingerprint built from two thousand
+/// characters, which is noise wearing a title. Collapsed, they make one
+/// fingerprint worth reading: what your article reading looks like next to
+/// your fiction.
+///
+/// The individual title and URL are not lost — they stay on the session row
+/// and show in the day's sittings table, which is where "what did I read on
+/// Tuesday" is actually asked.
+pub const ARTICLES_WORK: &str = "Articles";
+
+/// The title a manually logged session aggregates under. Articles collapse to
+/// [`ARTICLES_WORK`]; a book or a manga keeps its own title, because those are
+/// read through over weeks and are exactly what the works view is for.
+pub fn work_key(source: &str, work: Option<&str>) -> Option<String> {
+    match source {
+        "article" => Some(ARTICLES_WORK.to_string()),
+        _ => work.map(str::to_string),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct WorkLine {
     pub ts: f64,

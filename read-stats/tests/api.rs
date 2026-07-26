@@ -396,6 +396,59 @@ async fn a_date_ahead_of_the_reading_day_does_not_land_in_the_future() {
     );
 }
 
+/// Ignored by default: loads the 360 MB Sudachi dictionary, which is far more
+/// than the rest of the suite costs put together.
+#[tokio::test]
+#[ignore = "requires system_full.dic"]
+async fn a_sessions_pasted_text_becomes_word_days() {
+    let app = TestApp::new().await;
+    app.send(
+        "POST",
+        "/api/sessions",
+        json!({ "content": "政府は予算案を決定した。予算案の説明が必要だ。" }),
+    )
+    .await;
+
+    let out = read_stats::ingest::ingest_new_sessions(&app.state)
+        .await
+        .unwrap();
+    assert_eq!(out.lines, 1, "one session tokenized");
+    assert!(out.words > 0);
+
+    let counts: Vec<(String, i64)> =
+        sqlx::query_as("SELECT lemma, count FROM word_days ORDER BY count DESC, lemma")
+            .fetch_all(app.knowledge.pool())
+            .await
+            .unwrap();
+    let by_lemma: std::collections::HashMap<_, _> = counts.into_iter().collect();
+    // Mode C keeps 予算案 whole rather than splitting it into 予算 + 案 — the
+    // same compound handling the line stream gets, which is what makes a
+    // pasted article's counts comparable with a hooked one's.
+    assert_eq!(
+        by_lemma.get("予算案"),
+        Some(&2),
+        "counted once per occurrence, across both sentences"
+    );
+    assert!(by_lemma.contains_key("政府"));
+    // Particles and copulas are not content words and never enter the ledger.
+    assert!(!by_lemma.contains_key("は"));
+
+    // The watermark makes a second run a no-op rather than a double count.
+    let again = read_stats::ingest::ingest_new_sessions(&app.state)
+        .await
+        .unwrap();
+    assert_eq!(again.lines, 0);
+    let total: i64 = sqlx::query_scalar("SELECT sum(count) FROM word_days")
+        .fetch_one(app.knowledge.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        by_lemma.values().sum::<i64>(),
+        total,
+        "nothing counted twice"
+    );
+}
+
 #[tokio::test]
 async fn the_count_endpoint_agrees_with_what_a_session_stores() {
     let app = TestApp::new().await;

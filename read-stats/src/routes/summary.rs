@@ -35,10 +35,13 @@ pub async fn summary(State(state): State<AppState>) -> Result<Json<Value>, AppEr
             "chars": today_total.chars,
             "active_secs": today_total.active_secs,
             "vn": today_vn,
+            "measured": h.measured_days().get(&today).copied().unwrap_or_default(),
             "manual": today_manual,
             "cards": h.cards_in(day_start, day_start + 86400.0),
             "lookups": today_lookups,
-            "lookups_per_1k": stats::rate::lookups_per_1k(today_lookups, today_total.chars),
+            // Hooked characters only — see stats::rate for why the total
+            // would be the wrong denominator.
+            "lookups_per_1k": stats::rate::lookups_per_1k(today_lookups, today_vn.chars),
             "focus": focus_json(&today_focus),
         },
         "goal": {

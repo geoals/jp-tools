@@ -3,7 +3,15 @@
 
 import { html } from "htm/preact";
 import { useState } from "preact/hooks";
-import { Tooltip, W, niceCeil, rateStep, shortDate, truncWork, workChanges } from "./svg.js";
+import {
+  Tooltip,
+  W,
+  niceCeil,
+  rateStep,
+  shortDate,
+  truncWork,
+  workChanges,
+} from "./svg.js";
 
 // Both series are events per hour, so they share one y-axis. Minutes read is a
 // different unit and stays in its own chart — overlaying it here would mean two
@@ -44,8 +52,9 @@ export function RateTrendChart({ days }) {
   // Rate is per *hour of reading*, so a day is only a data point once it has
   // enough active time for the denominator to be stable.
   const rated = days
-    .map((d, i) => ({ ...d, i, hours: d.active_secs / 3600 }))
-    .filter((d) => d.active_secs >= RATE_MIN_SECS);
+    // Measured hours, like every other rate — see `History::measured_days`.
+    .map((d, i) => ({ ...d, i, hours: (d.measured?.active_secs ?? 0) / 3600 }))
+    .filter((d) => (d.measured?.active_secs ?? 0) >= RATE_MIN_SECS);
 
   const shown = RATE_SERIES.filter((s) => !off[s.key]);
 
@@ -179,16 +188,16 @@ export function RateTrendChart({ days }) {
           ({ s, pts, path }) => html`
             <path d=${path} class="trend-line" style=${`stroke:${s.color}`} />
             ${pts.map(
-            (p, k) => html`
-              <circle
-                cx=${x(p.i)}
-                cy=${y(p.v)}
-                r=${k === pts.length - 1 || hover === k ? 5 : 3.5}
-                class="trend-dot"
-                style=${`fill:${s.color}`}
-              />
-            `,
-          )}
+              (p, k) => html`
+                <circle
+                  cx=${x(p.i)}
+                  cy=${y(p.v)}
+                  r=${k === pts.length - 1 || hover === k ? 5 : 3.5}
+                  class="trend-dot"
+                  style=${`fill:${s.color}`}
+                />
+              `,
+            )}
           `,
         )}
         ${labelled.map(
@@ -212,19 +221,15 @@ export function RateTrendChart({ days }) {
           height=${plotH}
           fill="transparent"
           onMouseMove=${(e) => {
-                const rect = e.currentTarget
-                  .closest("svg")
-                  .getBoundingClientRect();
-                const px = ((e.clientX - rect.left) / rect.width) * W;
-                let nearest = 0;
-                rated.forEach((d, k) => {
-                  if (
-                    Math.abs(x(d.i) - px) < Math.abs(x(rated[nearest].i) - px)
-                  )
-                    nearest = k;
-                });
-                setHover(nearest);
-              }}
+            const rect = e.currentTarget.closest("svg").getBoundingClientRect();
+            const px = ((e.clientX - rect.left) / rect.width) * W;
+            let nearest = 0;
+            rated.forEach((d, k) => {
+              if (Math.abs(x(d.i) - px) < Math.abs(x(rated[nearest].i) - px))
+                nearest = k;
+            });
+            setHover(nearest);
+          }}
         />
       </svg>
       ${
@@ -233,13 +238,14 @@ export function RateTrendChart({ days }) {
           <${Tooltip} x=${x(rated[hover].i)} y=${8}>
             <strong>${rated[hover].date}</strong><br />
             ${shown.map(
-            (s) => html`
-              ${s.label.replace("/h", "")}:
-              ${(s.of(rated[hover]) / rated[hover].hours).toFixed(1)}/h<br />
-            `,
-          )}
+              (s) => html`
+                ${s.label.replace("/h", "")}:
+                ${(s.of(rated[hover]) / rated[hover].hours).toFixed(1)}/h<br />
+              `,
+            )}
             <span class="tooltip-sub"
-              >${Math.round(rated[hover].active_secs / 60)} min read</span
+              >${Math.round(rated[hover].measured.active_secs / 60)} min
+              read</span
             >
           <//>
         `

@@ -45,4 +45,4 @@ pub use line::LineEvent;
 pub use presence::{Presence, measure_effective_pace, measure_pace, presence_marks};
 pub use session::{Session, derive_sessions};
 pub use timeline::{Bucket, EventKind, add_events, bucket_lines};
-pub use work::{WorkAgg, WorkLine, aggregate_works};
+pub use work::{ARTICLES_WORK, WorkAgg, WorkLine, aggregate_works, work_key};

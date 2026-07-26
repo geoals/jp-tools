@@ -50,10 +50,14 @@ pub async fn anki_refresh(
     db::save_setting(&state.local, "anki_snapshot_ts", &now_ts().to_string()).await?;
     db::save_setting(&state.local, "anki_source", &source).await?;
     let ingest = crate::ingest::ingest_new_lines(&state).await?;
+    let session_ingest = crate::ingest::ingest_new_sessions(&state).await?;
 
-    Ok(Json(
-        json!({ "notes": notes.len(), "source": source, "ingest": ingest }),
-    ))
+    Ok(Json(json!({
+        "notes": notes.len(),
+        "source": source,
+        "ingest": ingest,
+        "session_ingest": session_ingest,
+    })))
 }
 
 /// Re-encounter statistics: how often mined words reappear in the line stream.

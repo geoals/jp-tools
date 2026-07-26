@@ -22,7 +22,12 @@ export function SpeedTrendChart({ days }) {
     .map((d, i) => ({
       ...d,
       i,
-      speed: d.active_secs >= 600 ? d.chars / (d.active_secs / 3600) : null,
+      // `measured` excludes sessions whose duration was derived from this very
+      // pace — see `History::measured_days`.
+      speed:
+        (d.measured?.active_secs ?? 0) >= 600
+          ? d.measured.chars / (d.measured.active_secs / 3600)
+          : null,
     }))
     .filter((d) => d.speed !== null && d.speed > 0);
 
@@ -141,19 +146,15 @@ export function SpeedTrendChart({ days }) {
           height=${plotH}
           fill="transparent"
           onMouseMove=${(e) => {
-                const rect = e.currentTarget
-                  .closest("svg")
-                  .getBoundingClientRect();
-                const px = ((e.clientX - rect.left) / rect.width) * W;
-                let nearest = 0;
-                points.forEach((p, k) => {
-                  if (
-                    Math.abs(x(p.i) - px) < Math.abs(x(points[nearest].i) - px)
-                  )
-                    nearest = k;
-                });
-                setHover(nearest);
-              }}
+            const rect = e.currentTarget.closest("svg").getBoundingClientRect();
+            const px = ((e.clientX - rect.left) / rect.width) * W;
+            let nearest = 0;
+            points.forEach((p, k) => {
+              if (Math.abs(x(p.i) - px) < Math.abs(x(points[nearest].i) - px))
+                nearest = k;
+            });
+            setHover(nearest);
+          }}
         />
       </svg>
       ${

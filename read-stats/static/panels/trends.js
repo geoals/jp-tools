@@ -43,9 +43,13 @@ export function TrendsCard({ days, dialogue, targetMins, todayDate }) {
   const chars = win.reduce((a, d) => a + d.chars, 0);
   const secs = win.reduce((a, d) => a + d.active_secs, 0);
   const daysRead = win.filter((d) => d.active_secs > 0).length;
+  // Speed is over measured reading only — see `History::measured_days`. The
+  // chars and minutes tiles beside it still count every character read.
+  const measChars = win.reduce((a, d) => a + (d.measured?.chars ?? 0), 0);
+  const measSecs = win.reduce((a, d) => a + (d.measured?.active_secs ?? 0), 0);
   const avgSpeed =
-    secs >= MIN_RATE_SECS
-      ? `${fmtChars(Math.round(chars / (secs / 3600)))}/h`
+    measSecs >= MIN_RATE_SECS
+      ? `${fmtChars(Math.round(measChars / (measSecs / 3600)))}/h`
       : "—";
   const daysReadLabel = `${daysRead}/${win.length}`;
 

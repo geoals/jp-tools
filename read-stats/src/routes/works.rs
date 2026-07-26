@@ -40,7 +40,9 @@ pub async fn works(State(state): State<AppState>) -> Result<Json<Value>, AppErro
 
     // Manual sessions merge in by title.
     for s in &h.manual {
-        let entry = agg.entry(s.work.clone()).or_insert_with(|| stats::WorkAgg {
+        // Articles collapse into one row — see `stats::work::ARTICLES_WORK`.
+        let key = stats::work_key(&s.source, s.work.as_deref());
+        let entry = agg.entry(key).or_insert_with(|| stats::WorkAgg {
             first_ts: s.start_ts,
             ..Default::default()
         });

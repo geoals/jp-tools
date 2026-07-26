@@ -25,6 +25,7 @@ pub async fn days(
 
     let (vn, manual) = h.day_maps();
     let lookups = h.lookup_days();
+    let measured = h.measured_days();
     let focus = h.focus_days();
     let work_days = h.dominant_work_days();
 
@@ -42,8 +43,14 @@ pub async fn days(
             "active_secs": v.active_secs + m.active_secs,
             "vn": v,
             "manual": m,
+            // Reading whose duration was measured rather than derived — the
+            // only honest denominator for chars/hour. See measured_days.
+            "measured": measured.get(&date).copied().unwrap_or_default(),
             "lookups": l,
-            "lookups_per_1k": stats::rate::lookups_per_1k(l, v.chars + m.chars),
+            // Hooked characters only. Lookups are recorded only while the
+            // line stream is live, so manual characters can enter this
+            // denominator but never its numerator. See stats::rate.
+            "lookups_per_1k": stats::rate::lookups_per_1k(l, v.chars),
             "cards": h.cards_in(day_start, day_start + 86400.0),
             "focus": focus_json(&focus.get(&date).copied().unwrap_or_default()),
             "work": work_days.get(&date),

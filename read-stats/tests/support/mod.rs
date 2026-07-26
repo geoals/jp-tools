@@ -22,6 +22,8 @@ pub struct TestApp {
     /// The shared knowledge database — where the line stream lives.
     pub knowledge: Knowledge,
     pub router: Router,
+    /// For tests that drive a background pass (ingest) rather than an endpoint.
+    pub state: AppState,
     paths: Vec<PathBuf>,
 }
 
@@ -53,13 +55,17 @@ impl TestApp {
             anki_sentence_field: "SentKanji".into(),
             anki_compact_def_field: "CompactDef".into(),
             auto_capture_on_add: false,
-            sudachi_dict_path: PathBuf::from("system_full.dic"),
+            // Absolute, from the workspace root: cargo runs tests with the
+            // *package* as the working directory, so the config default's
+            // relative path would not resolve here.
+            sudachi_dict_path: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../system_full.dic"),
             vn_capture_script: PathBuf::from("/nonexistent"),
             anthropic_api_key: None,
             whisper_url: "http://127.0.0.1:9".into(),
         };
         TestApp {
-            router: build_router(state),
+            router: build_router(state.clone()),
+            state,
             local,
             knowledge,
             paths: vec![db_path, knowledge_path],

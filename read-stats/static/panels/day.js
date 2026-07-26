@@ -65,9 +65,16 @@ export function DayCard({ days, todayDate, goal }) {
     focus: { ratio: null, longest_stretch_secs: 0 },
   };
   const mins = day.active_secs / 60;
-  const rated = day.active_secs >= MIN_RATE_SECS;
-  const speed = rated ? day.chars / (day.active_secs / 3600) : null;
-  const lookupsPerHour = rated ? day.lookups / (day.active_secs / 3600) : null;
+  // Rates divide by *measured* reading only. An estimated session's duration
+  // comes from your own pace, so including it would have the chart partly
+  // measuring its own output. Totals above still count everything read.
+  const meas = day.measured ?? {
+    chars: day.chars,
+    active_secs: day.active_secs,
+  };
+  const rated = meas.active_secs >= MIN_RATE_SECS;
+  const speed = rated ? meas.chars / (meas.active_secs / 3600) : null;
+  const lookupsPerHour = rated ? day.lookups / (meas.active_secs / 3600) : null;
 
   // Sub-values are built as strings so prettier can't reflow the markup and
   // change the rendered spacing.
@@ -97,7 +104,11 @@ export function DayCard({ days, todayDate, goal }) {
       <div class="card-head">
         <h2>${isToday ? "Today" : "Day"}</h2>
         <div class="day-controls">
-          <button class="day-nav" onClick=${() => shift(-1)} title="Previous day">
+          <button
+            class="day-nav"
+            onClick=${() => shift(-1)}
+            title="Previous day"
+          >
             ◀
           </button>
           <input
@@ -131,9 +142,7 @@ export function DayCard({ days, todayDate, goal }) {
         <span class="hero-sub">${goalNote}</span>
       </div>
       <${GoalMeter} mins=${mins} targetMins=${goal.target_mins} />
-      <div class="meter-caption">
-        <span>0</span><span>${targetLabel}</span>
-      </div>
+      <div class="meter-caption"><span>0</span><span>${targetLabel}</span></div>
 
       <div class="tile-row">
         <div class="tile">

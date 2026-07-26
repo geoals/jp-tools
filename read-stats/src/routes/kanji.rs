@@ -22,7 +22,21 @@ use crate::stats::{
 
 pub async fn kanji(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     let settings = db::load_settings(&state.local).await?;
-    let lines = db::fetch_kanji_lines(&state.knowledge).await?;
+    let mut lines = db::fetch_kanji_lines(&state.knowledge).await?;
+    // Text pasted into a logged session counts as reading: its kanji were met.
+    // It carries `metered: false`, so it feeds the exposure figures and stays
+    // out of every lookup rate — see `KanjiLine::metered`. Articles aggregate
+    // under one work rather than one per headline.
+    for s in db::fetch_session_texts_after(&state.knowledge, 0).await? {
+        lines.push(crate::stats::KanjiLine {
+            ts: s.start_ts,
+            text: s.content,
+            work: crate::stats::work_key(&s.source, s.work.as_deref()),
+            metered: false,
+        });
+    }
+    // `aggregate_kanji` walks in time order for first-encounter dates.
+    lines.sort_by(|a, b| a.ts.total_cmp(&b.ts));
     let lookups: Vec<TermTimes> = db::fetch_lookup_terms(&state.knowledge)
         .await?
         .into_iter()
@@ -53,6 +67,9 @@ pub async fn kanji(State(state): State<AppState>) -> Result<Json<Value>, AppErro
         "days": stats.days,
         "works": stats.works,
         "total_encounters": stats.total_encounters,
+        // Of those, the ones in hooked text — the denominator every lookup
+        // rate on this tab divides by. See `KanjiLine::metered`.
+        "total_metered_encounters": stats.total_metered_encounters,
         // The threshold the tinting, the coverage meters and the gap list all
         // share, sent rather than duplicated in JS.
         "solid_encounters": SOLID_ENCOUNTERS,

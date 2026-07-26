@@ -30,19 +30,15 @@ export function DaysTable({ days, todayDate, bare }) {
               <td>${d.chars > 0 ? d.chars.toLocaleString("en") : "—"}</td>
               <td>
                 ${
-                  d.active_secs >= 600
+                  (d.measured?.active_secs ?? 0) >= 600
                     ? Math.round(
-                        d.chars / (d.active_secs / 3600),
+                        d.measured.chars / (d.measured.active_secs / 3600),
                       ).toLocaleString("en")
                     : "—"
                 }
               </td>
               <td>
-                ${
-                  d.lookups_per_1k !== null
-                    ? d.lookups_per_1k.toFixed(1)
-                    : "—"
-                }
+                ${d.lookups_per_1k !== null ? d.lookups_per_1k.toFixed(1) : "—"}
               </td>
               <td
                 title=${

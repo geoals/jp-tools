@@ -109,6 +109,41 @@ pub async fn insert_session(
     Ok(manual_session_from_row(&row))
 }
 
+/// One session's text, for the tokenizer. `start_ts` rather than a per-line
+/// timestamp because that is all there is: pasted text has no timing inside it.
+pub struct SessionText {
+    pub id: i64,
+    pub start_ts: f64,
+    pub content: String,
+    pub source: String,
+    pub work: Option<String>,
+}
+
+/// Sessions carrying text, past `after_id`. Drives the ingest watermark the
+/// way `fetch_lines_after` drives the line one.
+pub async fn fetch_session_texts_after(
+    k: &Knowledge,
+    after_id: i64,
+) -> Result<Vec<SessionText>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT id, start_ts, content, source, work FROM manual_sessions \
+         WHERE id > ? AND content IS NOT NULL ORDER BY id",
+    )
+    .bind(after_id)
+    .fetch_all(k.pool())
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| SessionText {
+            id: r.get("id"),
+            start_ts: r.get("start_ts"),
+            content: r.get("content"),
+            source: r.get("source"),
+            work: r.get("work"),
+        })
+        .collect())
+}
+
 /// The text a session was logged from, if it carried one.
 pub async fn fetch_content(k: &Knowledge, id: i64) -> Result<Option<String>, sqlx::Error> {
     let row = sqlx::query("SELECT content FROM manual_sessions WHERE id = ?")

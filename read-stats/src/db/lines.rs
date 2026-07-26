@@ -277,6 +277,8 @@ pub async fn fetch_kanji_lines(k: &Knowledge) -> Result<Vec<crate::stats::KanjiL
             ts: r.get("ts"),
             text: r.get("text"),
             work: r.get("work"),
+            // Hooked: a lookup made while this was on screen was recorded.
+            metered: true,
         })
         .collect())
 }

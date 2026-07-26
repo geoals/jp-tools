@@ -6,6 +6,13 @@
 //! is reported as `None` rather than as a wild number. Two callers compute it
 //! (the per-day figure and the per-kind figure in [`super::dialogue`]) and they
 //! must agree on that floor.
+//!
+//! **`chars` is hooked characters only — never a day's total.** A lookup is
+//! recorded only while the line stream is live (`routes::ankiproxy::record`),
+//! so manually logged reading can enter this denominator but can never enter
+//! the numerator: every article logged would push the rate down without any
+//! possibility of pushing it up. The rate measures what hooked reading cost,
+//! and its denominator has to be the reading it could observe.
 
 /// Characters below which the rate is noise rather than signal.
 const MIN_CHARS: i64 = 500;

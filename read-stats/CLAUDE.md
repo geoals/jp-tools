@@ -84,6 +84,21 @@ taught to `vn-capture.sh`.
   at the write and nowhere else — don't add a second filter downstream, and
   don't remove this one and expect the readers to cope. It also means a long
   enough `capture_paused` stops lookups: no lines arrive, so nothing is recent.
+- **Exposure counts take all text; cost counts take only hooked text.** Pasted
+  session `content` feeds `word_days`, the kanji grid, the discovery curve and
+  every coverage figure — those ask how much you have met something, and an
+  article is reading. It is kept out of every *rate*: `lookups_per_1k`
+  divides by hooked characters (`stats::rate`), and the kanji lookup rate by
+  `KanjiRow::metered_count`. A lookup can only be recorded while the line
+  stream is live, so article characters could enter a rate's denominator but
+  never its numerator — the red outlier rings would stop marking what costs
+  you, in proportion to how much of the reading is articles. If you add a
+  figure, decide which of the two questions it asks before choosing its
+  denominator.
+- **Speed divides by measured reading only** (`History::measured_days`). An
+  untimed session's duration is derived from the reader's own pace, so it
+  reports that pace back exactly; in a speed chart it would be measuring its
+  own output. Totals, goals and streaks still count everything read.
 - **Anki owns mined-state.** `anki_notes` is a snapshot, replaced wholesale.
   Never write back.
 - **Note ids are epoch milliseconds.** That is why a card's creation time needs
@@ -158,7 +173,10 @@ assumes".
   the curve and the sittings, all following one date). **Trends** —
   `trends.js`, one range selector over the summary tiles, the daily bars, the
   speed panel and the rate panel. **Library** — `library.js`: works,
-  vocabulary, dialogue, and the manual log form. That form has two modes over
+  vocabulary, dialogue, and the manual log form. Logged articles collapse into
+  one `Articles` row here and in the kanji fingerprints
+  (`stats::work::ARTICLES_WORK`) — each keeps its own title and URL on the
+  session row, where the day's sittings table shows it. That form has two modes over
   one POST: *pages* estimates chars from a page count (a paper book has no text
   to paste), *paste text* takes the article itself and counts it exactly. The
   preview under the textarea comes from `/api/text/count`, not from a `length`

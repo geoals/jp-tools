@@ -1,14 +1,14 @@
 # Feeding pasted reading into the knowledge layer
 
-Status: phase 1 done (2026-07-26), phase 2 planned.
+Status: done (2026-07-26). Kept as the record of *why* it is shaped this way;
+the rule in "The constraint that shapes the whole thing" is the one to preserve
+if any of this is touched again.
 
 A logged session can carry the text it was read from — `manual_sessions.content`,
-with `url` beside it. Today that text does exactly one job: it makes `chars`
-exact, counted by `jp_core::text::chars::count_chars`, the same rule the hooked
-line stream is held to. Nothing else reads it.
-
-Phase 2 is making it count as *reading*: the kanji you met in an article are
-kanji you met, and the words are words the reading has shown you again.
+with `url` beside it. It makes `chars` exact, counted by
+`jp_core::text::chars::count_chars`, the same rule the hooked line stream is
+held to, and it counts as *reading*: the kanji met in an article are kanji met,
+and the words are words the reading has shown you again.
 
 ## The constraint that shapes the whole thing
 
@@ -34,6 +34,21 @@ So the rule for everything below:
 This is the focus-metric bug in a new place — a measure that punishes the
 reader for reading something the instrumentation cannot see — and it is worth
 recognising as the same shape before writing any of it.
+
+## Step 0 — the rate denominators (done first, separately)
+
+`lookups_per_1k` divided by a day's *total* characters, so manually logged
+reading was already diluting it before any of the below — a pre-existing bug
+that articles turn from rare into routine. It now divides by hooked characters
+only, in `routes/summary.rs` and `routes/days.rs`, with the rule stated in
+`stats::rate`.
+
+The same audit found a second, unrelated circularity: an estimated session's
+duration is *derived* from the reader's pace, so feeding it into a speed chart
+has the chart partly measuring its own output. `History::measured_days` is the
+denominator every chars/hour figure now divides by — the line stream plus
+manual sessions that were logged with real minutes. Totals, goals and streaks
+still count everything read; only speed is restricted.
 
 ## Step 1 — tokenize content into `word_days`
 
@@ -70,40 +85,50 @@ That split belongs in `stats/kanji.rs` and not in the SQL. It is a decision
 about what a number means, which is that layer's stated job, and it is the kind
 of decision that has to be unit-testable without a server.
 
-## Step 3 — the same audit everywhere a rate has a character denominator
+The client had its own copies of that division — the grid's lookup-rate sort,
+the inspector's percentage, the hardest-kanji ranking — and every one of them
+moved to `metered_count` too. A rate computed in two places is a rate that will
+eventually disagree with itself.
 
-The per-1000-character lookup rate needs its denominator to stay hooked
-characters. Rather than fixing the two instances that are already known, walk
-every consumer of a character total and ask which of the two questions it is
-asking. The answer is mechanical once the rule above is stated; the risk is
-missing one, not getting one wrong.
+## Step 3 — say so
 
-## Step 4 — say so
+The kanji legend states the threshold it used, and now also that the readings
+it counted were hooked ones. A number whose denominator differs from the one
+sitting next to it has to admit that, or the page is quietly lying about which
+corpus it measured.
 
-The kanji legend already states the threshold it used. It should also state
-that the rate is over hooked reading only. A number whose denominator differs
-from the one sitting next to it has to admit that, or the page is quietly
-lying about which corpus it measured.
+## Decisions taken
 
-## Open decisions
+**Per-work fingerprints.** Every article collapses into one synthetic work,
+`stats::work::ARTICLES_WORK`. An article is a source but not a *work* in the
+sense that view is about — a thing read through, with a cover, a status and a
+queue position — and thirty of them would bury the four VNs the list exists
+for, each carrying a fingerprint built from two thousand characters. Collapsed,
+they make one fingerprint worth reading: what article reading looks like beside
+fiction. The individual title and URL stay on the session row and show in the
+day's sittings table, which is where "what did I read on Tuesday" is asked.
 
-**Per-work fingerprints.** `manual_sessions.work` joins `works` the same way
-`lines.work` does, so every article title becomes a work with its own kanji
-fingerprint. Thirty NHK articles would bury a VN in that list, and
-`FINGERPRINT_FLOOR` will not save it — a short article easily hits five
-occurrences of some kanji. Options: exclude `source = 'article'` from
-fingerprints; collapse all articles into one synthetic work; or accept a long
-list. Undecided.
+**`word_days` is not split.** Reading an article genuinely re-showed you the
+word, which is exactly what the re-encounter panel asks. It does mean that
+panel and the kanji lookup rate count different corpora — the one thing to stay
+alert to here, and worth revisiting if the panel ever grows a rate of its own.
 
-**Whether `word_days` should be split too.** Step 1 says no. But it means the
-re-encounter panel and the kanji lookup rate count different corpora, and this
-codebase has been bitten before by two views deriving the same idea
-differently. Worth revisiting if the panel ever grows a rate.
+## What it actually moved
 
-## Verifying it
+Behaviour-changing by design, so `dev-instance.sh check` does not print
+IDENTICAL — the diff *is* the review. The `pre-articles` snapshot was taken
+first and is the record of what every rate was before articles entered any
+denominator; the raw-speed / lookup-tax study (~Aug 2026) will want it.
 
-This is behaviour-changing by design, so `dev-instance.sh check` will not print
-IDENTICAL — the diff *is* the review, and it should be read rather than
-skimmed. Take the snapshot **before** starting: it is the only record of what
-every historical rate was before articles entered the denominators, and the
-planned raw-speed / lookup-tax study (~Aug 2026) will want the before-picture.
+Against the real database, one logged article (2,459 chars):
+
+- `total_encounters` 51,398 → 51,898; `total_metered_encounters` stays 51,398.
+  233 kanji gained exposure, 4 were met for the first time ever — present in
+  the grid and the coverage curves, and unrankable by cost, which is correct:
+  nothing was measured about what they cost.
+- every lookup rate, the baseline and all 36 red rings: **unchanged**, which is
+  the whole point of the split.
+- `works` gained one `Articles` row instead of one row per headline.
+- today's `lookups_per_1k` went from 0.41 to `null` — it had been one stray
+  lookup divided by article characters, which is exactly the number the rule
+  above exists to refuse.

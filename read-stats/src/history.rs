@@ -220,6 +220,39 @@ impl History {
         (vn, manual)
     }
 
+    /// Per-day totals over reading whose duration was actually *measured* —
+    /// the line stream, plus manual sessions that were logged with minutes.
+    ///
+    /// This is the denominator every chars/hour figure divides by, and the
+    /// reason it exists is circularity: an estimated session's duration is
+    /// derived from the reader's own pace, so it reports that pace back
+    /// exactly. Feeding it into a speed chart would make the chart partly
+    /// measure its own output — every untimed article logged would pull the
+    /// curve toward the mean and flatten the real variation it exists to show.
+    ///
+    /// Totals, goals and streaks deliberately do *not* use this: an estimated
+    /// session's time is the best available answer to "how long was spent
+    /// reading", and it is only speed it cannot honestly speak to.
+    pub fn measured_days(&self) -> BTreeMap<NaiveDate, DayBucket> {
+        let mut out = stats::aggregate_line_days(
+            &self.lines,
+            &self.presence(),
+            self.settings.session_gap_secs,
+            self.settings.day_rollover_hour,
+            self.tz,
+        );
+        for s in &self.manual {
+            let (secs, estimated) = self.duration_of(s);
+            if estimated {
+                continue;
+            }
+            let day = out.entry(self.date_of(s.start_ts)).or_default();
+            day.chars += s.chars;
+            day.active_secs += secs;
+        }
+        out
+    }
+
     /// The two day maps added together — what the goal meter and the streak
     /// count against.
     pub fn total_days(&self) -> BTreeMap<NaiveDate, DayBucket> {
@@ -308,7 +341,12 @@ impl History {
             tally(work.as_deref(), line.ts, line.chars);
         }
         for s in &self.manual {
-            tally(s.work.as_deref(), s.start_ts, s.chars);
+            // Articles name the day as "Articles" rather than as one headline.
+            tally(
+                stats::work_key(&s.source, s.work.as_deref()).as_deref(),
+                s.start_ts,
+                s.chars,
+            );
         }
 
         per_day

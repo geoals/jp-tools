@@ -165,7 +165,8 @@ function GridCard({ rows, solidAt, rule }) {
         b.count - a.count,
       recent: (a, b) => b.first_ts - a.first_ts,
       hard: (a, b) =>
-        b.lookups / b.count - a.lookups / a.count || b.count - a.count,
+        b.lookups / Math.max(b.metered_count, 1) -
+          a.lookups / Math.max(a.metered_count, 1) || b.count - a.count,
       count: (a, b) => b.count - a.count,
     }[sort];
     return [...list].sort(by);
@@ -244,7 +245,11 @@ function GridLegend({ rule }) {
   // The red ring's rule, spelled out in the numbers it actually used — a ring
   // whose threshold you cannot see is a ring you cannot trust.
   const bar = (rule.baseline * rule.multiple * 100).toFixed(0);
-  const struggling = `looked up over ${bar}% as often as read — ${rule.multiple}× your average, over ${rule.floor}+ readings`;
+  // "read" here means read *with the hooker running*. Lookups are only
+  // recorded then, so pasted articles count toward how often a kanji has been
+  // met and deliberately not toward what it cost. Saying so is the point: a
+  // rate whose denominator differs from the count beside it has to admit it.
+  const struggling = `looked up over ${bar}% as often as read — ${rule.multiple}× your average, over ${rule.floor}+ hooked readings`;
   return html`
     <div class="chart-legend kanji-legend">
       ${[0.12, 0.3, 0.45, 0.58].map(
@@ -286,7 +291,9 @@ function Inspector({ row }) {
       ? `${row.lookups} lookup${row.lookups === 1 ? "" : "s"} on words with it`
       : "never looked up";
   const rate =
-    row.lookups > 0 ? `${((row.lookups / row.count) * 100).toFixed(0)}%` : "";
+    row.lookups > 0
+      ? `${((row.lookups / Math.max(row.metered_count, 1)) * 100).toFixed(0)}%`
+      : "";
   const cost = row.struggling
     ? `${looked} — ${rate} of readings, well past your average`
     : looked;
@@ -381,8 +388,8 @@ function HardestCard({ rows, rule }) {
   // Same encounter floor the red ring uses, so the top of this list is exactly
   // the ringed kanji rather than a second, differently-drawn answer.
   const hard = rows
-    .filter((r) => r.count >= rule.floor && r.lookups > 0)
-    .sort((a, b) => b.lookups / b.count - a.lookups / a.count)
+    .filter((r) => r.metered_count >= rule.floor && r.lookups > 0)
+    .sort((a, b) => b.lookups / b.metered_count - a.lookups / a.metered_count)
     .slice(0, HARD_LEN);
   if (!hard.length) {
     return html`
@@ -394,7 +401,7 @@ function HardestCard({ rows, rule }) {
       </div>
     `;
   }
-  const worst = hard[0].lookups / hard[0].count;
+  const worst = hard[0].lookups / hard[0].metered_count;
   const pct = (rule.baseline * 100).toFixed(1);
   const bar = (rule.baseline * rule.multiple * 100).toFixed(0);
   const average = `Across everything you read the rate is ${pct}%; past ${bar}% the grid rings the kanji red.`;
@@ -403,9 +410,10 @@ function HardestCard({ rows, rule }) {
       <h2>What costs you most</h2>
       <div class="compare">
         ${hard.map((r) => {
-          const rate = r.lookups / r.count;
+          // Over hooked readings only — pasted text has no observable lookups.
+          const rate = r.lookups / r.metered_count;
           const value = `${(rate * 100).toFixed(0)}%`;
-          const unit = `${r.lookups} lookups / ${r.count} read`;
+          const unit = `${r.lookups} lookups / ${r.metered_count} hooked readings`;
           return html`
             <div class="compare-row">
               <span class="compare-name kanji-row-name"
