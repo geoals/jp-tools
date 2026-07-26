@@ -11,14 +11,22 @@
      voiceline runs, in morae per second. A clip far outside that is either two
      lines merged or something that is not this line at all.
 
-Run it *during or just after reading* — it reads the live ring buffer, which
-holds only the last ~5 minutes, and it needs dialogue in that window. Idle on a
-menu with BGM gives nothing: the ring will be loud and VAD will find no speech.
+The ring holds only the last ~5 minutes, so a single pass sees a few dozen
+lines — enough to show that onset clusters at zero, not enough to set a
+threshold. Hence `--collect`, which samples the ring on a timer and keeps the
+union across a whole session.
 
-    vn-mine/vn-calibrate.py [workdir]
+    vn-mine/vn-calibrate.py                     one pass, printed
+    vn-mine/vn-calibrate.py --collect [FILE] [INTERVAL]
+    vn-mine/vn-calibrate.py --summarize FILE
 
-Read-only against the ring and the log; writes only into `workdir` (default a
-temp dir). Safe to run mid-session.
+Run any of them *while reading*: idle on a menu with BGM gives nothing (the
+ring will be loud and VAD will find no speech). Read-only against the ring and
+the log; `--collect` writes one TSV, default
+`~/.local/share/jp-tools/vn-onset-calibration.tsv`, and is resumable — stop and
+restart it across sessions and it keeps accumulating.
+
+See `spec/vn-audio-attribution.md` for what the numbers are for.
 """
 
 import os
@@ -26,8 +34,11 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import wave
 from pathlib import Path
+
+DEFAULT_LOG = Path.home() / ".local/share/jp-tools/vn-onset-calibration.tsv"
 
 RUNDIR = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "vn-mine"
 SEGDIR = RUNDIR / "seg"
@@ -38,9 +49,12 @@ VAD_PYTHON = Path.home() / ".local/share/vn-mine/venv/bin/python"
 VAD_SCRIPT = Path(__file__).resolve().parent / "vn-vad.py"
 
 # One voiceline breathes; segments closer than this are the same utterance.
-# Deliberately tighter than vn-capture.sh's 1.0s merge, which is wide enough to
-# swallow the following line — the thing being measured here.
-MERGE = float(os.environ.get("VN_CAL_MERGE", "0.35"))
+#
+# Measured, not guessed: at 0.35s a delivered line splits on its own internal
+# pauses and the median speaking rate comes out at 18 morae/s, which is roughly
+# twice what Japanese speech runs at. At 1.0s the median is 8.4 — where real
+# speech sits — so anything tighter is measuring fragments, not voicelines.
+MERGE = float(os.environ.get("VN_CAL_MERGE", "1.0"))
 
 # How far from the hook a candidate utterance may start to be considered at
 # all. Wide on purpose: the point is to see the distribution, not enforce a rule.
@@ -128,9 +142,10 @@ def utterances(wav, stream_start):
     return merged
 
 
-def main():
-    work = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(tempfile.mkdtemp())
-    work.mkdir(parents=True, exist_ok=True)
+def score(work):
+    """One pass over the ring: every line inside it, with the utterance that
+    belongs to it (or None). Returns `[[ts, text, morae, (start, end)|None], …]`
+    sorted by time, plus the count of utterances no line claimed."""
     wav, stream_start = build_stream(work)
     with wave.open(str(wav)) as w:
         stream_end = stream_start + w.getnframes() / w.getframerate()
@@ -174,7 +189,10 @@ def main():
             unclaimed += 1
             continue
         owner[3] = (u_start, u_end)
+    return lines, unclaimed
 
+
+def report(lines, unclaimed):
     print(f"\n{'onset':>7} {'dur':>6} {'morae':>6} {'mora/s':>7}  line")
     print("-" * 78)
     onsets, rates, silent = [], [], 0
@@ -213,6 +231,119 @@ def main():
           f"min {rates[0]:.1f}   max {rates[-1]:.1f}")
     print("\nonset spread sets the gate width; rate spread sets how loose a "
           "duration bound has to be to never cut a real voiceline.")
+
+
+# --- accumulating collection -------------------------------------------------
+#
+# One ring holds five minutes, which was eleven matched lines — enough to see
+# that onset clusters at zero, nowhere near enough to decide whether the +2s
+# group is a real mode or three bad matches. Sampling the ring on a timer and
+# keeping the union across a whole session is the difference between a hunch
+# and a threshold.
+
+COLUMNS = "line_ts\tonset\tdur\tmorae\tchars\ttext"
+
+
+def collect(path, work, interval):
+    """Sample the ring every `interval` seconds, appending lines not seen
+    before. Overlapping windows are the point — a line scored near the edge of
+    one ring is scored again, mid-ring, by the next pass; `keep_better` prefers
+    the reading with more audio around it."""
+    seen = {}
+    if path.exists():
+        for row in path.read_text().splitlines()[1:]:
+            parts = row.split("\t")
+            if len(parts) == 6:
+                seen[parts[0]] = parts
+        print(f"resuming: {len(seen)} lines already recorded in {path}")
+    else:
+        path.write_text(COLUMNS + "\n")
+
+    while True:
+        try:
+            lines, _ = score(work)
+        except SystemExit as e:  # empty ring, no lines yet — keep waiting
+            print(f"skip: {e}", flush=True)
+            lines = []
+        added = 0
+        for ts, text, m, cand in lines:
+            key = f"{ts:.6f}"
+            onset = f"{cand[0] - ts:.3f}" if cand else ""
+            dur = f"{cand[1] - cand[0]:.3f}" if cand else ""
+            row = [key, onset, dur, str(m), str(len(text)), text]
+            if key not in seen:
+                added += 1
+            elif not keep_better(row, seen[key]):
+                continue
+            seen[key] = row
+        with open(path, "w") as f:
+            f.write(COLUMNS + "\n")
+            for key in sorted(seen, key=float):
+                f.write("\t".join(seen[key]) + "\n")
+        matched = sum(1 for r in seen.values() if r[1])
+        print(f"{time.strftime('%H:%M:%S')}  +{added} new   "
+              f"{len(seen)} lines   {matched} with audio   -> {path}",
+              flush=True)
+        time.sleep(interval)
+
+
+def keep_better(new, old):
+    """A line seen twice: prefer the pass that found audio for it. A line at the
+    very start of a ring can have its voice cut off by the ring's own edge, and
+    that reads as silence — which is precisely the thing being counted, so it
+    must not be recorded from a window that could not have seen it."""
+    return bool(new[1]) and not old[1]
+
+
+def summarize(path):
+    rows = [r.split("\t") for r in path.read_text().splitlines()[1:]]
+    rows = [r for r in rows if len(r) == 6]
+    onsets = sorted(float(r[1]) for r in rows if r[1])
+    rates = sorted(
+        int(r[3]) / float(r[2]) for r in rows if r[2] and float(r[2]) > 0 and int(r[3])
+    )
+    print(f"{len(rows)} lines, {len(onsets)} with an utterance at the hook")
+    if not onsets:
+        return
+
+    def pct(xs, p):
+        return xs[min(len(xs) - 1, int(len(xs) * p))]
+
+    for name, xs, unit in (("onset", onsets, "s"), ("rate", rates, " morae/s")):
+        if not xs:
+            continue
+        print(f"{name:6} min {xs[0]:+.2f}  p05 {pct(xs, .05):+.2f}  "
+              f"p25 {pct(xs, .25):+.2f}  median {pct(xs, .5):+.2f}  "
+              f"p75 {pct(xs, .75):+.2f}  p95 {pct(xs, .95):+.2f}  "
+              f"max {xs[-1]:+.2f}{unit}")
+    # The shape that matters is whether the onsets are one cluster or two.
+    print("\nonset histogram (0.25s bins):")
+    lo = int(min(onsets) * 4) - 1
+    hi = int(max(onsets) * 4) + 1
+    for b in range(lo, hi + 1):
+        n = sum(1 for o in onsets if b <= o * 4 < b + 1)
+        if n:
+            print(f"  {b / 4:+.2f}..{(b + 1) / 4:+.2f}  {'#' * n} {n}")
+
+
+def main():
+    args = sys.argv[1:]
+    work = Path(tempfile.mkdtemp())
+
+    if args and args[0] == "--summarize":
+        return summarize(Path(args[1]))
+
+    if args and args[0] == "--collect":
+        path = Path(args[1]) if len(args) > 1 else DEFAULT_LOG
+        interval = float(args[2]) if len(args) > 2 else 210.0
+        path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"collecting into {path} every {interval:.0f}s — Ctrl-C to stop")
+        return collect(path, work, interval)
+
+    if args:
+        work = Path(args[0])
+        work.mkdir(parents=True, exist_ok=True)
+    report(*score(work))
 
 
 if __name__ == "__main__":
