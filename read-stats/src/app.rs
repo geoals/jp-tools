@@ -2,7 +2,7 @@ use axum::Router;
 use axum::http::HeaderValue;
 use axum::http::header::CACHE_CONTROL;
 use axum::response::Html;
-use axum::routing::{delete, get};
+use axum::routing::{delete, get, post};
 use jp_core::knowledge::Knowledge;
 use sqlx::SqlitePool;
 use tower_http::services::ServeDir;
@@ -53,6 +53,8 @@ pub fn build_router(state: AppState) -> Router {
             get(sessions::list_sessions).post(sessions::create_session),
         )
         .route("/api/sessions/{id}", delete(sessions::delete_session))
+        .route("/api/sessions/{id}/content", get(sessions::session_content))
+        .route("/api/text/count", post(sessions::count_text))
         .route("/api/day/timeline", get(timeline::day_timeline))
         .route("/api/works", get(works::works).post(works::upsert_work))
         .route(

@@ -89,6 +89,10 @@ pub struct CreateSession {
     pub work: Option<String>,
     pub source: Option<String>,
     pub note: Option<String>,
+    /// Where the text came from — an article's URL.
+    pub url: Option<String>,
+    /// The text actually read. When present it *is* the character count.
+    pub content: Option<String>,
 }
 
 pub async fn create_session(
@@ -101,10 +105,15 @@ pub async fn create_session(
     let settings = db::load_settings(&state.local).await?;
     let tz = crate::clock::tz_offset_secs();
 
-    let chars = match (req.chars, req.pages) {
-        (Some(c), _) if c >= 0 => c,
-        (None, Some(p)) if p > 0.0 => (p * settings.chars_per_page).round() as i64,
-        _ => return Err(AppError::BadRequest("need chars or pages".into())),
+    // Content wins: when the text is here the count is exact, and it is
+    // counted by the same rule as a hooked line so the speeds compare.
+    // Then an explicitly given count, then pages × the estimate.
+    let content = req.content.as_deref().filter(|c| !c.trim().is_empty());
+    let chars = match (content, req.chars, req.pages) {
+        (Some(text), _, _) => jp_core::text::chars::count_chars(text),
+        (None, Some(c), _) if c >= 0 => c,
+        (None, None, Some(p)) if p > 0.0 => (p * settings.chars_per_page).round() as i64,
+        _ => return Err(AppError::BadRequest("need content, chars or pages".into())),
     };
 
     let start_ts = match (req.start_ts, &req.date) {
@@ -119,18 +128,56 @@ pub async fn create_session(
         (None, None) => now_ts() - req.minutes * 60.0,
     };
 
+    let url = req.url.as_deref().filter(|u| !u.trim().is_empty());
+    // An article says what it is: it arrived with a URL or with its text.
+    let default_source = if url.is_some() || content.is_some() {
+        "article"
+    } else {
+        "book"
+    };
+
     let session = db::insert_session(
         &state.knowledge,
-        start_ts,
-        start_ts + req.minutes * 60.0,
-        chars,
-        req.source.as_deref().unwrap_or("book"),
-        req.work.as_deref(),
-        req.pages,
-        req.note.as_deref(),
+        db::NewSession {
+            start_ts,
+            end_ts: start_ts + req.minutes * 60.0,
+            chars,
+            source: req.source.as_deref().unwrap_or(default_source),
+            work: req.work.as_deref(),
+            pages: req.pages,
+            note: req.note.as_deref(),
+            url,
+            content,
+        },
     )
     .await?;
     Ok(Json(session))
+}
+
+/// The text a logged session was counted from — fetched on demand, never with
+/// the session list. See `db::sessions`.
+pub async fn session_content(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<Json<Value>, AppError> {
+    let content = db::fetch_content(&state.knowledge, id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    Ok(Json(json!({ "id": id, "content": content })))
+}
+
+#[derive(Deserialize)]
+pub struct CountText {
+    pub content: String,
+}
+
+/// Count a block of text the way a session would count it.
+///
+/// It exists so the log form can show the count *before* submitting without
+/// reimplementing `count_chars` in JavaScript — which punctuation counts is a
+/// rule this codebase keeps in exactly one place.
+pub async fn count_text(Json(req): Json<CountText>) -> Json<Value> {
+    Json(json!({ "chars": jp_core::text::chars::count_chars(&req.content) }))
 }
 
 pub async fn delete_session(

@@ -54,7 +54,9 @@ pub use lookups::{LookupTerm, fetch_lookup_events, fetch_lookup_terms, insert_lo
 pub use marks::{fetch_reader_marks, insert_reader_mark};
 pub use pool::{create_pool, open_knowledge};
 pub use retire_pauses::retire as retire_pauses;
-pub use sessions::{ManualSession, delete_session, fetch_sessions, insert_session};
+pub use sessions::{
+    ManualSession, NewSession, delete_session, fetch_content, fetch_sessions, insert_session,
+};
 pub use settings::{
     BOOL_SETTING_KEYS, SETTING_KEYS, Settings, get_setting_raw, load_settings, save_setting,
 };

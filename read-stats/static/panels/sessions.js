@@ -18,6 +18,19 @@ export function SessionsTable({ sessions }) {
   ].sort((a, b) => a.start_ts - b.start_ts);
   if (!rows.length) return null;
   const hhmm = (ts) => new Date(ts * 1000).toTimeString().slice(0, 5);
+  // A manual row's tag names what was read; with a URL it goes there. The
+  // title rides on `title=` rather than in the cell — the table is a day's
+  // shape, and an article headline in it would set the column width.
+  const tag = (s) =>
+    s.url
+      ? html`<a
+          class="status-tag"
+          href=${s.url}
+          target="_blank"
+          title=${s.work || s.url}
+          >${s.kind}</a
+        >`
+      : html`<span class="status-tag" title=${s.work || ""}>${s.kind}</span>`;
   return html`
     <table class="days">
       <thead>
@@ -35,10 +48,7 @@ export function SessionsTable({ sessions }) {
           const hours = s.active_secs / 3600;
           return html`
             <tr>
-              <td>
-                ${hhmm(s.start_ts)}–${hhmm(s.end_ts)}
-                <span class="status-tag">${s.kind}</span>
-              </td>
+              <td>${hhmm(s.start_ts)}–${hhmm(s.end_ts)} ${tag(s)}</td>
               <td>${Math.round(s.active_secs / 60)}</td>
               <td>${s.chars.toLocaleString("en")}</td>
               <td>

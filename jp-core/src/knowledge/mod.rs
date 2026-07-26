@@ -122,6 +122,18 @@ impl Knowledge {
                 .execute(&self.0)
                 .await?;
         }
+        // `manual_sessions` predates pasting the text that was read. Rows
+        // logged before it stay as they were: an estimated char count and no
+        // content, which is exactly what they are.
+        for column in ["content", "url"] {
+            if !has_column(&self.0, "manual_sessions", column).await? {
+                sqlx::raw_sql(&format!(
+                    "ALTER TABLE manual_sessions ADD COLUMN {column} TEXT"
+                ))
+                .execute(&self.0)
+                .await?;
+            }
+        }
         Ok(())
     }
 }

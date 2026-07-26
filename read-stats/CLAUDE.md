@@ -158,7 +158,12 @@ assumes".
   the curve and the sittings, all following one date). **Trends** —
   `trends.js`, one range selector over the summary tiles, the daily bars, the
   speed panel and the rate panel. **Library** — `library.js`: works,
-  vocabulary, dialogue, and the manual log form. **Kanji** — `kanji.js` over
+  vocabulary, dialogue, and the manual log form. That form has two modes over
+  one POST: *pages* estimates chars from a page count (a paper book has no text
+  to paste), *paste text* takes the article itself and counts it exactly. The
+  preview under the textarea comes from `/api/text/count`, not from a `length`
+  in JS — which characters count is a rule that lives in one place, and a
+  preview disagreeing with the stored number would be worse than none. **Kanji** — `kanji.js` over
   `/api/kanji`: the grid of every kanji ever read, tinted by encounter count,
   sortable by your own frequency or BCCWJ's, and ringed twice — green for a
   card's target word, red for a lookup rate past three times your own average

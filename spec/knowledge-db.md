@@ -154,11 +154,20 @@ dimension that feed it. Everything here is dictionary-gated or joins the ledger.
 - `lines` — raw hooked VN lines; tokenized into the ledger's counts and joined
   against the dict for the planned `#read` highlighting. *Moved here 2026-07.*
 - `manual_sessions` — manually entered reading time (renamed from `sessions`).
-  Gains a `content TEXT` column holding the actual text read (online article,
-  ebook, YouTube transcript, a physically-read book typed/pasted later). Import
-  = tokenize that `content` into the ledger's counts, so manual and live reading
-  feed the same knowledge state. The content lives on the session row itself —
-  it is **not** expanded into `lines` rows. *Moved here 2026-07 and renamed; `content` is still to do.*
+  Carries `content TEXT` — the actual text read (online article, ebook,
+  YouTube transcript, a physically-read book typed/pasted later) — and a `url`
+  beside it. When content is present it *is* the character count, via the same
+  `jp_core::text::chars::count_chars` the line stream uses, so a pasted
+  article's speed is comparable with a VN's instead of being pages × a
+  constant. The content lives on the session row itself — it is **not**
+  expanded into `lines` rows. *Moved here 2026-07 and renamed; `content` +
+  `url` landed 2026-07-26.*
+
+  Still to do: **import** — tokenize that `content` into the ledger's counts,
+  so manual and live reading feed the same knowledge state. It is deliberately
+  a second step, because the counts it would move are the denominator of a
+  lookup rate whose numerator excludes articles today (see the lookup guard in
+  `read-stats/CLAUDE.md`); numerator and denominator have to change together.
 
 Consequence: **read-stats writes into the shared DB** (line ingestion, the
 highlighter's status reads). It is not a pure reader — stated so ownership is

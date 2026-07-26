@@ -201,6 +201,67 @@ async fn pages_become_characters_when_no_exact_count_is_given() {
 }
 
 #[tokio::test]
+async fn pasted_text_counts_itself_and_outranks_the_estimate() {
+    let app = TestApp::new().await;
+    // Eleven counted characters: the 、 and the 。 are punctuation and are not
+    // among them, which is the same rule `lines.chars` is held to.
+    let content = "本日は快晴なり、風もない。";
+    let (status, session) = app
+        .send(
+            "POST",
+            "/api/sessions",
+            json!({
+                "minutes": 15,
+                "pages": 99,
+                "content": content,
+                "url": "https://example.com/a",
+                "work": "記事",
+            }),
+        )
+        .await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        session["chars"], 11,
+        "counted from the text, not 99 × chars_per_page"
+    );
+    assert_eq!(session["source"], "article", "a URL says what it is");
+    assert_eq!(session["url"], "https://example.com/a");
+    assert_eq!(session["has_content"], true);
+    assert!(
+        session.get("content").is_none(),
+        "the body is never carried on the row"
+    );
+
+    let id = session["id"].as_i64().unwrap();
+    let fetched = app.get(&format!("/api/sessions/{id}/content")).await;
+    assert_eq!(fetched["content"], content);
+
+    let s = app.get("/api/summary").await;
+    assert_eq!(s["today"]["manual"]["chars"], 11);
+}
+
+#[tokio::test]
+async fn the_count_endpoint_agrees_with_what_a_session_stores() {
+    let app = TestApp::new().await;
+    let content = "本日は快晴なり、風もない。";
+    let counted = app
+        .send("POST", "/api/text/count", json!({ "content": content }))
+        .await
+        .1;
+    let (_, session) = app
+        .send(
+            "POST",
+            "/api/sessions",
+            json!({ "minutes": 15, "content": content }),
+        )
+        .await;
+    assert_eq!(
+        counted["chars"], session["chars"],
+        "the form's preview is the stored number"
+    );
+}
+
+#[tokio::test]
 async fn the_day_timeline_and_the_day_total_agree_on_active_time() {
     // The invariant that pace and presence being per-request broke: the
     // dashboard and the timeline priced the same day differently. One session,

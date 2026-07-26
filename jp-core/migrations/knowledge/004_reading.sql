@@ -49,6 +49,13 @@ CREATE INDEX IF NOT EXISTS idx_lines_ts ON lines(ts);
 -- Named `manual_sessions`, not `sessions`: a *derived* session (a sitting cut
 -- out of the line stream) is the other meaning of that word in this codebase,
 -- and it is computed, never stored.
+--
+-- `content` holds the actual text read, when there is one to paste (an online
+-- article, an ebook chapter). It makes `chars` exact rather than estimated —
+-- counted by the same `jp_core::text::count_chars` the line stream uses — and
+-- it is what a later import tokenizes into the knowledge layer's counts. It
+-- lives on this row and is deliberately *not* expanded into `lines`: these are
+-- not hooked lines and have no per-line timestamps to invent.
 CREATE TABLE IF NOT EXISTS manual_sessions (
     id       INTEGER PRIMARY KEY,
     start_ts REAL    NOT NULL,
@@ -57,7 +64,9 @@ CREATE TABLE IF NOT EXISTS manual_sessions (
     source   TEXT    NOT NULL DEFAULT 'book',
     work     TEXT,
     pages    REAL,
-    note     TEXT
+    note     TEXT,
+    content  TEXT,
+    url      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_manual_sessions_start_ts ON manual_sessions(start_ts);
 
