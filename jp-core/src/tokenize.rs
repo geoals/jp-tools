@@ -14,6 +14,17 @@ use sudachi::prelude::Morpheme;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Token {
     pub surface: String,
+    /// The word's canonical written form: Sudachi's *normalized* form, not its
+    /// dictionary form.
+    ///
+    /// The two differ exactly where Japanese spells one word several ways —
+    /// いう/言う, できる/出来る, みんな/皆, わかる/分かる — and keying anything on
+    /// the dictionary form makes each spelling a separate word with its own
+    /// counts and its own status. A reader who judged 言う was then asked to
+    /// judge いう, which is the same word wearing kana.
+    ///
+    /// Normalization subsumes the inflection case too (振っ → 振る), so this is
+    /// strictly more canonical than what it replaces.
     pub base_form: String,
     pub reading: String,
     /// Top-level part of speech (名詞, 動詞, …).
@@ -40,6 +51,9 @@ pub enum TokenizeError {
 pub struct SudachiTokenizer {
     dict: Arc<JapaneseDictionary>,
     headwords: HashSet<String>,
+    /// Words the master dictionary lists, for [`SudachiTokenizer::decompose`].
+    /// Empty disables it.
+    lexicon: HashSet<String>,
 }
 
 impl SudachiTokenizer {
@@ -58,7 +72,86 @@ impl SudachiTokenizer {
         Ok(Self {
             dict: Arc::new(dict),
             headwords,
+            lexicon: HashSet::new(),
         })
+    }
+
+    /// Teach it which words a dictionary actually lists, enabling compound
+    /// decomposition. See [`SudachiTokenizer::decompose`].
+    pub fn with_lexicon(mut self, lexicon: HashSet<String>) -> Self {
+        self.lexicon = lexicon;
+        self
+    }
+
+    /// Which spelling of a word to store: the one the master dictionary uses.
+    ///
+    /// Sudachi normalizes to *its* canonical orthography, and the two
+    /// dictionaries do not always agree. する normalizes to 為る, which Sankoku
+    /// does not list — so the commonest verb in the language landed as an
+    /// unrecognised term with 2,544 encounters, ineligible for triage (the
+    /// queue is master-only) and sitting at the top of every unknown-word list.
+    ///
+    /// Where they disagree the master dictionary wins, because it is the one
+    /// that decides what counts as vocabulary at all. Where it lists neither
+    /// spelling, normalization stands: it is still the better canonicaliser of
+    /// the two (いう → 言う, サーバ → サーバー).
+    fn written_form(&self, normalized: &str, dictionary: &str) -> String {
+        if self.lexicon.is_empty() || self.lexicon.contains(normalized) {
+            return normalized.to_string();
+        }
+        if self.lexicon.contains(dictionary) {
+            return dictionary.to_string();
+        }
+        normalized.to_string()
+    }
+
+    /// Split a compound no dictionary lists into parts that one does.
+    ///
+    /// Sudachi's own splitting is bounded by its entries: 懲罰房 is a single
+    /// entry with no sub-units, so Mode A, B and C all return it whole, and
+    /// 懲罰 — a word Sankoku lists, read sixty-one times — was credited to
+    /// nothing at all. 医務室 splits fine. Which of the two happens is a
+    /// property of Sudachi's dictionary rather than of the language.
+    ///
+    /// So: longest match from the left, every part a master-dictionary
+    /// headword, the whole string consumed, at least two parts. A part must be
+    /// two characters or a single kanji — without that, katakana names shred
+    /// into whatever one-kana entries the dictionary happens to hold, which
+    /// would be inventing vocabulary rather than recovering it.
+    ///
+    /// Returns `None` when the compound cannot be built from known words,
+    /// which leaves it exactly where it was: whole, and visible in the
+    /// non-vocabulary tail.
+    fn decompose(&self, word: &str) -> Option<Vec<String>> {
+        if self.lexicon.is_empty() || self.lexicon.contains(word) {
+            return None;
+        }
+        let chars: Vec<char> = word.chars().collect();
+        let acceptable = |part: &str| {
+            let n = part.chars().count();
+            n >= 2
+                || part
+                    .chars()
+                    .next()
+                    .is_some_and(crate::text::kanji::is_kanji)
+        };
+
+        let mut parts = Vec::new();
+        let mut i = 0;
+        while i < chars.len() {
+            let mut matched = None;
+            for end in (i + 1..=chars.len()).rev() {
+                let candidate: String = chars[i..end].iter().collect();
+                if acceptable(&candidate) && self.lexicon.contains(&candidate) {
+                    matched = Some((candidate, end));
+                    break;
+                }
+            }
+            let (part, end) = matched?;
+            parts.push(part);
+            i = end;
+        }
+        (parts.len() >= 2).then_some(parts)
     }
 }
 
@@ -106,7 +199,7 @@ impl Tokenizer for SudachiTokenizer {
         let tokenizer = StatelessTokenizer::new(&self.dict);
         let to_token = |m: sudachi::prelude::Morpheme<'_, _>| Token {
             surface: m.surface().to_string(),
-            base_form: m.dictionary_form().to_string(),
+            base_form: self.written_form(m.normalized_form(), m.dictionary_form()),
             reading: self.dictionary_form_reading(&m),
             pos: m.part_of_speech()[0].clone(),
             // [0] is the top-level class, [1] the subclass: 名詞,固有名詞,人名.
@@ -120,6 +213,35 @@ impl Tokenizer for SudachiTokenizer {
                 .map_err(|e| TokenizeError::Failed(e.to_string()))?;
             return Ok(morphemes.iter().map(&to_token).collect());
         }
+        // Each token that survives the C→B→A pass is offered to `decompose`,
+        // which only fires on a compound the master dictionary cannot account
+        // for whole but can account for in parts.
+        let split_unknown = |tokens: Vec<Token>| -> Result<Vec<Token>, TokenizeError> {
+            if self.lexicon.is_empty() {
+                return Ok(tokens);
+            }
+            let mut out = Vec::with_capacity(tokens.len());
+            for t in tokens {
+                let Some(parts) = self.decompose(&t.base_form) else {
+                    out.push(t);
+                    continue;
+                };
+                // Re-analyse each part rather than inventing its reading: the
+                // part is a word, so the tokenizer has one for it.
+                for part in parts {
+                    match tokenizer.tokenize(&part, Mode::C, false) {
+                        Ok(ms) if ms.len() == 1 => out.extend(ms.iter().map(&to_token)),
+                        // A part that no longer analyses as one morpheme is
+                        // not worth guessing at; keep the compound instead.
+                        _ => {
+                            out.push(t.clone());
+                            break;
+                        }
+                    }
+                }
+            }
+            Ok(out)
+        };
 
         // Dictionary-validated splitting: C → B → A.
         // Keep tokens that exist as dictionary headwords. Split unknown
@@ -167,7 +289,7 @@ impl Tokenizer for SudachiTokenizer {
             }
         }
 
-        Ok(tokens)
+        split_unknown(tokens)
     }
 }
 

@@ -426,16 +426,34 @@ pub async fn fetch_all(k: &Knowledge) -> Result<Vec<VocabRow>, sqlx::Error> {
 ///
 /// Ordered by encounter count because that is what makes the pass pay: the
 /// words met most are the ones every downstream feature will hit most.
+/// A word the reader has already judged under one of its readings is not
+/// offered again under another.
+///
+/// The ledger keys on `(headword, reading)` because 空 is そら or から and
+/// judging one must not judge the other. But most of the pairs that produces
+/// are not homographs — they are one word the dictionary lists twice (言う as
+/// いう and ゆう, 皆 as みな and みんな), and offering the second after the
+/// reader has judged the first asks them to rule on the same word again.
+///
+/// This only stops the asking. It writes nothing: the second row stays `new`,
+/// which is true — nobody judged *it* — and a reader who wants it judged can
+/// still reach it. Inheriting the status instead would be a sync writing
+/// `status`, which nothing here is allowed to do.
+const UNJUDGED_HEADWORD: &str = "NOT EXISTS (SELECT 1 FROM vocabulary o \
+     WHERE o.headword = vocabulary.headword AND o.reading != vocabulary.reading \
+       AND o.status != 'new')";
+
 pub async fn triage_queue(
     k: &Knowledge,
     min_encounters: i64,
     limit: i64,
 ) -> Result<Vec<VocabRow>, sqlx::Error> {
-    let rows = sqlx::query(
+    let rows = sqlx::query(&format!(
         "SELECT * FROM vocabulary \
          WHERE status = 'new' AND in_master = 1 AND encounter_count >= ? \
+           AND {UNJUDGED_HEADWORD} \
          ORDER BY encounter_count DESC, headword LIMIT ?",
-    )
+    ))
     .bind(min_encounters)
     .bind(limit)
     .fetch_all(k.pool())
@@ -450,12 +468,15 @@ pub async fn triage_queue(
 /// a threshold change does *before* paging through it — a `limit`ed queue
 /// cannot answer "how many are left".
 pub async fn triage_pending(k: &Knowledge, min_encounters: i64) -> Result<(i64, i64), sqlx::Error> {
-    let row = sqlx::query(
+    // Same filter as the queue, or the count on screen would promise rows the
+    // queue will not offer.
+    let row = sqlx::query(&format!(
         "SELECT COUNT(*) AS total, \
                 COALESCE(SUM(CASE WHEN lookup_count = 0 THEN 1 ELSE 0 END), 0) AS preselected \
          FROM vocabulary \
-         WHERE status = 'new' AND in_master = 1 AND encounter_count >= ?",
-    )
+         WHERE status = 'new' AND in_master = 1 AND encounter_count >= ? \
+           AND {UNJUDGED_HEADWORD}",
+    ))
     .bind(min_encounters)
     .fetch_one(k.pool())
     .await?;
@@ -508,6 +529,75 @@ pub async fn set_status_each(
     }
     tx.commit().await?;
     Ok(n)
+}
+
+/// Move a judgement from a key the ingest no longer produces onto the one it
+/// does, and delete the old row.
+///
+/// Re-tokenization strands assertions. When the ledger began keying on
+/// Sudachi's *normalized* form, いっぱい and あげる became 一杯 and 上げる, and
+/// 209 words the reader had marked known were left on rows nothing writes to
+/// any more — present, correct, and attached to a spelling the ingest has
+/// stopped producing.
+///
+/// Only the judgement moves: the counts on a stranded row are zero by
+/// definition (the rebuild recomputed them onto the new key). A target that
+/// already carries its own assertion keeps it — this repairs a key change, it
+/// does not arbitrate between two things the reader said.
+///
+/// Returns whether anything moved.
+pub async fn carry_judgement(k: &Knowledge, from: &Term, into: &Term) -> Result<bool, sqlx::Error> {
+    if from == into {
+        return Ok(false);
+    }
+    let mut tx = k.pool().begin().await?;
+    let moved = sqlx::query(
+        "UPDATE vocabulary SET status = (SELECT status FROM vocabulary \
+                                         WHERE headword = ? AND reading = ?), \
+                               status_ts = (SELECT status_ts FROM vocabulary \
+                                            WHERE headword = ? AND reading = ?) \
+         WHERE headword = ? AND reading = ? AND status = 'new' \
+           AND EXISTS (SELECT 1 FROM vocabulary \
+                       WHERE headword = ? AND reading = ? AND status != 'new')",
+    )
+    .bind(&from.headword)
+    .bind(&from.reading)
+    .bind(&from.headword)
+    .bind(&from.reading)
+    .bind(&into.headword)
+    .bind(&into.reading)
+    .bind(&from.headword)
+    .bind(&from.reading)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    // Only once it landed somewhere. A stranded judgement whose word is not in
+    // the ledger at all — no longer read, or renamed to something the
+    // tokenizer will not confirm — is kept: it is the reader's, it costs a
+    // row, and deleting it would be losing an answer to save space.
+    if moved > 0 {
+        sqlx::query(
+            "DELETE FROM vocabulary WHERE headword = ? AND reading = ? AND encounter_count = 0",
+        )
+        .bind(&from.headword)
+        .bind(&from.reading)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(moved > 0)
+}
+
+/// Every judged row the last ingest left with nothing behind it — the input to
+/// [`carry_judgement`], since only the caller has a tokenizer to say what each
+/// one is called now.
+pub async fn stranded_judgements(k: &Knowledge) -> Result<Vec<VocabRow>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT * FROM vocabulary WHERE status != 'new' AND encounter_count = 0 AND mined = 0",
+    )
+    .fetch_all(k.pool())
+    .await?;
+    Ok(rows.iter().map(row_to_vocab).collect())
 }
 
 /// Drop rows a rebuild left with nothing behind them.
@@ -799,6 +889,91 @@ mod tests {
         assert!(
             !detail.iter().any(|d| d.starts_with("SCAN de")),
             "scanning every entry per ledger row is the six-minute bug: {detail:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_word_already_judged_under_another_reading_is_not_offered_again() {
+        let k = temp().await;
+        record_encounters(
+            &k,
+            &[
+                enc("皆", "みな", 233, 0.0),
+                enc("皆", "みんな", 165, 0.0),
+                enc("空", "そら", 90, 0.0),
+                enc("鍵", "かぎ", 40, 0.0),
+            ],
+        )
+        .await
+        .unwrap();
+        sqlx::query("UPDATE vocabulary SET in_master = 1")
+            .execute(k.pool())
+            .await
+            .unwrap();
+        set_status(&k, &Term::new("皆", "みな"), Status::Known, 1.0)
+            .await
+            .unwrap();
+
+        let offered: Vec<String> = triage_queue(&k, 1, 50)
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| format!("{}/{}", r.term.headword, r.term.reading))
+            .collect();
+        assert!(
+            !offered.iter().any(|t| t == "皆/みんな"),
+            "the same word again, in a second reading: {offered:?}"
+        );
+        assert!(offered.iter().any(|t| t == "空/そら"));
+        assert!(offered.iter().any(|t| t == "鍵/かぎ"));
+        // The count has to agree with the queue, or it promises rows nobody
+        // will be shown.
+        assert_eq!(triage_pending(&k, 1).await.unwrap().0, offered.len() as i64);
+    }
+
+    #[tokio::test]
+    async fn a_judgement_follows_its_word_to_the_key_the_ingest_now_uses() {
+        let k = temp().await;
+        let (old, new) = (Term::new("いっぱい", ""), Term::new("一杯", "いっぱい"));
+        set_status(&k, &old, Status::Known, 5.0).await.unwrap();
+        record_encounters(&k, &[enc("一杯", "いっぱい", 40, 0.0)])
+            .await
+            .unwrap();
+
+        assert!(carry_judgement(&k, &old, &new).await.unwrap());
+        let row = fetch(&k, &new).await.unwrap().unwrap();
+        assert_eq!(row.status, Status::Known);
+        assert_eq!(row.status_ts, Some(5.0));
+        assert_eq!(row.encounter_count, 40, "counts came from the rebuild");
+        assert!(fetch(&k, &old).await.unwrap().is_none(), "the old key goes");
+    }
+
+    #[tokio::test]
+    async fn a_judgement_with_nowhere_to_go_is_kept_not_dropped() {
+        let k = temp().await;
+        let (old, gone) = (Term::new("いっぱい", ""), Term::new("一杯", "いっぱい"));
+        set_status(&k, &old, Status::Known, 5.0).await.unwrap();
+        // No row for the new key: the word is not in the reading any more.
+        assert!(!carry_judgement(&k, &old, &gone).await.unwrap());
+        assert_eq!(
+            fetch(&k, &old).await.unwrap().unwrap().status,
+            Status::Known,
+            "deleting it would lose an answer to save a row"
+        );
+    }
+
+    #[tokio::test]
+    async fn carrying_never_overrules_what_the_reader_said_about_the_target() {
+        let k = temp().await;
+        let (old, new) = (Term::new("あげる", ""), Term::new("上げる", "あげる"));
+        set_status(&k, &old, Status::Known, 5.0).await.unwrap();
+        set_status(&k, &new, Status::Unknown, 9.0).await.unwrap();
+
+        assert!(!carry_judgement(&k, &old, &new).await.unwrap());
+        assert_eq!(
+            fetch(&k, &new).await.unwrap().unwrap().status,
+            Status::Unknown,
+            "the target's own assertion stands"
         );
     }
 

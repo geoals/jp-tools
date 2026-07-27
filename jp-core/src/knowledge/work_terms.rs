@@ -102,9 +102,25 @@ impl WorkVocabulary {
 /// triage queue uses — any loaded dictionary having it is enough.
 const IS_WORD: &str = "(v.in_master = 1 OR v.in_name = 1 OR v.in_reference = 1)";
 
+/// Known: asserted so, mined, **or** known under another reading of the same
+/// headword.
+///
+/// The last clause exists because the triage queue refuses to ask about a
+/// headword already judged (see `vocabulary::triage_queue`): 皆 was marked
+/// known as みな, so 皆/みんな is never offered and stays `new` forever.
+/// Counting it as unknown here would contradict the page next door — and the
+/// reader's own answer, which was about the word, not the reading.
+///
+/// The cost is a genuine homograph whose readings differ in knownness (空 as
+/// そら but not から) counting as known throughout. That is the same trade the
+/// queue already makes, and making it in one place and not the other is worse
+/// than either choice.
+const IS_KNOWN: &str = "(v.status = 'known' OR v.mined = 1 OR EXISTS ( \
+     SELECT 1 FROM vocabulary o WHERE o.headword = v.headword AND o.status = 'known'))";
+
 /// The known/unknown split for one work, by type and by token.
 pub async fn summary(k: &Knowledge, work: &str) -> Result<WorkVocabulary, sqlx::Error> {
-    let known = format!("(v.status = '{}' OR v.mined = 1)", Status::Known.as_str());
+    let known = IS_KNOWN;
     let row = sqlx::query(&format!(
         "SELECT \
              COUNT(*) AS types, \
@@ -174,8 +190,8 @@ pub async fn top_unknown(
                 (v.encounter_count - wt.count) AS elsewhere \
          FROM work_terms wt JOIN vocabulary v \
              ON v.headword = wt.headword AND v.reading = wt.reading \
-         WHERE wt.work = ? AND {IS_WORD} \
-           AND v.mined = 0 AND v.status IN ('{new}', '{unknown}') \
+         WHERE wt.work = ? AND {IS_WORD} AND NOT {IS_KNOWN} \
+           AND v.status IN ('{new}', '{unknown}') \
          ORDER BY wt.count DESC, wt.headword LIMIT ?",
         new = Status::New.as_str(),
         unknown = Status::Unknown.as_str(),
@@ -202,10 +218,8 @@ pub async fn known_with_first_seen(
                 (v.encounter_count - wt.count) AS elsewhere, v.first_seen \
          FROM work_terms wt JOIN vocabulary v \
              ON v.headword = wt.headword AND v.reading = wt.reading \
-         WHERE wt.work = ? AND {IS_WORD} AND v.first_seen IS NOT NULL \
-           AND (v.status = '{known}' OR v.mined = 1) \
+         WHERE wt.work = ? AND {IS_WORD} AND v.first_seen IS NOT NULL AND {IS_KNOWN} \
          ORDER BY wt.count DESC",
-        known = Status::Known.as_str(),
     ))
     .bind(work)
     .fetch_all(k.pool())
@@ -344,6 +358,31 @@ mod tests {
         assert_eq!(list[0].elsewhere, 0);
         assert_eq!(list[1].headword, "鍵");
         assert_eq!(list[1].elsewhere, 28);
+    }
+
+    #[tokio::test]
+    async fn a_word_known_under_another_reading_counts_as_known() {
+        // 皆 was judged as みな; 皆/みんな is never offered again, so counting it
+        // unknown would contradict the queue and the reader both.
+        let k = temp().await;
+        seed(&k, &[("皆", "みな", 235), ("皆", "みんな", 166)]).await;
+        record_work_terms(
+            &k,
+            &[we("皆", "みな", "A", 84), we("皆", "みんな", "A", 151)],
+        )
+        .await
+        .unwrap();
+        set_status(&k, &Term::new("皆", "みな"), Status::Known, 1.0)
+            .await
+            .unwrap();
+
+        let s = summary(&k, "A").await.unwrap();
+        assert_eq!(s.known_types, 2, "both readings of a word it knows");
+        assert_eq!(s.known_tokens, 235);
+        assert!(
+            top_unknown(&k, "A", 10).await.unwrap().is_empty(),
+            "and neither is offered as a word to learn"
+        );
     }
 
     #[tokio::test]

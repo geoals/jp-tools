@@ -115,6 +115,30 @@ taught to `vn-capture.sh`.
   only writers are `/api/vocab/judge` and `/api/vocab/blacklist-non-words`,
   both of which answer a request the reader made. A *reader-triggered* Anki
   import is fine by the same test; folding it into the recurring refresh is not.
+- **One word, one row — spelt the way the master dictionary spells it.**
+  Terms key on Sudachi's *normalized* form, not its dictionary form, so いう,
+  できる, みんな and わかる stop being separate words from 言う, 出来る, 皆 and
+  分かる. Where Sudachi and Sankoku disagree about the spelling, Sankoku wins
+  (`SudachiTokenizer::written_form`): する normalizes to 為る, which Sankoku
+  does not list, and that put the commonest verb in the language outside the
+  triage queue with 2,544 encounters.
+- **A re-tokenization strands judgements, and the rebuild re-homes them.**
+  Moving keys leaves an assertion on a spelling nothing writes to any more.
+  `carry_stranded_judgements` asks the tokenizer what each is called now and
+  moves the status there, never over the target's own assertion; one with
+  nowhere to go is kept, not deleted. The rebuild reports `carried`.
+- **A word judged under one reading is not asked about again.** 皆 marked known
+  as みな means 皆/みんな is never offered (`triage_queue`) and counts as known
+  in the per-work figures (`work_terms::IS_KNOWN`). Both or neither: the ledger
+  keys on `(headword, reading)` for the homograph case, but most pairs it
+  produces are one word the dictionary lists twice, and asking twice about
+  those is what the reader notices.
+- **A compound the master dictionary does not list is decomposed into parts it
+  does.** Sudachi's splitting stops at its own entries — 懲罰房 has no
+  sub-units, so 懲罰 was read 61 times and credited to nothing, while 医務室
+  splits fine. `SudachiTokenizer::decompose` longest-matches against Sankoku's
+  headwords; parts must be two characters or a single kanji, or katakana names
+  shred into whatever one-kana entries exist.
 - **A name is not vocabulary.** Sudachi's 固有名詞 subclass keeps a work's cast
   out of the ledger and `work_terms` (they were the top of every per-work
   unknown list), while `word_days` still counts them — that sink asks what text

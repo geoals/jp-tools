@@ -38,6 +38,18 @@ pub async fn get_all_headwords(pool: &SqlitePool) -> Result<HashSet<String>, sql
     Ok(rows.into_iter().map(|(term,)| term).collect())
 }
 
+/// The master dictionary's headwords, for decomposing compounds it does not
+/// list into parts it does.
+pub async fn master_headwords(pool: &SqlitePool) -> Result<HashSet<String>, sqlx::Error> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT DISTINCT de.term FROM dictionary_entries de \
+         JOIN dictionaries d ON d.id = de.dictionary_id WHERE d.role = 'master'",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(term,)| term).collect())
+}
+
 /// Load all distinct terms and readings from dictionary_entries.
 /// Broader than `get_all_headwords` — includes kana readings so that
 /// hiragana-only lemmas like いう match dictionary entry 言う (reading いう).

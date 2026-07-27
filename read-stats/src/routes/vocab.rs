@@ -14,6 +14,9 @@ use jp_core::knowledge::vocabulary::{self, Status, Term};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use jp_core::tokenize::{SudachiTokenizer, Tokenizer};
+use tracing::info;
+
 use crate::app::AppState;
 use crate::clock::now_ts;
 use crate::db;
@@ -143,6 +146,54 @@ pub async fn vocab_judge(
     Ok(Json(json!({ "written": written })))
 }
 
+/// Re-home every judgement the rebuild stranded.
+///
+/// A stranded row is one the reader judged and the ingest no longer produces —
+/// after the move to normalized headwords, いっぱい and あげる became 一杯 and
+/// 上げる. The tokenizer says what each old key is called now: if that name is
+/// in the ledger, the judgement moves onto it.
+///
+/// The tokenizer is the authority rather than a string rule, and a row it
+/// cannot resolve to a single token is left alone — a stranded judgement is
+/// harmless, and a misplaced one is not.
+async fn carry_stranded_judgements(state: &AppState) -> Result<usize, AppError> {
+    let stranded = vocabulary::stranded_judgements(&state.knowledge).await?;
+    if stranded.is_empty() {
+        return Ok(0);
+    }
+    let dict_path = state.sudachi_dict_path.clone();
+    let plan = tokio::task::spawn_blocking(move || -> Result<Vec<(Term, Term)>, AppError> {
+        let tokenizer = SudachiTokenizer::new(&dict_path, Default::default())
+            .map_err(|e| AppError::Upstream(format!("sudachi: {e}")))?;
+        let mut plan = Vec::new();
+        for row in &stranded {
+            let Ok(tokens) = tokenizer.tokenize(&row.term.headword) else {
+                continue;
+            };
+            let [t] = tokens.as_slice() else { continue };
+            let now_called = Term::new(t.base_form.clone(), &t.reading);
+            if now_called != row.term {
+                plan.push((row.term.clone(), now_called));
+            }
+        }
+        Ok(plan)
+    })
+    .await
+    .map_err(|e| AppError::Upstream(format!("tokenize task panicked: {e}")))??;
+
+    let mut carried = 0;
+    for (from, into) in &plan {
+        if vocabulary::carry_judgement(&state.knowledge, from, into).await? {
+            carried += 1;
+        }
+    }
+    info!(
+        carried,
+        "moved judgements onto the keys the ingest now writes"
+    );
+    Ok(carried)
+}
+
 /// What `blacklist-non-words` would blacklist, before it does.
 ///
 /// The action is a bulk write over rows the queue never shows, so without this
@@ -207,6 +258,10 @@ pub async fn vocab_rebuild(State(state): State<AppState>) -> Result<Json<Value>,
     let lines = crate::ingest::ingest_new_lines(&state).await?;
     let sessions = crate::ingest::ingest_new_sessions(&state).await?;
     let mined = crate::ingest::sync_vocabulary(&state).await?;
+    // A re-tokenization moves words between keys, and an assertion left on the
+    // old one is a judgement the reader made about a word that now lives
+    // elsewhere. Carry it before pruning, or the next step deletes the answer.
+    let carried = carry_stranded_judgements(&state).await?;
     // Anything the re-ingest did not touch is no longer in the reading — a
     // proper noun now that names are excluded, or a term the tokenizer splits
     // differently than it used to. Judged rows and mined rows are spared.
@@ -216,6 +271,7 @@ pub async fn vocab_rebuild(State(state): State<AppState>) -> Result<Json<Value>,
         "lines": lines,
         "sessions": sessions,
         "mined_terms": mined,
+        "carried": carried,
         "pruned": pruned,
     })))
 }
