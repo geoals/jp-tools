@@ -3,6 +3,38 @@
 > **Rough brainstorm — nothing decided.** This is an unfleshed-out idea dump,
 > not a design or a commitment. It may never be built. Kept only so the thoughts
 > aren't lost.
+>
+> **Two premises it was written on have since changed (2026-07-27).** Anything
+> below that leans on them needs rereading:
+>
+> - **There is no `encounters` table and there never will be.** "Data model
+>   additions" assumes one. `spec/knowledge-db.md` decided against it: per-
+>   occurrence rows are derived data, since the raw truth already lives in
+>   `lines` and `manual_sessions.content`. The `vocabulary` row instead carries
+>   `encounter_count` / `lookup_count` / `first_seen` / `last_seen`. So the
+>   Trainer Card, the rarity bands and the discovery-rate figures are all cheap
+>   ledger reads — but the **encounter log** ("every context sentence where you
+>   met this word") is a scan over `lines`, not a table lookup. Still fine at
+>   this scale, and off any hot path, but it is a different query than sketched.
+> - **The ledger is not in `yt-mine.db`.** It is `knowledge.db`, owned by
+>   `jp-core` and shared, alongside `works` — which is explicitly *the source
+>   dimension of encounters*, i.e. exactly what the Encounter Map wants to
+>   aggregate by. That materially improves Option B: a separate frontend over a
+>   shared DB is now the *normal* pattern here (read-stats already writes into
+>   that DB), not the compromise the recommendation treats it as. Option A's
+>   "vocabulary data is already in yt-mine" premise is simply no longer true.
+>
+> Unchanged and now concrete: this is a read-only view, and **it is blocked on
+> the same thing everything else is** — every ledger row is `status = 'new'`, so
+> "seen vs caught", the status rings and every completion percentage would render
+> as all-zeros until `spec/cold-start.md`'s triage passes run.
+>
+> Also worth noting for the "Pokedex number = frequency rank" idea: the
+> `dictionary_frequency` table exists and, on the master database, holds a BCCWJ
+> frequency dictionary (~886k rows per `spec/cold-start.md`) — so that axis needs
+> no new data source, only a query. It is empty on a dev snapshot until the
+> dictionary is imported. JLPT level, by contrast, has no source anywhere in the
+> workspace.
 
 **Concept:** Your journey through Japanese is like filling out a Pokedex. Every word
 you encounter is a creature to discover, study, and master. The Kotodex gives you a
@@ -245,6 +277,10 @@ GET  /api/kotodex/daily-summary  — today's stats
 ```
 
 ## Data model additions
+
+> Written before the ledger existed. **There is no `encounters` table** — see the
+> status note at the top. `vocabulary` in `knowledge.db` covers the counts; the
+> encounter log comes from `lines`.
 
 The existing `vocabulary` and `encounters` tables cover most needs. Additions:
 

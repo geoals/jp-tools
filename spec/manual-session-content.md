@@ -1,8 +1,16 @@
 # Feeding pasted reading into the knowledge layer
 
-Status: done (2026-07-26). Kept as the record of *why* it is shaped this way;
-the rule in "The constraint that shapes the whole thing" is the one to preserve
-if any of this is touched again.
+Status: done (2026-07-26; re-verified 2026-07-27). Kept as the record of *why*
+it is shaped this way; the rule in "The constraint that shapes the whole thing"
+is the one to preserve if any of this is touched again.
+
+One thing landed after this was written and is worth knowing here: the same
+`ingest_new_sessions` pass now also feeds the **`vocabulary` ledger**, not just
+`word_days`, behind a `vocab_through_session_id` watermark of its own
+(`spec/knowledge-db.md`). That makes pasted text count as vocabulary
+calibration — `spec/cold-start.md` Pass 2 leans on it — and it does *not*
+weaken the exposure/cost rule below, because the ledger's `lookup_count` is
+recomputed wholesale from `lookups`, which article reading never writes to.
 
 A logged session can carry the text it was read from — `manual_sessions.content`,
 with `url` beside it. It makes `chars` exact, counted by

@@ -1,5 +1,25 @@
 # Sentence Mining from Physical Manga
 
+> **Status: MVP 1 shipped; design still accurate (checked 2026-07-27).** Unlike
+> `spec/sentence-mining-yt.md`, this one held up — the architecture, the ADRs and
+> the crate split all describe what was actually built. `jp-mine-core` exists
+> with `lookup.rs` + `export.rs` + `config.rs`; `manga-mine` is a stateless Axum
+> + Preact app whose routes match MVP 1 line for line (`/api/queue`,
+> `/api/photos`, `/api/photos/{name}/ocr`, `/api/photos/{name}/mark`,
+> `/api/export`); `manga-ocr-service` is the FastAPI wrapper behind `OcrEngine`,
+> with `FakeOcrEngine` for tests. 21 tests pass.
+>
+> Of the later phases: the MVP 2 deconjugation display is effectively there
+> (tokens carry both `surface` and `base_form`), while **multi-crop, the optional
+> LLM definition, `owocr`/Google Lens, and the deferred Anki flush are not
+> built**. `llm_definition` is hardcoded `None` at the export site.
+>
+> ADR-009's deferred vocab tracking has since been decided *against* this file:
+> the shared ledger lives in **`jp-core`** (`knowledge.db`), not `jp-mine-core`,
+> because it is dictionary-gated — see `spec/knowledge-db.md`. When manga-mine
+> grows known/unknown filtering it reads that ledger, and ADR-010's "no database"
+> still holds for manga-mine's *own* state.
+
 Frictionless sentence mining from paper manga (and physical books/light novels):
 photograph a panel while reading, then later turn each photo into a rich Anki
 card — target word, example sentence, definition, panel image — with the same
@@ -254,6 +274,13 @@ recognition only (ADR-005).
   `manga-mine` does no known/unknown filtering. *Note:* superseded on the storage
   detail by ADR-010 — there is no `manga-mine` DB in v1; a shared vocab store, when
   built, lives in `jp-mine-core`.
+  *Superseded on the crate, 2026-07-26:* the shared ledger was built in
+  **`jp-core`** (`knowledge.db`'s `vocabulary`), not `jp-mine-core`, because
+  establishing a term's `(headword, reading)` identity requires the dictionary
+  layer — so dictionaries and the ledger are one subsystem
+  (`spec/knowledge-db.md`). `jp-mine-core` stayed the *card-authoring* back half
+  only, which is also why read-stats and vn-mine correctly don't depend on it.
+  The deferral itself stands: manga-mine still does no known/unknown filtering.
 - **ADR-010 — No database in v1; stateless server.** The inbox folder is the queue
   (its contents = un-mined photos); the finished card lives in Anki (image via
   AnkiConnect `storeMediaFile`); mined/skipped state is a file move into

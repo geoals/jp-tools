@@ -1,5 +1,27 @@
 # Sentence Mining from YouTube
 
+> **Status: superseded pre-implementation design (checked 2026-07-27).** yt-mine
+> is built and in use; this file is the *original plan*, kept for the reasoning,
+> and several details below were decided differently. Read the code, not this,
+> for how it works.
+>
+> Where it diverged:
+>
+> | this doc says | actually |
+> |---|---|
+> | Vibrato + UniDic tokenizer | **Sudachi** (`jp-core`, sudachi.rs v0.6.10) |
+> | faster-whisper as a subprocess | a **remote `whisper-service`** behind a `Transcriber` trait (`JP_TOOLS_WHISPER_SERVICE_URL`) |
+> | htmx + server-rendered HTML | **Preact + htm** SPA (`yt-mine/static/`), feature-foldered |
+> | `mining_sentences` has `quality_score` / `is_filtered` / `filter_reason` | none of those columns exist — MVP 3's quality filtering was never built |
+> | "same SQLite DB" as everything else | three DBs; the shared knowledge/dictionary tables moved to `knowledge.db` (`spec/knowledge-db.md`) |
+> | note type `jp-tools-sentence` | **"Japanese sentences"** — the same note type Yomitan uses, so VN and yt cards are one deck |
+>
+> MVP 1 and 2 are shipped. **MVP 3 (smart filtering) is not** — and its
+> vocabulary-DB dependency is the live question: the `vocabulary` ledger it
+> needs now exists but holds no assertions, so i+1 filtering and
+> known/unknown dimming cannot work until `spec/cold-start.md`'s triage passes
+> run. See `spec/knowledge-db.md` note 8 for the migration yt-mine needs first.
+
 Automatic sentence mining pipeline: paste a YouTube URL, get transcribed
 sentences, pick the ones worth studying, export to Anki.
 

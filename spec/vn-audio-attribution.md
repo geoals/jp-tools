@@ -1,9 +1,14 @@
 # Attributing a voiceline to the line it belongs to
 
-**Status 2026-07-26.** Two window bugs are fixed and shipped. A third,
+**Status 2026-07-27.** Two window bugs are fixed and shipped. A third,
 narrower one is known and not fixed. The rule that would replace the whole
 approach is designed but blocked on data, and `vn-mine/vn-calibrate.py
 --collect` is the thing that unblocks it.
+
+**Nothing has been collected yet.** `~/.local/share/jp-tools/vn-onset-calibration.tsv`
+does not exist on this machine, so the only evidence is still the n=11 single
+ring below — which is explicitly *not* enough to decide the one question that
+gates the rest. Step 1 of *Next steps* has not been started.
 
 Read this before touching the audio window in `vn-mine/vn-capture.sh`.
 

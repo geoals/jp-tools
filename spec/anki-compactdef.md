@@ -81,7 +81,7 @@ and actually studied.
   `HONORIFIC`/`HUMBLE`/`DIALECT`/`ARCHAIC`/`VULGAR`/`DEROGATORY`/`CHILDISH`. Tag
   the in-sentence sense; usage overrides etymology. (Superseded the old single
   `EVERYDAY`/`PASSIVE`/`FORMAL-LITERARY`/`SPECIALIZED-DATED`/`OBSCURE` register;
-  the reader-explain path in `llm.rs` uses this same two-axis system.)
+  the reader-explain path in `services/llm.rs` uses this same two-axis system.)
 - **Length & form.** Up to ~2 short English sentences plus the tag line. Any
   Japanese reading cited must be hiragana, never romaji. `clean_gloss` joins the
   lines with `<br>` so the tag line renders on its own line.
@@ -89,10 +89,11 @@ and actually studied.
 ### Prompt (used verbatim in code and skills)
 
 The **FAMILIARITY and FLAVOR rubric blocks are the single source of truth in
-`read-stats/src/tags.rs`** (`FAMILIARITY_RUBRIC` / `FLAVOR_RUBRIC`); both live
-LLM calls — `compactdef.rs` (this gloss) and `llm.rs` (reader explain) — build
-their system prompts from those consts, so the two can no longer drift. Keep the
-text below in sync with `tags.rs`. The **FAMILIARITY definitions are the
+`read-stats/src/services/tags.rs`** (`FAMILIARITY_RUBRIC` / `FLAVOR_RUBRIC`);
+both live LLM calls — `services/compactdef.rs` (this gloss) and
+`services/llm.rs` (reader explain) — build their system prompts from those
+consts, so the two can no longer drift. Keep the text below in sync with
+`tags.rs`. The **FAMILIARITY definitions are the
 sharpened set**: the axis turns on the single question "can you be certain EVERY
 native adult recognizes it?", COMMON vs UNCOMMON split on active-vs-passive
 vocabulary, RARE = the first tier where universal recognition can't be assumed
@@ -165,18 +166,18 @@ Word: {word}
 Sentence: {sentence}
 ```
 
-**Postclean (`compactdef.rs::clean_gloss`).** The model returns a short English
+**Postclean (`services/compactdef.rs::clean_gloss`).** The model returns a short English
 meaning/usage line and the two-axis tag line below it. `clean_gloss` strips any
 literal `<meaning>`/`<usage>` placeholder tags the model echoes (Opus 5 does this),
 trims each line, strips stray wrapping quotes, drops blank lines, and joins the
 rest with `<br>` so the tag line renders on its own line in Anki's HTML (plain
 newlines don't render). The caller skips writing an empty result.
 
-Model: **pinned to `claude-opus-5`** in `compactdef.rs`, with thinking disabled
+Model: **pinned to `claude-opus-5`** in `services/compactdef.rs`, with thinking disabled
 and low effort. The tag axes were shown to need no thinking and no external
 signals; opus ≈ sonnet on tags but opus is preferred for the meaning/usage prose
 (see *Why no external signals* below). Both live LLM calls — this one and the
-reader-explain path in `llm.rs` — are pinned to opus-5 with thinking off and no
+reader-explain path in `services/llm.rs` — are pinned to opus-5 with thinking off and no
 longer read `JP_TOOLS_LLM_MODEL` (that env var now only configures yt-mine's
 definer). The hand backfill used this same prompt.
 
@@ -248,7 +249,13 @@ capture aborts early exactly in the no-audio case, but CompactDef must always be
 written. It also folds the old "add card, then press the mine button" into one
 action.
 
-### yt-mine (TODO — not yet built)
+### yt-mine (TODO — not yet built, confirmed 2026-07-27)
+
+Still untouched: `compact_def` appears nowhere in `jp-mine-core` or `yt-mine`,
+and the only `anki_compact_def_field` config lives in read-stats. The manga-mine
+export path (`routes/api.rs`) shares `jp-mine-core`, so it inherits whatever is
+added here — worth deciding at the time whether a manga card wants the gloss too
+(ADR-005 rules out audio on those cards, not this).
 
 yt-mine builds the note in Rust (`jp-mine-core::export` + `yt-mine` export
 handler) and already has an `LlmDefiner`/`llm_definition` path for a *different*,
@@ -324,7 +331,7 @@ reformulate vs. keep.
 
 - [x] Design + finalized **two-axis** prompt (this doc). Signal investigation
       done — no frequency/dictionary input helps (see *Why no external signals*).
-- [x] `read-stats/src/compactdef.rs` — LLM call (opus-5, no thinking) +
+- [x] `read-stats/src/services/compactdef.rs` — LLM call (opus-5, no thinking) +
       `clean_gloss` postclean (strips echoed `<meaning>`/`<usage>` tags); live
       path validated end-to-end.
 - [x] `/anki-proxy` enrichment: CompactDef write + auto vn-capture on `addNote`
