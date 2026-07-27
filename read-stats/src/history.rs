@@ -314,6 +314,35 @@ impl History {
             .collect()
     }
 
+    /// Which work was being read at `ts`, if any.
+    ///
+    /// The same test the lookup guard applies at the write
+    /// (`ankiproxy::record`): an event belongs to the reading only if a line
+    /// arrived within `session_gap_secs` of it. Here it decides *whose*
+    /// reading — the nearest line in either direction names the work, because
+    /// a card added a few seconds after the last line of a sitting is still
+    /// that sitting's.
+    ///
+    /// `None` when nothing was on screen: a card added while no VN was hooked
+    /// is unattributed rather than guessed at, which is the honest answer and
+    /// keeps a work from claiming mining that happened somewhere else.
+    pub fn work_at(&self, ts: f64) -> Option<&str> {
+        let gap = self.settings.session_gap_secs;
+        let i = self.lines.partition_point(|l| l.ts < ts);
+        // The line before and the line after; whichever is nearer wins.
+        let nearest = [i.checked_sub(1), (i < self.lines.len()).then_some(i)]
+            .into_iter()
+            .flatten()
+            .min_by(|&a, &b| {
+                (self.lines[a].ts - ts)
+                    .abs()
+                    .total_cmp(&(self.lines[b].ts - ts).abs())
+            })?;
+        ((self.lines[nearest].ts - ts).abs() <= gap)
+            .then(|| self.line_works[nearest].as_deref())
+            .flatten()
+    }
+
     /// The work that best represents each day's reading, so the trend charts can
     /// mark where reading moved from one VN to another and a speed step reads as
     /// a switch rather than a regression. Picks the *latest* work read that day

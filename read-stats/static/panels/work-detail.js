@@ -199,6 +199,14 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
       </p>
     </div>
 
+    <${GaveCard}
+      mined=${detail.mined}
+      minedCount=${detail.mined_count}
+      taught=${detail.taught}
+      taughtCount=${detail.taught_count}
+      days=${detail.days}
+      firstRead=${detail.first_read}
+    />
     <${VocabCard}
       vocab=${detail.vocabulary}
       unknown=${detail.top_unknown}
@@ -210,6 +218,70 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
       workChars=${detail.chars}
     />
     <${SittingsCard} sittings=${detail.sittings} />
+  `;
+}
+
+/** What came out of the work: cards mined while reading it, and the words it
+ *  put in front of you first.
+ *
+ *  Both attribute by time — note ids are epoch milliseconds and the ledger
+ *  holds each term's first sighting — so a card added while nothing was hooked
+ *  belongs to no work rather than to a guessed one. */
+function GaveCard({ mined, minedCount, taught, taughtCount, days, firstRead }) {
+  if (!minedCount && !taughtCount) return null;
+  const perDay = (days || []).filter((d) => d.cards > 0);
+  const peak = Math.max(...perDay.map((d) => d.cards), 1);
+
+  return html`
+    <div class="card">
+      <h2>What it gave you</h2>
+      <div class="tile-row">
+        <div class="tile">
+          <div class="label">cards mined here</div>
+          <div class="value">${minedCount.toLocaleString("en")}</div>
+        </div>
+        <div class="tile">
+          <div class="label">words met here first</div>
+          <div class="value">${taughtCount.toLocaleString("en")}</div>
+        </div>
+      </div>
+
+      ${
+        perDay.length > 1 &&
+        html`<div class="mine-strip">
+          ${perDay.map((d) => {
+            const label = `${d.date}: ${d.cards} card${d.cards === 1 ? "" : "s"}`;
+            return html`<span
+              class="mine-bar"
+              title=${label}
+              style=${`height:${Math.max(8, (d.cards / peak) * 44)}px`}
+            ></span>`;
+          })}
+        </div>`
+      }
+      ${
+        perDay.length > 1 &&
+        html`<p class="chart-note">
+          Cards added per reading day. The rate falling as a work goes on is the
+          work getting easier.
+        </p>`
+      }
+
+      <${TermList}
+        title="Words it put in front of you first"
+        note=${`Known now, and first met while reading this — as far back as the line stream goes. A work read before tracking began, or the earliest one in it, inherits words you already knew: this one starts at ${firstRead ?? "the beginning"}.`}
+        terms=${taught}
+      />
+      ${
+        mined.length > 0 &&
+        html`<div class="term-list">
+          <div class="word-list-label">Latest cards from it</div>
+          <div class="word-chips">
+            ${mined.map((m) => html`<span class="chip">${m.vocab}</span>`)}
+          </div>
+        </div>`
+      }
+    </div>
   `;
 }
 

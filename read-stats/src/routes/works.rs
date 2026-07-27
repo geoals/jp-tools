@@ -24,6 +24,8 @@ use jp_core::knowledge::work_terms;
 /// pass — a list of two hundred unknown words is a wall, not a plan.
 const UNKNOWN_LEN: i64 = 40;
 const DISTINCTIVE_LEN: i64 = 24;
+const MINED_LEN: usize = 24;
+const TAUGHT_LEN: usize = 24;
 
 fn term_json(t: &work_terms::WorkTerm) -> Value {
     json!({
@@ -247,6 +249,37 @@ pub async fn work_detail(
     let unknown = work_terms::top_unknown(&state.knowledge, title, UNKNOWN_LEN).await?;
     let distinctive = work_terms::distinctive(&state.knowledge, title, DISTINCTIVE_LEN).await?;
 
+    // What the work gave back. Note ids are epoch milliseconds, so a card
+    // attributes to whatever was on screen when it was added — the same
+    // nearest-line test the lookup guard uses, applied to ask *whose* reading
+    // rather than whether it was reading at all.
+    let mut mined: Vec<Value> = Vec::new();
+    let mut cards_per_day: BTreeMap<chrono::NaiveDate, i64> = BTreeMap::new();
+    for note in db::fetch_anki_notes(&state.knowledge).await? {
+        let ts = note.note_id as f64 / 1000.0;
+        if h.work_at(ts) != Some(title) {
+            continue;
+        }
+        *cards_per_day.entry(h.date_of(ts)).or_default() += 1;
+        mined.push(json!({ "vocab": note.vocab, "ts": ts }));
+    }
+    // Newest first, and only the tail is listed: the count is the figure, the
+    // list is a reminder of what it was made of.
+    mined.reverse();
+    let mined_count = mined.len();
+    mined.truncate(MINED_LEN);
+
+    // Words this work taught: known now, and first met while reading it. The
+    // ledger holds the moment, the line stream holds the work.
+    let mut taught: Vec<Value> = work_terms::known_with_first_seen(&state.knowledge, title)
+        .await?
+        .into_iter()
+        .filter(|(_, first_seen)| h.work_at(*first_seen) == Some(title))
+        .map(|(t, _)| term_json(&t))
+        .collect();
+    let taught_count = taught.len();
+    taught.truncate(TAUGHT_LEN);
+
     // What is left, at this work's own pace rather than the reader's average —
     // a work that reads slower than usual should say so in its own estimate.
     let remaining = meta
@@ -278,6 +311,7 @@ pub async fn work_detail(
                 "date": date.to_string(),
                 "chars": chars,
                 "active_secs": secs,
+                "cards": cards_per_day.get(date).copied().unwrap_or(0),
             }))
             .collect::<Vec<_>>(),
         "sittings": sittings,
@@ -295,6 +329,10 @@ pub async fn work_detail(
         },
         "top_unknown": unknown.iter().map(term_json).collect::<Vec<_>>(),
         "distinctive": distinctive.iter().map(term_json).collect::<Vec<_>>(),
+        "mined_count": mined_count,
+        "mined": mined,
+        "taught_count": taught_count,
+        "taught": taught,
     })))
 }
 

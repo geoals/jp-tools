@@ -1,7 +1,7 @@
 # The Library page, rewritten around the work
 
-Status: in progress (2026-07-27). Phases 1, 2, 3, 6 and 7 are **built**. Phase
-5 is next; phase 4 is approved but deferred.
+Status: in progress (2026-07-27). Phases 1, 2, 3, 5, 6 and 7 are **built**.
+Phase 4 is approved but deferred, and is all that is left.
 
 The Library was one flat table: a row per work with chars, time, speed and
 dates, and nowhere to put a seventh column. What jpdb and jiten do — and what
@@ -173,21 +173,30 @@ term a re-tokenization splits differently. It spares anything judged or mined:
   Telling the two cases apart needs knowledge neither the ledger nor Sudachi
   offers, so nothing is merged automatically.
 
-## Phase 5 — what the work gave you
+## Phase 5 — what the work gave you (built)
 
-The reverse of phase 3, and free: note ids are epoch milliseconds and lookups
-are timestamped, so both attribute to whatever was being read at that moment.
+The reverse of phase 3, and free: note ids are epoch milliseconds and the
+ledger holds each term's first sighting, so both attribute by time.
 
-- cards mined from this work;
-- words first met here that are now `known` — the closest thing to a per-work
-  learning outcome;
-- cards added per day, beside the chars bars from phase 2: mining rate falling
-  as a work goes on is the work getting easier.
+`History::work_at(ts)` is the rule, and it is the lookup guard's own test
+turned to a different question: an event belongs to the reading only if a line
+arrived within `session_gap_secs`, and here the nearest line in either
+direction names the *work* — a card added a few seconds after a sitting's last
+line is still that sitting's. A card added while nothing was hooked belongs to
+no work rather than to the nearest one, which `tests/api.rs` pins with four
+cards across two works and a gap.
 
-A card added while nothing was hooked has no work and lands unattributed rather
-than being guessed at.
+- cards mined here, and the latest of them;
+- words met here first that are known now;
+- cards per reading day, as a bar strip under the tiles — a strip and not a
+  chart, because the shape is the whole message and an axis would be more
+  furniture than figure.
 
-"Looked up here but never carded" was proposed and cut.
+**"First met here" is relative to the line stream**, and the earliest work in
+it inherits every word the reader already knew: 素晴らしき日々 reports 998,
+led by する, いる and ない. The card says so, naming the date the work's
+tracked history starts. 魔法少女, which began after tracking, reports 318 —
+魔法, 魔女, 看守, 矢, 塗料, 囚人 — which is what the figure is meant to mean.
 
 ## Phase 4 — difficulty (deferred)
 
@@ -219,5 +228,5 @@ Ratings and free-text notes. Full-text search of a work's lines.
 - [x] Phase 7 — the shelf
 - [x] Phase 6 — prose character
 - [x] Phase 3 — per-work vocabulary
-- [ ] Phase 5 — what the work gave you
+- [x] Phase 5 — what the work gave you
 - [ ] Phase 4 — difficulty (deferred)

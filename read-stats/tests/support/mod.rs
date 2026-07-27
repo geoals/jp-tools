@@ -135,15 +135,25 @@ impl TestApp {
     }
 
     pub async fn add_note(&self, note_id: i64, vocab: &str) {
-        db::replace_anki_notes(
-            &self.knowledge,
-            &[db::AnkiNote {
-                note_id,
-                vocab: vocab.into(),
-            }],
-        )
-        .await
-        .unwrap();
+        self.add_notes(&[(note_id, vocab)]).await;
+    }
+
+    /// The whole deck snapshot in one call.
+    ///
+    /// `replace_anki_notes` mirrors the deck wholesale, so calling `add_note`
+    /// twice leaves only the second — a fixture that needs several notes has
+    /// to set them together, exactly as a real refresh does.
+    pub async fn add_notes(&self, notes: &[(i64, &str)]) {
+        let notes: Vec<db::AnkiNote> = notes
+            .iter()
+            .map(|(note_id, vocab)| db::AnkiNote {
+                note_id: *note_id,
+                vocab: (*vocab).into(),
+            })
+            .collect();
+        db::replace_anki_notes(&self.knowledge, &notes)
+            .await
+            .unwrap();
     }
 }
 

@@ -185,6 +185,23 @@ button.ghost:hover {
   margin-top: 10px;
 }
 
+/* Cards per reading day: a bar strip rather than a chart, because the shape is
+   the whole message and an axis would be more furniture than figure. */
+.mine-strip {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 48px;
+  margin-top: 10px;
+}
+.mine-bar {
+  flex: 1;
+  min-width: 3px;
+  max-width: 18px;
+  background: var(--series-2);
+  border-radius: 2px 2px 0 0;
+}
+
 .term-list {
   margin-top: 16px;
 }

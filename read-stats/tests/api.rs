@@ -581,6 +581,59 @@ async fn work_detail_scopes_the_history_to_one_title() {
     assert_eq!(sittings[1]["estimated"], true, "logged without minutes");
 }
 
+/// A card belongs to whatever was on screen when it was added, and to nothing
+/// at all when nothing was.
+#[tokio::test]
+async fn cards_attribute_to_the_work_that_was_being_read() {
+    let app = TestApp::new().await;
+    let base = today_start() + 3600.0;
+    three_lines(&app, base, Some("A")).await;
+    three_lines(&app, base + 30000.0, Some("B")).await;
+
+    // Mid-sitting in A, seconds after A's last line, mid-sitting in B, and one
+    // in the small hours with no reading anywhere near it. One call: the
+    // snapshot is replaced wholesale, never appended to.
+    app.add_notes(&[
+        (((base + 15.0) * 1000.0) as i64, "近い"),
+        (((base + 30.0) * 1000.0) as i64, "直後"),
+        (((base + 30010.0) * 1000.0) as i64, "別作"),
+        (((base + 90000.0) * 1000.0) as i64, "無関係"),
+    ])
+    .await;
+
+    let a = app.get("/api/works/detail?work=A").await;
+    assert_eq!(
+        a["mined_count"], 2,
+        "both cards added while A was on screen"
+    );
+    let vocab: Vec<&str> = a["mined"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["vocab"].as_str().unwrap())
+        .collect();
+    assert!(vocab.contains(&"近い") && vocab.contains(&"直後"));
+
+    let b = app.get("/api/works/detail?work=B").await;
+    assert_eq!(b["mined_count"], 1);
+    assert_eq!(b["mined"][0]["vocab"], "別作");
+    // The unattributed one belongs to neither rather than to the nearer.
+    assert_eq!(
+        a["mined_count"].as_i64().unwrap() + b["mined_count"].as_i64().unwrap(),
+        3,
+        "a card added while nothing was hooked is claimed by no work"
+    );
+
+    // And it lands on the right day of the right work's history.
+    let day = a["days"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["cards"].as_i64().unwrap() > 0)
+        .expect("a day with cards");
+    assert_eq!(day["cards"], 2);
+}
+
 #[tokio::test]
 async fn work_detail_needs_a_work_that_exists() {
     let app = TestApp::new().await;
