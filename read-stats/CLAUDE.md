@@ -137,8 +137,15 @@ taught to `vn-capture.sh`.
   does.** Sudachi's splitting stops at its own entries — 懲罰房 has no
   sub-units, so 懲罰 was read 61 times and credited to nothing, while 医務室
   splits fine. `SudachiTokenizer::decompose` longest-matches against Sankoku's
-  headwords; parts must be two characters or a single kanji, or katakana names
-  shred into whatever one-kana entries exist.
+  headwords, and a part must be two characters or a single kanji. **Names are
+  never decomposed**: a general dictionary lists no place or surname, so 東京
+  looked like an unlistable compound of two words it does list and became
+  東 + 京 — twenty-two sightings of "east" and "capital" — while 間宮 gave
+  宮 ×95 and 木村 gave 木 ×58. Bare kana is excluded for the same reason in
+  miniature: み is a noun, so 楽しみ split into 楽し + み. The cost of both
+  guards is real and accepted — Sudachi mis-tags 懲罰房 as a *place name*, so
+  懲罰 (61 sightings) is never credited, and 凛と keeps its 凛. A rule that
+  told those from 東京 would be tuned to the examples that produced it.
 - **A name is not vocabulary.** Sudachi's 固有名詞 subclass keeps a work's cast
   out of the ledger and `work_terms` (they were the top of every per-work
   unknown list), while `word_days` still counts them — that sink asks what text

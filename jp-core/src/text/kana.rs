@@ -24,6 +24,16 @@ pub fn to_hiragana(s: &str) -> String {
         .collect()
 }
 
+/// Whether a character is hiragana.
+///
+/// Used to decide whether a one-character piece of a compound may stand as a
+/// word: hiragana may (a lone と is a particle, which ingest drops on part of
+/// speech), katakana may not (it shreds names — see
+/// [`crate::tokenize::SudachiTokenizer::decompose`]).
+pub fn is_hiragana(c: char) -> bool {
+    matches!(c, 'ぁ'..='ゖ')
+}
+
 /// Whether every character is kana (either alphabet), ー and ・ included.
 ///
 /// The ledger uses this to decide whether a headword needs a reading beside

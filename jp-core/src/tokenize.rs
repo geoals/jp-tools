@@ -114,10 +114,15 @@ impl SudachiTokenizer {
     /// property of Sudachi's dictionary rather than of the language.
     ///
     /// So: longest match from the left, every part a master-dictionary
-    /// headword, the whole string consumed, at least two parts. A part must be
-    /// two characters or a single kanji — without that, katakana names shred
-    /// into whatever one-kana entries the dictionary happens to hold, which
-    /// would be inventing vocabulary rather than recovering it.
+    /// headword, the whole string consumed, at least two parts.
+    ///
+    /// A one-character part must be kanji. Kana of either alphabet shreds:
+    /// ミリア becomes ミ + リ + ア, and 楽しみ becomes 楽し + み — a dictionary
+    /// lists み as a noun, so the pieces pass every test except sense. Allowing
+    /// hiragana produced み ×69 and め ×38 out of nothing, against 凛と's two
+    /// sightings of 凛 that it recovered. A compound ending in a bare kana is
+    /// therefore left whole, and lands in the non-vocabulary tail if no
+    /// dictionary claims it.
     ///
     /// Returns `None` when the compound cannot be built from known words,
     /// which leaves it exactly where it was: whole, and visible in the
@@ -222,6 +227,17 @@ impl Tokenizer for SudachiTokenizer {
             }
             let mut out = Vec::with_capacity(tokens.len());
             for t in tokens {
+                // Never take a name apart. A general dictionary lists no place
+                // or surname, so every one of them looks like an unlistable
+                // compound: 東京 became 東 + 京, 間宮 became 間 + 宮, and the
+                // parts are ordinary nouns that the name filter downstream has
+                // no way to recognise — it can only see what a token *is*, and
+                // 京 is a word. Twenty-two sightings of Tokyo turned into
+                // twenty-two of "capital".
+                if t.proper_noun {
+                    out.push(t);
+                    continue;
+                }
                 let Some(parts) = self.decompose(&t.base_form) else {
                     out.push(t);
                     continue;
@@ -371,6 +387,46 @@ mod tests {
         let iku = tokens.iter().find(|t| t.surface == "行く").unwrap();
         assert_eq!(iku.pos, "動詞");
         assert_eq!(iku.base_form, "行く");
+    }
+
+    /// A compound the master dictionary cannot account for whole is taken
+    /// apart into words it does list — including across a one-character
+    /// hiragana tail, which is where 凛 was being lost.
+    #[test]
+    #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+    fn compounds_decompose_into_dictionary_words_but_names_do_not() {
+        let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
+            .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+        // Stands in for the master dictionary's headwords.
+        let lexicon: HashSet<String> = ["凛", "と", "白蓮", "華", "東", "京", "ミ", "リ", "ア"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let tokenizer = SudachiTokenizer::new(Path::new(&dict_path), HashSet::from(["x".into()]))
+            .unwrap()
+            .with_lexicon(lexicon);
+        let bases = |text: &str| {
+            tokenizer
+                .tokenize(text)
+                .unwrap()
+                .into_iter()
+                .map(|t| t.base_form)
+                .collect::<Vec<_>>()
+        };
+
+        // Sudachi holds this whole — no mode splits it — and calls it an
+        // ordinary noun, so it is taken apart into words the dictionary lists.
+        assert_eq!(bases("白蓮華"), vec!["白蓮", "華"]);
+        // A bare kana tail is not a part: 楽しみ would otherwise become
+        // 楽し + み, since a dictionary does list み as a noun.
+        assert_eq!(bases("凛とした")[0], "凛と");
+        // Katakana is excluded, or a name becomes three "words".
+        assert_eq!(bases("ミリア").len(), 1, "a name is not a compound");
+        // And neither is a place. A general dictionary lists no place names,
+        // so 東京 looks exactly like an unlistable compound of two words it
+        // does list — splitting it would credit the reader with "east" and
+        // "capital" twenty-two times over.
+        assert_eq!(bases("東京"), vec!["東京"], "a name is never decomposed");
     }
 
     /// A VN's cast are the commonest "unknown words" in it, and none of them
