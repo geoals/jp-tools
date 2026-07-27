@@ -60,3 +60,19 @@
   color: var(--muted);
   vertical-align: middle;
 }
+
+/* The non-vocabulary tail, as a list. Scrolls inside its own box: a hundred
+   rows should not push the blacklist button off the bottom of the card. */
+.noise-table {
+  display: block;
+  max-height: 420px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+.noise-table td,
+.noise-table th {
+  white-space: nowrap;
+}
+.triage-actions button + button {
+  margin-left: 6px;
+}

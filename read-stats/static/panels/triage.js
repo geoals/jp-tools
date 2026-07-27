@@ -85,10 +85,10 @@ export function TriageView({ minEncounters, onJudged }) {
     }
   }
 
-  async function showNoise() {
+  async function showNoise(offset = 0) {
     setErr(null);
     try {
-      setNoise(await api("/api/vocab/non-words"));
+      setNoise(await api(`/api/vocab/non-words?offset=${offset}`));
     } catch (e) {
       setErr(e.message);
     }
@@ -233,12 +233,13 @@ export function TriageView({ minEncounters, onJudged }) {
       </p>
       ${
         noise === null
-          ? html`<button class="ghost" onClick=${showNoise}>
+          ? html`<button class="ghost" onClick=${() => showNoise(0)}>
               show me what they are
             </button>`
           : html`<${NoisePreview}
               noise=${noise}
               busy=${busy}
+              onPage=${showNoise}
               onBlacklist=${blacklistNoise}
               onCancel=${() => setNoise(null)}
             />`
@@ -251,31 +252,69 @@ export function TriageView({ minEncounters, onJudged }) {
  *
  *  The words come first and the button second: this is the one action here
  *  that judges rows the reader has not seen, and a count alone ("3,140
- *  blacklisted") is not something anyone can check. Commonest first, because a
- *  real word wrongly in this list would be one with encounters behind it. */
-function NoisePreview({ noise, busy, onBlacklist, onCancel }) {
+ *  blacklisted") is not something anyone can check.
+ *
+ *  A table and not chips, because the encounter count is half the evidence — a
+ *  real word wrongly in this set is one with sightings behind it, and chips
+ *  bury that. Paged rather than truncated for the same reason: the head of the
+ *  list being noise says nothing about the tail. */
+function NoisePreview({ noise, busy, onPage, onBlacklist, onCancel }) {
   if (!noise.total) {
     return html`<p class="meta-hint">Nothing in the tail — already clear.</p>`;
   }
-  const shownLine =
-    noise.total > noise.shown
-      ? `${noise.total.toLocaleString("en")} rows, commonest ${noise.shown} shown`
-      : `${noise.total.toLocaleString("en")} rows, all shown`;
+  const { total, offset, limit, terms } = noise;
+  const last = Math.min(offset + terms.length, total);
+  const rangeLine = `${(offset + 1).toLocaleString("en")}–${last.toLocaleString("en")} of ${total.toLocaleString("en")}, commonest first`;
+
   return html`
-    <p class="meta-hint">${shownLine}</p>
-    <div class="word-chips">
-      ${noise.terms.map(
-        (t) =>
-          html`<span class="chip"
-            >${t.headword} <b>×${t.encounter_count}</b></span
-          >`,
-      )}
-    </div>
+    <p class="meta-hint">${rangeLine}</p>
+    <table class="days noise-table">
+      <thead>
+        <tr>
+          <th>word</th>
+          <th>reading</th>
+          <th>pos</th>
+          <th>seen</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${terms.map(
+          (t) => html`
+            <tr>
+              <td class="work-name">${t.headword}</td>
+              <td class="work-name">${t.reading}</td>
+              <td class="work-name">${t.pos ?? "—"}</td>
+              <td>${t.encounter_count.toLocaleString("en")}</td>
+            </tr>
+          `,
+        )}
+      </tbody>
+    </table>
     <div class="triage-actions">
-      <button class="pause-btn" onClick=${onBlacklist} disabled=${busy}>
-        ${busy ? "…" : `blacklist all ${noise.total.toLocaleString("en")}`}
-      </button>
-      <button class="ghost" onClick=${onCancel} disabled=${busy}>cancel</button>
+      <span>
+        <button
+          class="ghost"
+          disabled=${offset === 0 || busy}
+          onClick=${() => onPage(Math.max(0, offset - limit))}
+        >
+          ← previous
+        </button>
+        <button
+          class="ghost"
+          disabled=${last >= total || busy}
+          onClick=${() => onPage(offset + limit)}
+        >
+          next →
+        </button>
+      </span>
+      <span>
+        <button class="pause-btn" onClick=${onBlacklist} disabled=${busy}>
+          ${busy ? "…" : `blacklist all ${total.toLocaleString("en")}`}
+        </button>
+        <button class="ghost" onClick=${onCancel} disabled=${busy}>
+          cancel
+        </button>
+      </span>
     </div>
   `;
 }

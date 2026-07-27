@@ -23,10 +23,9 @@ use crate::error::AppError;
 /// and small enough that submitting it is not a big commitment.
 const QUEUE_LIMIT: i64 = 200;
 
-/// How many of the non-vocabulary tail to show before blacklisting it. Enough
-/// to recognise the shape of what is being cleared (っっ, あああ) without
-/// pretending the reader will read three thousand rows.
-const NON_WORD_PREVIEW: i64 = 60;
+/// Rows per page of the non-vocabulary tail. A screenful, not a sample: the
+/// whole set is reachable by paging.
+const NON_WORD_PAGE: i64 = 100;
 
 /// What the ledger currently holds, by status — the numbers the seed page and
 /// the vocabulary-size figure are built on.
@@ -148,23 +147,37 @@ pub async fn vocab_judge(
 ///
 /// The action is a bulk write over rows the queue never shows, so without this
 /// the reader is asked to approve a predicate they have never seen the output
-/// of. Same `WHERE`, commonest first; the count is the whole set, the list is
-/// the head of it.
-pub async fn vocab_non_words(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
-    let rows = vocabulary::non_words(&state.knowledge, NON_WORD_PREVIEW).await?;
+/// of. Same `WHERE`, commonest first, and paged rather than truncated: a
+/// preview that only ever shows the head cannot answer whether the tail is
+/// safe, which is the question.
+pub async fn vocab_non_words(
+    State(state): State<AppState>,
+    Query(params): Query<PageParams>,
+) -> Result<Json<Value>, AppError> {
+    let limit = params.limit.unwrap_or(NON_WORD_PAGE).clamp(1, 500);
+    let offset = params.offset.unwrap_or(0).max(0);
+    let rows = vocabulary::non_words(&state.knowledge, limit, offset).await?;
     let total = vocabulary::non_words_total(&state.knowledge).await?;
     Ok(Json(json!({
         "total": total,
+        "offset": offset,
+        "limit": limit,
         "terms": rows
             .iter()
             .map(|r| json!({
                 "headword": r.term.headword,
                 "reading": r.term.display_reading(),
+                "pos": r.pos,
                 "encounter_count": r.encounter_count,
             }))
             .collect::<Vec<_>>(),
-        "shown": rows.len(),
     })))
+}
+
+#[derive(Deserialize)]
+pub struct PageParams {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
 }
 
 /// Blacklist every untriaged row no dictionary recognizes as a word.

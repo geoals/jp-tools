@@ -532,19 +532,25 @@ pub async fn prune_untouched(k: &Knowledge) -> Result<u64, sqlx::Error> {
     .rows_affected())
 }
 
-/// The rows [`blacklist_non_words`] would hit, commonest first.
+/// The rows [`blacklist_non_words`] would hit, commonest first, one page at a
+/// time.
 ///
 /// A bulk write the reader cannot see before it lands asks them to trust a
 /// predicate they have never been shown. This is that predicate, as a list —
-/// the same `WHERE`, ordered so the ones with the most encounters behind them
-/// are the ones on screen, because those are what a mistake would cost most.
-pub async fn non_words(k: &Knowledge, limit: i64) -> Result<Vec<VocabRow>, sqlx::Error> {
+/// the same `WHERE`, and every row of it reachable, because "the top 60"
+/// answers whether the head looks like noise and not whether the tail does.
+pub async fn non_words(
+    k: &Knowledge,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<VocabRow>, sqlx::Error> {
     let rows = sqlx::query(
         "SELECT * FROM vocabulary \
          WHERE status = 'new' AND in_master = 0 AND in_name = 0 AND in_reference = 0 \
-         ORDER BY encounter_count DESC, headword LIMIT ?",
+         ORDER BY encounter_count DESC, headword LIMIT ? OFFSET ?",
     )
     .bind(limit)
+    .bind(offset)
     .fetch_all(k.pool())
     .await?;
     Ok(rows.iter().map(row_to_vocab).collect())
@@ -1056,7 +1062,7 @@ mod tests {
             .await
             .unwrap();
 
-        let preview = non_words(&k, 50).await.unwrap();
+        let preview = non_words(&k, 50, 0).await.unwrap();
         let listed: Vec<&str> = preview.iter().map(|r| r.term.headword.as_str()).collect();
         assert_eq!(
             listed,
