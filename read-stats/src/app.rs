@@ -70,6 +70,12 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/anki/refresh", axum::routing::post(anki::anki_refresh))
         .route("/api/anki/summary", get(anki::anki_summary))
         .route("/api/vocab/summary", get(vocab::vocab_summary))
+        .route("/api/vocab/queue", get(vocab::vocab_queue))
+        .route("/api/vocab/judge", axum::routing::post(vocab::vocab_judge))
+        .route(
+            "/api/vocab/blacklist-non-words",
+            axum::routing::post(vocab::vocab_blacklist_non_words),
+        )
         .route(
             "/api/vocab/rebuild",
             axum::routing::post(vocab::vocab_rebuild),

@@ -820,3 +820,141 @@ async fn a_discarded_line_is_no_evidence_of_a_session() {
             .unwrap()
     );
 }
+
+#[tokio::test]
+async fn the_triage_queue_ticks_only_words_never_looked_up() {
+    let app = TestApp::new().await;
+    // Three unjudged master-dictionary words, differing only in what the
+    // reader's history says about them.
+    sqlx::query(
+        "INSERT INTO vocabulary (headword, reading, status, in_master, encounter_count, lookup_count) VALUES \
+             ('憂鬱', 'ゆううつ', 'new', 1, 47, 0), \
+             ('齟齬', 'そご', 'new', 1, 31, 4), \
+             ('逼迫', 'ひっぱく', 'new', 1, 1, 0), \
+             ('っっ', '', 'new', 0, 99, 0)",
+    )
+    .execute(app.knowledge.pool())
+    .await
+    .unwrap();
+
+    let q = app.get("/api/vocab/queue").await;
+    assert_eq!(q["min_encounters"], 3, "the default setting");
+    let terms = q["terms"].as_array().unwrap();
+    assert_eq!(
+        terms.len(),
+        2,
+        "逼迫 is under the floor, っっ is not vocabulary"
+    );
+
+    let by = |w: &str| {
+        terms
+            .iter()
+            .find(|t| t["headword"] == w)
+            .unwrap_or_else(|| panic!("{w} missing from the queue"))
+            .clone()
+    };
+    assert_eq!(by("憂鬱")["preselect"], true, "met often, never looked up");
+    assert_eq!(by("齟齬")["preselect"], false, "looked up 4 times");
+
+    assert_eq!(q["pending"], 2);
+    assert_eq!(q["pending_preselected"], 1);
+
+    // The threshold is previewable per request, so the UI can show what
+    // lowering it would pull in before anything is saved.
+    let low = app.get("/api/vocab/queue?min_encounters=1").await;
+    assert_eq!(low["pending"], 3, "逼迫 joins at a floor of 1");
+}
+
+#[tokio::test]
+async fn triage_writes_both_verdicts_and_leaves_the_rest_new() {
+    let app = TestApp::new().await;
+    sqlx::query(
+        "INSERT INTO vocabulary (headword, reading, status, in_master, encounter_count) VALUES \
+             ('憂鬱', 'ゆううつ', 'new', 1, 9), ('齟齬', 'そご', 'new', 1, 9), \
+             ('逼迫', 'ひっぱく', 'new', 1, 9)",
+    )
+    .execute(app.knowledge.pool())
+    .await
+    .unwrap();
+
+    let (code, body) = app
+        .send(
+            "POST",
+            "/api/vocab/judge",
+            serde_json::json!({ "judgements": [
+                { "headword": "憂鬱", "reading": "ゆううつ", "status": "known" },
+                { "headword": "齟齬", "reading": "そご", "status": "unknown" },
+            ]}),
+        )
+        .await;
+    assert_eq!(code, 200);
+    assert_eq!(body["written"], 2);
+
+    // 逼迫 was in the batch's page but not in the batch: submitting a sweep
+    // must not judge a word the reader never answered for.
+    let v = app.get("/api/vocab/summary").await;
+    let count = |s: &str| {
+        v["by_status"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["status"] == s)
+            .map(|c| c["total"].as_i64().unwrap())
+            .unwrap_or(0)
+    };
+    assert_eq!(count("known"), 1);
+    assert_eq!(count("unknown"), 1);
+    assert_eq!(count("new"), 1, "逼迫 is untouched");
+
+    // A judged word leaves the queue, which is what stops triage re-asking.
+    let q = app.get("/api/vocab/queue").await;
+    assert_eq!(q["pending"], 1);
+}
+
+#[tokio::test]
+async fn an_unknown_status_is_refused_rather_than_defaulted() {
+    let app = TestApp::new().await;
+    // Status::parse falls back to `new`; if the endpoint used it, a typo would
+    // silently un-judge a word while reporting success.
+    let (code, _) = app
+        .send(
+            "POST",
+            "/api/vocab/judge",
+            serde_json::json!({ "judgements": [
+                { "headword": "憂鬱", "reading": "ゆううつ", "status": "knwon" },
+            ]}),
+        )
+        .await;
+    assert_eq!(code, 400);
+
+    let v = app.get("/api/vocab/summary").await;
+    assert_eq!(v["total"], 0, "nothing was written");
+}
+
+#[tokio::test]
+async fn bulk_blacklist_clears_noise_but_not_words() {
+    let app = TestApp::new().await;
+    sqlx::query(
+        "INSERT INTO vocabulary (headword, reading, status, in_master, in_name, in_reference, encounter_count) VALUES \
+             ('あああ', '', 'new', 0, 0, 0, 14), \
+             ('憂鬱', 'ゆううつ', 'new', 1, 0, 0, 9), \
+             ('ああ見えても', '', 'new', 0, 0, 1, 3), \
+             ('岡部', 'おかべ', 'new', 0, 1, 0, 31)",
+    )
+    .execute(app.knowledge.pool())
+    .await
+    .unwrap();
+
+    let (code, body) = app
+        .send(
+            "POST",
+            "/api/vocab/blacklist-non-words",
+            serde_json::json!({}),
+        )
+        .await;
+    assert_eq!(code, 200);
+    assert_eq!(
+        body["blacklisted"], 1,
+        "only あああ — a Jitendex phrase and a name are still words"
+    );
+}

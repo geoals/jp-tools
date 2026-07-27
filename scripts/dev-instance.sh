@@ -169,7 +169,13 @@ cmd_check() { cmd_snapshot current >/dev/null; cmd_diff "${1:?usage: check <base
 # path renders nothing at all and every JSON endpoint still passes. This is the
 # check that catches it.
 cmd_browser() {
-  command -v chromium >/dev/null || die "chromium not installed"
+  # Either browser will do — the flags below are Chrome's, and Fedora ships
+  # google-chrome where other distros ship chromium.
+  local CHROME=""
+  for c in chromium google-chrome google-chrome-stable; do
+    command -v "$c" >/dev/null && { CHROME="$c"; break; }
+  done
+  [ -n "$CHROME" ] || die "no chromium/google-chrome installed"
   build; require_port_free; fresh_dbs
   serve >"$WORK/server.log" 2>&1 &
   SRV=$!
@@ -177,7 +183,7 @@ cmd_browser() {
   trap stop_server EXIT
   wait_up
 
-  chromium --headless --disable-gpu --no-sandbox --dump-dom --virtual-time-budget=15000 \
+  "$CHROME" --headless --disable-gpu --no-sandbox --dump-dom --virtual-time-budget=15000 \
     "http://127.0.0.1:$PORT/" >"$WORK/dom.html" 2>"$WORK/console.log"
 
   grep -q '<div id="app"></div>' "$WORK/dom.html" &&
@@ -190,12 +196,20 @@ cmd_browser() {
   # The kanji tab gets its own render: it is the one view whose panels are
   # reached from no other tab, so a bad import there would pass every check
   # above while showing an empty page.
-  chromium --headless --disable-gpu --no-sandbox --dump-dom --virtual-time-budget=15000 \
+  "$CHROME" --headless --disable-gpu --no-sandbox --dump-dom --virtual-time-budget=15000 \
     "http://127.0.0.1:$PORT/#kanji" >"$WORK/dom-kanji.html" 2>>"$WORK/console.log"
   for want in "Every kanji you have read" "Jōyō coverage" "kanji-cell"; do
     grep -qF "$want" "$WORK/dom-kanji.html" || die "kanji tab is missing: $want"
   done
   say "kanji tab renders ($(wc -c <"$WORK/dom-kanji.html") bytes)"
+
+  # Same reasoning for the vocab tab. Its numbers depend on the ledger being
+  # populated, which a frozen copy may not be, so assert the chrome and the
+  # status labels — those render either way — not a count.
+  "$CHROME" --headless --disable-gpu --no-sandbox --dump-dom --virtual-time-budget=15000 \
+    "http://127.0.0.1:$PORT/#vocab" >"$WORK/dom-vocab.html" 2>>"$WORK/console.log"
+  grep -qF "vocabulary" "$WORK/dom-vocab.html" || die "vocab tab is missing: vocabulary"
+  say "vocab tab renders ($(wc -c <"$WORK/dom-vocab.html") bytes)"
 
   # The reading view is not rendered here: it holds an SSE connection open, so
   # --dump-dom never returns. Its modules are covered by the import check.

@@ -1,16 +1,27 @@
 //! `/api/vocab/*` — the knowledge ledger's status endpoints.
 //!
-//! Read-only plus the rebuild, for now. The triage UI (`spec/cold-start.md`'s
-//! passes 1–3) and the seed importer write through here later; the ledger
+//! Reads, the rebuild, and the triage pass that fills `status`
+//! (`spec/cold-start.md` Pass 2, over terms already in the ledger). The ledger
 //! itself is `jp_core::knowledge::vocabulary`.
+//!
+//! The one rule these handlers exist to keep: **`status` is only ever written
+//! from a request the reader made.** No sync touches it, so the ledger cannot
+//! demote a word behind their back and an encounter count cannot promote one.
 
 use axum::Json;
-use axum::extract::State;
-use jp_core::knowledge::vocabulary;
+use axum::extract::{Query, State};
+use jp_core::knowledge::vocabulary::{self, Status, Term};
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::app::AppState;
+use crate::clock::now_ts;
+use crate::db;
 use crate::error::AppError;
+
+/// Rows per queue page. A batch big enough to be worth one sweep of attention
+/// and small enough that submitting it is not a big commitment.
+const QUEUE_LIMIT: i64 = 200;
 
 /// What the ledger currently holds, by status — the numbers the seed page and
 /// the vocabulary-size figure are built on.
@@ -37,6 +48,107 @@ pub async fn vocab_summary(State(state): State<AppState>) -> Result<Json<Value>,
         "known_in_master": known,
         "by_status": by_status,
     })))
+}
+
+#[derive(Deserialize)]
+pub struct QueueParams {
+    /// Overrides the `triage_min_encounters` setting for one request, so the UI
+    /// can preview what a threshold change does before saving it.
+    min_encounters: Option<i64>,
+}
+
+/// The triage queue: untriaged vocabulary to judge, most-encountered first.
+///
+/// `preselect` is computed here rather than in the client. It is the rule the
+/// whole seeding pass rests on, it has to be testable without a browser, and a
+/// client-side copy would mean the threshold actually applied was recorded
+/// nowhere.
+pub async fn vocab_queue(
+    State(state): State<AppState>,
+    Query(params): Query<QueueParams>,
+) -> Result<Json<Value>, AppError> {
+    let settings = db::load_settings(&state.local).await?;
+    let min = params
+        .min_encounters
+        .unwrap_or(settings.triage_min_encounters)
+        .max(1);
+
+    let rows = vocabulary::triage_queue(&state.knowledge, min, QUEUE_LIMIT).await?;
+    let (pending, pending_preselected) = vocabulary::triage_pending(&state.knowledge, min).await?;
+
+    let terms: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            json!({
+                "headword": r.term.headword,
+                "reading": r.term.display_reading(),
+                "pos": r.pos,
+                "encounter_count": r.encounter_count,
+                "lookup_count": r.lookup_count,
+                "mined": r.mined,
+                "preselect": vocabulary::preselects_known(r, min),
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({
+        "min_encounters": min,
+        "pending": pending,
+        "pending_preselected": pending_preselected,
+        "terms": terms,
+    })))
+}
+
+#[derive(Deserialize)]
+pub struct Judgement {
+    headword: String,
+    #[serde(default)]
+    reading: String,
+    status: String,
+}
+
+#[derive(Deserialize)]
+pub struct JudgeRequest {
+    judgements: Vec<Judgement>,
+}
+
+/// Write a batch of judgements — the triage submit.
+///
+/// Statuses are parsed strictly rather than through `Status::parse`, which
+/// falls back to `new`. Here that fallback would be a silent data loss: a typo
+/// in one row would quietly un-judge it while the response claimed the batch
+/// landed.
+pub async fn vocab_judge(
+    State(state): State<AppState>,
+    Json(req): Json<JudgeRequest>,
+) -> Result<Json<Value>, AppError> {
+    let mut judgements = Vec::with_capacity(req.judgements.len());
+    for j in &req.judgements {
+        let status = Status::ALL
+            .iter()
+            .copied()
+            .find(|s| s.as_str() == j.status)
+            .ok_or_else(|| AppError::BadRequest(format!("unknown status: {}", j.status)))?;
+        if j.headword.is_empty() {
+            return Err(AppError::BadRequest("empty headword".into()));
+        }
+        judgements.push((Term::new(j.headword.clone(), &j.reading), status));
+    }
+
+    let written = vocabulary::set_status_each(&state.knowledge, &judgements, now_ts()).await?;
+    Ok(Json(json!({ "written": written })))
+}
+
+/// Blacklist every untriaged row no dictionary recognizes as a word.
+///
+/// The queue filters these out; this is what clears them, so the ledger's
+/// untriaged count means "vocabulary still to judge" rather than being padded
+/// by tokenizer noise.
+pub async fn vocab_blacklist_non_words(
+    State(state): State<AppState>,
+) -> Result<Json<Value>, AppError> {
+    let n = vocabulary::blacklist_non_words(&state.knowledge, now_ts()).await?;
+    Ok(Json(json!({ "blacklisted": n })))
 }
 
 /// Rebuild the ledger's counts from the whole reading history.

@@ -1,11 +1,16 @@
 # Knowledge DB & module architecture
 
-> **Status: current architecture (2026-07).** Unlike the other files in `spec/`
-> (which are the superseded pre-implementation design), this describes how the
-> code is actually organised. The database layout, the `role` column, the
-> module boundaries and the `vocabulary` ledger below are **built**; the
+> **Status: current architecture (2026-07-27).** Unlike the other files in
+> `spec/` (which are the superseded pre-implementation design), this describes
+> how the code is actually organised. The database layout, the `role` column,
+> the module boundaries and the `vocabulary` ledger below are **built**; the
 > `#read` highlighter and the triage UI that fills the ledger's `status` are
 > **not** — see *Migration notes* at the end for exactly where the line falls.
+>
+> Where this stands: the data layer is complete, and **the assertion layer now
+> has its first writer** — the `#vocab` triage pass (migration note 5). What is
+> still missing is everything that *reads* an assertion: the highlighter, i+1
+> marking, and yt-mine's unknown-word count.
 
 ## The two-axis model
 
@@ -189,8 +194,17 @@ Time-windowed variants (e.g. "encounters this week") are **not needed** and are
 not a design constraint.
 
 `word_days` exists today only because there was no ledger to compute its one
-consumer from — the mined-word re-encounter panel (`routes/anki.rs`, `fetch_mined_word_days`).
-That panel is recomputed from `lines` + the ledger; `word_days` is dropped.
+consumer from — the mined-word re-encounter panel (`routes/anki.rs`,
+`fetch_mined_word_days`). Once that panel is recomputed from `lines` + the
+ledger, `word_days` can be dropped.
+
+**Not done yet.** The table and its consumer are both still live
+(`read-stats/src/db/word_days.rs`, `routes/anki.rs:92`), and the ingest still
+fills it on its own watermark. Dropping it is a follow-up to the triage pass,
+not part of it: the panel asks "of the words I carded, which has the reading
+shown me again?", which needs the ledger's `mined` flag to be trustworthy, and
+that in turn wants Anki import (note 6) so a mined word missing from the line
+stream still has a row.
 
 ## Database layout
 
@@ -231,12 +245,15 @@ dimension that feed it. Everything here is dictionary-gated or joins the ledger.
   session's duration is derived from the reader's own effective pace rather
   than stored (`History::duration_of`). *2026-07-26.*
 
-  Still to do: **import** — tokenize that `content` into the ledger's counts,
-  so manual and live reading feed the same knowledge state. It is deliberately
-  a second step: article *lookups* are never captured (the guard in
-  `read-stats/CLAUDE.md` is staying), so letting article characters into a
-  lookup rate's denominator would dilute it. `spec/manual-session-content.md`
-  is the plan.
+  That `content` is tokenized into both sinks by
+  `ingest::ingest_new_sessions`, behind session watermarks of its own
+  (`tokenized_through_session_id` / `vocab_through_session_id`), so manual and
+  live reading feed the same knowledge state. It landed *after* the split that
+  made it safe: article *lookups* are never captured (the guard in
+  `read-stats/CLAUDE.md` is staying), so article characters feed every count
+  about **exposure** and none about **cost** — `stats/kanji.rs` carries
+  `metered_count` beside `count` for exactly that. `spec/manual-session-content.md`
+  is the record of why. *Done 2026-07-26.*
 
 Consequence: **read-stats writes into the shared DB** (line ingestion, the
 highlighter's status reads). It is not a pure reader — stated so ownership is
@@ -307,12 +324,54 @@ Done (2026-07-26):
    from the whole history. First backfill, 2026-07-26: 7,949 terms from 10,649
    lines + 1 session, 6,347 of them master-dictionary vocabulary.
 
-Not done, in dependency order:
+   Ten unit tests in `vocabulary.rs` pin the invariants this document argues
+   for, and they are the regression net for anything below: homographs stay
+   separate terms, a reading folds to hiragana, a kana headword stores no
+   reading, an assertion survives re-ingest, the Anki sync sets `mined`
+   without touching `status`, lookup counts are recomputed rather than
+   accumulated, dictionary flags follow the role and not the dictionary, and a
+   status can be asserted before the word is ever read.
 
-5. **Triage** — the UI that fills `status`. Nothing asserts anything yet, so
-   every row is `new` and no downstream feature can distinguish known from
-   unknown. This is `spec/cold-start.md`'s passes 1–3, and it is the gate on
-   everything below.
+   **Every count in this file and in `spec/cold-start.md` is from the master
+   database, which lives on one machine.** A dev checkout's
+   `~/.local/share/jp-tools/knowledge.db` is an older snapshot kept for
+   development, and tables can legitimately be empty there — an empty
+   `vocabulary` plus a missing `vocab_through_line_id` means the backfill has not
+   been run *on that copy* (fix: `POST /api/vocab/rebuild`), and an empty
+   `dictionary_frequency` or `dictionary_entries` means the dictionaries have not
+   been imported there. Neither is a regression. Verify behaviour against the
+   tests, not against a snapshot's row counts.
+
+Done (2026-07-27):
+
+5. ✅ **Triage** — the first writer of `status`, and read-stats' `#vocab` tab.
+   `spec/cold-start.md`'s Pass 2 over terms already in the ledger:
+   `GET /api/vocab/queue` offers untriaged master-dictionary terms above an
+   encounter floor, most-met first; `POST /api/vocab/judge` writes a mixed batch
+   of `known`/`unknown` in one transaction; `POST /api/vocab/blacklist-non-words`
+   clears the tail nothing recognises as a word. The tab also shows the ledger's
+   status counts, which is the progress figure the pass moves.
+
+   **The preselect rule is the load-bearing part**
+   (`vocabulary::preselects_known`): a word is ticked `known` only if it was met
+   at least `triage_min_encounters` times **and was never looked up**. Encounters
+   alone cannot tell "read straight past it" from "looked it up on twelve of
+   those times", and the second is the profile of a word the reader does not
+   have. Deliberately the same predicate as Pass 4's review query, so the
+   ongoing pass is a re-run of this one rather than a second rule that can drift
+   from it.
+
+   The floor is `settings.triage_min_encounters`, default **3** — low because
+   the lookup half of the rule carries the weight — and previewable per request
+   (`?min_encounters=`) so the UI can show what moving it does before saving.
+
+   Judging is confined to the batch on screen: a submit writes verdicts for
+   those rows and no others, so an interrupted pass leaves a resumable queue
+   rather than a ledger of guesses. `POST /api/vocab/judge` rejects an
+   unrecognised status rather than falling back to `Status::parse`'s `new`,
+   which would silently un-judge a row while reporting success.
+
+Not done, in dependency order:
 6. **Anki import (Pass 1) as its own pass.** The mined sync only *flags rows
    that exist*, and a mined word never met in the line stream has no row: at
    the first backfill, 431 of 1,995 deck words matched. The rest are multi-word
@@ -320,10 +379,54 @@ Not done, in dependency order:
    from yt/manga rather than read. Importing the deck directly has to resolve a
    reading per note against the master dictionary — Anki has none — which is
    why it is a pass of its own and not a line in the sync.
+
+   **Import as `known`, gated on the card's Anki queue** (decided 2026-07-27).
+   A card the reader has actually been reviewing is strong evidence — call it
+   ~90% — and the vocabulary count is an estimate anyway. But a card still in
+   Anki's *new* or *learning* queue is a word they explicitly do not have yet,
+   so the gate is the queue, not merely the card's existence:
+   `findNotes "deck:X -is:new -is:learn"`. Cards inside those queues import as
+   `learning`.
+
+   This needs the snapshot to carry card state, which it does not:
+   `anki_notes` is `(note_id, vocab)` only. Either widen it or run the queue
+   query as a second `findNotes` at import time — the latter keeps the recurring
+   snapshot unchanged, which matters for the next paragraph.
+
+   **It stays a reader-triggered import, never part of the refresh.** `status`
+   is written by the reader and nothing else; that invariant is what makes a
+   resync unable to demote a word. An import is the reader asserting "trust my
+   deck" once, so it does not breach it — but wiring the same logic into the
+   recurring Anki refresh would.
 7. Wire the wordhood gate + status lookup into read-stats' `#read` highlighter.
+   Nothing exists yet beyond the doc comments in `ingest.rs` and `db/mod.rs`
+   that name it as the consumer.
 8. Migrate yt-mine's `routes/vocab` off its own `yt-mine.db` stub onto this
    ledger — the second consumer, and what makes "how many unknown words are in
    this video" answerable.
+
+   Bigger than a table swap, because yt-mine has a **second, incompatible
+   status vocabulary** in flight. `yt_mine::models::VocabStatus` is
+   `seen`/`known`/`blacklisted` and its `/vocab` page writes it through
+   `submit_vocab` → migration `007`'s lemma-keyed, `user_id`-carrying table.
+   Two mismatches have to be resolved, not just re-pointed:
+
+   - **`seen` vs `new`.** yt-mine's `seen` is written *by the reader pressing a
+     button*, so it is an assertion, but it is the same word this document uses
+     for the un-judged default. Mapping it to `new` would silently discard
+     judgements; `unknown` is the honest target, since "I looked at it and
+     didn't mark it known" is what the button means.
+   - **Lemma → `(headword, reading)`.** The stub is keyed on lemma alone, so
+     the migration inherits exactly the homograph problem `Term` exists to
+     solve. The tokenizer supplies a reading at submit time (`TokenResult`
+     already carries one), so new writes are fine; it is only pre-existing
+     rows that would need resolving — and both local copies of the stub hold
+     **0 rows**, so on this machine there is nothing to migrate. Check the
+     master machine's copy before assuming that everywhere.
+
+   The upside of doing it: yt-mine's page is the closest thing to a triage UI
+   that exists, so notes 5 and 8 are plausibly one piece of work rather than
+   two.
 
 ### Where the queries live
 

@@ -4,11 +4,27 @@ This is the most critical problem to solve. Every downstream feature (highlighti
 i+1 filtering, card mining) depends on an accurate vocabulary database. The goal
 is to go from zero to a reasonable approximation of your actual knowledge quickly.
 
-> **Status (2026-07-26).** The ledger these passes fill now exists and holds
+> **Status (2026-07-27).** The ledger these passes fill now exists and holds
 > **7,949 terms** backfilled from the whole reading history
 > (`spec/knowledge-db.md`, migration note 4). Every one of them is `status =
 > 'new'`: nothing has been asserted yet, because no pass below is built. The
 > plumbing is done; the passes are the work.
+>
+> **Update 2026-07-27: Pass 2's ledger half is built** — read-stats' `#vocab`
+> tab, over `GET /api/vocab/queue` + `POST /api/vocab/judge`. It is the first
+> thing in the workspace that writes `status` at all. What it covers and what it
+> does not:
+>
+> | | |
+> |---|---|
+> | ✅ built | triage of terms already in the ledger, ticked by the preselect rule below; bulk-blacklist of the non-word tail; the status counts as a progress figure |
+> | ❌ not built | Pass 1 (Anki import), Pass 3 (frequency list), the seed importer for epubs finished before tracking, Pass 4's periodic re-surfacing |
+>
+> The preselect rule, which the rest of this document should be read against:
+> a word is ticked `known` only when it was met at least
+> `settings.triage_min_encounters` times **and was never looked up**. The floor
+> defaults to 3 — deliberately low, because the zero-lookup half is doing the
+> real work. `spec/knowledge-db.md` migration note 5 has the reasoning.
 >
 > What the backfill measured, which changes the plan below:
 >
@@ -59,8 +75,19 @@ rather than read in a VN. No amount of re-tokenizing reaches them.
   → that note needs a human, and there are few enough to ask about; none →
   the term is not master vocabulary, so store it with an empty reading and let
   the dictionary flags say what it is.
-- Status: `learning`, not `known`. Having a card is why the word is in the
-  ledger, not evidence you have it yet — and `mined` already records the card.
+- **Status: `known` for cards past Anki's new/learning queues, `learning` for
+  those still inside them** (decided 2026-07-27, revising the line below). A
+  card in active review is ~90% reliable evidence and the vocabulary count is an
+  estimate regardless; a card still in the *new* queue is a word explicitly not
+  yet had. The gate is `findNotes "deck:X -is:new -is:learn"` — note that
+  `anki_notes` carries no card state today, so this needs a second query at
+  import time or a wider snapshot.
+  *(Superseded: "Status: `learning`, not `known`. Having a card is why the word
+  is in the ledger, not evidence you have it yet — and `mined` already records
+  the card." The queue distinction is what that line was missing.)*
+- **Reader-triggered, not part of the recurring refresh.** The import is the
+  reader asserting "trust my deck" once. Putting the same logic in the periodic
+  Anki sync would break the rule that no sync writes `status`.
 - Handle duplicates: if a row exists, set status but never touch its counts.
 
 ### Pass 2: Mass Read Calibration
@@ -75,12 +102,26 @@ words.
 
 **Half of this pass is already done.** Everything hooked or pasted is in the
 ledger with a real encounter count — 7,949 terms, and `POST /api/vocab/rebuild`
-re-derives them from the whole history. What remains is (a) the triage UI over
-those rows, and (b) the **seed importer**: feeding in epubs of things finished
+re-derives them from the whole history. "Or pasted" is load-bearing and now
+true: `ingest::ingest_new_sessions` tokenizes `manual_sessions.content` into the
+same ledger behind its own watermark, so an article or a typed-up paper book
+already counts as calibration text without any new importer.
+
+**(a) The triage UI is now built** — `#vocab` in read-stats. Sorting by
+encounter count is what makes it cheap, exactly as this section argued: the
+most-met words are the ones every downstream feature hits most.
+
+What remains is (b) the **seed importer**: feeding in epubs of things finished
 *before* tracking existed, which is the only way to reach text the line stream
-never saw. Sorting by encounter count is what makes the triage cheap — the
-~1,000 terms seen ten or more times are the ones worth a decision, and the tail
-below that can wait for the frequency pass to reach it.
+never saw. It is narrower than it looks — pasting a chapter into a logged
+session already routes through the same tokenizer and into the same ledger, so
+the importer is a convenience over an existing path rather than a new pipeline,
+and anything imported that way shows up in the triage queue automatically.
+
+One correction to the paragraph above: the UI does **not** default everything to
+`known`. Only words never looked up are ticked, whatever their encounter count —
+see the status note at the top. That is the same concern as the **Risk** below,
+handled by the data rather than by accepting false positives.
 
 **Good calibration sources:**
 - Light novels or VNs you've already finished
@@ -93,6 +134,9 @@ below that can wait for the frequency pass to reach it.
 - Present remaining words grouped by frequency (most common first)
 - UI should support rapid triage: default "known", one-click to mark "unknown"
 - Consider showing the word in one of its original sentences for context
+- **Built:** `read-stats/static/panels/triage.js`. yt-mine's `/vocab` page still
+  writes its own superseded store on a `seen`/`known`/`blacklisted` vocabulary
+  (`spec/knowledge-db.md` note 8) and is the one left to re-point.
 
 **Risk:** You may recognize a word in context but not in isolation. Showing it
 with a source sentence helps, but some false positives are acceptable — they'll
@@ -159,7 +203,23 @@ Perfection is not required. The system self-corrects through daily use.
 
 ## Priority
 
-**This is the first thing to build.** Without it, every other feature is noise.
-As of 2026-07-26 the ledger underneath it is built and full, and every row says
-`new` — so the passes above are now the *only* thing standing between the data
-and the highlighting, i+1 filtering and unknown-word counts that depend on it.
+**This was the first thing to build**, and Pass 2's ledger half now is
+(2026-07-27). It went first because it is the only pass needing no reading
+resolution — the ledger already stores a real `(headword, reading)` from the
+tokenizer, while passes 1 and 3 have to *infer* a reading from a bare headword
+and hand homographs to a human.
+
+**Next**, in the order that gets the most out of the least work:
+
+1. **Run the triage pass.** It exists; the ledger is still all `new` until
+   somebody sweeps it. This is reading, not coding.
+2. **Pass 1 (Anki import).** ~1,564 deck words have no ledger row at all, so
+   this *adds* vocabulary rather than only judging what reading produced. The
+   queue-gated `known`/`learning` rule is settled (see Pass 1).
+3. **Pass 3 (frequency list).** The only pass that reaches words never
+   encountered, and the one this document says is load-bearing for approaching a
+   real passive vocabulary. Its ambiguity UI is cheaper to build once Pass 1 has
+   one.
+4. **Pass 4** is then nearly free: its query is the same predicate the triage
+   preselect already uses, so it is a re-run of an existing screen rather than
+   new logic.

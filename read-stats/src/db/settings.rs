@@ -37,6 +37,13 @@ pub struct Settings {
     /// VN_WINDOW so it screenshots the VN by id rather than whatever has
     /// focus. Empty = capture the focused window (the old behaviour).
     pub vn_window: String,
+    /// How many times a word must have been met before vocabulary triage
+    /// offers it, and defaults it to `known`. The default is only reached by
+    /// words never looked up, which is what lets it sit this low: an
+    /// encounter count says "met often", a zero lookup count says "and never
+    /// needed help with it", and the two together are the evidence. See
+    /// `jp_core::knowledge::vocabulary::preselects_known`.
+    pub triage_min_encounters: i64,
     /// Capture is suspended: vn-ws-logger.py closes its Textractor WebSocket
     /// and stays disconnected while this is set, so nothing reaches the line
     /// stream at all. This replaced the old `pauses` interval log — excluding
@@ -60,6 +67,11 @@ impl Default for Settings {
             current_work: String::new(),
             pace_start_date: String::new(),
             vn_window: String::new(),
+            // 3, because the lookup-count half of the rule carries most of the
+            // weight: met three times and never once looked up is already a
+            // meaningful signal, and a higher floor mostly just shortens the
+            // queue. Tune it from the settings page against a real queue.
+            triage_min_encounters: 3,
             capture_paused: false,
         }
     }
@@ -75,6 +87,7 @@ pub const SETTING_KEYS: &[&str] = &[
     "current_work",
     "pace_start_date",
     "vn_window",
+    "triage_min_encounters",
     "capture_paused",
 ];
 
@@ -109,6 +122,10 @@ pub async fn load_settings(pool: &SqlitePool) -> Result<Settings, sqlx::Error> {
             "current_work" => settings.current_work = value,
             "pace_start_date" => settings.pace_start_date = value,
             "vn_window" => settings.vn_window = value,
+            "triage_min_encounters" => {
+                settings.triage_min_encounters =
+                    value.parse().unwrap_or(settings.triage_min_encounters)
+            }
             "capture_paused" => settings.capture_paused = value == "1",
             _ => {}
         }

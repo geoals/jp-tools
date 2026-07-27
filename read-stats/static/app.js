@@ -28,6 +28,7 @@ import { DayCard } from "./panels/day.js";
 import { LibraryView } from "./panels/library.js";
 import { SettingsView } from "./panels/settings.js";
 import { KanjiView } from "./panels/kanji.js";
+import { VocabView } from "./panels/vocab.js";
 import { TrendsCard } from "./panels/trends.js";
 
 const REFRESH_MS = 60_000;
@@ -40,6 +41,7 @@ const TABS = [
   { id: "trends", label: "Trends" },
   { id: "library", label: "Library" },
   { id: "kanji", label: "Kanji" },
+  { id: "vocab", label: "Vocab" },
 ];
 
 function App({ view }) {
@@ -52,12 +54,13 @@ function App({ view }) {
   const [lookups, setLookups] = useState(null);
   const [dialogue, setDialogue] = useState(null);
   const [kanji, setKanji] = useState(null);
+  const [vocab, setVocab] = useState(null);
   const [ankiBusy, setAnkiBusy] = useState(false);
   const [error, setError] = useState(null);
 
   async function load() {
     try {
-      const [s, d, w, cfg, sess, ank, lk, dlg, kj] = await Promise.all([
+      const [s, d, w, cfg, sess, ank, lk, dlg, kj, vc] = await Promise.all([
         api("/api/summary"),
         api("/api/days?days=60"),
         api("/api/works"),
@@ -67,6 +70,7 @@ function App({ view }) {
         api("/api/lookups/summary"),
         api("/api/dialogue/summary?days=60"),
         api("/api/kanji"),
+        api("/api/vocab/summary"),
       ]);
       setSummary(s);
       setDays(d);
@@ -77,6 +81,7 @@ function App({ view }) {
       setLookups(lk);
       setDialogue(dlg);
       setKanji(kj);
+      setVocab(vc);
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -192,7 +197,13 @@ function App({ view }) {
             />`
           : tab === "kanji"
             ? html`<${KanjiView} kanji=${kanji} />`
-            : tab === "library"
+            : tab === "vocab"
+              ? html`<${VocabView}
+                  vocab=${vocab}
+                  settings=${settings}
+                  onJudged=${load}
+                />`
+              : tab === "library"
               ? html`<${LibraryView}
                   works=${works}
                   settings=${settings}

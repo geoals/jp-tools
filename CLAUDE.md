@@ -50,6 +50,11 @@ about it are worth knowing before touching any of it:
   irreversible and breaks the triage progress figure and the "seen often, never
   judged" review query.
 
+read-stats' `#vocab` tab is the ledger's front end and the only writer of
+`status`: the counts per status, plus the triage sweep that fills them. It ticks
+a word `known` only when it was met often enough *and was never looked up* —
+`spec/cold-start.md` and `spec/knowledge-db.md` note 5 have the reasoning.
+
 yt-mine still writes an older, lemma-keyed `vocabulary` stub in its own
 database; it is superseded and awaiting migration onto this one.
 

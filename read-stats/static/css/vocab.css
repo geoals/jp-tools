@@ -1,0 +1,62 @@
+/* The vocabulary tab: the status counts, and the triage sweep that fills them.
+ *
+ * Almost everything here is borrowed — the counts use `.tile`/`.tile-row` from
+ * today.css and both tables use `table.days` from forms.css. What is left is
+ * only what triage genuinely needs: a wider, left-aligned word column (a
+ * Japanese headword is the thing being read, not a figure to compare), and a
+ * checkbox column narrow enough that the words stay adjacent to it.
+ */
+
+.triage-floor {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 4px 0 10px;
+}
+.triage-floor input {
+  width: 64px;
+}
+
+.triage-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+/* The checkbox column: first, so table.days left-aligns it, and held narrow so
+   the word it applies to sits right beside it. */
+.triage-table th:first-child,
+.triage-table td:first-child {
+  width: 3.5em;
+}
+
+/* The word itself, in the reading font and big enough to judge on sight —
+   deciding "do I know this" from a 14px glyph is the one thing this table
+   exists for. Left-aligned against the numbers to its right. */
+.triage-table .triage-word {
+  text-align: left;
+  font-family: "Noto Sans JP", sans-serif;
+  font-size: 17px;
+  color: var(--text-primary);
+}
+.triage-table td {
+  vertical-align: middle;
+}
+
+.triage-mined {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 11px;
+  color: var(--muted);
+  vertical-align: middle;
+}

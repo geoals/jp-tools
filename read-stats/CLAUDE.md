@@ -106,7 +106,10 @@ taught to `vn-capture.sh`.
 - **Only the reader writes `vocabulary.status`.** Not ingest, not the Anki
   sync, not the lookup sync — a resync must never demote a word marked known,
   and an encounter count must never promote one (`spec/cold-start.md` Pass 4).
-  If you add a writer to that column, it needs a person behind it.
+  If you add a writer to that column, it needs a person behind it. Today the
+  only writers are `/api/vocab/judge` and `/api/vocab/blacklist-non-words`,
+  both of which answer a request the reader made. A *reader-triggered* Anki
+  import is fine by the same test; folding it into the recurring refresh is not.
 - **Each ingest sink has its own watermark.** One tokenization pass fills both
   `word_days` and the ledger, but `tokenized_through_line_id` and
   `vocab_through_line_id` move independently (and the same pair for sessions).
@@ -220,7 +223,7 @@ assumes".
   different readings of the same days, and independent fetches would show a
   stale streak beside a fresh chart. **Tabs choose what renders, never what is
   fetched** — that is what keeps two tabs from disagreeing about the same day.
-- Four tabs, one per question. **Today** — `current-reading.js` over `day.js`:
+- Five tabs, one per question. **Today** — `current-reading.js` over `day.js`:
   what you are reading, then how the day against it went (the goal, the totals,
   the curve and the sittings, all following one date). **Trends** —
   `trends.js`, one range selector over the summary tiles, the daily bars, the
@@ -244,7 +247,17 @@ assumes".
   discovery per day, the lookup-rate ranking and the per-work fingerprints. The
   page was twelve cards in one column before, with today and the last 30 days
   interleaved and four slices of the same window each carrying its own
-  hardcoded range.
+  hardcoded range. **Vocab** — `vocab.js`, two sections over the knowledge
+  ledger: the status counts, and `triage.js`, the pass that fills them.
+- **Triage ticks on two signals, never one** (`vocab.js` → `triage.js`, over
+  `vocabulary::preselects_known`). A word is preselected `known` only if it was
+  met at least `triage_min_encounters` times **and was never looked up**.
+  Encounters alone cannot tell "read straight past it" from "looked it up
+  twelve times", and unticked means `unknown` on submit — so a one-signal
+  default would write wrong assertions in bulk. The rule lives server-side
+  because it decides what gets written and has to be testable without a
+  browser; the client only seeds its checkboxes from it. Judging is confined to
+  the rows on screen, so an interrupted sweep leaves a resumable queue.
 - Selected-state has one vocabulary: `background: var(--meter-track)` with
   primary ink (`.segment-on`, `.toggle-on`, `.tab-on`). Not an accent border,
   not a saturated fill — `--series-1` at full strength is spent on the paused

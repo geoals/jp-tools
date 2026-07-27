@@ -388,6 +388,125 @@ pub async fn fetch_all(k: &Knowledge) -> Result<Vec<VocabRow>, sqlx::Error> {
     Ok(rows.iter().map(row_to_vocab).collect())
 }
 
+/// The triage queue: untriaged vocabulary, most-encountered first.
+///
+/// Three filters, each of which is the difference between a queue worth working
+/// and one that wastes keystrokes:
+///
+/// - **`status = 'new'`** — only the never-judged. Re-asking about a word the
+///   reader has already ruled on is how a triage pass loses their trust.
+/// - **`in_master = 1`** — only master-dictionary terms. The rest are Jitendex
+///   phrase headwords, names, and tokenizer noise (`っっ`, `あああ`): they belong
+///   in the ledger, but judging them one at a time is pointless, and they are
+///   not vocabulary by the definition the scale uses. `spec/knowledge-db.md`.
+/// - **`encounter_count >= min_encounters`** — a word met twice is not yet
+///   evidence of anything.
+///
+/// Ordered by encounter count because that is what makes the pass pay: the
+/// words met most are the ones every downstream feature will hit most.
+pub async fn triage_queue(
+    k: &Knowledge,
+    min_encounters: i64,
+    limit: i64,
+) -> Result<Vec<VocabRow>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT * FROM vocabulary \
+         WHERE status = 'new' AND in_master = 1 AND encounter_count >= ? \
+         ORDER BY encounter_count DESC, headword LIMIT ?",
+    )
+    .bind(min_encounters)
+    .bind(limit)
+    .fetch_all(k.pool())
+    .await?;
+    Ok(rows.iter().map(row_to_vocab).collect())
+}
+
+/// How many rows the queue would offer at a given threshold, and how many of
+/// those the preselect rule would default to `known`.
+///
+/// Separate from [`triage_queue`] because the UI needs the totals to show what
+/// a threshold change does *before* paging through it — a `limit`ed queue
+/// cannot answer "how many are left".
+pub async fn triage_pending(k: &Knowledge, min_encounters: i64) -> Result<(i64, i64), sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT COUNT(*) AS total, \
+                COALESCE(SUM(CASE WHEN lookup_count = 0 THEN 1 ELSE 0 END), 0) AS preselected \
+         FROM vocabulary \
+         WHERE status = 'new' AND in_master = 1 AND encounter_count >= ?",
+    )
+    .bind(min_encounters)
+    .fetch_one(k.pool())
+    .await?;
+    Ok((row.get("total"), row.get("preselected")))
+}
+
+/// Whether the triage default would call this term known.
+///
+/// `encounter_count` alone cannot tell "met 47 times and read straight past it"
+/// from "met 47 times and looked up on 12 of them" — and the second is the
+/// profile of a word the reader does *not* have. So a single lookup disqualifies
+/// the default, whatever the encounter count.
+///
+/// This is deliberately the same predicate as `spec/cold-start.md`'s Pass 4
+/// review query (`status='new' AND encounter_count > n AND lookup_count = 0`),
+/// so the ongoing pass is a re-run of this one rather than a second rule that
+/// can drift from it.
+///
+/// It decides a *default*, never a write: the reader submits the judgement.
+pub fn preselects_known(row: &VocabRow, min_encounters: i64) -> bool {
+    row.encounter_count >= min_encounters && row.lookup_count == 0
+}
+
+/// Assert a different status per term, in one transaction.
+///
+/// [`set_status_bulk`]'s sibling, for the triage submit: a batch is a mix of
+/// `known` and `unknown` and has to land atomically, because a partially
+/// applied sweep leaves the reader unable to tell which rows they still owe an
+/// answer for.
+pub async fn set_status_each(
+    k: &Knowledge,
+    judgements: &[(Term, Status)],
+    ts: f64,
+) -> Result<u64, sqlx::Error> {
+    let mut tx = k.pool().begin().await?;
+    let mut n = 0;
+    for (term, status) in judgements {
+        n += sqlx::query(
+            "INSERT INTO vocabulary (headword, reading, status, status_ts) VALUES (?, ?, ?, ?) \
+             ON CONFLICT(headword, reading) DO UPDATE SET status = excluded.status, \
+                 status_ts = excluded.status_ts",
+        )
+        .bind(&term.headword)
+        .bind(&term.reading)
+        .bind(status.as_str())
+        .bind(ts)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+    }
+    tx.commit().await?;
+    Ok(n)
+}
+
+/// Bulk-`blacklisted` the non-vocabulary tail: rows no dictionary calls a word.
+///
+/// The counterpart to the queue's `in_master` filter — these are what it
+/// excludes, and the only useful action on them is to stop them being offered.
+/// The test is the negation of [`VocabRow::is_word`], the lenient one, so this
+/// hits only what *nothing* recognizes: tokenizer noise, not obscure vocabulary
+/// and not names.
+pub async fn blacklist_non_words(k: &Knowledge, ts: f64) -> Result<u64, sqlx::Error> {
+    let n = sqlx::query(
+        "UPDATE vocabulary SET status = 'blacklisted', status_ts = ? \
+         WHERE status = 'new' AND in_master = 0 AND in_name = 0 AND in_reference = 0",
+    )
+    .bind(ts)
+    .execute(k.pool())
+    .await?
+    .rows_affected();
+    Ok(n)
+}
+
 /// How many rows sit in each status, and how many of those count toward the
 /// vocabulary scale (master-dictionary terms only — see
 /// `spec/knowledge-db.md`).
@@ -649,5 +768,184 @@ mod tests {
         let known = counts.iter().find(|c| c.status == "known").unwrap();
         assert_eq!(known.total, 2, "both are known");
         assert_eq!(known.in_master, 1, "only one is a vocabulary word");
+    }
+
+    /// The two halves of the preselect rule, and why the lookup half exists.
+    #[test]
+    fn a_word_ever_looked_up_is_never_preselected_known() {
+        let mut row = VocabRow {
+            term: Term::new("憂鬱", "ゆううつ"),
+            pos: None,
+            status: Status::New,
+            status_ts: None,
+            mined: false,
+            encounter_count: 47,
+            lookup_count: 0,
+            first_seen: None,
+            last_seen: None,
+            in_master: true,
+            in_name: false,
+            in_reference: false,
+        };
+        assert!(preselects_known(&row, 3), "met often, never looked up");
+
+        // One lookup is enough. 47 encounters cannot outvote it: the reader
+        // needed help with this word, which is the whole signal.
+        row.lookup_count = 1;
+        assert!(!preselects_known(&row, 3));
+
+        // And the encounter floor still applies on its own.
+        row.lookup_count = 0;
+        row.encounter_count = 2;
+        assert!(!preselects_known(&row, 3));
+    }
+
+    #[tokio::test]
+    async fn the_triage_queue_offers_only_unjudged_vocabulary() {
+        let k = temp().await;
+        record_encounters(
+            &k,
+            &[
+                enc("憂鬱", "ユウウツ", 9, 1.0), // vocabulary, plenty met
+                enc("齟齬", "ソゴ", 1, 1.0),     // vocabulary, barely met
+                enc("っっ", "", 40, 1.0),        // noise: no dictionary has it
+                enc("読む", "ヨム", 20, 1.0),    // vocabulary, but judged below
+            ],
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO dictionaries (id, title, source_path, role) \
+                 VALUES (1, 'Sankoku', '/s.zip', 'master');\
+             INSERT INTO dictionary_entries (dictionary_id, term, reading, definitions_json) \
+                 VALUES (1, '憂鬱', 'ゆううつ', '[]'), (1, '齟齬', 'そご', '[]'), \
+                        (1, '読む', 'よむ', '[]');",
+        )
+        .execute(k.pool())
+        .await
+        .unwrap();
+        refresh_dictionary_flags(&k).await.unwrap();
+        set_status(&k, &Term::new("読む", "よむ"), Status::Known, 2.0)
+            .await
+            .unwrap();
+
+        let queue = triage_queue(&k, 3, 100).await.unwrap();
+        let words: Vec<&str> = queue.iter().map(|r| r.term.headword.as_str()).collect();
+        assert_eq!(
+            words,
+            vec!["憂鬱"],
+            "齟齬 is under the floor, っっ is not a word, 読む is already judged"
+        );
+
+        // The floor is the only thing keeping 齟齬 out, so lowering it lets it in.
+        assert_eq!(triage_queue(&k, 1, 100).await.unwrap().len(), 2);
+        // …and っっ stays out at any floor, despite being the most-met row.
+        assert!(
+            !triage_queue(&k, 1, 100)
+                .await
+                .unwrap()
+                .iter()
+                .any(|r| r.term.headword == "っっ")
+        );
+    }
+
+    #[tokio::test]
+    async fn pending_counts_what_the_queue_would_offer_and_tick() {
+        let k = temp().await;
+        record_encounters(
+            &k,
+            &[enc("憂鬱", "ユウウツ", 9, 1.0), enc("齟齬", "ソゴ", 9, 1.0)],
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO dictionaries (id, title, source_path, role) \
+                 VALUES (1, 'Sankoku', '/s.zip', 'master');\
+             INSERT INTO dictionary_entries (dictionary_id, term, reading, definitions_json) \
+                 VALUES (1, '憂鬱', 'ゆううつ', '[]'), (1, '齟齬', 'そご', '[]');\
+             INSERT INTO lookups (ts, term) VALUES (5.0, '齟齬');",
+        )
+        .execute(k.pool())
+        .await
+        .unwrap();
+        refresh_dictionary_flags(&k).await.unwrap();
+        sync_lookup_counts(&k).await.unwrap();
+
+        let (total, preselected) = triage_pending(&k, 3).await.unwrap();
+        assert_eq!(total, 2, "both are unjudged vocabulary above the floor");
+        assert_eq!(preselected, 1, "only 憂鬱 was never looked up");
+    }
+
+    #[tokio::test]
+    async fn a_mixed_batch_of_judgements_lands_together() {
+        let k = temp().await;
+        let known = Term::new("憂鬱", "ゆううつ");
+        let unknown = Term::new("齟齬", "そご");
+        assert_eq!(
+            set_status_each(
+                &k,
+                &[
+                    (known.clone(), Status::Known),
+                    (unknown.clone(), Status::Unknown),
+                ],
+                7.0,
+            )
+            .await
+            .unwrap(),
+            2
+        );
+
+        assert_eq!(
+            fetch(&k, &known).await.unwrap().unwrap().status,
+            Status::Known
+        );
+        let u = fetch(&k, &unknown).await.unwrap().unwrap();
+        assert_eq!(u.status, Status::Unknown);
+        assert_eq!(u.status_ts, Some(7.0), "an assertion is stamped");
+    }
+
+    #[tokio::test]
+    async fn blacklisting_non_words_spares_anything_a_dictionary_knows() {
+        let k = temp().await;
+        record_encounters(
+            &k,
+            &[
+                enc("あああ", "", 5, 1.0),       // nothing has it
+                enc("憂鬱", "ユウウツ", 5, 1.0), // master
+                enc("岡部", "オカベ", 5, 1.0),   // a name dictionary has it
+            ],
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO dictionaries (id, title, source_path, role) \
+                 VALUES (1, 'Sankoku', '/s.zip', 'master'), (2, 'Names', '/n.zip', 'name');\
+             INSERT INTO dictionary_entries (dictionary_id, term, reading, definitions_json) \
+                 VALUES (1, '憂鬱', 'ゆううつ', '[]'), (2, '岡部', 'おかべ', '[]');",
+        )
+        .execute(k.pool())
+        .await
+        .unwrap();
+        refresh_dictionary_flags(&k).await.unwrap();
+
+        assert_eq!(blacklist_non_words(&k, 8.0).await.unwrap(), 1);
+        assert_eq!(
+            fetch(&k, &Term::new("あああ", ""))
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            Status::Blacklisted
+        );
+        // A name is not vocabulary, but it is a word — the queue filters it by
+        // in_master, and blacklisting it would be a claim nobody made.
+        assert_eq!(
+            fetch(&k, &Term::new("岡部", "おかべ"))
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            Status::New
+        );
     }
 }

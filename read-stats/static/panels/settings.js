@@ -81,9 +81,18 @@ const FIELDS = [
     min: 1,
     hint: "Used to turn a physical book's page count into characters when logging a session by hand. 550 is a typical bunkobon page.",
   },
+  {
+    group: "Vocabulary",
+    key: "triage_min_encounters",
+    label: "Triage floor",
+    unit: "encounters",
+    step: 1,
+    min: 1,
+    hint: "How often a word must have been met before triage offers it, and ticks it as known. It can sit this low because the other half of the rule does the work: only words you have never looked up are ticked. Raise it for a shorter, safer queue; lower it to reach further down the tail.",
+  },
 ];
 
-const GROUPS = ["Goal", "Derivation"];
+const GROUPS = ["Goal", "Derivation", "Vocabulary"];
 
 export function SettingsView({ settings, onSaved }) {
   // Edits are staged locally and saved as a batch: several of these interact
