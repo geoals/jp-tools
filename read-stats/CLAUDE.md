@@ -79,22 +79,19 @@ taught to `vn-capture.sh`.
   proxy from the *browser*, so it fires for anything looked up anywhere.
   `ankiproxy::record` records a lookup only when a line arrived within
   `session_gap_secs`, so reading a news article never puts a term in a VN's
-  funnel, never inflates the day's per-1000-character rate, and never adds to a
-  kanji lookup rate whose denominator the line stream cannot see. The guard is
+  funnel and never inflates the day's per-1000-character rate. The guard is
   at the write and nowhere else — don't add a second filter downstream, and
   don't remove this one and expect the readers to cope. It also means a long
   enough `capture_paused` stops lookups: no lines arrive, so nothing is recent.
 - **Exposure counts take all text; cost counts take only hooked text.** Pasted
   session `content` feeds `word_days`, the kanji grid, the discovery curve and
   every coverage figure — those ask how much you have met something, and an
-  article is reading. It is kept out of every *rate*: `lookups_per_1k`
-  divides by hooked characters (`stats::rate`), and the kanji lookup rate by
-  `KanjiRow::metered_count`. A lookup can only be recorded while the line
-  stream is live, so article characters could enter a rate's denominator but
-  never its numerator — the red outlier rings would stop marking what costs
-  you, in proportion to how much of the reading is articles. If you add a
-  figure, decide which of the two questions it asks before choosing its
-  denominator.
+  article is reading. It is kept out of every *rate*: `lookups_per_1k` divides
+  by hooked characters (`stats::rate`). A lookup can only be recorded while the
+  line stream is live, so article characters could enter a rate's denominator
+  but never its numerator, and the rate would fall in proportion to how much of
+  the reading is articles. If you add a figure, decide which of the two
+  questions it asks before choosing its denominator.
 - **Speed divides by measured reading only** (`History::measured_days`). An
   untimed session's duration is derived from the reader's own pace, so it
   reports that pace back exactly; in a speed chart it would be measuring its
@@ -103,6 +100,14 @@ taught to `vn-capture.sh`.
   Never write back. The same applies one layer up: `vocabulary.mined` is
   recomputed from that snapshot on every refresh, and is a flag *beside*
   `status`, never written into it.
+- **A term's reading is the reading of its *headword*.** Sudachi's
+  `reading_form` is the reading of the surface, so pairing it with
+  `dictionary_form` produced 振る/ふっ and split one verb across a ledger row
+  per inflected stem (知る was しる, しら and しっ, each with its own counts and
+  its own judgement). `jp_core::tokenize` resolves the lemma's own reading via
+  `dictionary_form_word_id`; `POST /api/vocab/repair-readings` folds what the
+  old pairing wrote, and is idempotent. Anything keyed on `(headword, reading)`
+  — the ledger, `work_terms` — depends on this being right.
 - **Only the reader writes `vocabulary.status`.** Not ingest, not the Anki
   sync, not the lookup sync — a resync must never demote a word marked known,
   and an encounter count must never promote one (`spec/cold-start.md` Pass 4).
@@ -110,9 +115,16 @@ taught to `vn-capture.sh`.
   only writers are `/api/vocab/judge` and `/api/vocab/blacklist-non-words`,
   both of which answer a request the reader made. A *reader-triggered* Anki
   import is fine by the same test; folding it into the recurring refresh is not.
-- **Each ingest sink has its own watermark.** One tokenization pass fills both
-  `word_days` and the ledger, but `tokenized_through_line_id` and
-  `vocab_through_line_id` move independently (and the same pair for sessions).
+- **A name is not vocabulary.** Sudachi's 固有名詞 subclass keeps a work's cast
+  out of the ledger and `work_terms` (they were the top of every per-work
+  unknown list), while `word_days` still counts them — that sink asks what text
+  was read. The verdict is per *term* over a whole pass, never per occurrence:
+  Sudachi tags a surface inconsistently, and filtering occurrence by occurrence
+  kept 79 of ノア's 194, which is worse than either whole answer.
+- **Each ingest sink has its own watermark.** One tokenization pass fills
+  `word_days`, the ledger and `work_terms`, but `tokenized_through_line_id`,
+  `vocab_through_line_id` and `work_terms_through_line_id` move independently
+  (and the same three for sessions).
   Both sinks are additive and neither is idempotent, so a row goes to a sink
   only when its id is past *that sink's* mark. That is what lets
   `POST /api/vocab/rebuild` re-derive the ledger from the full history without
@@ -193,7 +205,8 @@ after every step.
 
 The browser check exists because the client is unbundled ES modules loaded
 straight from disk: a bad import path renders *nothing at all* while every JSON
-endpoint still passes.
+endpoint still passes. It renders `#kanji`, `#vocab` and `#library` separately
+for that reason — their panels are reached from no other tab.
 
 `run` holds the terminal and has no `stop`, so a backgrounded instance outlives
 the session and the next `run` refuses with "something is already serving
@@ -227,10 +240,17 @@ assumes".
   what you are reading, then how the day against it went (the goal, the totals,
   the curve and the sittings, all following one date). **Trends** —
   `trends.js`, one range selector over the summary tiles, the daily bars, the
-  speed panel and the rate panel. **Library** — `library.js`: works,
-  vocabulary, dialogue, and the manual log form. Logged articles collapse into
-  one `Articles` row here and in the kanji fingerprints
-  (`stats::work::ARTICLES_WORK`) — each keeps its own title and URL on the
+  speed panel and the rate panel. **Library** — `library.js`, two levels:
+  the shelf (`works-shelf.js`) lists the works as cards, and opening one
+  replaces the tab with that work's own page (`work-detail.js` over
+  `GET /api/works/detail?work=<title>` — keyed by title, since nothing upserts
+  a `works` row for a title you simply start reading). A work with no reading
+  behind it does not appear at all: there is no text until it has been read, so
+  a queued title would be a card of blanks. The vocabulary, dialogue and
+  log-form cards stay at the shelf level — they are about the reading as a
+  whole. `spec/library-rewrite.md` has the phases and what is still to come.
+  Logged articles collapse into
+  one `Articles` row here (`stats::work::ARTICLES_WORK`) — each keeps its own title and URL on the
   session row, where the day's sittings table shows it. That form has two modes over
   one POST: *pages* estimates chars from a page count (a paper book has no text
   to paste), *paste text* takes the article itself and counts it exactly. The
@@ -238,16 +258,11 @@ assumes".
   in JS — which characters count is a rule that lives in one place, and a
   preview disagreeing with the stored number would be worse than none. **Kanji** — `kanji.js` over
   `/api/kanji`: the grid of every kanji ever read, tinted by encounter count,
-  sortable by your own frequency or BCCWJ's, and ringed twice — green for a
-  card's target word, red for a lookup rate past three times your own average
-  over six-plus readings (`stats::kanji::OUTLIER_*`, applied server-side so the
-  legend can state the threshold it used). A ring for "has been looked up at
-  all" was the first attempt and said nothing: one lookup is what reading is.
-  Plus grade coverage, the corpus-coverage curve,
-  discovery per day, the lookup-rate ranking and the per-work fingerprints. The
-  page was twelve cards in one column before, with today and the last 30 days
-  interleaved and four slices of the same window each carrying its own
-  hardcoded range. **Vocab** — `vocab.js`, two sections over the knowledge
+  sortable by your own frequency, BCCWJ's, grade or recency, and ringed green
+  when a card's target word contains it. Plus the summary tiles, grade coverage
+  and discovery per day. A "read often, never carded" list belongs here once the
+  ledger is seeded — against `vocabulary.status`, not against the deck.
+  **Vocab** — `vocab.js`, two sections over the knowledge
   ledger: the status counts, and `triage.js`, the pass that fills them.
 - **Triage ticks on two signals, never one** (`vocab.js` → `triage.js`, over
   `vocabulary::preselects_known`). A word is preselected `known` only if it was

@@ -33,10 +33,27 @@ Cargo workspace for Japanese language learning tools.
 | `read-stats.db` | `settings`, `reader_marks`, `work_covers` | read-stats |
 | `yt-mine.db` | `mining_jobs`, `mining_sentences` | yt-mine |
 
-All under `~/.local/share/jp-tools/`. The split is by what the data *is*, not
-by which app wrote it first: anything other tools will ask questions of —
-what has been read, what has been looked up, what the dictionaries say, what is
-known — is shared. `spec/knowledge-db.md` has the reasoning.
+All under `~/.local/share/jp-tools/`.
+
+Two things about writing to them, both learned from one "database is locked"
+on a vocab triage submit (2026-07-27):
+
+- **A slow write blocks every other writer for its whole duration.** SQLite
+  takes one write lock per database, WAL or not. `refresh_dictionary_flags`
+  held it for *six minutes* because its subqueries could not use
+  `idx_dictionary_entries_lookup` and scanned 518k entries per ledger row; the
+  rewrite runs in 15 ms. Before adding a statement that touches
+  `dictionary_entries`, check `EXPLAIN QUERY PLAN` says SEARCH and not SCAN.
+- **WAL and `busy_timeout` go on the connect options, never as a `PRAGMA` run
+  against the pool.** `busy_timeout` is per connection, so a pragma statement
+  sets it on whichever single pooled connection served it and leaves the other
+  four at zero — a write landing on one of those fails instantly instead of
+  waiting. `journal_mode` persists in the file, which is what hid this.
+
+The split between the files is by what the data *is*, not by which app wrote
+it first: anything other tools will ask questions of — what has been read, what
+has been looked up, what the dictionaries say, what is known — is shared.
+`spec/knowledge-db.md` has the reasoning.
 
 `vocabulary` is the newest of those and the one everything planned depends on:
 one row per `(headword, reading)`, carrying the reader's asserted `status`, a

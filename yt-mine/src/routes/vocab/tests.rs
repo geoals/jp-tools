@@ -22,6 +22,7 @@ fn japanese_tokenizer() -> MockTokenizer {
             base_form: "行く".into(),
             reading: "イク".into(),
             pos: "動詞".into(),
+            proper_noun: false,
         }]),
         _ => Ok(vec![
             Token {
@@ -29,18 +30,21 @@ fn japanese_tokenizer() -> MockTokenizer {
                 base_form: "東京".into(),
                 reading: "トウキョウ".into(),
                 pos: "名詞".into(),
+                proper_noun: false,
             },
             Token {
                 surface: "に".into(),
                 base_form: "に".into(),
                 reading: "ニ".into(),
                 pos: "助詞".into(),
+                proper_noun: false,
             },
             Token {
                 surface: "行く".into(),
                 base_form: "行く".into(),
                 reading: "イク".into(),
                 pos: "動詞".into(),
+                proper_noun: false,
             },
             // Duplicate 東京 to test deduplication + counting
             Token {
@@ -48,6 +52,7 @@ fn japanese_tokenizer() -> MockTokenizer {
                 base_form: "東京".into(),
                 reading: "トウキョウ".into(),
                 pos: "名詞".into(),
+                proper_noun: false,
             },
         ]),
     });
@@ -261,6 +266,7 @@ async fn tokenize_groups_verb_conjugations() {
             base_form: "行く".into(),
             reading: "イク".into(),
             pos: "動詞".into(),
+            proper_noun: false,
         }]),
         _ => Ok(vec![
             Token {
@@ -268,12 +274,14 @@ async fn tokenize_groups_verb_conjugations() {
                 base_form: "行く".into(),
                 reading: "イッタ".into(),
                 pos: "動詞".into(),
+                proper_noun: false,
             },
             Token {
                 surface: "行ける".into(),
                 base_form: "行く".into(),
                 reading: "イケル".into(),
                 pos: "動詞".into(),
+                proper_noun: false,
             },
         ]),
     });
@@ -307,12 +315,14 @@ async fn potential_verb_normalizes_to_godan_root() {
             base_form: "出す".into(),
             reading: "ダス".into(),
             pos: "動詞".into(),
+            proper_noun: false,
         }]),
         _ => Ok(vec![Token {
             surface: "出せる".into(),
             base_form: "出せる".into(),
             reading: "ダセル".into(),
             pos: "動詞".into(),
+            proper_noun: false,
         }]),
     });
 
@@ -359,6 +369,7 @@ async fn ichidan_verb_not_collapsed_to_godan_pair() {
             base_form: "開ける".into(),
             reading: "アケル".into(),
             pos: "動詞".into(),
+            proper_noun: false,
         }])
     });
 
@@ -405,30 +416,35 @@ async fn tokenize_filters_non_japanese_tokens() {
                 base_form: "100".into(),
                 reading: "ヒャク".into(),
                 pos: "名詞".into(),
+                proper_noun: false,
             },
             Token {
                 surface: "%".into(),
                 base_form: "%".into(),
                 reading: "パーセント".into(),
                 pos: "名詞".into(),
+                proper_noun: false,
             },
             Token {
                 surface: "・".into(),
                 base_form: "・".into(),
                 reading: "".into(),
                 pos: "補助記号".into(),
+                proper_noun: false,
             },
             Token {
                 surface: "270億".into(),
                 base_form: "270億".into(),
                 reading: "ニヒャクナナジュウオク".into(),
                 pos: "名詞".into(),
+                proper_noun: false,
             },
             Token {
                 surface: "東京".into(),
                 base_form: "東京".into(),
                 reading: "トウキョウ".into(),
                 pos: "名詞".into(),
+                proper_noun: false,
             },
         ])
     });

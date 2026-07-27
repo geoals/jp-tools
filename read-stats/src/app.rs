@@ -58,6 +58,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/text/count", post(sessions::count_text))
         .route("/api/day/timeline", get(timeline::day_timeline))
         .route("/api/works", get(works::works).post(works::upsert_work))
+        .route("/api/works/detail", get(works::work_detail))
         .route(
             "/api/works/{id}",
             axum::routing::put(works::update_work).delete(works::delete_work),

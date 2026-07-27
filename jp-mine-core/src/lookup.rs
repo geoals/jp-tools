@@ -84,18 +84,21 @@ mod tests {
                 base_form: "東京".into(),
                 reading: "トウキョウ".into(),
                 pos: "名詞".into(),
+                proper_noun: false,
             },
             Token {
                 surface: "に".into(),
                 base_form: "に".into(),
                 reading: "ニ".into(),
                 pos: "助詞".into(),
+                proper_noun: false,
             },
             Token {
                 surface: "行く".into(),
                 base_form: "行く".into(),
                 reading: "イク".into(),
                 pos: "動詞".into(),
+                proper_noun: false,
             },
         ];
         assert_eq!(
@@ -112,12 +115,14 @@ mod tests {
                 base_form: "食べる".into(),
                 reading: "タベ".into(),
                 pos: "動詞".into(),
+                proper_noun: false,
             },
             Token {
                 surface: "た".into(),
                 base_form: "た".into(),
                 reading: "タ".into(),
                 pos: "助動詞".into(),
+                proper_noun: false,
             },
         ];
         assert_eq!(
@@ -133,6 +138,7 @@ mod tests {
             base_form: "テスト".into(),
             reading: "テスト".into(),
             pos: "名詞".into(),
+            proper_noun: false,
         }];
         assert_eq!(bold_target_in_sentence(&tokens, "別の語"), None);
     }
@@ -145,24 +151,28 @@ mod tests {
                 base_form: "食べる".into(),
                 reading: "タベ".into(),
                 pos: "動詞".into(),
+                proper_noun: false,
             },
             Token {
                 surface: "て".into(),
                 base_form: "て".into(),
                 reading: "テ".into(),
                 pos: "助詞".into(),
+                proper_noun: false,
             },
             Token {
                 surface: "食べ".into(),
                 base_form: "食べる".into(),
                 reading: "タベ".into(),
                 pos: "動詞".into(),
+                proper_noun: false,
             },
             Token {
                 surface: "た".into(),
                 base_form: "た".into(),
                 reading: "タ".into(),
                 pos: "助動詞".into(),
+                proper_noun: false,
             },
         ];
         assert_eq!(

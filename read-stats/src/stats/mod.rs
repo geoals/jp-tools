@@ -18,6 +18,7 @@
 //! | [`focus`] | how *continuous* the reading was, as opposed to how much |
 //! | [`dialogue`] | how much of it was people talking, and at what speed |
 //! | [`kanji`] | which kanji the text was made of, and how well each is known |
+//! | [`prose`] | what the writing is like: spoken share, sentence length |
 //!
 //! [`presence`] is the module to read first: every other aggregate credits gap
 //! time through it, and keeping that rule in one place is what stops two views
@@ -29,6 +30,7 @@ pub mod focus;
 pub mod kanji;
 pub mod line;
 pub mod presence;
+pub mod prose;
 pub mod rate;
 pub mod session;
 pub mod timeline;
@@ -43,6 +45,7 @@ pub use focus::{FocusDay, INTERRUPTION_SECS, aggregate_focus_days};
 pub use kanji::{KanjiLine, KanjiStats, TermTimes, aggregate_kanji};
 pub use line::LineEvent;
 pub use presence::{Presence, measure_effective_pace, measure_pace, presence_marks};
+pub use prose::{ProseAcc, ProseStats};
 pub use session::{Session, derive_sessions};
 pub use timeline::{Bucket, EventKind, add_events, bucket_lines};
 pub use work::{ARTICLES_WORK, WorkAgg, WorkLine, aggregate_works, work_key};

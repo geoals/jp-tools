@@ -45,6 +45,10 @@ impl Tokenizer for FakeTokenizer {
                     base_form: s,
                     reading: "*".into(),
                     pos: if is_cjk { "名詞" } else { "記号" }.into(),
+                    // The fake never produces a name: nothing downstream of it
+                    // asks, and a stub that invented one would be inventing a
+                    // classification.
+                    proper_noun: false,
                 }
             })
             .collect())

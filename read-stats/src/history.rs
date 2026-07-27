@@ -292,8 +292,7 @@ impl History {
             .iter()
             .zip(&self.line_works)
             .map(|(l, work)| WorkLine {
-                ts: l.ts,
-                chars: l.chars,
+                event: *l,
                 work: work.clone(),
             })
             .collect()

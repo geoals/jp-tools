@@ -44,7 +44,7 @@ const TABS = [
   { id: "vocab", label: "Vocab" },
 ];
 
-function App({ view }) {
+function App({ view, sub }) {
   const [summary, setSummary] = useState(null);
   const [days, setDays] = useState(null);
   const [works, setWorks] = useState([]);
@@ -204,36 +204,42 @@ function App({ view }) {
                   onJudged=${load}
                 />`
               : tab === "library"
-              ? html`<${LibraryView}
-                  works=${works}
-                  settings=${settings}
-                  anki=${anki}
-                  lookups=${lookups}
-                  dialogue=${dialogue}
-                  onRefreshAnki=${refreshAnki}
-                  ankiBusy=${ankiBusy}
-                  onSaved=${load}
-                />`
-              : html`
-                  <${CurrentReading}
+                ? html`<${LibraryView}
                     works=${works}
                     settings=${settings}
-                    days=${days}
+                    anki=${anki}
+                    lookups=${lookups}
+                    dialogue=${dialogue}
+                    openWork=${sub}
+                    onRefreshAnki=${refreshAnki}
+                    ankiBusy=${ankiBusy}
                     onSaved=${load}
-                  />
-                  <${DayCard}
-                    days=${days}
-                    todayDate=${summary.today.date}
-                    goal=${summary.goal}
-                  />
-                `
+                  />`
+                : html`
+                    <${CurrentReading}
+                      works=${works}
+                      settings=${settings}
+                      days=${days}
+                      onSaved=${load}
+                    />
+                    <${DayCard}
+                      days=${days}
+                      todayDate=${summary.today.date}
+                      goal=${summary.goal}
+                    />
+                  `
     }
   `;
 }
 
 /** Which view the URL is asking for. The reader is a separate branch rather
  *  than a section of the dashboard so that opening it unmounts App entirely —
- *  no 60s aggregate polling running behind a reading session. */
+ *  no 60s aggregate polling running behind a reading session.
+ *
+ *  A tab may carry one segment after it (`#library/<title>`), so that opening
+ *  a work is a real navigation: back returns to the shelf, and the page can be
+ *  linked and reloaded onto the work you were looking at. State held in a
+ *  `useState` cannot do either — back would leave the tab entirely. */
 
 function useHashRoute() {
   const [hash, setHash] = useState(() => location.hash);
@@ -248,7 +254,11 @@ function useHashRoute() {
 function Root() {
   const hash = useHashRoute();
   if (hash === "#read") return html`<${Reader} />`;
-  return html`<${App} view=${hash.replace(/^#/, "") || "today"} />`;
+  // Titles are percent-encoded, and encodeURIComponent escapes "/" too, so
+  // splitting on it can never cut a title in half.
+  const [view, ...rest] = hash.replace(/^#/, "").split("/");
+  const sub = rest.length ? decodeURIComponent(rest.join("/")) : null;
+  return html`<${App} view=${view || "today"} sub=${sub} />`;
 }
 
 render(html`<${Root} />`, document.getElementById("app"));

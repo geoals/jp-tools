@@ -34,8 +34,11 @@
 
 pub mod dictionaries;
 pub mod vocabulary;
+pub mod work_terms;
 
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use std::time::Duration;
+
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Row, SqlitePool};
 
 const MIGRATION_DICT: &str = include_str!("../../migrations/knowledge/001_dictionaries.sql");
@@ -43,6 +46,7 @@ const MIGRATION_PITCH: &str = include_str!("../../migrations/knowledge/002_pitch
 const MIGRATION_FREQ: &str = include_str!("../../migrations/knowledge/003_frequency.sql");
 const MIGRATION_READING: &str = include_str!("../../migrations/knowledge/004_reading.sql");
 const MIGRATION_VOCAB: &str = include_str!("../../migrations/knowledge/005_vocabulary.sql");
+const MIGRATION_WORK_TERMS: &str = include_str!("../../migrations/knowledge/006_work_terms.sql");
 
 /// A connection pool for `knowledge.db`.
 ///
@@ -58,17 +62,26 @@ pub struct Knowledge(SqlitePool);
 impl Knowledge {
     /// Open (creating if absent) and migrate.
     pub async fn open(db_path: &str) -> Result<Self, sqlx::Error> {
+        // WAL + busy_timeout: vn-ws-logger.py appends to `lines` concurrently,
+        // and yt-mine/manga-mine read the dictionaries from their own
+        // processes.
+        //
+        // Both go on the *connect options*, not through a `PRAGMA` run against
+        // the pool. `busy_timeout` is per connection: executing it once hands
+        // it to whichever single connection served that statement and leaves
+        // the other four at zero, so a write that lands on one of those fails
+        // with SQLITE_BUSY the instant the logger holds the write lock instead
+        // of waiting the five seconds it was supposed to. (`journal_mode` is
+        // persisted in the file, so that half survived either way — which is
+        // what made this look like it worked.)
         let opts = SqliteConnectOptions::new()
             .filename(db_path)
-            .create_if_missing(true);
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .busy_timeout(Duration::from_secs(5));
         let pool = SqlitePoolOptions::new()
             .max_connections(5)
             .connect_with(opts)
-            .await?;
-        // WAL + busy_timeout: vn-ws-logger.py appends to `lines` concurrently,
-        // and yt-mine/manga-mine read the dictionaries from their own processes.
-        sqlx::raw_sql("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")
-            .execute(&pool)
             .await?;
 
         let k = Knowledge(pool);
@@ -96,6 +109,7 @@ impl Knowledge {
             MIGRATION_FREQ,
             MIGRATION_READING,
             MIGRATION_VOCAB,
+            MIGRATION_WORK_TERMS,
         ] {
             sqlx::raw_sql(sql).execute(&self.0).await?;
         }
@@ -231,6 +245,34 @@ mod tests {
                 .await
                 .unwrap_or_else(|e| panic!("{table} missing: {e}"));
             assert_eq!(count.0, 0);
+        }
+    }
+
+    /// The regression this exists for: `busy_timeout` is a per-connection
+    /// setting, so setting it with a `PRAGMA` against the pool reached one
+    /// connection and left the rest at zero — and a write that happened to
+    /// land on one of those failed with "database is locked" the moment
+    /// vn-ws-logger.py held the write lock, instead of waiting five seconds.
+    #[tokio::test]
+    async fn every_pooled_connection_waits_for_a_busy_database() {
+        let k = temp_knowledge().await;
+        // Hold several connections at once, so each answer comes from a
+        // different one rather than the same connection five times over.
+        let mut held = Vec::new();
+        for _ in 0..5 {
+            held.push(k.pool().acquire().await.unwrap());
+        }
+        for conn in held.iter_mut() {
+            let (timeout,): (i64,) = sqlx::query_as("PRAGMA busy_timeout")
+                .fetch_one(&mut **conn)
+                .await
+                .unwrap();
+            assert_eq!(timeout, 5000, "every connection, not just the first");
+            let (mode,): (String,) = sqlx::query_as("PRAGMA journal_mode")
+                .fetch_one(&mut **conn)
+                .await
+                .unwrap();
+            assert_eq!(mode, "wal");
         }
     }
 

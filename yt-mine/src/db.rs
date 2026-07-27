@@ -1,4 +1,7 @@
-use sqlx::sqlite::SqlitePoolOptions;
+use std::str::FromStr;
+use std::time::Duration;
+
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Row, SqlitePool};
 
 use crate::models::{Job, JobStatus, Sentence, TranscriptSegment, VocabStatus};
@@ -7,15 +10,19 @@ const MIGRATION: &str = include_str!("../migrations/001_create_mining_tables.sql
 const VOCAB_MIGRATION: &str = include_str!("../migrations/007_create_vocabulary_table.sql");
 
 pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> {
+    // WAL lets reads run during a write; busy_timeout is what stops a write
+    // that collides with another one returning "database is locked" instantly.
+    //
+    // Both belong on the connect options. `busy_timeout` is a *per connection*
+    // setting, so a `PRAGMA` executed against the pool reaches exactly one of
+    // the five and leaves the others at zero — which is a lock error waiting
+    // for the first moment two writers overlap.
+    let opts = SqliteConnectOptions::from_str(database_url)?
+        .journal_mode(SqliteJournalMode::Wal)
+        .busy_timeout(Duration::from_secs(5));
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
-        .connect(database_url)
-        .await?;
-
-    // WAL mode allows concurrent reads during writes (no reader-blocks-writer).
-    // busy_timeout prevents "database is locked" errors under contention.
-    sqlx::raw_sql("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")
-        .execute(&pool)
+        .connect_with(opts)
         .await?;
 
     sqlx::raw_sql(MIGRATION).execute(&pool).await?;

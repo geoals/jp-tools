@@ -8,15 +8,17 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
+use super::line::LineEvent;
+use super::presence::Presence;
+
 /// The one row every logged article aggregates under.
 ///
 /// An article *is* a source, but it is not a work in the sense this view is
 /// about — a thing being read through, with a cover, a status and a position
 /// in the queue. Thirty of them would bury the four VNs the list exists for,
-/// and each would carry a kanji fingerprint built from two thousand
-/// characters, which is noise wearing a title. Collapsed, they make one
-/// fingerprint worth reading: what your article reading looks like next to
-/// your fiction.
+/// and each would be a title over two thousand characters of text, which is
+/// noise wearing a name. Collapsed, they make one row worth reading: what your
+/// article reading looks like next to your fiction.
 ///
 /// The individual title and URL are not lost — they stay on the session row
 /// and show in the day's sittings table, which is where "what did I read on
@@ -35,8 +37,9 @@ pub fn work_key(source: &str, work: Option<&str>) -> Option<String> {
 
 #[derive(Debug, Clone)]
 pub struct WorkLine {
-    pub ts: f64,
-    pub chars: i64,
+    /// The line itself, so gap credit can be priced by [`Presence`] exactly as
+    /// it is everywhere else.
+    pub event: LineEvent,
     pub work: Option<String>,
 }
 
@@ -48,43 +51,50 @@ pub struct WorkAgg {
     pub last_ts: f64,
 }
 
-/// Aggregate a time-ordered line stream per work title. Gap credit follows the
-/// same capping rules as sessions and goes to the *later* line's work, so a
-/// mid-session switch splits time at the switch point.
+/// Aggregate a time-ordered line stream per work title. Gap credit goes to the
+/// *later* line's work, so a mid-session switch splits time at the switch
+/// point.
+///
+/// Credit is priced by [`Presence`] rather than by a fresh `min(gap, afk)`:
+/// the shelf sits one click away from each work's own page, which derives
+/// sessions the ordinary way, and two answers to "how many hours is this
+/// work" is exactly what the one-rule invariant exists to prevent. The flat
+/// cap had them 0.2% apart.
 pub fn aggregate_works(
     lines: &[WorkLine],
-    afk_secs: f64,
+    presence: &Presence,
     session_gap_secs: f64,
 ) -> BTreeMap<Option<String>, WorkAgg> {
     let mut out: BTreeMap<Option<String>, WorkAgg> = BTreeMap::new();
-    let mut prev_ts: Option<f64> = None;
+    let mut prev: Option<&LineEvent> = None;
     for line in lines {
         let agg = out.entry(line.work.clone()).or_insert_with(|| WorkAgg {
-            first_ts: line.ts,
+            first_ts: line.event.ts,
             ..Default::default()
         });
-        agg.chars += line.chars;
-        agg.last_ts = line.ts;
-        if let Some(prev) = prev_ts {
-            let gap = line.ts - prev;
+        agg.chars += line.event.chars;
+        agg.last_ts = line.event.ts;
+        if let Some(prev) = prev {
+            let gap = line.event.ts - prev.ts;
             if gap > 0.0 && gap <= session_gap_secs {
-                agg.active_secs += gap.min(afk_secs);
+                agg.active_secs += presence.credit(prev, gap);
             }
         }
-        prev_ts = Some(line.ts);
+        prev = Some(&line.event);
     }
     out
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::presence::measure_pace;
+    use super::super::testutil::ev;
     use super::*;
 
     #[test]
     fn works_split_at_switch_point() {
         let w = |ts: f64, chars: i64, work: &str| WorkLine {
-            ts,
-            chars,
+            event: ev(ts, chars),
             work: (!work.is_empty()).then(|| work.to_string()),
         };
         let lines = [
@@ -94,7 +104,9 @@ mod tests {
             w(90.0, 10, "B"),
             w(1000.0, 5, ""), // unlabeled, new session (gap > 600)
         ];
-        let works = aggregate_works(&lines, 120.0, 600.0);
+        let events: Vec<LineEvent> = lines.iter().map(|l| l.event).collect();
+        let presence = Presence::new(&[], measure_pace(&events, &[], 120.0), 120.0);
+        let works = aggregate_works(&lines, &presence, 600.0);
         let a = &works[&Some("A".to_string())];
         let b = &works[&Some("B".to_string())];
         assert_eq!((a.chars, a.active_secs), (20, 30.0));

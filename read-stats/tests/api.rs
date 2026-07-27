@@ -535,6 +535,62 @@ async fn works_lists_read_titles_and_queued_ones_alike() {
 }
 
 #[tokio::test]
+async fn work_detail_scopes_the_history_to_one_title() {
+    let app = TestApp::new().await;
+    let base = today_start() + 3600.0;
+    three_lines(&app, base, Some("A")).await;
+    // Another VN, hours later: a sitting of its own that must not appear in A's.
+    three_lines(&app, base + 30000.0, Some("B")).await;
+    app.add_note(((base + 10.0) * 1000.0) as i64, "言葉").await;
+    app.send(
+        "POST",
+        "/api/works",
+        json!({ "title": "A", "total_chars": 200 }),
+    )
+    .await;
+
+    let d = app.get("/api/works/detail?work=A").await;
+    assert_eq!(d["chars"], 60, "only A's lines");
+    assert_eq!(d["meta"]["total_chars"], 200);
+    assert_eq!(d["remaining_chars"], 140);
+    assert_eq!(d["days"].as_array().unwrap().len(), 1);
+    let sittings = d["sittings"].as_array().unwrap();
+    assert_eq!(sittings.len(), 1, "B's sitting belongs to B");
+    assert_eq!(sittings[0]["chars"], 60);
+    assert_eq!(sittings[0]["cards"], 1, "the card was mined during it");
+    assert_eq!(sittings[0]["estimated"], false);
+
+    // A logged session joins by the same title, and reports its time as an
+    // estimate when it was logged without minutes.
+    app.send(
+        "POST",
+        "/api/sessions",
+        json!({ "start_ts": base - 86400.0, "chars": 500, "source": "vn", "work": "A" }),
+    )
+    .await;
+    let d = app.get("/api/works/detail?work=A").await;
+    assert_eq!(d["chars"], 560);
+    assert_eq!(d["days"].as_array().unwrap().len(), 2);
+    let sittings = d["sittings"].as_array().unwrap();
+    assert_eq!(sittings.len(), 2);
+    assert_eq!(
+        sittings[0]["start_ts"].as_f64().unwrap() > sittings[1]["start_ts"].as_f64().unwrap(),
+        true,
+        "newest first"
+    );
+    assert_eq!(sittings[1]["estimated"], true, "logged without minutes");
+}
+
+#[tokio::test]
+async fn work_detail_needs_a_work_that_exists() {
+    let app = TestApp::new().await;
+    let (status, _) = app
+        .send("GET", "/api/works/detail?work=nothing", json!({}))
+        .await;
+    assert_eq!(status, 404);
+}
+
+#[tokio::test]
 async fn work_status_must_be_one_of_the_known_values() {
     let app = TestApp::new().await;
     let (status, _) = app

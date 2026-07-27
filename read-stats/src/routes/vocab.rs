@@ -166,10 +166,15 @@ pub async fn vocab_rebuild(State(state): State<AppState>) -> Result<Json<Value>,
     let lines = crate::ingest::ingest_new_lines(&state).await?;
     let sessions = crate::ingest::ingest_new_sessions(&state).await?;
     let mined = crate::ingest::sync_vocabulary(&state).await?;
+    // Anything the re-ingest did not touch is no longer in the reading — a
+    // proper noun now that names are excluded, or a term the tokenizer splits
+    // differently than it used to. Judged rows and mined rows are spared.
+    let pruned = vocabulary::prune_untouched(&state.knowledge).await?;
 
     Ok(Json(json!({
         "lines": lines,
         "sessions": sessions,
         "mined_terms": mined,
+        "pruned": pruned,
     })))
 }

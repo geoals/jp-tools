@@ -48,16 +48,11 @@
 .kanji-solid {
   font-weight: 600;
 }
-/* The two rings. Inset, so they never change the grid's rhythm, and
-   distinguishable from each other when a chip carries both. Both are rare by
-   construction — a card's target word contains it, or it costs lookups out of
-   all proportion to how often it is read — which is what lets a ring mean
-   something at a glance across two thousand chips. */
+/* The ring for a kanji a card's target word contains. Rare by construction,
+   which is what lets it mean something at a glance across two thousand
+   chips. */
 .kanji-mined {
   border-color: var(--series-2);
-}
-.kanji-struggling {
-  box-shadow: inset 0 0 0 1.5px var(--series-3);
 }
 .kanji-picked {
   outline: 2px solid var(--text-primary);
@@ -130,24 +125,6 @@
   margin-top: 8px;
 }
 
-/* The kanji at the head of a compare row: glyph plus its gloss, in the 72px
-   the name column already reserves. */
-.kanji-row-name {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  overflow: hidden;
-}
-.kanji-row-name > span {
-  font-size: 11px;
-}
-.kanji-row-gloss {
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* Grade coverage: one bar per grade, solid nested inside met. Nested rather
    than stacked because solid is a subset of met — side by side would read as
    two populations that sum. */
@@ -157,8 +134,4 @@
 .grade-solid {
   background: var(--series-1);
   border-radius: 3px;
-}
-
-.kanji-work + .kanji-work {
-  margin-top: 12px;
 }

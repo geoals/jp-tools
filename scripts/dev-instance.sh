@@ -211,6 +211,34 @@ cmd_browser() {
   grep -qF "vocabulary" "$WORK/dom-vocab.html" || die "vocab tab is missing: vocabulary"
   say "vocab tab renders ($(wc -c <"$WORK/dom-vocab.html") bytes)"
 
+  # The library tab: the shelf, and one work's own page behind it. The detail
+  # panel is reached only by clicking a card, so a bad import there renders an
+  # empty tab while every JSON endpoint still passes — the same trap the kanji
+  # check exists for.
+  "$CHROME" --headless --disable-gpu --no-sandbox --dump-dom --virtual-time-budget=15000 \
+    "http://127.0.0.1:$PORT/#library" >"$WORK/dom-library.html" 2>>"$WORK/console.log"
+  for want in "Library" "work-card" "Log a session"; do
+    grep -qF "$want" "$WORK/dom-library.html" || die "library tab is missing: $want"
+  done
+  say "library tab renders ($(wc -c <"$WORK/dom-library.html") bytes)"
+
+  # A work's own page, reached by URL rather than by clicking — which is the
+  # point of putting the title in the hash. Whichever work the frozen copy has
+  # most of will do.
+  local WORKED
+  WORKED=$(curl -s "http://127.0.0.1:$PORT/api/works" |
+    python3 -c 'import json,sys,urllib.parse
+rows=[w for w in json.load(sys.stdin) if w["work"] and w["chars"]]
+print(urllib.parse.quote(max(rows, key=lambda w: w["chars"])["work"]) if rows else "")')
+  if [ -n "$WORKED" ]; then
+    "$CHROME" --headless --disable-gpu --no-sandbox --dump-dom --virtual-time-budget=15000 \
+      "http://127.0.0.1:$PORT/#library/$WORKED" >"$WORK/dom-work.html" 2>>"$WORK/console.log"
+    for want in "How it was read" "Sittings" "What the prose is like" "What it is made of"; do
+      grep -qF "$want" "$WORK/dom-work.html" || die "work page is missing: $want"
+    done
+    say "work page renders ($(wc -c <"$WORK/dom-work.html") bytes)"
+  fi
+
   # The reading view is not rendered here: it holds an SSE connection open, so
   # --dump-dom never returns. Its modules are covered by the import check.
   local fail=0

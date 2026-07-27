@@ -287,21 +287,30 @@ pub async fn sync_lookup_counts(k: &Knowledge) -> Result<(), sqlx::Error> {
 
 /// Recompute the three dictionary flags from `dictionary_entries` + the roles.
 ///
-/// Wholesale, and only worth running when a dictionary is imported or a role
-/// changes — it is a scan of a 400k-row table against however many terms the
-/// ledger holds.
-///
 /// A term matches a dictionary if the dictionary lists its headword. The
 /// reading is deliberately not required to match: a dictionary that spells a
 /// reading differently (送り仮名 variants, an entry with no reading at all)
 /// would otherwise make a real word look like tokenizer noise, and the flags
 /// exist to answer "is this a word", not "is this exact pair attested".
+///
+/// **Each subquery must be able to seek `idx_dictionary_entries_lookup`.**
+/// That index is `(dictionary_id, term)`, so filtering on `d.role` through a
+/// join leaves its leading column unconstrained and SQLite scans all 500k
+/// entries *per ledger row*, three times over. Resolving the role to its ids
+/// first turns each subquery into a seek on `(dictionary_id = ? AND term = ?)`.
+///
+/// Not a micro-optimisation: against the real database — 8,276 ledger rows,
+/// 518,744 entries — the join form took **six minutes**, and it holds the
+/// write lock throughout, so every triage submit and Anki sync during it failed
+/// with "database is locked". That is how it was found. The rewrite runs in
+/// 15 ms.
 pub async fn refresh_dictionary_flags(k: &Knowledge) -> Result<(), sqlx::Error> {
     let clause = |role: &str| {
         format!(
             "EXISTS (SELECT 1 FROM dictionary_entries de \
-                     JOIN dictionaries d ON d.id = de.dictionary_id \
-                     WHERE d.role = '{role}' AND de.term = vocabulary.headword)"
+                     WHERE de.dictionary_id IN \
+                           (SELECT id FROM dictionaries WHERE role = '{role}') \
+                       AND de.term = vocabulary.headword)"
         )
     };
     sqlx::query(&format!(
@@ -486,6 +495,28 @@ pub async fn set_status_each(
     }
     tx.commit().await?;
     Ok(n)
+}
+
+/// Drop rows a rebuild left with nothing behind them.
+///
+/// After `reset_vocabulary` + a re-ingest, a row that ends on zero encounters
+/// is one the current tokenizer no longer produces — a proper noun now that
+/// names are excluded, or a term a re-tokenization split differently. Keeping
+/// it would leave the ledger's totals counting words that are not in the
+/// reading any more.
+///
+/// Deletes only what nobody has said anything about: never judged (`new`) and
+/// not in Anki. A reader's assertion and a mined card both outlive the counts,
+/// which is the same rule that lets a rebuild zero the aggregates in the first
+/// place.
+pub async fn prune_untouched(k: &Knowledge) -> Result<u64, sqlx::Error> {
+    Ok(sqlx::query(
+        "DELETE FROM vocabulary \
+         WHERE encounter_count = 0 AND status = 'new' AND mined = 0",
+    )
+    .execute(k.pool())
+    .await?
+    .rows_affected())
 }
 
 /// Bulk-`blacklisted` the non-vocabulary tail: rows no dictionary calls a word.
@@ -680,6 +711,55 @@ mod tests {
         // Running it twice must not double it — that is the point of wholesale.
         sync_lookup_counts(&k).await.unwrap();
         assert_eq!(fetch(&k, &term).await.unwrap().unwrap().lookup_count, 3);
+    }
+
+    /// Pins the *plan*, not the result: the flags were correct all along, and
+    /// what broke was that each subquery scanned every dictionary entry once
+    /// per ledger row. A correctness test cannot see that, and the cost only
+    /// shows on a real-sized database.
+    #[tokio::test]
+    async fn the_flag_refresh_seeks_the_dictionary_index() {
+        let k = temp().await;
+        let plan: Vec<(i64, i64, i64, String)> = sqlx::query_as(
+            "EXPLAIN QUERY PLAN UPDATE vocabulary SET in_master = EXISTS ( \
+                 SELECT 1 FROM dictionary_entries de \
+                 WHERE de.dictionary_id IN (SELECT id FROM dictionaries WHERE role = 'master') \
+                   AND de.term = vocabulary.headword)",
+        )
+        .fetch_all(k.pool())
+        .await
+        .unwrap();
+        let detail: Vec<&str> = plan.iter().map(|r| r.3.as_str()).collect();
+        assert!(
+            detail
+                .iter()
+                .any(|d| d.contains("SEARCH de") && d.contains("idx_dictionary_entries_lookup")),
+            "the subquery must seek the (dictionary_id, term) index: {detail:?}"
+        );
+        assert!(
+            !detail.iter().any(|d| d.starts_with("SCAN de")),
+            "scanning every entry per ledger row is the six-minute bug: {detail:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn pruning_spares_everything_anyone_said_something_about() {
+        let k = temp().await;
+        let judged = Term::new("鍵", "かぎ");
+        let mined = Term::new("扉", "とびら");
+        let orphan = Term::new("ノア", "のあ");
+        set_status(&k, &judged, Status::Known, 1.0).await.unwrap();
+        set_status(&k, &mined, Status::New, 1.0).await.unwrap();
+        sqlx::query("UPDATE vocabulary SET mined = 1 WHERE headword = '扉'")
+            .execute(k.pool())
+            .await
+            .unwrap();
+        set_status(&k, &orphan, Status::New, 1.0).await.unwrap();
+
+        assert_eq!(prune_untouched(&k).await.unwrap(), 1);
+        assert!(fetch(&k, &judged).await.unwrap().is_some(), "judged");
+        assert!(fetch(&k, &mined).await.unwrap().is_some(), "in Anki");
+        assert!(fetch(&k, &orphan).await.unwrap().is_none(), "nothing left");
     }
 
     #[tokio::test]

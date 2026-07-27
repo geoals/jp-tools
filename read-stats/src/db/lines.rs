@@ -214,17 +214,20 @@ pub async fn fetch_line_events(
         .collect())
 }
 
-pub async fn fetch_work_lines(k: &Knowledge) -> Result<Vec<crate::stats::WorkLine>, sqlx::Error> {
-    let rows = sqlx::query("SELECT ts, chars, work FROM lines WHERE discarded = 0 ORDER BY ts")
-        .fetch_all(k.pool())
-        .await?;
+/// Every line's raw text with the work it belongs to, for the prose figures.
+///
+/// The whole stream in one query rather than one query per work: the point of
+/// those figures is the comparison against everything *else* you have read, so
+/// both sides come out of the same pass.
+pub async fn fetch_line_texts(k: &Knowledge) -> Result<Vec<(String, Option<String>)>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT text, work FROM lines WHERE text IS NOT NULL AND discarded = 0 ORDER BY id",
+    )
+    .fetch_all(k.pool())
+    .await?;
     Ok(rows
         .iter()
-        .map(|r| crate::stats::WorkLine {
-            ts: r.get("ts"),
-            chars: r.get("chars"),
-            work: r.get("work"),
-        })
+        .map(|r| (r.get("text"), r.get("work")))
         .collect())
 }
 
@@ -235,6 +238,10 @@ pub struct IngestLine {
     pub id: i64,
     pub ts: f64,
     pub text: String,
+    /// The work this line was stamped with, for the per-work sink. `None` for
+    /// text read before a title was set, which is why `work_terms` can never
+    /// account for quite everything `vocabulary` does.
+    pub work: Option<String>,
 }
 
 pub async fn fetch_lines_after(
@@ -242,7 +249,7 @@ pub async fn fetch_lines_after(
     after_id: i64,
 ) -> Result<Vec<IngestLine>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT id, ts, text FROM lines
+        "SELECT id, ts, text, work FROM lines
              WHERE id > ? AND text IS NOT NULL AND discarded = 0 ORDER BY id",
     )
     .bind(after_id)
@@ -254,6 +261,7 @@ pub async fn fetch_lines_after(
             id: r.get("id"),
             ts: r.get("ts"),
             text: r.get("text"),
+            work: r.get("work"),
         })
         .collect())
 }
@@ -277,8 +285,6 @@ pub async fn fetch_kanji_lines(k: &Knowledge) -> Result<Vec<crate::stats::KanjiL
             ts: r.get("ts"),
             text: r.get("text"),
             work: r.get("work"),
-            // Hooked: a lookup made while this was on screen was recorded.
-            metered: true,
         })
         .collect())
 }

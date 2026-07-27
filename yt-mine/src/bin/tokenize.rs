@@ -29,6 +29,7 @@ fn main() {
         base_form,
         reading,
         pos,
+        ..
     } in &tokens
     {
         println!("{:<14} {:<14} {:<14} {}", surface, base_form, reading, pos);

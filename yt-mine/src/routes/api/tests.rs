@@ -25,6 +25,7 @@ fn mock_tokenizer() -> MockTokenizer {
                 base_form: c.to_string(),
                 reading: "*".into(),
                 pos: "名詞".into(),
+                proper_noun: false,
             })
             .collect())
     });

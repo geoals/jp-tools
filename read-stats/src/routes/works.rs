@@ -9,7 +9,7 @@
 use std::collections::BTreeMap;
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -18,6 +18,23 @@ use crate::db;
 use crate::error::AppError;
 use crate::history::History;
 use crate::stats;
+use jp_core::knowledge::work_terms;
+
+/// How many words each per-work list carries. Short enough to read in one
+/// pass — a list of two hundred unknown words is a wall, not a plan.
+const UNKNOWN_LEN: i64 = 40;
+const DISTINCTIVE_LEN: i64 = 24;
+
+fn term_json(t: &work_terms::WorkTerm) -> Value {
+    json!({
+        "headword": t.headword,
+        "reading": t.reading,
+        "pos": t.pos,
+        "status": t.status,
+        "count": t.count,
+        "elsewhere": t.elsewhere,
+    })
+}
 
 fn meta_json(m: &db::Work) -> Value {
     json!({
@@ -32,11 +49,8 @@ fn meta_json(m: &db::Work) -> Value {
 
 pub async fn works(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     let h = History::load(&state).await?;
-    let mut agg = stats::aggregate_works(
-        &h.work_lines(),
-        h.settings.afk_secs,
-        h.settings.session_gap_secs,
-    );
+    let mut agg =
+        stats::aggregate_works(&h.work_lines(), &h.presence(), h.settings.session_gap_secs);
 
     // Manual sessions merge in by title.
     for s in &h.manual {
@@ -92,6 +106,201 @@ pub async fn works(State(state): State<AppState>) -> Result<Json<Value>, AppErro
             .then(b["chars"].as_i64().cmp(&a["chars"].as_i64()))
     });
     Ok(Json(json!(list)))
+}
+
+/// `GET /api/works/detail?work=<title>` — one work's own reading history.
+///
+/// Keyed by title, not by id: title is the join key lines are stamped with,
+/// and a work can have plenty of reading behind it and no `works` row at all
+/// (nothing upserts one, and the synthetic `Articles` work can never have
+/// one). Metadata is therefore optional here — the reading is what makes a
+/// work real on this page.
+///
+/// The same derivations the dashboard runs over the whole stream, run over the
+/// slice of it stamped with this title: the days it was read on, the sittings
+/// those days were made of, and what each sitting cost. Nothing here is stored
+/// — a threshold change re-reads the whole history under the new rule, as
+/// everywhere else.
+///
+/// Manual sessions for the work merge in, but only ones logged with real
+/// minutes contribute to *speed*: an untimed session's duration is derived
+/// from the reader's pace, so it would report that pace back (see
+/// [`History::duration_of`]).
+pub async fn work_detail(
+    State(state): State<AppState>,
+    Query(params): Query<WorkDetailParams>,
+) -> Result<Json<Value>, AppError> {
+    let title = params.work.trim();
+    if title.is_empty() {
+        return Err(AppError::BadRequest("work required".into()));
+    }
+    let meta = db::fetch_works_meta(&state.knowledge)
+        .await?
+        .into_iter()
+        .find(|w| w.title == title);
+    let h = History::load(&state).await?;
+    let lines = h.lines_of_work(title);
+    let sessions = stats::derive_sessions(&lines, &h.presence(), h.settings.session_gap_secs);
+
+    // Manual sessions logged against this title. Articles collapse under one
+    // synthetic work, so the key has to go through `work_key` rather than the
+    // raw column.
+    let manual: Vec<&db::ManualSession> = h
+        .manual
+        .iter()
+        .filter(|s| stats::work_key(&s.source, s.work.as_deref()).as_deref() == Some(title))
+        .collect();
+
+    // Days: line-derived and logged reading summed into one series. The detail
+    // page charts the work's own reading days, not a calendar window, so a
+    // work read in four sittings has four bars and no empty month around them.
+    let mut days: BTreeMap<chrono::NaiveDate, (i64, f64)> = BTreeMap::new();
+    for s in &sessions {
+        let d = days.entry(h.date_of(s.start_ts)).or_default();
+        d.0 += s.chars;
+        d.1 += s.active_secs;
+    }
+    for s in &manual {
+        let d = days.entry(h.date_of(s.start_ts)).or_default();
+        d.0 += s.chars;
+        d.1 += h.duration_of(s).0;
+    }
+
+    let chars: i64 = days.values().map(|d| d.0).sum();
+    let active_secs: f64 = days.values().map(|d| d.1).sum();
+    // Speed divides by measured reading only.
+    let measured_chars: i64 = sessions.iter().map(|s| s.chars).sum::<i64>()
+        + manual
+            .iter()
+            .filter(|s| s.end_ts.is_some())
+            .map(|s| s.chars)
+            .sum::<i64>();
+    let measured_secs: f64 = sessions.iter().map(|s| s.active_secs).sum::<f64>()
+        + manual
+            .iter()
+            .filter(|s| s.end_ts.is_some())
+            .map(|s| h.duration_of(s).0)
+            .sum::<f64>();
+    let speed = (measured_secs > 0.0).then(|| measured_chars as f64 / measured_secs * 3600.0);
+
+    let sittings: Vec<Value> = sessions
+        .iter()
+        .map(|s| {
+            json!({
+                "start_ts": s.start_ts,
+                "end_ts": s.end_ts,
+                "date": h.date_of(s.start_ts).to_string(),
+                "chars": s.chars,
+                "active_secs": s.active_secs,
+                "cards": h.cards_in(s.start_ts, s.end_ts),
+                "estimated": false,
+            })
+        })
+        .chain(manual.iter().map(|s| {
+            let (secs, estimated) = h.duration_of(s);
+            json!({
+                "start_ts": s.start_ts,
+                "end_ts": s.start_ts + secs,
+                "date": h.date_of(s.start_ts).to_string(),
+                "chars": s.chars,
+                "active_secs": secs,
+                "cards": 0,
+                "estimated": estimated,
+            })
+        }))
+        .collect();
+    let mut sittings = sittings;
+    // Newest first: the last time you sat down with it is the row you want.
+    sittings.sort_by(|a, b| {
+        b["start_ts"]
+            .as_f64()
+            .unwrap_or(0.0)
+            .total_cmp(&a["start_ts"].as_f64().unwrap_or(0.0))
+    });
+
+    // What the prose is like, and what the rest of your reading is like — one
+    // pass, because the figure is only legible as a comparison. Pasted session
+    // content counts: it is text that was read, and this asks what the writing
+    // is, not what it cost.
+    let mut mine = stats::ProseAcc::default();
+    let mut rest = stats::ProseAcc::default();
+    for (text, work) in db::fetch_line_texts(&state.knowledge).await? {
+        if work.as_deref() == Some(title) {
+            mine.push(&text);
+        } else {
+            rest.push(&text);
+        }
+    }
+    for s in db::fetch_session_texts_after(&state.knowledge, 0).await? {
+        let key = stats::work_key(&s.source, s.work.as_deref());
+        if key.as_deref() == Some(title) {
+            mine.push(&s.content);
+        } else {
+            rest.push(&s.content);
+        }
+    }
+
+    // What the work is made of, and how much of it is already known. Empty
+    // until the ingest has run over this work's text — `work_terms` is filled
+    // by the same watermarked pass as the ledger.
+    let vocab = work_terms::summary(&state.knowledge, title).await?;
+    let unknown = work_terms::top_unknown(&state.knowledge, title, UNKNOWN_LEN).await?;
+    let distinctive = work_terms::distinctive(&state.knowledge, title, DISTINCTIVE_LEN).await?;
+
+    // What is left, at this work's own pace rather than the reader's average —
+    // a work that reads slower than usual should say so in its own estimate.
+    let remaining = meta
+        .as_ref()
+        .and_then(|m| m.total_chars)
+        .map(|total| (total - chars).max(0));
+    let remaining_secs = remaining
+        .zip(speed)
+        .filter(|(_, sp)| *sp > 0.0)
+        .map(|(left, sp)| left as f64 / sp * 3600.0);
+
+    if lines.is_empty() && manual.is_empty() && meta.is_none() {
+        return Err(AppError::NotFound);
+    }
+
+    Ok(Json(json!({
+        "work": title,
+        "meta": meta.as_ref().map(meta_json),
+        "chars": chars,
+        "active_secs": active_secs,
+        "speed": speed,
+        "first_read": days.keys().next().map(|d| d.to_string()),
+        "last_read": days.keys().next_back().map(|d| d.to_string()),
+        "remaining_chars": remaining,
+        "remaining_secs": remaining_secs,
+        "days": days
+            .iter()
+            .map(|(date, (chars, secs))| json!({
+                "date": date.to_string(),
+                "chars": chars,
+                "active_secs": secs,
+            }))
+            .collect::<Vec<_>>(),
+        "sittings": sittings,
+        "prose": mine.finish(),
+        "corpus_prose": rest.finish(),
+        "vocabulary": {
+            "types": vocab.types,
+            "tokens": vocab.tokens,
+            "known_types": vocab.known_types,
+            "known_tokens": vocab.known_tokens,
+            "unknown_types": vocab.unknown_types,
+            "new_types": vocab.new_types,
+            "known_type_pct": vocab.known_type_pct(),
+            "known_token_pct": vocab.known_token_pct(),
+        },
+        "top_unknown": unknown.iter().map(term_json).collect::<Vec<_>>(),
+        "distinctive": distinctive.iter().map(term_json).collect::<Vec<_>>(),
+    })))
+}
+
+#[derive(Deserialize)]
+pub struct WorkDetailParams {
+    pub work: String,
 }
 
 #[derive(Deserialize)]

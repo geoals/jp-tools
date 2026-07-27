@@ -1,8 +1,8 @@
 //! `/api/kanji` — every kanji ever read, in one payload.
 //!
-//! The whole tab is one request on purpose. Its six cards are six readings of
+//! The whole tab is one request on purpose. Its cards are several readings of
 //! the same rows, and letting each fetch its own would let the grid and the
-//! coverage meters disagree about a kanji met while the page was open. It is
+//! grade meters disagree about a kanji met while the page was open. It is
 //! the same rule the dashboard's single poll follows, applied to a heavier
 //! aggregate: a couple of thousand rows, small enough to slice on the client
 //! and large enough that slicing it twice on the server would be waste.
@@ -15,24 +15,19 @@ use crate::app::AppState;
 use crate::clock::tz_offset_secs;
 use crate::db;
 use crate::error::AppError;
-use crate::stats::{
-    TermTimes, aggregate_kanji,
-    kanji::{OUTLIER_ENCOUNTERS, OUTLIER_MULTIPLE, SOLID_ENCOUNTERS},
-};
+use crate::stats::{TermTimes, aggregate_kanji, kanji::SOLID_ENCOUNTERS};
 
 pub async fn kanji(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     let settings = db::load_settings(&state.local).await?;
     let mut lines = db::fetch_kanji_lines(&state.knowledge).await?;
-    // Text pasted into a logged session counts as reading: its kanji were met.
-    // It carries `metered: false`, so it feeds the exposure figures and stays
-    // out of every lookup rate — see `KanjiLine::metered`. Articles aggregate
-    // under one work rather than one per headline.
+    // Text pasted into a logged session counts as reading: its kanji were met,
+    // so it feeds every figure on this tab. Articles aggregate under one work
+    // rather than one per headline.
     for s in db::fetch_session_texts_after(&state.knowledge, 0).await? {
         lines.push(crate::stats::KanjiLine {
             ts: s.start_ts,
             text: s.content,
             work: crate::stats::work_key(&s.source, s.work.as_deref()),
-            metered: false,
         });
     }
     // `aggregate_kanji` walks in time order for first-encounter dates.
@@ -65,18 +60,9 @@ pub async fn kanji(State(state): State<AppState>) -> Result<Json<Value>, AppErro
         "kanji": stats.kanji,
         "grades": stats.grades,
         "days": stats.days,
-        "works": stats.works,
         "total_encounters": stats.total_encounters,
-        // Of those, the ones in hooked text — the denominator every lookup
-        // rate on this tab divides by. See `KanjiLine::metered`.
-        "total_metered_encounters": stats.total_metered_encounters,
-        // The threshold the tinting, the coverage meters and the gap list all
-        // share, sent rather than duplicated in JS.
+        // The threshold the tinting and the grade meters share, sent rather
+        // than duplicated in JS.
         "solid_encounters": SOLID_ENCOUNTERS,
-        // What `struggling` was decided by, so the legend can say it out loud
-        // instead of the client re-deriving a rule the server already applied.
-        "baseline_lookup_rate": stats.baseline_lookup_rate,
-        "outlier_encounters": OUTLIER_ENCOUNTERS,
-        "outlier_multiple": OUTLIER_MULTIPLE,
     })))
 }

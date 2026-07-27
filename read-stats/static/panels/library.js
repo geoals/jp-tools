@@ -5,6 +5,12 @@
 // session by hand. That action used to be a permanent card in a column of
 // statistics, which is what it isn't: it is behind a button here, and the
 // button lives next to the works it adds a session to.
+//
+// Two levels. The shelf lists the works; opening one replaces the whole tab
+// with that work's page rather than expanding a row in place — everything
+// per-work goes there, and there is more of it than a row can hold. The
+// vocabulary, dialogue and log-form cards belong to the shelf level: they are
+// about the reading as a whole, not about any one work.
 
 import { html } from "htm/preact";
 import { useState } from "preact/hooks";
@@ -13,7 +19,8 @@ import { DialogueCard } from "./dialogue.js";
 import { LogForm } from "./log-form.js";
 import { LookupsPanel } from "./lookups.js";
 import { SegmentedControl } from "../components/controls.js";
-import { WorksTable } from "./works-table.js";
+import { WorkDetail } from "./work-detail.js";
+import { WorksShelf } from "./works-shelf.js";
 
 const VOCAB_VIEWS = [
   { value: "lookups", label: "what lookups became" },
@@ -26,6 +33,7 @@ export function LibraryView({
   anki,
   lookups,
   dialogue,
+  openWork,
   onRefreshAnki,
   ankiBusy,
   onSaved,
@@ -33,8 +41,32 @@ export function LibraryView({
   const [logging, setLogging] = useState(false);
   const [vocab, setVocab] = useState("lookups");
 
+  // Which work is open lives in the URL, not in state: opening one is a
+  // navigation, so the browser's back button returns to the shelf instead of
+  // leaving the tab, and a link to a work survives a reload.
+  const openAt = (title) => {
+    location.hash = `#library/${encodeURIComponent(title)}`;
+  };
+
+  if (openWork) {
+    return html`<${WorkDetail}
+      work=${openWork}
+      works=${works}
+      settings=${settings}
+      onBack=${() => {
+        location.hash = "#library";
+      }}
+      onSaved=${onSaved}
+    />`;
+  }
+
   return html`
-    <${WorksTable} works=${works} settings=${settings} onSaved=${onSaved} />
+    <${WorksShelf}
+      works=${works}
+      settings=${settings}
+      onSaved=${onSaved}
+      onOpen=${openAt}
+    />
 
     <div class="card">
       <div class="card-head">
@@ -69,7 +101,10 @@ export function LibraryView({
       }
     </div>
 
-    <${DialogueCard} dialogue=${dialogue} currentWork=${settings.current_work} />
+    <${DialogueCard}
+      dialogue=${dialogue}
+      currentWork=${settings.current_work}
+    />
 
     <div class="card">
       <div class="card-head">

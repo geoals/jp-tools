@@ -10,8 +10,10 @@
 //! each is written to be idempotent (`CREATE TABLE IF NOT EXISTS`), so there is
 //! no version table to keep in sync.
 
+use std::time::Duration;
+
 use jp_core::knowledge::Knowledge;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Row, SqlitePool};
 
 const MIGRATION_LOCAL: &str = include_str!("../../migrations/001_settings.sql");
@@ -20,18 +22,18 @@ const MIGRATION_WORK_COVERS: &str = include_str!("../../migrations/003_work_cove
 
 /// Open read-stats' own database.
 pub async fn create_pool(db_path: &str) -> Result<SqlitePool, sqlx::Error> {
+    // WAL + busy_timeout, on the connect options rather than as a `PRAGMA`
+    // against the pool: `busy_timeout` is per connection, so running it once
+    // sets it on one of the five and leaves the rest at zero. See
+    // `jp_core::knowledge::Knowledge::open` for what that cost.
     let opts = SqliteConnectOptions::new()
         .filename(db_path)
-        .create_if_missing(true);
+        .create_if_missing(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .busy_timeout(Duration::from_secs(5));
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect_with(opts)
-        .await?;
-
-    // WAL + busy_timeout: vn-ws-logger.py reads `settings` from this DB while
-    // the server is writing to it.
-    sqlx::raw_sql("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")
-        .execute(&pool)
         .await?;
     sqlx::raw_sql(MIGRATION_LOCAL).execute(&pool).await?;
     sqlx::raw_sql(MIGRATION_READER_MARKS).execute(&pool).await?;
