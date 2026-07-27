@@ -23,6 +23,10 @@
 //   - **The threshold is previewable.** Changing it re-queries rather than
 //     re-filtering locally, so the count you see is the count the server would
 //     act on. It is saved separately, in Settings.
+//
+// The same rule covers the non-vocabulary tail below: it is a bulk write over
+// rows the queue never shows, so the words go on screen first and the button
+// only appears once they have.
 
 import { html } from "htm/preact";
 import { useEffect, useState } from "preact/hooks";
@@ -37,6 +41,9 @@ export function TriageView({ minEncounters, onJudged }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [done, setDone] = useState(null);
+  // The non-vocabulary tail, once asked for. Never fetched with the queue: it
+  // is a separate question, and one nobody asks on every visit.
+  const [noise, setNoise] = useState(null);
 
   async function load(min) {
     setErr(null);
@@ -78,6 +85,15 @@ export function TriageView({ minEncounters, onJudged }) {
     }
   }
 
+  async function showNoise() {
+    setErr(null);
+    try {
+      setNoise(await api("/api/vocab/non-words"));
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+
   async function blacklistNoise() {
     setBusy(true);
     setErr(null);
@@ -87,6 +103,7 @@ export function TriageView({ minEncounters, onJudged }) {
         body: {},
       });
       setDone(`${res.blacklisted} blacklisted`);
+      setNoise(null);
       onJudged?.();
     } catch (e) {
       setErr(e.message);
@@ -141,16 +158,14 @@ export function TriageView({ minEncounters, onJudged }) {
                 <span>
                   <button
                     class="pause-btn"
-                    onClick=${() =>
-                      setChecked(allTo(queue.terms, true))}
+                    onClick=${() => setChecked(allTo(queue.terms, true))}
                     disabled=${busy}
                   >
                     all known
                   </button>
                   <button
                     class="pause-btn"
-                    onClick=${() =>
-                      setChecked(allTo(queue.terms, false))}
+                    onClick=${() => setChecked(allTo(queue.terms, false))}
                     disabled=${busy}
                   >
                     none
@@ -213,12 +228,54 @@ export function TriageView({ minEncounters, onJudged }) {
       <h2>the non-vocabulary tail</h2>
       <p class="meta-hint">
         Rows no loaded dictionary recognises as a word — tokenizer noise like
-        っっ and あああ. The queue above never offers them; this clears them out
-        so the untriaged count means "vocabulary still to judge".
+        っっ and あああ. The queue above never offers them; blacklisting clears
+        them out so the untriaged count means "vocabulary still to judge".
       </p>
-      <button class="pause-btn" onClick=${blacklistNoise} disabled=${busy}>
-        blacklist them
+      ${
+        noise === null
+          ? html`<button class="ghost" onClick=${showNoise}>
+              show me what they are
+            </button>`
+          : html`<${NoisePreview}
+              noise=${noise}
+              busy=${busy}
+              onBlacklist=${blacklistNoise}
+              onCancel=${() => setNoise(null)}
+            />`
+      }
+    </div>
+  `;
+}
+
+/** What the bulk write would hit, before it hits it.
+ *
+ *  The words come first and the button second: this is the one action here
+ *  that judges rows the reader has not seen, and a count alone ("3,140
+ *  blacklisted") is not something anyone can check. Commonest first, because a
+ *  real word wrongly in this list would be one with encounters behind it. */
+function NoisePreview({ noise, busy, onBlacklist, onCancel }) {
+  if (!noise.total) {
+    return html`<p class="meta-hint">Nothing in the tail — already clear.</p>`;
+  }
+  const shownLine =
+    noise.total > noise.shown
+      ? `${noise.total.toLocaleString("en")} rows, commonest ${noise.shown} shown`
+      : `${noise.total.toLocaleString("en")} rows, all shown`;
+  return html`
+    <p class="meta-hint">${shownLine}</p>
+    <div class="word-chips">
+      ${noise.terms.map(
+        (t) =>
+          html`<span class="chip"
+            >${t.headword} <b>×${t.encounter_count}</b></span
+          >`,
+      )}
+    </div>
+    <div class="triage-actions">
+      <button class="pause-btn" onClick=${onBlacklist} disabled=${busy}>
+        ${busy ? "…" : `blacklist all ${noise.total.toLocaleString("en")}`}
       </button>
+      <button class="ghost" onClick=${onCancel} disabled=${busy}>cancel</button>
     </div>
   `;
 }

@@ -264,6 +264,13 @@ assumes".
   ledger is seeded — against `vocabulary.status`, not against the deck.
   **Vocab** — `vocab.js`, two sections over the knowledge
   ledger: the status counts, and `triage.js`, the pass that fills them.
+- **A bulk write shows its rows first.** `blacklist-non-words` judges rows the
+  queue never displays, so `GET /api/vocab/non-words` lists them (commonest
+  first) and the button only appears once they are on screen. That preview
+  immediately earned itself: it was about to blacklist いう×398, できる×183,
+  みんな×165 and わかる×120 — the wordhood gate matched dictionary *terms*
+  only, and a dictionary lists those in kanji. It now also matches a kana
+  headword against dictionary readings, which rescued 621 of 1,088 rows.
 - **Triage ticks on two signals, never one** (`vocab.js` → `triage.js`, over
   `vocabulary::preselects_known`). A word is preselected `known` only if it was
   met at least `triage_min_encounters` times **and was never looked up**.

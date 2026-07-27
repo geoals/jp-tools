@@ -19,3 +19,7 @@ CREATE TABLE IF NOT EXISTS dictionary_entries (
 );
 
 CREATE INDEX IF NOT EXISTS idx_dictionary_entries_lookup ON dictionary_entries(dictionary_id, term);
+-- The same seek by reading, for the wordhood gate: a kana headword (いう,
+-- できる) is a real word the dictionary happens to list in kanji, and matching
+-- only on `term` filed all of them as tokenizer noise.
+CREATE INDEX IF NOT EXISTS idx_dictionary_entries_reading ON dictionary_entries(dictionary_id, reading);

@@ -305,12 +305,25 @@ pub async fn sync_lookup_counts(k: &Knowledge) -> Result<(), sqlx::Error> {
 /// with "database is locked". That is how it was found. The rewrite runs in
 /// 15 ms.
 pub async fn refresh_dictionary_flags(k: &Knowledge) -> Result<(), sqlx::Error> {
+    // Two EXISTS rather than one with an OR inside: each has to be able to
+    // seek its own index, and an OR across two columns leaves SQLite scanning.
+    //
+    // The second is the kana case. A dictionary lists 言う and 出来る in kanji,
+    // so a term the tokenizer produced as いう or できる matched nothing and was
+    // filed as noise — 398 and 183 encounters of it. When the ledger's reading
+    // is empty the headword *is* kana (that is the key's convention), and a
+    // dictionary having it as a reading is the same evidence of wordhood that
+    // having it as a term would be.
     let clause = |role: &str| {
+        let of_role = format!("(SELECT id FROM dictionaries WHERE role = '{role}')");
         format!(
-            "EXISTS (SELECT 1 FROM dictionary_entries de \
-                     WHERE de.dictionary_id IN \
-                           (SELECT id FROM dictionaries WHERE role = '{role}') \
-                       AND de.term = vocabulary.headword)"
+            "(EXISTS (SELECT 1 FROM dictionary_entries de \
+                      WHERE de.dictionary_id IN {of_role} \
+                        AND de.term = vocabulary.headword) \
+              OR (vocabulary.reading = '' AND EXISTS ( \
+                      SELECT 1 FROM dictionary_entries de \
+                      WHERE de.dictionary_id IN {of_role} \
+                        AND de.reading = vocabulary.headword)))"
         )
     };
     sqlx::query(&format!(
@@ -519,6 +532,35 @@ pub async fn prune_untouched(k: &Knowledge) -> Result<u64, sqlx::Error> {
     .rows_affected())
 }
 
+/// The rows [`blacklist_non_words`] would hit, commonest first.
+///
+/// A bulk write the reader cannot see before it lands asks them to trust a
+/// predicate they have never been shown. This is that predicate, as a list —
+/// the same `WHERE`, ordered so the ones with the most encounters behind them
+/// are the ones on screen, because those are what a mistake would cost most.
+pub async fn non_words(k: &Knowledge, limit: i64) -> Result<Vec<VocabRow>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT * FROM vocabulary \
+         WHERE status = 'new' AND in_master = 0 AND in_name = 0 AND in_reference = 0 \
+         ORDER BY encounter_count DESC, headword LIMIT ?",
+    )
+    .bind(limit)
+    .fetch_all(k.pool())
+    .await?;
+    Ok(rows.iter().map(row_to_vocab).collect())
+}
+
+/// How many rows the tail holds in total, since the preview is only its head.
+pub async fn non_words_total(k: &Knowledge) -> Result<i64, sqlx::Error> {
+    let (n,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM vocabulary \
+         WHERE status = 'new' AND in_master = 0 AND in_name = 0 AND in_reference = 0",
+    )
+    .fetch_one(k.pool())
+    .await?;
+    Ok(n)
+}
+
 /// Bulk-`blacklisted` the non-vocabulary tail: rows no dictionary calls a word.
 ///
 /// The counterpart to the queue's `in_master` filter — these are what it
@@ -721,10 +763,16 @@ mod tests {
     async fn the_flag_refresh_seeks_the_dictionary_index() {
         let k = temp().await;
         let plan: Vec<(i64, i64, i64, String)> = sqlx::query_as(
-            "EXPLAIN QUERY PLAN UPDATE vocabulary SET in_master = EXISTS ( \
-                 SELECT 1 FROM dictionary_entries de \
-                 WHERE de.dictionary_id IN (SELECT id FROM dictionaries WHERE role = 'master') \
-                   AND de.term = vocabulary.headword)",
+            "EXPLAIN QUERY PLAN UPDATE vocabulary SET in_master = \
+                 (EXISTS (SELECT 1 FROM dictionary_entries de \
+                          WHERE de.dictionary_id IN \
+                                (SELECT id FROM dictionaries WHERE role = 'master') \
+                            AND de.term = vocabulary.headword) \
+                  OR (vocabulary.reading = '' AND EXISTS ( \
+                          SELECT 1 FROM dictionary_entries de \
+                          WHERE de.dictionary_id IN \
+                                (SELECT id FROM dictionaries WHERE role = 'master') \
+                            AND de.reading = vocabulary.headword)))",
         )
         .fetch_all(k.pool())
         .await
@@ -734,7 +782,13 @@ mod tests {
             detail
                 .iter()
                 .any(|d| d.contains("SEARCH de") && d.contains("idx_dictionary_entries_lookup")),
-            "the subquery must seek the (dictionary_id, term) index: {detail:?}"
+            "the term subquery must seek the (dictionary_id, term) index: {detail:?}"
+        );
+        assert!(
+            detail
+                .iter()
+                .any(|d| d.contains("SEARCH de") && d.contains("idx_dictionary_entries_reading")),
+            "and the kana one its own (dictionary_id, reading) index: {detail:?}"
         );
         assert!(
             !detail.iter().any(|d| d.starts_with("SCAN de")),
@@ -982,6 +1036,68 @@ mod tests {
         let u = fetch(&k, &unknown).await.unwrap().unwrap();
         assert_eq!(u.status, Status::Unknown);
         assert_eq!(u.status_ts, Some(7.0), "an assertion is stamped");
+    }
+
+    #[tokio::test]
+    async fn the_preview_lists_exactly_what_the_bulk_write_would_hit() {
+        let k = temp().await;
+        record_encounters(
+            &k,
+            &[
+                enc("っっ", "", 40, 0.0),
+                enc("あああ", "", 9, 0.0),
+                enc("辞書語", "じしょご", 5, 0.0),
+            ],
+        )
+        .await
+        .unwrap();
+        sqlx::query("UPDATE vocabulary SET in_reference = 1 WHERE headword = '辞書語'")
+            .execute(k.pool())
+            .await
+            .unwrap();
+
+        let preview = non_words(&k, 50).await.unwrap();
+        let listed: Vec<&str> = preview.iter().map(|r| r.term.headword.as_str()).collect();
+        assert_eq!(
+            listed,
+            vec!["っっ", "あああ"],
+            "commonest first, no real word"
+        );
+        assert_eq!(
+            blacklist_non_words(&k, 1.0).await.unwrap() as usize,
+            preview.len(),
+            "the list is the write"
+        );
+    }
+
+    /// The kana case the wordhood gate used to miss.
+    #[tokio::test]
+    async fn a_kana_word_the_dictionary_spells_in_kanji_is_still_a_word() {
+        let k = temp().await;
+        sqlx::query(
+            "INSERT INTO dictionaries (id, title, source_path, role) \
+             VALUES (1, '三省堂', '/tmp/m.zip', 'master')",
+        )
+        .execute(k.pool())
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO dictionary_entries (dictionary_id, term, reading, definitions_json) \
+             VALUES (1, '言う', 'いう', '[]')",
+        )
+        .execute(k.pool())
+        .await
+        .unwrap();
+
+        record_encounters(&k, &[enc("いう", "", 398, 0.0), enc("っっ", "", 40, 0.0)])
+            .await
+            .unwrap();
+        refresh_dictionary_flags(&k).await.unwrap();
+
+        let word = fetch(&k, &Term::new("いう", "")).await.unwrap().unwrap();
+        assert!(word.in_master, "the dictionary has it, spelt 言う");
+        let noise = fetch(&k, &Term::new("っっ", "")).await.unwrap().unwrap();
+        assert!(!noise.is_word(), "and still knows noise from a word");
     }
 
     #[tokio::test]

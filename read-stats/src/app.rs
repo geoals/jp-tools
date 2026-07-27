@@ -73,6 +73,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/vocab/summary", get(vocab::vocab_summary))
         .route("/api/vocab/queue", get(vocab::vocab_queue))
         .route("/api/vocab/judge", axum::routing::post(vocab::vocab_judge))
+        .route("/api/vocab/non-words", get(vocab::vocab_non_words))
         .route(
             "/api/vocab/blacklist-non-words",
             axum::routing::post(vocab::vocab_blacklist_non_words),

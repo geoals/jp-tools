@@ -23,6 +23,11 @@ use crate::error::AppError;
 /// and small enough that submitting it is not a big commitment.
 const QUEUE_LIMIT: i64 = 200;
 
+/// How many of the non-vocabulary tail to show before blacklisting it. Enough
+/// to recognise the shape of what is being cleared (っっ, あああ) without
+/// pretending the reader will read three thousand rows.
+const NON_WORD_PREVIEW: i64 = 60;
+
 /// What the ledger currently holds, by status — the numbers the seed page and
 /// the vocabulary-size figure are built on.
 ///
@@ -137,6 +142,29 @@ pub async fn vocab_judge(
 
     let written = vocabulary::set_status_each(&state.knowledge, &judgements, now_ts()).await?;
     Ok(Json(json!({ "written": written })))
+}
+
+/// What `blacklist-non-words` would blacklist, before it does.
+///
+/// The action is a bulk write over rows the queue never shows, so without this
+/// the reader is asked to approve a predicate they have never seen the output
+/// of. Same `WHERE`, commonest first; the count is the whole set, the list is
+/// the head of it.
+pub async fn vocab_non_words(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
+    let rows = vocabulary::non_words(&state.knowledge, NON_WORD_PREVIEW).await?;
+    let total = vocabulary::non_words_total(&state.knowledge).await?;
+    Ok(Json(json!({
+        "total": total,
+        "terms": rows
+            .iter()
+            .map(|r| json!({
+                "headword": r.term.headword,
+                "reading": r.term.display_reading(),
+                "encounter_count": r.encounter_count,
+            }))
+            .collect::<Vec<_>>(),
+        "shown": rows.len(),
+    })))
 }
 
 /// Blacklist every untriaged row no dictionary recognizes as a word.
