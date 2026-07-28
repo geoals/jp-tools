@@ -14,7 +14,9 @@
 
 import { html } from "htm/preact";
 import { useState } from "preact/hooks";
+import { api } from "../api.js";
 import { SegmentedControl } from "../components/controls.js";
+import { FrequencyView } from "./frequency.js";
 import { TriageView } from "./triage.js";
 
 /** Every status, in the order the triage passes fill them, with what each one
@@ -31,6 +33,7 @@ const STATUSES = [
 const SECTIONS = [
   { value: "status", label: "status" },
   { value: "triage", label: "triage" },
+  { value: "frequency", label: "frequency" },
 ];
 
 export function VocabView({ vocab, settings, onJudged }) {
@@ -66,18 +69,57 @@ export function VocabView({ vocab, settings, onJudged }) {
             minEncounters=${settings?.triage_min_encounters ?? 3}
             onJudged=${onJudged}
           />`
-        : html`<${StatusSummary} vocab=${vocab} />`
+        : section === "frequency"
+          ? html`<${FrequencyView}
+              maxFreqRank=${settings?.triage_max_freq_rank ?? 6000}
+              onCommitted=${onJudged}
+            />`
+          : html`<${StatusSummary} vocab=${vocab} onImported=${onJudged} />`
     }
   `;
 }
 
-/** The counts. Split out so the segmented control above it stays put when the
- *  triage view replaces it. */
-function StatusSummary({ vocab }) {
+/** The counts, plus the one-shot Anki import (Pass 1: cards past Anki's
+ *  new/learning queues are evidence enough to mark known outright). Split out
+ *  so the segmented control above it stays put when another view replaces it. */
+function StatusSummary({ vocab, onImported }) {
   const byStatus = new Map(vocab.by_status.map((s) => [s.status, s]));
   const asserted = vocab.total - (byStatus.get("new")?.total ?? 0);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [err, setErr] = useState(null);
+
+  async function importAnki() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await api("/api/vocab/anki-import", { method: "POST" });
+      const skippedLine = res.ambiguous_skipped
+        ? ` · ${res.ambiguous_skipped} skipped (more than one reading)`
+        : "";
+      setResult(`${res.imported} marked known${skippedLine}`);
+      onImported?.();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return html`
+    <div class="card">
+      <div class="triage-actions">
+        <span class="meta-hint">
+          Cards past Anki's new/learning queues are marked known outright.
+        </span>
+        <button class="pause-btn" onClick=${importAnki} disabled=${busy}>
+          ${busy ? "importing…" : "import Anki (reviewing cards)"}
+        </button>
+      </div>
+      ${err && html`<p class="chart-empty">Failed: ${err}</p>`}
+      ${result && html`<p class="meta-hint">${result}</p>`}
+    </div>
+
     <div class="card">
       <div class="tile-row" style="margin-top:0">
         <div

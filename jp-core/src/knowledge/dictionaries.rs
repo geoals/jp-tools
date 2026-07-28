@@ -326,6 +326,33 @@ pub async fn master(pool: &SqlitePool) -> Result<Option<Dictionary>, sqlx::Error
         .find(|d| d.role == Role::Master))
 }
 
+/// A loaded dictionary by exact title, for a source with no `role` of its own
+/// to select on — the BCCWJ frequency table is loaded as a plain `reference`
+/// dictionary, so its id has to be found by name.
+pub async fn by_title(pool: &SqlitePool, title: &str) -> Result<Option<Dictionary>, sqlx::Error> {
+    Ok(list_dictionaries(pool)
+        .await?
+        .into_iter()
+        .find(|d| d.title == title))
+}
+
+/// Distinct readings the master dictionary lists for a headword.
+///
+/// The shared last step of resolving a reading-less external source (an Anki
+/// card, a frequency-list term) into a ledger key: zero readings means the
+/// term isn't master vocabulary, one is unambiguous, and more than one is a
+/// homograph the caller has to decide what to do with rather than guess.
+pub async fn master_readings(pool: &SqlitePool, term: &str) -> Result<Vec<String>, sqlx::Error> {
+    let Some(master) = master(pool).await? else {
+        return Ok(Vec::new());
+    };
+    let entries = lookup_dictionary_entries(pool, master.id, term).await?;
+    let mut readings: Vec<String> = entries.into_iter().map(|e| e.reading).collect();
+    readings.sort();
+    readings.dedup();
+    Ok(readings)
+}
+
 /// Mark the dictionary whose `source_path` ends with `marker` as master, and
 /// demote any other master. Idempotent, and a no-op when nothing matches — the
 /// master is named in configuration, and a config naming a dictionary that

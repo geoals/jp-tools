@@ -44,6 +44,12 @@ pub struct Settings {
     /// needed help with it", and the two together are the evidence. See
     /// `jp_core::knowledge::vocabulary::preselects_known`.
     pub triage_min_encounters: i64,
+    /// Highest BCCWJ frequency rank frequency-triage will mark `known` in one
+    /// sweep. Persisted so the threshold survives across visits, same as
+    /// `triage_min_encounters`. Default 6000: a rough top of "words I
+    /// probably know just from being common," left for the reader to widen
+    /// once they've seen where the unknown rate actually starts climbing.
+    pub triage_max_freq_rank: i64,
     /// Capture is suspended: vn-ws-logger.py closes its Textractor WebSocket
     /// and stays disconnected while this is set, so nothing reaches the line
     /// stream at all. This replaced the old `pauses` interval log — excluding
@@ -72,6 +78,7 @@ impl Default for Settings {
             // meaningful signal, and a higher floor mostly just shortens the
             // queue. Tune it from the settings page against a real queue.
             triage_min_encounters: 3,
+            triage_max_freq_rank: 6000,
             capture_paused: false,
         }
     }
@@ -88,6 +95,7 @@ pub const SETTING_KEYS: &[&str] = &[
     "pace_start_date",
     "vn_window",
     "triage_min_encounters",
+    "triage_max_freq_rank",
     "capture_paused",
 ];
 
@@ -125,6 +133,10 @@ pub async fn load_settings(pool: &SqlitePool) -> Result<Settings, sqlx::Error> {
             "triage_min_encounters" => {
                 settings.triage_min_encounters =
                     value.parse().unwrap_or(settings.triage_min_encounters)
+            }
+            "triage_max_freq_rank" => {
+                settings.triage_max_freq_rank =
+                    value.parse().unwrap_or(settings.triage_max_freq_rank)
             }
             "capture_paused" => settings.capture_paused = value == "1",
             _ => {}

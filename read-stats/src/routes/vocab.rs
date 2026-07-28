@@ -8,8 +8,11 @@
 //! from a request the reader made.** No sync touches it, so the ledger cannot
 //! demote a word behind their back and an encounter count cannot promote one.
 
+use std::net::SocketAddr;
+
 use axum::Json;
-use axum::extract::{Query, State};
+use axum::extract::{ConnectInfo, Query, State};
+use jp_core::knowledge::dictionaries;
 use jp_core::knowledge::vocabulary::{self, Status, Term};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -241,6 +244,186 @@ pub async fn vocab_blacklist_non_words(
 ) -> Result<Json<Value>, AppError> {
     let n = vocabulary::blacklist_non_words(&state.knowledge, now_ts()).await?;
     Ok(Json(json!({ "blacklisted": n })))
+}
+
+/// Import the Anki review pile as `known` (`spec/cold-start.md` Pass 1).
+///
+/// Reader-triggered only, like `vocab_judge` and `vocab_blacklist_non_words` —
+/// never folded into `anki_refresh`'s recurring snapshot, which must never
+/// write `status`. "Reviewing" (`-is:new -is:learn`) is the gate: a card still
+/// in Anki's new/learning queues is a word explicitly not yet had, so those
+/// notes are left untouched rather than imported as anything.
+///
+/// Anki has no reading beside the vocab field, so each term is resolved
+/// against the master dictionary the same way frequency triage resolves one:
+/// zero matches isn't master vocabulary (stored with an empty reading, same as
+/// any kana-only term); more than one is a homograph, skipped and counted
+/// rather than guessed at — few enough of those to leave for ordinary
+/// encounter-based triage to sort out later.
+pub async fn vocab_anki_import(
+    State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> Result<Json<Value>, AppError> {
+    let mut last_err = AppError::Upstream(format!(
+        "no AnkiConnect reachable (tried dashboard client {} and {})",
+        addr.ip(),
+        state.anki_url
+    ));
+    let mut notes = None;
+    for url in crate::services::anki::candidate_urls(Some(addr.ip()), &state.anki_url) {
+        match crate::services::anki::fetch_reviewed_deck_vocab(
+            &state.http,
+            &url,
+            &state.anki_deck,
+            &state.anki_vocab_field,
+        )
+        .await
+        {
+            Ok(n) => {
+                notes = Some(n);
+                break;
+            }
+            Err(e) => last_err = e,
+        }
+    }
+    let Some(notes) = notes else {
+        return Err(last_err);
+    };
+
+    let mut judgements = Vec::with_capacity(notes.len());
+    let mut ambiguous_skipped = 0i64;
+    for note in &notes {
+        let readings = dictionaries::master_readings(state.knowledge.pool(), &note.vocab).await?;
+        match readings.as_slice() {
+            [] => judgements.push((Term::new(note.vocab.clone(), ""), Status::Known)),
+            [reading] => judgements.push((Term::new(note.vocab.clone(), reading), Status::Known)),
+            _ => ambiguous_skipped += 1,
+        }
+    }
+
+    let imported = vocabulary::set_status_each(&state.knowledge, &judgements, now_ts()).await?;
+    Ok(Json(json!({
+        "imported": imported,
+        "ambiguous_skipped": ambiguous_skipped,
+    })))
+}
+
+/// How many BCCWJ terms at or under a rank threshold are unjudged master
+/// vocabulary — the cheap count a threshold slider previews against before
+/// paging through the actual list.
+pub async fn vocab_frequency_summary(
+    State(state): State<AppState>,
+    Query(params): Query<FrequencyParams>,
+) -> Result<Json<Value>, AppError> {
+    let settings = db::load_settings(&state.local).await?;
+    let max_rank = params.max_rank.unwrap_or(settings.triage_max_freq_rank).max(1);
+    let (bccwj, master) = frequency_dictionaries(&state).await?;
+    let pending = vocabulary::frequency_pending(&state.knowledge, bccwj, master, max_rank).await?;
+    Ok(Json(json!({
+        "max_rank": max_rank,
+        "committable": pending.committable,
+        "ambiguous": pending.ambiguous,
+    })))
+}
+
+#[derive(Deserialize)]
+pub struct FrequencyParams {
+    max_rank: Option<i64>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+}
+
+/// A page of frequency-triage candidates — the preview `frequency-commit`
+/// would act on, shown before it does (same rule as `vocab_non_words`).
+pub async fn vocab_frequency_queue(
+    State(state): State<AppState>,
+    Query(params): Query<FrequencyParams>,
+) -> Result<Json<Value>, AppError> {
+    let settings = db::load_settings(&state.local).await?;
+    let max_rank = params.max_rank.unwrap_or(settings.triage_max_freq_rank).max(1);
+    let limit = params.limit.unwrap_or(NON_WORD_PAGE).clamp(1, 500);
+    let offset = params.offset.unwrap_or(0).max(0);
+    let (bccwj, master) = frequency_dictionaries(&state).await?;
+
+    let pending = vocabulary::frequency_pending(&state.knowledge, bccwj, master, max_rank).await?;
+    let rows =
+        vocabulary::frequency_queue(&state.knowledge, bccwj, master, max_rank, limit, offset)
+            .await?;
+    let mut terms = Vec::with_capacity(rows.len());
+    for r in &rows {
+        let readings = dictionaries::master_readings(state.knowledge.pool(), &r.term).await?;
+        terms.push(json!({
+            "term": r.term,
+            "rank": r.rank,
+            "readings": readings,
+            "ambiguous": readings.len() > 1,
+        }));
+    }
+
+    // `total` (for the page range line) is every pending row, ambiguous
+    // included — they're still shown on screen. `committable` is what a
+    // commit at this threshold would actually write, which is what the
+    // action button has to promise instead.
+    Ok(Json(json!({
+        "max_rank": max_rank,
+        "total": pending.committable + pending.ambiguous,
+        "committable": pending.committable,
+        "ambiguous": pending.ambiguous,
+        "offset": offset,
+        "limit": limit,
+        "terms": terms,
+    })))
+}
+
+#[derive(Deserialize)]
+pub struct FrequencyCommitRequest {
+    max_rank: i64,
+}
+
+/// Mark every unambiguous term at or under `max_rank` `known`, in one sweep.
+///
+/// The bulk-commit half of Pass 3: a threshold and a click, not a swipe per
+/// word. Persists the threshold into `triage_max_freq_rank` so the next visit
+/// remembers it, same as the triage floor does.
+pub async fn vocab_frequency_commit(
+    State(state): State<AppState>,
+    Json(req): Json<FrequencyCommitRequest>,
+) -> Result<Json<Value>, AppError> {
+    let max_rank = req.max_rank.max(1);
+    let (bccwj, master) = frequency_dictionaries(&state).await?;
+
+    // Unbounded (SQLite's own convention: LIMIT -1 means no limit), at this
+    // scale a few thousand rows even at a generous threshold.
+    let rows = vocabulary::frequency_queue(&state.knowledge, bccwj, master, max_rank, -1, 0).await?;
+    let mut judgements = Vec::with_capacity(rows.len());
+    let mut ambiguous_skipped = 0i64;
+    for r in &rows {
+        let readings = dictionaries::master_readings(state.knowledge.pool(), &r.term).await?;
+        match readings.as_slice() {
+            [] => judgements.push((Term::new(r.term.clone(), ""), Status::Known)),
+            [reading] => judgements.push((Term::new(r.term.clone(), reading), Status::Known)),
+            _ => ambiguous_skipped += 1,
+        }
+    }
+
+    let written = vocabulary::set_status_each(&state.knowledge, &judgements, now_ts()).await?;
+    db::save_setting(&state.local, "triage_max_freq_rank", &max_rank.to_string()).await?;
+    Ok(Json(json!({ "written": written, "ambiguous_skipped": ambiguous_skipped })))
+}
+
+/// The two dictionary ids frequency triage joins against — BCCWJ (by title,
+/// since it carries no distinguishing role) and the master dictionary.
+/// Neither existing is a configuration problem, not a request one: both are
+/// loaded once at startup, so a missing one means the wrong deployment rather
+/// than a retryable condition.
+async fn frequency_dictionaries(state: &AppState) -> Result<(i64, i64), AppError> {
+    let bccwj = dictionaries::by_title(state.knowledge.pool(), "BCCWJ")
+        .await?
+        .ok_or_else(|| AppError::Upstream("BCCWJ frequency dictionary not loaded".into()))?;
+    let master = dictionaries::master(state.knowledge.pool())
+        .await?
+        .ok_or_else(|| AppError::Upstream("no master dictionary set".into()))?;
+    Ok((bccwj.id, master.id))
 }
 
 /// Rebuild the ledger's counts from the whole reading history.

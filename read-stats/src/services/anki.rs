@@ -167,27 +167,26 @@ pub fn clean_field(raw: &str) -> String {
     out.trim().to_string()
 }
 
-/// Fetch (note_id, vocab) for every note in the deck.
-pub async fn fetch_deck_vocab(
-    client: &reqwest::Client,
-    url: &str,
-    deck: &str,
-    vocab_field: &str,
-) -> Result<Vec<AnkiNote>, AppError> {
-    let ids_val = call(
-        client,
-        url,
-        "findNotes",
-        json!({ "query": format!("deck:\"{deck}\"") }),
-    )
-    .await?;
-    let ids: Vec<i64> = ids_val
+/// Note ids matching an AnkiConnect search query.
+async fn find_notes(client: &reqwest::Client, url: &str, query: &str) -> Result<Vec<i64>, AppError> {
+    let ids_val = call(client, url, "findNotes", json!({ "query": query })).await?;
+    Ok(ids_val
         .as_array()
         .ok_or_else(|| AppError::Upstream("unexpected findNotes response".into()))?
         .iter()
         .filter_map(Value::as_i64)
-        .collect();
+        .collect())
+}
 
+/// (note_id, vocab) for a set of notes, chunked through `notesInfo`. Shared by
+/// every caller that starts from a note-id list — the whole deck, or a
+/// `findNotes` search already narrowed to a queue.
+async fn notes_vocab(
+    client: &reqwest::Client,
+    url: &str,
+    ids: &[i64],
+    vocab_field: &str,
+) -> Result<Vec<AnkiNote>, AppError> {
     let mut notes = Vec::with_capacity(ids.len());
     for chunk in ids.chunks(NOTES_CHUNK) {
         let info = call(client, url, "notesInfo", json!({ "notes": chunk })).await?;
@@ -205,6 +204,30 @@ pub async fn fetch_deck_vocab(
         }
     }
     Ok(notes)
+}
+
+/// Fetch (note_id, vocab) for every note in the deck.
+pub async fn fetch_deck_vocab(
+    client: &reqwest::Client,
+    url: &str,
+    deck: &str,
+    vocab_field: &str,
+) -> Result<Vec<AnkiNote>, AppError> {
+    let ids = find_notes(client, url, &format!("deck:\"{deck}\"")).await?;
+    notes_vocab(client, url, &ids, vocab_field).await
+}
+
+/// Fetch (note_id, vocab) for notes past Anki's new/learning queues — the
+/// deck's review pile, evidence the reader actually has the word rather than
+/// merely having queued it (`spec/cold-start.md` Pass 1).
+pub async fn fetch_reviewed_deck_vocab(
+    client: &reqwest::Client,
+    url: &str,
+    deck: &str,
+    vocab_field: &str,
+) -> Result<Vec<AnkiNote>, AppError> {
+    let ids = find_notes(client, url, &format!("deck:\"{deck}\" -is:new -is:learn")).await?;
+    notes_vocab(client, url, &ids, vocab_field).await
 }
 
 #[cfg(test)]

@@ -389,6 +389,129 @@ pub async fn set_status_bulk(
     Ok(n)
 }
 
+/// One row of a frequency-triage page: a term and its BCCWJ rank. No reading —
+/// the frequency table doesn't carry one, so the caller resolves it against
+/// the master dictionary (`dictionaries::master_readings`) before writing.
+#[derive(Debug, Clone)]
+pub struct FrequencyCandidate {
+    pub term: String,
+    pub rank: i64,
+}
+
+/// The shared filter behind both frequency-triage functions: BCCWJ rows within
+/// `dictionary_id`, restricted to master-dictionary terms (the same rule the
+/// triage queue uses, so a frequency word not in the master scale can't be
+/// marked known here either), excluding any headword already carrying a
+/// non-`new` status under *any* of its readings — the same "don't ask about a
+/// word twice" rule `UNJUDGED_HEADWORD` applies, but simpler here since no
+/// ledger row need exist yet for a term this pass has never seen.
+///
+/// Both EXISTS clauses seek `idx_dictionary_entries_lookup`/
+/// `idx_vocabulary_headword` rather than scanning — see the perf note on
+/// [`refresh_dictionary_flags`] for why that distinction matters here too.
+const FREQUENCY_FILTER: &str = "df.dictionary_id = ? \
+     AND EXISTS (SELECT 1 FROM dictionary_entries de \
+                 WHERE de.dictionary_id = ? AND de.term = df.term) \
+     AND NOT EXISTS (SELECT 1 FROM vocabulary v \
+                     WHERE v.headword = df.term AND v.status != 'new')";
+
+/// How many pending terms at a threshold a commit would actually write, and
+/// how many it would skip as homographs.
+///
+/// Kept as two numbers rather than one "pending" count because a term with no
+/// ledger row yet stays pending forever once it's a homograph — nothing here
+/// ever resolves one, so an ambiguous term reappears at every future preview
+/// or commit at the same threshold. A single count conflated the two and let
+/// a "mark all N known" button promise work a second commit could not do: hit
+/// once, everything committable is gone, and what's left is only the
+/// standing homograph tail — the same N showing up again looks like the
+/// button did nothing, when what happened is it did exactly what it could.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FrequencyPending {
+    pub committable: i64,
+    pub ambiguous: i64,
+}
+
+/// How many BCCWJ terms at or under `max_rank` are still unjudged master
+/// vocabulary — the count a threshold slider shows before a preview is asked
+/// for.
+///
+/// **The reading-count subquery is pinned to `idx_dictionary_entries_lookup`
+/// with `INDEXED BY`, and must stay pinned.** `COUNT(DISTINCT de.reading)`
+/// gives the planner a reason to prefer `idx_dictionary_entries_reading`
+/// instead — that index is keyed `(dictionary_id, reading)`, so it can only
+/// seek on `dictionary_id`, and the `term = df.term` filter becomes a scan of
+/// every master-dictionary entry for that dictionary, once per BCCWJ row this
+/// pass considers. Caught here rather than shipped: `EXPLAIN QUERY PLAN`
+/// showed `SEARCH de USING INDEX idx_dictionary_entries_reading
+/// (dictionary_id=?)` — no `term` bound at all — and the query itself hung
+/// past a 15s timeout at a 6,000-word threshold against the real database.
+/// Forcing the lookup index turned that into 0.6s. Exactly the class of bug
+/// [`refresh_dictionary_flags`]'s doc comment warns about: check `EXPLAIN
+/// QUERY PLAN` says SEARCH with both key columns bound, not a bare
+/// `dictionary_id` seek standing in for one.
+pub async fn frequency_pending(
+    k: &Knowledge,
+    bccwj_id: i64,
+    master_id: i64,
+    max_rank: i64,
+) -> Result<FrequencyPending, sqlx::Error> {
+    let row = sqlx::query(&format!(
+        "SELECT \
+             COALESCE(SUM(CASE WHEN readings <= 1 THEN 1 ELSE 0 END), 0) AS committable, \
+             COALESCE(SUM(CASE WHEN readings > 1 THEN 1 ELSE 0 END), 0) AS ambiguous \
+         FROM ( \
+             SELECT df.term, \
+                    (SELECT COUNT(DISTINCT de.reading) FROM dictionary_entries de \
+                     INDEXED BY idx_dictionary_entries_lookup \
+                     WHERE de.dictionary_id = ? AND de.term = df.term) AS readings \
+             FROM dictionary_frequency df \
+             WHERE {FREQUENCY_FILTER} \
+             GROUP BY df.term HAVING MIN(df.frequency) <= ?)"
+    ))
+    .bind(master_id)
+    .bind(bccwj_id)
+    .bind(master_id)
+    .bind(max_rank)
+    .fetch_one(k.pool())
+    .await?;
+    Ok(FrequencyPending {
+        committable: row.get("committable"),
+        ambiguous: row.get("ambiguous"),
+    })
+}
+
+/// A page of the frequency-triage candidates, commonest (lowest rank) first.
+pub async fn frequency_queue(
+    k: &Knowledge,
+    bccwj_id: i64,
+    master_id: i64,
+    max_rank: i64,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<FrequencyCandidate>, sqlx::Error> {
+    let rows = sqlx::query(&format!(
+        "SELECT df.term AS term, MIN(df.frequency) AS rank FROM dictionary_frequency df \
+         WHERE {FREQUENCY_FILTER} \
+         GROUP BY df.term HAVING MIN(df.frequency) <= ? \
+         ORDER BY rank, df.term LIMIT ? OFFSET ?"
+    ))
+    .bind(bccwj_id)
+    .bind(master_id)
+    .bind(max_rank)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(k.pool())
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| FrequencyCandidate {
+            term: r.get("term"),
+            rank: r.get("rank"),
+        })
+        .collect())
+}
+
 pub async fn fetch(k: &Knowledge, term: &Term) -> Result<Option<VocabRow>, sqlx::Error> {
     let row = sqlx::query("SELECT * FROM vocabulary WHERE headword = ? AND reading = ?")
         .bind(&term.headword)
@@ -889,6 +1012,44 @@ mod tests {
         assert!(
             !detail.iter().any(|d| d.starts_with("SCAN de")),
             "scanning every entry per ledger row is the six-minute bug: {detail:?}"
+        );
+    }
+
+    /// Pins the plan for the same reason as the test above: `frequency_pending`
+    /// hung past a 15s timeout against the real database before the reading
+    /// count subquery was pinned to `idx_dictionary_entries_lookup` —
+    /// `COUNT(DISTINCT reading)` made the planner prefer
+    /// `idx_dictionary_entries_reading`, which can only seek on
+    /// `dictionary_id` and turned the `term` filter into a per-row scan of
+    /// every master entry. A correctness test alone would not have caught it:
+    /// the counts were right, just minutes late.
+    #[tokio::test]
+    async fn frequency_pending_seeks_the_dictionary_index_for_readings_too() {
+        let k = temp().await;
+        let plan: Vec<(i64, i64, i64, String)> = sqlx::query_as(&format!(
+            "EXPLAIN QUERY PLAN SELECT \
+                 COALESCE(SUM(CASE WHEN readings <= 1 THEN 1 ELSE 0 END), 0), \
+                 COALESCE(SUM(CASE WHEN readings > 1 THEN 1 ELSE 0 END), 0) \
+             FROM ( \
+                 SELECT df.term, \
+                        (SELECT COUNT(DISTINCT de.reading) FROM dictionary_entries de \
+                         INDEXED BY idx_dictionary_entries_lookup \
+                         WHERE de.dictionary_id = 1 AND de.term = df.term) AS readings \
+                 FROM dictionary_frequency df \
+                 WHERE {FREQUENCY_FILTER} \
+                 GROUP BY df.term HAVING MIN(df.frequency) <= 6000)"
+        ))
+        .bind(2)
+        .bind(1)
+        .fetch_all(k.pool())
+        .await
+        .unwrap();
+        let detail: Vec<&str> = plan.iter().map(|r| r.3.as_str()).collect();
+        assert!(
+            detail.iter().any(|d| d.contains("SEARCH de USING INDEX idx_dictionary_entries_lookup")
+                && d.contains("dictionary_id=?")
+                && d.contains("term=?")),
+            "the reading-count subquery must seek on (dictionary_id, term), not just dictionary_id: {detail:?}"
         );
     }
 

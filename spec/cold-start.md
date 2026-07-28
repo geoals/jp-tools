@@ -42,6 +42,29 @@ is to go from zero to a reasonable approximation of your actual knowledge quickl
 > a subset of Pass 2 and has to import the deck directly. **6,347 vs a passive
 > vocabulary estimated near 20k** says passes 1–2 cannot get there on their own
 > and Pass 3 is load-bearing, not a top-up.
+>
+> **Update 2026-07-28: Passes 1 and 3 are built**, both simplified from the
+> text below by reader request — automatic, no per-word UI. Pass 1
+> (`POST /api/vocab/anki-import`) imports only cards past Anki's new/learning
+> queues (`-is:new -is:learn`) as `known`; it does not import queued/learning
+> cards as `learning`, since only the review pile was asked for. Pass 3
+> (`GET /api/vocab/frequency-summary` + `/frequency-queue` +
+> `POST /api/vocab/frequency-commit`, read-stats' `#vocab` → frequency
+> section) is a rank threshold with a preview, not a swipe: one click marks
+> everything at or under the threshold `known`. Both resolve a source with no
+> reading (Anki's field, a bare frequency term) against the master
+> dictionary — zero candidates stores an empty reading, one is used directly,
+> more than one (a homograph) is skipped and counted rather than guessed at,
+> left for ordinary encounter-based triage to sort out once actually read.
+>
+> First real runs: Anki import landed **1,847 known, 73 skipped**; a
+> frequency commit at rank ≤2000 landed **975 known, 159 skipped**. Ledger
+> now stands at 2,731 known-in-master (up from 2,396 before either pass ran).
+>
+> | | |
+> |---|---|
+> | ✅ built | Passes 1, 2, 3 |
+> | ❌ not built | the seed importer for epubs finished before tracking, Pass 4's periodic re-surfacing |
 
 ## Strategy: Multiple complementary passes
 

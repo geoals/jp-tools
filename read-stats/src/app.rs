@@ -79,6 +79,22 @@ pub fn build_router(state: AppState) -> Router {
             axum::routing::post(vocab::vocab_blacklist_non_words),
         )
         .route(
+            "/api/vocab/anki-import",
+            axum::routing::post(vocab::vocab_anki_import),
+        )
+        .route(
+            "/api/vocab/frequency-summary",
+            get(vocab::vocab_frequency_summary),
+        )
+        .route(
+            "/api/vocab/frequency-queue",
+            get(vocab::vocab_frequency_queue),
+        )
+        .route(
+            "/api/vocab/frequency-commit",
+            axum::routing::post(vocab::vocab_frequency_commit),
+        )
+        .route(
             "/api/vocab/rebuild",
             axum::routing::post(vocab::vocab_rebuild),
         )
