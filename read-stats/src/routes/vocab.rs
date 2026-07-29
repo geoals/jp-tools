@@ -33,6 +33,13 @@ const QUEUE_LIMIT: i64 = 200;
 /// whole set is reachable by paging.
 const NON_WORD_PAGE: i64 = 100;
 
+/// Rows per page of frequency-triage candidates. Larger than the non-word
+/// page: every homograph is filtered out before paging (`frequency_queue`),
+/// so every row on screen is one the "mark known" button can actually act
+/// on, and a bigger page means fewer round trips through a threshold that
+/// can hold thousands of committable words.
+const FREQUENCY_PAGE: i64 = 500;
+
 /// What the ledger currently holds, by status — the numbers the seed page and
 /// the vocabulary-size figure are built on.
 ///
@@ -335,13 +342,20 @@ pub struct FrequencyParams {
 
 /// A page of frequency-triage candidates — the preview `frequency-commit`
 /// would act on, shown before it does (same rule as `vocab_non_words`).
+///
+/// Homographs are never on this list — `vocabulary::frequency_queue` excludes
+/// them at the query, not just at display, so every row here is one the
+/// commit button can actually write and paging never spends a slot on a row
+/// the reader has to skip past for nothing. `ambiguous` is still reported, as
+/// a total from `frequency_pending`, for the one line that says how many
+/// words are being left out and why.
 pub async fn vocab_frequency_queue(
     State(state): State<AppState>,
     Query(params): Query<FrequencyParams>,
 ) -> Result<Json<Value>, AppError> {
     let settings = db::load_settings(&state.local).await?;
     let max_rank = params.max_rank.unwrap_or(settings.triage_max_freq_rank).max(1);
-    let limit = params.limit.unwrap_or(NON_WORD_PAGE).clamp(1, 500);
+    let limit = params.limit.unwrap_or(FREQUENCY_PAGE).clamp(1, 2000);
     let offset = params.offset.unwrap_or(0).max(0);
     let (bccwj, master) = frequency_dictionaries(&state).await?;
 
@@ -349,25 +363,14 @@ pub async fn vocab_frequency_queue(
     let rows =
         vocabulary::frequency_queue(&state.knowledge, bccwj, master, max_rank, limit, offset)
             .await?;
-    let mut terms = Vec::with_capacity(rows.len());
-    for r in &rows {
-        let readings = dictionaries::master_readings(state.knowledge.pool(), &r.term).await?;
-        terms.push(json!({
-            "term": r.term,
-            "rank": r.rank,
-            "readings": readings,
-            "ambiguous": readings.len() > 1,
-        }));
-    }
+    let terms: Vec<Value> = rows
+        .iter()
+        .map(|r| json!({ "term": r.term, "rank": r.rank, "reading": r.reading }))
+        .collect();
 
-    // `total` (for the page range line) is every pending row, ambiguous
-    // included — they're still shown on screen. `committable` is what a
-    // commit at this threshold would actually write, which is what the
-    // action button has to promise instead.
     Ok(Json(json!({
         "max_rank": max_rank,
-        "total": pending.committable + pending.ambiguous,
-        "committable": pending.committable,
+        "total": pending.committable,
         "ambiguous": pending.ambiguous,
         "offset": offset,
         "limit": limit,
@@ -380,11 +383,19 @@ pub struct FrequencyCommitRequest {
     max_rank: i64,
 }
 
-/// Mark every unambiguous term at or under `max_rank` `known`, in one sweep.
+/// Mark every committable term at or under `max_rank` `known`, in one sweep.
 ///
 /// The bulk-commit half of Pass 3: a threshold and a click, not a swipe per
 /// word. Persists the threshold into `triage_max_freq_rank` so the next visit
 /// remembers it, same as the triage floor does.
+///
+/// `frequency_queue` already excludes homographs and already-judged rows
+/// (`FREQUENCY_FILTER`'s `status != 'new'` guard — which is also why a word
+/// the reader clicked "not known" on while previewing does not come back
+/// here: `vocab_judge` already gave it a status), so there is nothing left to
+/// resolve or skip at this layer. `ambiguous_skipped` comes from
+/// `frequency_pending` rather than being counted here, since it names the
+/// same set either way and a second count could only drift from it.
 pub async fn vocab_frequency_commit(
     State(state): State<AppState>,
     Json(req): Json<FrequencyCommitRequest>,
@@ -392,23 +403,18 @@ pub async fn vocab_frequency_commit(
     let max_rank = req.max_rank.max(1);
     let (bccwj, master) = frequency_dictionaries(&state).await?;
 
+    let pending = vocabulary::frequency_pending(&state.knowledge, bccwj, master, max_rank).await?;
     // Unbounded (SQLite's own convention: LIMIT -1 means no limit), at this
     // scale a few thousand rows even at a generous threshold.
     let rows = vocabulary::frequency_queue(&state.knowledge, bccwj, master, max_rank, -1, 0).await?;
-    let mut judgements = Vec::with_capacity(rows.len());
-    let mut ambiguous_skipped = 0i64;
-    for r in &rows {
-        let readings = dictionaries::master_readings(state.knowledge.pool(), &r.term).await?;
-        match readings.as_slice() {
-            [] => judgements.push((Term::new(r.term.clone(), ""), Status::Known)),
-            [reading] => judgements.push((Term::new(r.term.clone(), reading), Status::Known)),
-            _ => ambiguous_skipped += 1,
-        }
-    }
+    let judgements: Vec<(Term, Status)> = rows
+        .iter()
+        .map(|r| (Term::new(r.term.clone(), &r.reading), Status::Known))
+        .collect();
 
     let written = vocabulary::set_status_each(&state.knowledge, &judgements, now_ts()).await?;
     db::save_setting(&state.local, "triage_max_freq_rank", &max_rank.to_string()).await?;
-    Ok(Json(json!({ "written": written, "ambiguous_skipped": ambiguous_skipped })))
+    Ok(Json(json!({ "written": written, "ambiguous_skipped": pending.ambiguous })))
 }
 
 /// The two dictionary ids frequency triage joins against — BCCWJ (by title,

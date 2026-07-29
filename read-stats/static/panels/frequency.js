@@ -9,10 +9,18 @@
 // the same one `NoisePreview` already uses for the non-word blacklist: the
 // words go on screen before the bulk write, never after.
 //
-// A word with more than one master-dictionary reading is left out of the
-// commit and shown separately — resolving a homograph from a bare frequency
-// term would be a guess, and there are few enough of them to leave for
-// ordinary encounter-based triage once they're actually read.
+// A word with more than one master-dictionary reading never reaches this
+// list at all — the server excludes it before paging, not just before
+// committing, so a page here is never spent on a row nothing can be done
+// with. `vocab.frequency_pending`'s `ambiguous` count is where that total
+// still shows up.
+//
+// A row can be marked "not known" with one click, same idea as triage.js's
+// checkbox but without a submit step: it writes straight through the ledger's
+// ordinary judge endpoint (`POST /api/vocab/judge`), and the row disappears
+// on its own next fetch because the server-side query already excludes
+// anything no longer `status = 'new'` — no frequency-specific "exclude" logic
+// needed, only an optimistic removal from what's on screen already.
 
 import { html } from "htm/preact";
 import { useEffect, useState } from "preact/hooks";
@@ -54,6 +62,27 @@ export function FrequencyView({ maxFreqRank, onCommitted }) {
       );
     } catch (e) {
       setErr(e.message);
+    }
+  }
+
+  async function excludeWord(term, reading) {
+    // Optimistic: the row leaves the screen immediately, since waiting on the
+    // round trip for a single-word "no" is the friction this exists to
+    // remove. On failure it's put back and the error shown — better than a
+    // silent word that looks handled but wasn't.
+    const prevPreview = preview;
+    const prevSummary = summary;
+    setPreview((p) => p && removeTerm(p, term));
+    setSummary((s) => s && { ...s, committable: Math.max(0, s.committable - 1) });
+    try {
+      await api("/api/vocab/judge", {
+        method: "POST",
+        body: { judgements: [{ headword: term, reading, status: "unknown" }] },
+      });
+    } catch (e) {
+      setErr(e.message);
+      setPreview(prevPreview);
+      setSummary(prevSummary);
     }
   }
 
@@ -121,6 +150,7 @@ export function FrequencyView({ maxFreqRank, onCommitted }) {
               onPage=${showPreview}
               onCommit=${commit}
               onCancel=${() => setPreview(null)}
+              onExclude=${excludeWord}
             />`
       }
     </div>
@@ -137,15 +167,18 @@ function summaryLine(s) {
   return `${s.committable.toLocaleString("en")} would be marked known · ${s.ambiguous.toLocaleString("en")} have more than one reading and are left for ordinary triage`;
 }
 
-/** The rows a commit would mark known, before it does — same shape as
+/** Everything on this page is committable — homographs never reach it — so
+ *  `total` doubles as what the commit button promises. Same shape as
  *  triage.js's `NoisePreview`: a bulk write the reader cannot see before it
  *  lands asks them to trust a threshold they have never been shown the output
- *  of. */
-function FrequencyPreview({ preview, busy, onPage, onCommit, onCancel }) {
+ *  of. Each row also has its own one-click "not known", for the word that's
+ *  common but the reader hasn't actually got — removed from the ledger's
+ *  future consideration immediately, not just hidden client-side. */
+function FrequencyPreview({ preview, busy, onPage, onCommit, onCancel, onExclude }) {
   if (!preview.total) {
-    return html`<p class="meta-hint">Nothing pending at this threshold.</p>`;
+    return html`<p class="meta-hint">Nothing left on this page — committed or excluded.</p>`;
   }
-  const { total, committable, offset, limit, terms } = preview;
+  const { total, offset, limit, terms } = preview;
   const last = Math.min(offset + terms.length, total);
   const rangeLine = `${(offset + 1).toLocaleString("en")}–${last.toLocaleString("en")} of ${total.toLocaleString("en")}, commonest first`;
 
@@ -157,6 +190,7 @@ function FrequencyPreview({ preview, busy, onPage, onCommit, onCancel }) {
           <th>word</th>
           <th>reading</th>
           <th>rank</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -164,14 +198,17 @@ function FrequencyPreview({ preview, busy, onPage, onCommit, onCancel }) {
           (t) => html`
             <tr key=${t.term}>
               <td class="work-name">${t.term}</td>
-              <td class="work-name">
-                ${t.ambiguous
-                  ? html`<span title="More than one reading — left for ordinary triage"
-                      >${t.readings.join(" / ")}</span
-                    >`
-                  : t.readings[0] || t.term}
-              </td>
+              <td class="work-name">${t.reading || t.term}</td>
               <td>${t.rank.toLocaleString("en")}</td>
+              <td>
+                <button
+                  class="ghost"
+                  title="Mark not known — remove from this and every future list"
+                  onClick=${() => onExclude(t.term, t.reading)}
+                >
+                  not known
+                </button>
+              </td>
             </tr>
           `,
         )}
@@ -195,12 +232,8 @@ function FrequencyPreview({ preview, busy, onPage, onCommit, onCancel }) {
         </button>
       </span>
       <span>
-        <button class="pause-btn" onClick=${onCommit} disabled=${busy || !committable}>
-          ${busy
-            ? "…"
-            : committable
-              ? `mark ${committable.toLocaleString("en")} known`
-              : "nothing committable — all ambiguous"}
+        <button class="pause-btn" onClick=${onCommit} disabled=${busy}>
+          ${busy ? "…" : `mark ${total.toLocaleString("en")} known`}
         </button>
         <button class="ghost" onClick=${onCancel} disabled=${busy}>
           cancel
@@ -208,4 +241,14 @@ function FrequencyPreview({ preview, busy, onPage, onCommit, onCancel }) {
       </span>
     </div>
   `;
+}
+
+/** Optimistic removal of one row, keeping the preview's counters honest with
+ *  what's actually still on screen. */
+function removeTerm(preview, term) {
+  return {
+    ...preview,
+    total: Math.max(0, preview.total - 1),
+    terms: preview.terms.filter((t) => t.term !== term),
+  };
 }

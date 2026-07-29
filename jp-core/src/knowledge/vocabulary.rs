@@ -389,13 +389,15 @@ pub async fn set_status_bulk(
     Ok(n)
 }
 
-/// One row of a frequency-triage page: a term and its BCCWJ rank. No reading —
-/// the frequency table doesn't carry one, so the caller resolves it against
-/// the master dictionary (`dictionaries::master_readings`) before writing.
+/// One row of a frequency-triage page: a term, its BCCWJ rank, and its single
+/// resolved master-dictionary reading. Always resolvable — [`frequency_queue`]
+/// only returns rows with exactly one reading; a homograph never reaches this
+/// struct at all; see [`frequency_pending`]'s `ambiguous` count for those.
 #[derive(Debug, Clone)]
 pub struct FrequencyCandidate {
     pub term: String,
     pub rank: i64,
+    pub reading: String,
 }
 
 /// The shared filter behind both frequency-triage functions: BCCWJ rows within
@@ -481,7 +483,23 @@ pub async fn frequency_pending(
     })
 }
 
-/// A page of the frequency-triage candidates, commonest (lowest rank) first.
+/// A page of the frequency-triage candidates, commonest (lowest rank) first —
+/// **committable ones only**. A homograph is excluded here, not merely
+/// flagged, for two reasons: nothing this pass can do with it (it cannot be
+/// written without guessing a reading), and a page is worth exactly as much
+/// as the rows on it can be acted on — spending page slots on rows the reader
+/// has to click past for no gain is the friction this pass exists to remove.
+/// [`frequency_pending`]'s `ambiguous` count is where that word is still
+/// visible, as a total rather than a name.
+///
+/// Both extra subqueries resolve the reading count and the reading itself
+/// through `idx_dictionary_entries_lookup`, `INDEXED BY`-pinned for the same
+/// reason [`frequency_pending`]'s is: `COUNT`/`MIN` over `reading` gives the
+/// planner a reason to prefer `idx_dictionary_entries_reading`, which cannot
+/// seek on `term` and turns each row into a scan of the whole master
+/// dictionary. That regression is exactly what sent a next-page click into
+/// several extra seconds before this was pinned — on top of what committing a
+/// reading per row in Rust, one round trip at a time, already cost.
 pub async fn frequency_queue(
     k: &Knowledge,
     bccwj_id: i64,
@@ -491,11 +509,21 @@ pub async fn frequency_queue(
     offset: i64,
 ) -> Result<Vec<FrequencyCandidate>, sqlx::Error> {
     let rows = sqlx::query(&format!(
-        "SELECT df.term AS term, MIN(df.frequency) AS rank FROM dictionary_frequency df \
-         WHERE {FREQUENCY_FILTER} \
-         GROUP BY df.term HAVING MIN(df.frequency) <= ? \
-         ORDER BY rank, df.term LIMIT ? OFFSET ?"
+        "SELECT term, rank, reading FROM ( \
+             SELECT df.term AS term, MIN(df.frequency) AS rank, \
+                    (SELECT COUNT(DISTINCT de.reading) FROM dictionary_entries de \
+                     INDEXED BY idx_dictionary_entries_lookup \
+                     WHERE de.dictionary_id = ? AND de.term = df.term) AS reading_count, \
+                    (SELECT MIN(de.reading) FROM dictionary_entries de \
+                     INDEXED BY idx_dictionary_entries_lookup \
+                     WHERE de.dictionary_id = ? AND de.term = df.term) AS reading \
+             FROM dictionary_frequency df \
+             WHERE {FREQUENCY_FILTER} \
+             GROUP BY df.term HAVING MIN(df.frequency) <= ? AND reading_count = 1) \
+         ORDER BY rank, term LIMIT ? OFFSET ?"
     ))
+    .bind(master_id)
+    .bind(master_id)
     .bind(bccwj_id)
     .bind(master_id)
     .bind(max_rank)
@@ -508,6 +536,7 @@ pub async fn frequency_queue(
         .map(|r| FrequencyCandidate {
             term: r.get("term"),
             rank: r.get("rank"),
+            reading: r.get("reading"),
         })
         .collect())
 }
@@ -1051,6 +1080,40 @@ mod tests {
                 && d.contains("term=?")),
             "the reading-count subquery must seek on (dictionary_id, term), not just dictionary_id: {detail:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn frequency_queue_excludes_homographs_and_resolves_the_rest() {
+        let k = temp().await;
+        sqlx::query(
+            "INSERT INTO dictionaries (id, title, source_path, role) \
+                 VALUES (1, 'Sankoku', '/s.zip', 'master'), (2, 'BCCWJ', '/b.zip', 'reference');\
+             INSERT INTO dictionary_entries (dictionary_id, term, reading, definitions_json) \
+                 VALUES (1, '二十', 'にじゅう', '[]'), (1, '二十', 'はたち', '[]'), \
+                        (1, '犬', 'いぬ', '[]');\
+             INSERT INTO dictionary_frequency (dictionary_id, term, frequency) \
+                 VALUES (2, '二十', 10), (2, '犬', 20);",
+        )
+        .execute(k.pool())
+        .await
+        .unwrap();
+
+        let pending = frequency_pending(&k, 2, 1, 100).await.unwrap();
+        assert_eq!(pending.committable, 1, "only 犬 has one reading");
+        assert_eq!(pending.ambiguous, 1, "二十 is にじゅう or はたち");
+
+        let queue = frequency_queue(&k, 2, 1, 100, 10, 0).await.unwrap();
+        assert_eq!(queue.len(), 1, "二十 must not occupy a page slot");
+        assert_eq!(queue[0].term, "犬");
+        assert_eq!(queue[0].reading, "いぬ");
+
+        // A term the reader has already judged (however that happened) drops
+        // out on the next call, exactly like the triage queue's own rule.
+        set_status(&k, &Term::new("犬", "いぬ"), Status::Unknown, 1.0)
+            .await
+            .unwrap();
+        assert_eq!(frequency_queue(&k, 2, 1, 100, 10, 0).await.unwrap().len(), 0);
+        assert_eq!(frequency_pending(&k, 2, 1, 100).await.unwrap().committable, 0);
     }
 
     #[tokio::test]
