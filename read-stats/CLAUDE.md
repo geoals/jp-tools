@@ -146,6 +146,24 @@ taught to `vn-capture.sh`.
   guards is real and accepted — Sudachi mis-tags 懲罰房 as a *place name*, so
   懲罰 (61 sightings) is never credited, and 凛と keeps its 凛. A rule that
   told those from 東京 would be tuned to the examples that produced it.
+- **And adjacent parts the master dictionary lists as one word are rejoined.**
+  The mirror of the above, and for years the missing half: every pass only ever
+  *split*, so a compound Sudachi's own lexicon lacks was gone before any of our
+  logic saw it. しゃくりあげる is not a Sudachi entry, so Mode C returned
+  しゃくり + あげ and the ledger credited しゃくる and 上げる while 噦り上げる —
+  which Sankoku lists — was never met once. It was not rare: 570 distinct
+  compounds over 1,660 occurrences in the first 14.5k lines (落ち着く, 思い出す,
+  振り返る, 見上げる, 巻き込む…), with 317 of their ledger rows sitting at zero
+  encounters while their parts collected the sightings.
+  `SudachiTokenizer::recompose` joins on either the spelling (振り + 返る) or the
+  reading (しゃくり + あげる → 噦り上げる, since the text writes in kana what the
+  dictionary spells in kanji). **The reading signal is fenced to verb + verb
+  with kana heads**, or そう + する merges into 相する and こと + し into 今年;
+  a reading naming two headwords is dropped rather than arbitrated. Content
+  words only (ていた reads as 訂 + 板), never a proper noun, and three
+  characters minimum. Verified by diffing the token stream of all 14,575 lines
+  before and after: 1,530 lines changed, every one a pure regrouping — no
+  surface altered, nothing dropped or relabelled.
 - **A name is not vocabulary.** Sudachi's 固有名詞 subclass keeps a work's cast
   out of the ledger and `work_terms` (they were the top of every per-work
   unknown list), while `word_days` still counts them — that sink asks what text

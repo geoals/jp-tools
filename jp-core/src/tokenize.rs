@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -54,6 +54,13 @@ pub struct SudachiTokenizer {
     /// Words the master dictionary lists, for [`SudachiTokenizer::decompose`].
     /// Empty disables it.
     lexicon: HashSet<String>,
+    /// Master headword, keyed by its reading — for the kana half of
+    /// [`SudachiTokenizer::recompose`]. Only readings that name exactly one
+    /// headword are in here. Empty disables reading-matched recomposition.
+    by_reading: HashMap<String, String>,
+    /// A master headword's own reading, so a recomposed token carries the
+    /// reading the ledger will key it on rather than one built from parts.
+    term_reading: HashMap<String, String>,
 }
 
 impl SudachiTokenizer {
@@ -73,6 +80,8 @@ impl SudachiTokenizer {
             dict: Arc::new(dict),
             headwords,
             lexicon: HashSet::new(),
+            by_reading: HashMap::new(),
+            term_reading: HashMap::new(),
         })
     }
 
@@ -80,6 +89,40 @@ impl SudachiTokenizer {
     /// decomposition. See [`SudachiTokenizer::decompose`].
     pub fn with_lexicon(mut self, lexicon: HashSet<String>) -> Self {
         self.lexicon = lexicon;
+        self
+    }
+
+    /// Teach it how the master dictionary *reads* its headwords, enabling the
+    /// kana half of [`SudachiTokenizer::recompose`].
+    ///
+    /// Separate from [`with_lexicon`](Self::with_lexicon) because it is the
+    /// weaker signal and a caller may reasonably want spelling-matched
+    /// recomposition without it. A reading naming more than one headword is
+    /// dropped rather than arbitrated: おこす is 起こす and 興す, and merging
+    /// two tokens into a guess about which is worse than leaving them apart.
+    pub fn with_master_readings(mut self, entries: &[(String, String)]) -> Self {
+        let mut ambiguous: HashSet<String> = HashSet::new();
+        for (term, reading) in entries {
+            if reading.is_empty() {
+                continue;
+            }
+            let reading = crate::text::kana::to_hiragana(reading);
+            self.term_reading
+                .entry(term.clone())
+                .or_insert_with(|| reading.clone());
+            match self.by_reading.get(&reading) {
+                Some(seen) if seen != term => {
+                    ambiguous.insert(reading);
+                }
+                Some(_) => {}
+                None => {
+                    self.by_reading.insert(reading, term.clone());
+                }
+            }
+        }
+        for reading in ambiguous {
+            self.by_reading.remove(&reading);
+        }
         self
     }
 
@@ -158,6 +201,138 @@ impl SudachiTokenizer {
         }
         (parts.len() >= 2).then_some(parts)
     }
+
+    /// Join adjacent tokens that the master dictionary lists as one word.
+    ///
+    /// The mirror of [`decompose`](Self::decompose), and the case neither it
+    /// nor the C→B→A pass could reach. Both of those only ever *split*: the
+    /// wordhood gate can reject a token into smaller pieces and never build a
+    /// larger one, so a compound Sudachi's own lexicon lacks is gone before any
+    /// of our logic sees it. しゃくりあげる is not a Sudachi entry, so Mode C
+    /// hands back しゃくり + あげ and the ledger credited しゃくる and 上げる —
+    /// while 噦り上げる, which Sankoku lists, was never met once. It is not a
+    /// rare shape: over the first 14,519 tracked lines, 570 distinct
+    /// master-dictionary compounds were being shredded this way across 1,663
+    /// occurrences (落ち着く, 思い出す, 立ち上がる, 振り返る, 巻き込む…), and
+    /// 317 of the ledger rows for them sat at zero encounters while their parts
+    /// collected the sightings.
+    ///
+    /// Longest match first, left to right, at most [`MAX_COMPOUND_PARTS`] parts.
+    /// A run is joined on either of two signals:
+    ///
+    /// - **spelling** — the parts as written spell a master headword
+    ///   (振り + 返る → 振り返る). Matching the dictionary's literal headword is
+    ///   strong evidence on its own.
+    /// - **reading** — the parts read as a master headword
+    ///   (しゃくり + あげる → しゃくりあげる → 噦り上げる). Needed because the
+    ///   text writes in kana what the dictionary spells in kanji, and this is
+    ///   the same gap the non-word gate had before it learned to match
+    ///   readings.
+    ///
+    /// The reading signal is the weaker one and is fenced in accordingly: every
+    /// part must be a verb, and every part but the last must already be kana.
+    /// Without that fence it merges そう + する into 相する and こと + し into
+    /// 今年 — adverb-plus-verb and noun-plus-verb runs that happen to *read*
+    /// like a listed word. Verb + verb is the shape the defect actually takes.
+    ///
+    /// Three guards apply to both signals. Every part must be a content word,
+    /// or ていた becomes 訂 + 板. **No part may be a proper noun** — the same
+    /// rule `decompose` needs in the other direction, and for the same reason:
+    /// a general dictionary lists no cast member, so a name beside a noun is a
+    /// compound waiting to be invented. And the result must be at least three
+    /// characters, which is what keeps two-character kana homographs out.
+    ///
+    /// The joined token takes the master's own spelling and reading, so the
+    /// ledger keys it the way every other pass would.
+    fn recompose(&self, tokens: Vec<Token>) -> Vec<Token> {
+        if self.lexicon.is_empty() && self.by_reading.is_empty() {
+            return tokens;
+        }
+        let mut out: Vec<Token> = Vec::with_capacity(tokens.len());
+        let mut i = 0;
+        while i < tokens.len() {
+            let longest = MAX_COMPOUND_PARTS.min(tokens.len() - i);
+            let joined = (2..=longest)
+                .rev()
+                .find_map(|n| self.join_run(&tokens[i..i + n]));
+            match joined {
+                Some(token) => {
+                    i += token.parts;
+                    out.push(token.token);
+                }
+                None => {
+                    out.push(tokens[i].clone());
+                    i += 1;
+                }
+            }
+        }
+        out
+    }
+
+    /// One candidate run, joined or refused. See [`recompose`](Self::recompose)
+    /// for the rules; this is only their transcription.
+    fn join_run(&self, run: &[Token]) -> Option<Joined> {
+        if run
+            .iter()
+            .any(|t| t.surface.is_empty() || t.proper_noun || !is_content_word(&t.pos))
+        {
+            return None;
+        }
+        let (last, head) = run.split_last()?;
+
+        let written: String = head
+            .iter()
+            .map(|t| t.surface.as_str())
+            .chain(std::iter::once(last.base_form.as_str()))
+            .collect();
+        let term = if self.lexicon.contains(&written) {
+            Some(written)
+        } else if run.iter().all(|t| t.pos == "動詞")
+            && head
+                .iter()
+                .all(|t| crate::text::kana::is_all_kana(&t.surface))
+        {
+            let read: String = head
+                .iter()
+                .map(|t| crate::text::kana::to_hiragana(&t.surface))
+                .chain(std::iter::once(crate::text::kana::to_hiragana(
+                    &last.reading,
+                )))
+                .collect();
+            self.by_reading.get(&read).cloned()
+        } else {
+            None
+        }?;
+
+        if term.chars().count() < 3 {
+            return None;
+        }
+        Some(Joined {
+            parts: run.len(),
+            token: Token {
+                surface: run.iter().map(|t| t.surface.as_str()).collect(),
+                reading: self
+                    .term_reading
+                    .get(&term)
+                    .cloned()
+                    .unwrap_or_else(|| last.reading.clone()),
+                base_form: term,
+                pos: last.pos.clone(),
+                proper_noun: false,
+            },
+        })
+    }
+}
+
+/// How many tokens [`SudachiTokenizer::recompose`] will join at once. Three
+/// covers 申し訳ない and もう一度; beyond that the candidates stop being
+/// compounds and start being phrases, which a vocabulary ledger does not want.
+const MAX_COMPOUND_PARTS: usize = 3;
+
+/// A joined run, and how many tokens it consumed.
+struct Joined {
+    token: Token,
+    parts: usize,
 }
 
 impl SudachiTokenizer {
@@ -216,7 +391,9 @@ impl Tokenizer for SudachiTokenizer {
             let morphemes = tokenizer
                 .tokenize(text, Mode::B, false)
                 .map_err(|e| TokenizeError::Failed(e.to_string()))?;
-            return Ok(morphemes.iter().map(&to_token).collect());
+            // Still recomposed: an empty deck is a reason to skip the wordhood
+            // gate, not a reason to shred every compound the master lists.
+            return Ok(self.recompose(morphemes.iter().map(&to_token).collect()));
         }
         // Each token that survives the C→B→A pass is offered to `decompose`,
         // which only fires on a compound the master dictionary cannot account
@@ -305,7 +482,10 @@ impl Tokenizer for SudachiTokenizer {
             }
         }
 
-        split_unknown(tokens)
+        // Recomposition goes last, over the finished stream: it has to see the
+        // tokens the splitting passes actually produced, since those are what
+        // shredded the compound in the first place.
+        Ok(self.recompose(split_unknown(tokens)?))
     }
 }
 
@@ -427,6 +607,129 @@ mod tests {
         // does list — splitting it would credit the reader with "east" and
         // "capital" twenty-two times over.
         assert_eq!(bases("東京"), vec!["東京"], "a name is never decomposed");
+    }
+
+    /// The other direction: a compound Sudachi's own lexicon does not hold, so
+    /// no mode returns it whole and only recomposition can recover it.
+    #[test]
+    #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+    fn adjacent_parts_rejoin_into_the_word_the_dictionary_lists() {
+        let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
+            .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+        let lexicon: HashSet<String> = [
+            "噦り上げる",
+            "振り返る",
+            "相する",
+            "今年",
+            "訂",
+            "板",
+            "東京",
+            "上げる",
+            "返る",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        // Readings as the master dictionary gives them, including the two that
+        // tempt a wrong merge out of a kana run.
+        let readings: Vec<(String, String)> = [
+            ("噦り上げる", "しゃくりあげる"),
+            ("振り返る", "ふりかえる"),
+            ("相する", "そうする"),
+            ("今年", "ことし"),
+        ]
+        .iter()
+        .map(|(t, r)| (t.to_string(), r.to_string()))
+        .collect();
+        let tokenizer = SudachiTokenizer::new(Path::new(&dict_path), HashSet::from(["x".into()]))
+            .unwrap()
+            .with_lexicon(lexicon)
+            .with_master_readings(&readings);
+        let bases = |text: &str| {
+            tokenizer
+                .tokenize(text)
+                .unwrap()
+                .into_iter()
+                .map(|t| t.base_form)
+                .collect::<Vec<_>>()
+        };
+
+        // The case that started this: Sudachi has no しゃくりあげる, so Mode C
+        // already hands back しゃくり + あげ. Rejoined on the *reading*, and
+        // stored under the master's own kanji spelling.
+        assert!(
+            bases("しゃくりあげながら泣いた").contains(&"噦り上げる".to_string()),
+            "しゃくり + あげ must rejoin"
+        );
+        // Rejoined on the spelling, which needs no reading index at all.
+        assert!(bases("後ろを振り返った").contains(&"振り返る".to_string()));
+
+        // The fences. そう + する *reads* like 相する, and こと + し like 今年;
+        // both are listed, and both merges would be wrong. Only verb + verb
+        // may match on a reading.
+        assert!(
+            !bases("そうすると決めた").contains(&"相する".to_string()),
+            "adverb + verb must not merge on a reading alone"
+        );
+        assert!(!bases("ことしかできない").contains(&"今年".to_string()));
+        // ていた reads as 訂 + 板 and is listed as both. Particles are not
+        // content words, so the run never becomes a candidate.
+        assert!(!bases("読んでいた").contains(&"訂".to_string()));
+        // A name beside a word is not a compound, in either direction.
+        assert_eq!(bases("東京"), vec!["東京"]);
+    }
+
+    /// A recomposed token carries the master's reading, not one assembled from
+    /// the parts — the ledger keys on `(headword, reading)`, so a reading built
+    /// here would be a second row for a word that already has one.
+    #[test]
+    #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+    fn a_rejoined_token_carries_the_dictionarys_own_reading() {
+        let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
+            .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+        let tokenizer = SudachiTokenizer::new(Path::new(&dict_path), HashSet::from(["x".into()]))
+            .unwrap()
+            .with_lexicon(HashSet::from(["噦り上げる".to_string()]))
+            .with_master_readings(&[("噦り上げる".to_string(), "しゃくりあげる".to_string())]);
+
+        let token = tokenizer
+            .tokenize("しゃくりあげながら")
+            .unwrap()
+            .into_iter()
+            .find(|t| t.base_form == "噦り上げる")
+            .expect("rejoined");
+        assert_eq!(token.reading, "しゃくりあげる");
+        assert_eq!(token.surface, "しゃくりあげ", "the text as written");
+        assert_eq!(token.pos, "動詞");
+    }
+
+    /// A reading naming two headwords is not arbitrated — it is dropped, and
+    /// the parts stay apart rather than being merged into a guess.
+    #[test]
+    #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+    fn an_ambiguous_reading_never_joins_anything() {
+        let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
+            .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+        let readings: Vec<(String, String)> =
+            [("持ち上げる", "もちあげる"), ("餅上げる", "もちあげる")]
+                .iter()
+                .map(|(t, r)| (t.to_string(), r.to_string()))
+                .collect();
+        let tokenizer = SudachiTokenizer::new(Path::new(&dict_path), HashSet::from(["x".into()]))
+            .unwrap()
+            .with_lexicon(HashSet::from(["上げる".to_string()]))
+            .with_master_readings(&readings);
+
+        let bases: Vec<String> = tokenizer
+            .tokenize("もちあげる")
+            .unwrap()
+            .into_iter()
+            .map(|t| t.base_form)
+            .collect();
+        assert!(
+            !bases.contains(&"持ち上げる".to_string()) && !bases.contains(&"餅上げる".to_string()),
+            "もちあげる names two headwords, so it names none: {bases:?}"
+        );
     }
 
     /// A VN's cast are the commonest "unknown words" in it, and none of them

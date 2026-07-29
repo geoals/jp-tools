@@ -223,6 +223,13 @@ async fn master_lexicon(state: &AppState) -> Result<HashSet<String>, AppError> {
     Ok(jp_core::knowledge::dictionaries::master_headwords(state.knowledge.pool()).await?)
 }
 
+/// The master dictionary's readings, for recomposing the compounds Sudachi's
+/// lexicon splits (しゃくり + あげる → 噦り上げる). See
+/// `SudachiTokenizer::recompose`.
+async fn master_readings(state: &AppState) -> Result<Vec<(String, String)>, AppError> {
+    Ok(jp_core::knowledge::dictionaries::master_entries(state.knowledge.pool()).await?)
+}
+
 async fn validation_headwords(state: &AppState) -> Result<HashSet<String>, AppError> {
     Ok(db::fetch_anki_notes(&state.knowledge)
         .await?
@@ -271,6 +278,7 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
     let tz = tz_offset_secs();
     let vocab = validation_headwords(state).await?;
     let lexicon = master_lexicon(state).await?;
+    let readings = master_readings(state).await?;
     let dict_path = state.sudachi_dict_path.clone();
 
     let n_lines = lines.len();
@@ -278,7 +286,8 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
     let harvest = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
         let tokenizer = SudachiTokenizer::new(&dict_path, vocab)
             .map_err(|e| AppError::Upstream(format!("sudachi: {e}")))?
-            .with_lexicon(lexicon);
+            .with_lexicon(lexicon)
+            .with_master_readings(&readings);
         let mut harvest = Harvest::default();
         for line in &lines {
             let date = stats::date_key(line.ts, rollover, tz).to_string();
@@ -351,13 +360,15 @@ pub async fn ingest_new_sessions(state: &AppState) -> Result<IngestOutcome, AppE
     let tz = tz_offset_secs();
     let vocab = validation_headwords(state).await?;
     let lexicon = master_lexicon(state).await?;
+    let readings = master_readings(state).await?;
     let dict_path = state.sudachi_dict_path.clone();
 
     let n_sessions = sessions.len();
     let harvest = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
         let tokenizer = SudachiTokenizer::new(&dict_path, vocab)
             .map_err(|e| AppError::Upstream(format!("sudachi: {e}")))?
-            .with_lexicon(lexicon);
+            .with_lexicon(lexicon)
+            .with_master_readings(&readings);
         let mut harvest = Harvest::default();
         for s in &sessions {
             let date = stats::date_key(s.start_ts, rollover, tz).to_string();

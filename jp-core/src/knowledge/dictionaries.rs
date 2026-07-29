@@ -50,6 +50,20 @@ pub async fn master_headwords(pool: &SqlitePool) -> Result<HashSet<String>, sqlx
     Ok(rows.into_iter().map(|(term,)| term).collect())
 }
 
+/// The master dictionary's `(headword, reading)` pairs, for recomposing the
+/// compounds Sudachi's own lexicon splits. See
+/// `SudachiTokenizer::with_master_readings`, which is what decides how to treat
+/// a reading that names more than one headword.
+pub async fn master_entries(pool: &SqlitePool) -> Result<Vec<(String, String)>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT DISTINCT de.term, de.reading FROM dictionary_entries de \
+         JOIN dictionaries d ON d.id = de.dictionary_id \
+         WHERE d.role = 'master' AND de.reading != ''",
+    )
+    .fetch_all(pool)
+    .await
+}
+
 /// Load all distinct terms and readings from dictionary_entries.
 /// Broader than `get_all_headwords` — includes kana readings so that
 /// hiragana-only lemmas like いう match dictionary entry 言う (reading いう).
