@@ -577,7 +577,8 @@ pub async fn fetch_all(k: &Knowledge) -> Result<Vec<VocabRow>, sqlx::Error> {
 ///
 /// - **`status = 'new'`** — only the never-judged. Re-asking about a word the
 ///   reader has already ruled on is how a triage pass loses their trust.
-/// - **`in_master = 1`** — only master-dictionary terms. The rest are Jitendex
+/// - **[`COUNTS_AS_VOCAB`]** — only master-dictionary terms, plus the ones the
+///   reader promoted where the master has nothing to say. The rest are Jitendex
 ///   phrase headwords, names, and tokenizer noise (`っっ`, `あああ`): they belong
 ///   in the ledger, but judging them one at a time is pointless, and they are
 ///   not vocabulary by the definition the scale uses. `spec/knowledge-db.md`.
@@ -603,21 +604,44 @@ const UNJUDGED_HEADWORD: &str = "NOT EXISTS (SELECT 1 FROM vocabulary o \
      WHERE o.headword = vocabulary.headword AND o.reading != vocabulary.reading \
        AND o.status != 'new')";
 
+/// Scope a queue to what the reading has touched since the last sweep.
+///
+/// The periodic sweep asks "what became ready since I last looked", and
+/// `last_seen` is the only column that can answer anything like it. It answers
+/// a slightly wider question — *met* since the mark, not *crossed the
+/// threshold* since the mark — so a word declined last time comes back the
+/// next time it is read rather than staying gone until it is read a lot more.
+/// `word_days` could answer it exactly, at the cost of a per-term aggregate on
+/// every load; that trade is only worth making if the batches come out noisy
+/// (`spec/periodic-sweep.md`).
+const MET_SINCE: &str = "AND COALESCE(last_seen, 0) > ?";
+
+/// The queue's filter, shared by [`triage_queue`] and [`triage_pending`] so a
+/// count on screen cannot promise rows the queue will not offer.
+fn queue_where(since_ts: Option<f64>) -> String {
+    let met_since = if since_ts.is_some() { MET_SINCE } else { "" };
+    format!(
+        "status = 'new' AND {COUNTS_AS_VOCAB} AND encounter_count >= ? \
+         {met_since} AND {UNJUDGED_HEADWORD}"
+    )
+}
+
 pub async fn triage_queue(
     k: &Knowledge,
     min_encounters: i64,
+    since_ts: Option<f64>,
     limit: i64,
 ) -> Result<Vec<VocabRow>, sqlx::Error> {
-    let rows = sqlx::query(&format!(
-        "SELECT * FROM vocabulary \
-         WHERE status = 'new' AND in_master = 1 AND encounter_count >= ? \
-           AND {UNJUDGED_HEADWORD} \
+    let sql = format!(
+        "SELECT * FROM vocabulary WHERE {} \
          ORDER BY encounter_count DESC, headword LIMIT ?",
-    ))
-    .bind(min_encounters)
-    .bind(limit)
-    .fetch_all(k.pool())
-    .await?;
+        queue_where(since_ts)
+    );
+    let mut q = sqlx::query(&sql).bind(min_encounters);
+    if let Some(ts) = since_ts {
+        q = q.bind(ts);
+    }
+    let rows = q.bind(limit).fetch_all(k.pool()).await?;
     Ok(rows.iter().map(row_to_vocab).collect())
 }
 
@@ -626,20 +650,24 @@ pub async fn triage_queue(
 ///
 /// Separate from [`triage_queue`] because the UI needs the totals to show what
 /// a threshold change does *before* paging through it — a `limit`ed queue
-/// cannot answer "how many are left".
-pub async fn triage_pending(k: &Knowledge, min_encounters: i64) -> Result<(i64, i64), sqlx::Error> {
-    // Same filter as the queue, or the count on screen would promise rows the
-    // queue will not offer.
-    let row = sqlx::query(&format!(
+/// cannot answer "how many are left". `since_ts` must match the queue's, or
+/// the header would count a different batch from the one on screen.
+pub async fn triage_pending(
+    k: &Knowledge,
+    min_encounters: i64,
+    since_ts: Option<f64>,
+) -> Result<(i64, i64), sqlx::Error> {
+    let sql = format!(
         "SELECT COUNT(*) AS total, \
                 COALESCE(SUM(CASE WHEN lookup_count = 0 THEN 1 ELSE 0 END), 0) AS preselected \
-         FROM vocabulary \
-         WHERE status = 'new' AND in_master = 1 AND encounter_count >= ? \
-           AND {UNJUDGED_HEADWORD}",
-    ))
-    .bind(min_encounters)
-    .fetch_one(k.pool())
-    .await?;
+         FROM vocabulary WHERE {}",
+        queue_where(since_ts)
+    );
+    let mut q = sqlx::query(&sql).bind(min_encounters);
+    if let Some(ts) = since_ts {
+        q = q.bind(ts);
+    }
+    let row = q.fetch_one(k.pool()).await?;
     Ok((row.get("total"), row.get("preselected")))
 }
 
@@ -1449,7 +1477,7 @@ mod tests {
             .await
             .unwrap();
 
-        let offered: Vec<String> = triage_queue(&k, 1, 50)
+        let offered: Vec<String> = triage_queue(&k, 1, None, 50)
             .await
             .unwrap()
             .iter()
@@ -1463,7 +1491,7 @@ mod tests {
         assert!(offered.iter().any(|t| t == "鍵/かぎ"));
         // The count has to agree with the queue, or it promises rows nobody
         // will be shown.
-        assert_eq!(triage_pending(&k, 1).await.unwrap().0, offered.len() as i64);
+        assert_eq!(triage_pending(&k, 1, None).await.unwrap().0, offered.len() as i64);
     }
 
     #[tokio::test]
@@ -1679,7 +1707,7 @@ mod tests {
             .await
             .unwrap();
 
-        let queue = triage_queue(&k, 3, 100).await.unwrap();
+        let queue = triage_queue(&k, 3, None, 100).await.unwrap();
         let words: Vec<&str> = queue.iter().map(|r| r.term.headword.as_str()).collect();
         assert_eq!(
             words,
@@ -1688,10 +1716,10 @@ mod tests {
         );
 
         // The floor is the only thing keeping 齟齬 out, so lowering it lets it in.
-        assert_eq!(triage_queue(&k, 1, 100).await.unwrap().len(), 2);
+        assert_eq!(triage_queue(&k, 1, None, 100).await.unwrap().len(), 2);
         // …and っっ stays out at any floor, despite being the most-met row.
         assert!(
-            !triage_queue(&k, 1, 100)
+            !triage_queue(&k, 1, None, 100)
                 .await
                 .unwrap()
                 .iter()
@@ -1721,9 +1749,43 @@ mod tests {
         refresh_dictionary_flags(&k).await.unwrap();
         sync_lookup_counts(&k).await.unwrap();
 
-        let (total, preselected) = triage_pending(&k, 3).await.unwrap();
+        let (total, preselected) = triage_pending(&k, 3, None).await.unwrap();
         assert_eq!(total, 2, "both are unjudged vocabulary above the floor");
         assert_eq!(preselected, 1, "only 憂鬱 was never looked up");
+    }
+
+    /// The periodic sweep's scoping: a word not read since the last sweep is
+    /// not in this batch, however many times it was met before it.
+    #[tokio::test]
+    async fn a_scoped_sweep_offers_only_what_has_been_read_since_the_mark() {
+        let k = temp().await;
+        record_encounters(
+            &k,
+            &[
+                enc("憂鬱", "ユウウツ", 9, 100.0),
+                enc("齟齬", "ソゴ", 9, 20.0),
+            ],
+        )
+        .await
+        .unwrap();
+        sqlx::query("UPDATE vocabulary SET in_master = 1")
+            .execute(k.pool())
+            .await
+            .unwrap();
+
+        let scoped = triage_queue(&k, 3, Some(50.0), 100).await.unwrap();
+        let words: Vec<&str> = scoped.iter().map(|r| r.term.headword.as_str()).collect();
+        assert_eq!(words, vec!["憂鬱"], "齟齬 was last read before the mark");
+        assert_eq!(triage_pending(&k, 3, Some(50.0)).await.unwrap(), (1, 1));
+
+        // Unscoped, both are still there — the mark narrows the batch, it does
+        // not judge or retire anything.
+        assert_eq!(triage_queue(&k, 3, None, 100).await.unwrap().len(), 2);
+
+        // A mark past everything empties the batch rather than falling back to
+        // the whole queue: "nothing new since you last swept" is the answer.
+        let swept_past = triage_queue(&k, 3, Some(1000.0), 100).await.unwrap();
+        assert!(swept_past.is_empty());
     }
 
     #[tokio::test]

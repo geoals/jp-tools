@@ -1,8 +1,9 @@
 # The periodic sweep — Pass 4
 
-**Status: not built.** Everything it needs exists; this is assembly, not new
-logic. Written 2026-07-29 as a handover, so it assumes no memory of the session
-that produced it.
+**Status: built 2026-07-30.** It is the `sweep` section of `#vocab` (the old
+`triage` one, scoped), plus a line on the dashboard. What follows is the design
+as written on 2026-07-29 as a handover; the decisions it left open were answered
+before building and are recorded at the bottom.
 
 ## What it is for
 
@@ -38,6 +39,18 @@ Encounters alone cannot tell "read straight past it" from "looked it up twelve
 times", and an unticked row writes `unknown` on submit — so a one-signal
 default writes wrong assertions in bulk. The rule lives server-side because it
 decides what gets written and has to be testable without a browser.
+
+## What was built (the plan below, as it landed)
+
+| piece | where |
+|---|---|
+| the scoped queue | `vocabulary::triage_queue`/`triage_pending`, `since_ts: Option<f64>` |
+| the watermark | `sweep_through_ts` in `read-stats.db` settings, read by `routes::vocab` |
+| advancing it | `POST /api/vocab/judge` with `advance_sweep: true`, after the write |
+| the backlog escape hatch | `GET /api/vocab/queue?scoped=0` |
+| the counts | `ready_since` and `swept_through` on `/api/vocab/summary` |
+| the UI | the `sweep` section of `#vocab` (`static/panels/triage.js`) |
+| the nudge | one line on the Today tab (`static/app.js`, `.sweep-nudge`) |
 
 ## What to build
 
@@ -117,19 +130,35 @@ are eligible today, before any since-last-sweep scoping narrows that further —
 and to grow slowly as reading accumulates. This is a trickle feature, not a bulk
 one; the bulk was the jiten import.
 
-## Open questions for the reader
+## The open questions, as answered 2026-07-30
 
-1. **Does declining write `unknown`, or just skip?** Today's triage writes
-   `unknown` for anything unticked, which is what makes the snooze work. But an
-   accept-all button that silently marks the *rest* `unknown` is a bulk
-   assertion nobody looked at. Suggested: accept-all writes only `known`, and
-   declining is an explicit per-row action. Confirm before building.
-2. **What cadence?** "After a day of reading" and "since last batch" are
-   different triggers. A watermark supports both; the UI has to pick a default.
-3. **Should `mined` short-circuit the rule?** A word with a card is arguably
-   known regardless of lookup count. `VocabRow::is_known` already treats
-   `status.is_known() || mined` as the default "reader has this word", but the
-   triage preselect deliberately does not. Leave as-is unless asked.
+1. **Declining writes `unknown`** — the batch on screen is judged whole, exactly
+   as the old triage submit did. The suggestion in the draft (accept-all writes
+   only `known`) was rejected: the snooze is the point, and a batch that leaves
+   its unticked rows `new` returns them in the next sweep forever.
+2. **The scoped batch is the default**, with `scoped=0` / a checkbox for the
+   whole standing backlog. Both triggers land on one watermark, and the UI
+   picks "since the last sweep".
+3. **`mined` does not short-circuit the rule.** Left as-is, as suggested.
+
+Also decided while building: the watermark is a **timestamp**
+(`sweep_through_ts` in `read-stats.db`), not a `lines.id`. The column it is
+compared against is `vocabulary.last_seen`, which is a timestamp; storing an id
+would mean a join per query to convert one into the other. Absent means "never
+swept" and reads as the whole backlog — a first sweep must not be empty.
+
+## What the ingest filter turned out to already handle
+
+Point 5 above — the cast heading every batch — **did not need fixing**. ミリオ,
+メルル, ナノカ and ゴクチョー all carry `in_master = 0, promoted = 0`, so
+`COUNTS_AS_VOCAB` already keeps them out of both the queue and the `ready`
+figure. Nothing was blacklisted. The head of the first real batch is 敷き (87),
+やめる (63), おじ (53) — real words.
+
+While wiring it, `triage_queue`/`triage_pending` moved from an inline
+`in_master = 1` onto `COUNTS_AS_VOCAB`, per the rule above. Zero rows change
+hands today (nothing is `promoted` and still `new`), but the queue and the tile
+now gate on the same predicate.
 
 ## Gotchas
 

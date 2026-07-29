@@ -41,6 +41,17 @@ export function fmtFinishDate(daysLeft) {
   return `≈ ${d.toLocaleDateString("en", opts)}`;
 }
 
+/** An epoch-seconds timestamp the backend stamped, as "Jul 31". */
+
+export function fmtTsDate(ts) {
+  if (!ts) return null;
+  const d = new Date(ts * 1000);
+  if (Number.isNaN(d.getTime())) return null;
+  const opts = { month: "short", day: "numeric" };
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
+  return d.toLocaleDateString("en", opts);
+}
+
 /** An ISO date the backend stamped (first_read / last_read), as "Jul 31". */
 
 export function fmtDateStr(iso) {

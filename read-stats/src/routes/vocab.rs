@@ -76,6 +76,17 @@ pub async fn vocab_summary(State(state): State<AppState>) -> Result<Json<Value>,
     let unjudged =
         vocabulary::unjudged_counts(&state.knowledge, settings.triage_min_encounters).await?;
 
+    // The sweep's own figure, beside the standing one: "N ready since 21 Jul"
+    // is the number the trigger ("after a day of reading") actually asks for,
+    // and `ready` cannot shrink as a sweep is worked through unscoped. Taken
+    // from `triage_pending` rather than recomputed, so the tile and the batch
+    // on the next tab cannot disagree.
+    let since = sweep_watermark(&state).await?;
+    let ready_since =
+        vocabulary::triage_pending(&state.knowledge, settings.triage_min_encounters, since)
+            .await?
+            .0;
+
     Ok(Json(json!({
         "total": total,
         "known_in_master": known,
@@ -84,6 +95,8 @@ pub async fn vocab_summary(State(state): State<AppState>) -> Result<Json<Value>,
         "never_met": unjudged.never_met,
         "never_met_vocab": unjudged.never_met_vocab,
         "ready": unjudged.ready,
+        "ready_since": ready_since,
+        "swept_through": since,
         "ready_min_encounters": settings.triage_min_encounters,
         "by_status": by_status,
     })))
@@ -94,6 +107,32 @@ pub struct QueueParams {
     /// Overrides the `triage_min_encounters` setting for one request, so the UI
     /// can preview what a threshold change does before saving it.
     min_encounters: Option<i64>,
+    /// Scope the batch to what has been read since the last sweep. The default
+    /// — see [`SWEEP_WATERMARK_KEY`]. `scoped=0` asks for the whole backlog.
+    ///
+    /// Taken as a string because a query parameter *is* one: `serde`'s `bool`
+    /// accepts only `true`/`false`, so `scoped=0` would 400 rather than mean
+    /// what it plainly says.
+    scoped: Option<String>,
+}
+
+/// When the last sweep was submitted, as an epoch timestamp in
+/// `read-stats.db`'s settings.
+///
+/// Internal bookkeeping, so it lives outside `SETTING_KEYS` and the settings
+/// API refuses to write it — the same shape as the ingest watermarks. A
+/// timestamp rather than a `lines.id` because the column it is compared
+/// against is `vocabulary.last_seen`, which is a timestamp; storing an id
+/// would mean a join per query to convert one into the other.
+///
+/// Absent means "never swept", which reads as the whole backlog rather than as
+/// an empty batch — a first sweep must not be empty.
+const SWEEP_WATERMARK_KEY: &str = "sweep_through_ts";
+
+async fn sweep_watermark(state: &AppState) -> Result<Option<f64>, AppError> {
+    Ok(db::get_setting_raw(&state.local, SWEEP_WATERMARK_KEY)
+        .await?
+        .and_then(|v| v.parse().ok()))
 }
 
 /// The triage queue: untriaged vocabulary to judge, most-encountered first.
@@ -102,6 +141,12 @@ pub struct QueueParams {
 /// whole seeding pass rests on, it has to be testable without a browser, and a
 /// client-side copy would mean the threshold actually applied was recorded
 /// nowhere.
+///
+/// By default this is the *periodic sweep* (`spec/periodic-sweep.md`): the
+/// batch is scoped to terms read since the last submit, so a fortnight's
+/// reading produces a short list rather than the whole standing backlog. The
+/// scoping is a filter and nothing more — it judges nothing, retires nothing,
+/// and `scoped=0` still reaches every ready row.
 pub async fn vocab_queue(
     State(state): State<AppState>,
     Query(params): Query<QueueParams>,
@@ -111,9 +156,14 @@ pub async fn vocab_queue(
         .min_encounters
         .unwrap_or(settings.triage_min_encounters)
         .max(1);
+    let since = match params.scoped.as_deref() {
+        Some("0") | Some("false") => None,
+        _ => sweep_watermark(&state).await?,
+    };
 
-    let rows = vocabulary::triage_queue(&state.knowledge, min, QUEUE_LIMIT).await?;
-    let (pending, pending_preselected) = vocabulary::triage_pending(&state.knowledge, min).await?;
+    let rows = vocabulary::triage_queue(&state.knowledge, min, since, QUEUE_LIMIT).await?;
+    let (pending, pending_preselected) =
+        vocabulary::triage_pending(&state.knowledge, min, since).await?;
 
     let terms: Vec<Value> = rows
         .iter()
@@ -132,6 +182,8 @@ pub async fn vocab_queue(
 
     Ok(Json(json!({
         "min_encounters": min,
+        "since": since,
+        "scoped": since.is_some(),
         "pending": pending,
         "pending_preselected": pending_preselected,
         "terms": terms,
@@ -149,6 +201,12 @@ pub struct Judgement {
 #[derive(Deserialize)]
 pub struct JudgeRequest {
     judgements: Vec<Judgement>,
+    /// Move the sweep watermark up to now, so the next batch is what the
+    /// reading turns up *after* this one. Sent by the sweep and by nothing
+    /// else: a one-off judgement made from an unscoped list must not retire a
+    /// batch nobody looked at.
+    #[serde(default)]
+    advance_sweep: bool,
 }
 
 /// Write a batch of judgements — the triage submit.
@@ -157,6 +215,10 @@ pub struct JudgeRequest {
 /// falls back to `new`. Here that fallback would be a silent data loss: a typo
 /// in one row would quietly un-judge it while the response claimed the batch
 /// landed.
+///
+/// The sweep watermark advances **after** the write and only on the sweep's
+/// own request. On submit, not on load: an interrupted sweep must leave its
+/// batch where it was rather than lose it to a page that was never answered.
 pub async fn vocab_judge(
     State(state): State<AppState>,
     Json(req): Json<JudgeRequest>,
@@ -174,8 +236,15 @@ pub async fn vocab_judge(
         judgements.push((Term::new(j.headword.clone(), &j.reading), status));
     }
 
-    let written = vocabulary::set_status_each(&state.knowledge, &judgements, now_ts()).await?;
-    Ok(Json(json!({ "written": written })))
+    let now = now_ts();
+    let written = vocabulary::set_status_each(&state.knowledge, &judgements, now).await?;
+    if req.advance_sweep {
+        db::save_setting(&state.local, SWEEP_WATERMARK_KEY, &now.to_string()).await?;
+    }
+    let swept_through = req.advance_sweep.then_some(now);
+    Ok(Json(
+        json!({ "written": written, "swept_through": swept_through }),
+    ))
 }
 
 /// Re-home every judgement the rebuild stranded.

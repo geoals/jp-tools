@@ -6,6 +6,14 @@
 // reduces to a status lookup, so until this has been run they all read as
 // "nothing is known".
 //
+// It is also spec/periodic-sweep.md's Pass 4, which is the shape it takes in
+// the steady state: the batch defaults to words read *since the last sweep*, so
+// after a day or a fortnight of reading a short list appears already ticked and
+// you accept it. The full standing backlog is one toggle away and unchanged —
+// the watermark narrows what is asked about and judges nothing by itself. It
+// moves on submit, not on load, so an interrupted sweep leaves its batch intact
+// rather than silently retiring it.
+//
 // The interaction is a checked sweep, not a decision per word. A ticked box
 // means known, an unticked one means unknown, and submitting writes both. That
 // is only safe because of what gets ticked *for* you: the server preselects a
@@ -31,10 +39,14 @@
 import { html } from "htm/preact";
 import { useEffect, useState } from "preact/hooks";
 import { api } from "../api.js";
+import { fmtTsDate } from "../lib/format.js";
 
 export function TriageView({ minEncounters, onJudged }) {
   const [queue, setQueue] = useState(null);
   const [floor, setFloor] = useState(minEncounters);
+  // The sweep's scoping. On by default: the standing backlog is the exception
+  // now, not the daily loop.
+  const [scoped, setScoped] = useState(true);
   // headword\treading → true (known) / false (unknown). Seeded from the
   // server's preselect, then owned by the reader.
   const [checked, setChecked] = useState({});
@@ -45,10 +57,12 @@ export function TriageView({ minEncounters, onJudged }) {
   // is a separate question, and one nobody asks on every visit.
   const [noise, setNoise] = useState(null);
 
-  async function load(min) {
+  async function load(min, isScoped) {
     setErr(null);
     try {
-      const q = await api(`/api/vocab/queue?min_encounters=${min}`);
+      const q = await api(
+        `/api/vocab/queue?min_encounters=${min}&scoped=${isScoped ? 1 : 0}`,
+      );
       setQueue(q);
       const seed = {};
       for (const t of q.terms) seed[key(t)] = t.preselect;
@@ -59,8 +73,8 @@ export function TriageView({ minEncounters, onJudged }) {
   }
 
   useEffect(() => {
-    load(floor);
-  }, [floor]);
+    load(floor, scoped);
+  }, [floor, scoped]);
 
   async function submit() {
     setBusy(true);
@@ -71,12 +85,15 @@ export function TriageView({ minEncounters, onJudged }) {
         reading: t.reading,
         status: checked[key(t)] ? "known" : "unknown",
       }));
+      // The watermark moves only for a batch that was actually scoped to it.
+      // Submitting from the full backlog is a one-off judgement, and retiring
+      // a sweep nobody was shown would lose words to it.
       const res = await api("/api/vocab/judge", {
         method: "POST",
-        body: { judgements },
+        body: { judgements, advance_sweep: queue.scoped },
       });
       setDone(`${res.written} judged`);
-      await load(floor);
+      await load(floor, scoped);
       onJudged?.();
     } catch (e) {
       setErr(e.message);
@@ -117,14 +134,22 @@ export function TriageView({ minEncounters, onJudged }) {
 
   const known = queue.terms.filter((t) => checked[key(t)]).length;
   const unknown = queue.terms.length - known;
+  const sweptOn = fmtTsDate(queue.since);
   // One string, not markup: htm collapses whitespace at a line break, so text
   // and ${...} must not straddle one (see CLAUDE.md).
-  const pendingLine = `${queue.pending.toLocaleString("en")} words await a verdict at this floor · ${queue.pending_preselected.toLocaleString("en")} of them never looked up`;
+  const scopeLine = queue.scoped
+    ? `read since the last sweep${sweptOn ? ` on ${sweptOn}` : ""}`
+    : "everything ready, however long ago it was read";
+  const pendingLine = `${queue.pending.toLocaleString("en")} words await a verdict at this floor · ${queue.pending_preselected.toLocaleString("en")} of them never looked up · ${scopeLine}`;
   const batchLine = `this page: ${known} known · ${unknown} unknown`;
+  const acceptLabel = `accept batch (${known} known · ${unknown} unknown)`;
+  const emptyLine = queue.scoped
+    ? "Nothing new since the last sweep. Come back after a day of reading, or show the whole backlog."
+    : "Nothing left to judge at this floor. Lower it to reach further down the tail.";
 
   return html`
     <div class="card">
-      <h2>triage</h2>
+      <h2>sweep</h2>
       <p class="meta-hint">${pendingLine}</p>
       <label class="triage-floor">
         seen at least
@@ -136,20 +161,27 @@ export function TriageView({ minEncounters, onJudged }) {
         />
         times
       </label>
+      <label class="triage-floor">
+        <input
+          type="checkbox"
+          checked=${!scoped}
+          onChange=${(e) => setScoped(!e.target.checked)}
+        />
+        show everything ready, not just since the last sweep
+      </label>
       <p class="meta-hint">
         Ticked means known. Only words never looked up are ticked for you —
-        needing the dictionary once is enough to leave a word unticked. Submit
-        writes both verdicts for the rows below, and nothing else.
+        needing the dictionary once is enough to leave a word unticked.
+        Accepting writes both verdicts for the rows below and nothing else:
+        unticked means unknown, which is the snooze that keeps a word out of
+        every later batch until you read it a lot more.
       </p>
     </div>
 
     ${
       queue.terms.length === 0
         ? html`<div class="card">
-            <p class="chart-empty">
-              Nothing left to judge at this floor. Lower it to reach further
-              down the tail.
-            </p>
+            <p class="chart-empty">${emptyLine}</p>
           </div>`
         : html`
             <div class="card">
@@ -171,7 +203,7 @@ export function TriageView({ minEncounters, onJudged }) {
                     none
                   </button>
                   <button class="pause-btn" onClick=${submit} disabled=${busy}>
-                    ${busy ? "saving…" : "submit"}
+                    ${busy ? "saving…" : acceptLabel}
                   </button>
                 </span>
               </div>

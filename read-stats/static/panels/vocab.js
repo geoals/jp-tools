@@ -16,6 +16,7 @@ import { html } from "htm/preact";
 import { useState } from "preact/hooks";
 import { api } from "../api.js";
 import { SegmentedControl } from "../components/controls.js";
+import { fmtTsDate } from "../lib/format.js";
 import { FrequencyView } from "./frequency.js";
 import { PromotionView } from "./promotion.js";
 import { TriageView } from "./triage.js";
@@ -37,7 +38,7 @@ const STATES = [
 
 const SECTIONS = [
   { value: "status", label: "status" },
-  { value: "triage", label: "triage" },
+  { value: "triage", label: "sweep" },
   { value: "frequency", label: "frequency" },
   { value: "promote", label: "promote" },
 ];
@@ -97,6 +98,13 @@ function StatusSummary({ vocab, onImported }) {
   // whitespace at a line break and prettier reflows markup there freely.
   const spellings = `(${vocab.known_in_master.toLocaleString("en")} spellings)`;
   const readyHint = `Unjudged vocabulary met at least ${vocab.ready_min_encounters} times — what a sweep can offer. Derived from the encounter count, not a stored status, so changing the threshold re-reads the whole history.`;
+  // The sweep's own figure beside the standing one. `ready` cannot shrink as a
+  // backlog is worked through unscoped, so it answers "how much is there" and
+  // not "how much is new", which is the question the sweep is triggered by.
+  const sweptOn = fmtTsDate(vocab.swept_through);
+  const readySince = sweptOn
+    ? `(${(vocab.ready_since ?? 0).toLocaleString("en")} since ${sweptOn})`
+    : null;
   // The stored `new` bucket, split against the encounter count. Held here so
   // the table below reads from one place.
   const stateRows = new Map(byStatus);
@@ -210,7 +218,10 @@ function StatusSummary({ vocab, onImported }) {
           title=${readyHint}
         >
           <div class="label">ready to judge</div>
-          <div class="value">${vocab.ready.toLocaleString("en")}</div>
+          <div class="value">
+            ${vocab.ready.toLocaleString("en")}
+            ${readySince && html`<span class="value-sub">${readySince}</span>`}
+          </div>
         </div>
         <div
           class="tile has-hint"

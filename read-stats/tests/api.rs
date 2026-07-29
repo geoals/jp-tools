@@ -1020,6 +1020,87 @@ async fn triage_writes_both_verdicts_and_leaves_the_rest_new() {
     assert_eq!(q["pending"], 1);
 }
 
+/// The periodic sweep (`spec/periodic-sweep.md`): a batch scoped to what has
+/// been read since the last one, a watermark that moves on submit and not on
+/// load, and a backlog that is always still reachable.
+#[tokio::test]
+async fn a_sweep_scopes_to_what_was_read_since_the_last_one() {
+    let app = TestApp::new().await;
+    let now = now();
+    sqlx::query(
+        "INSERT INTO vocabulary (headword, reading, status, in_master, encounter_count, last_seen) VALUES \
+             ('憂鬱', 'ゆううつ', 'new', 1, 9, ?), ('齟齬', 'そご', 'new', 1, 9, ?)",
+    )
+    .bind(now - 86_400.0)
+    .bind(now - 86_400.0)
+    .execute(app.knowledge.pool())
+    .await
+    .unwrap();
+
+    // Never swept: the first batch is the whole backlog, not an empty list.
+    let q = app.get("/api/vocab/queue").await;
+    assert_eq!(q["scoped"], false, "no watermark yet");
+    assert_eq!(q["pending"], 2);
+    assert_eq!(app.get("/api/vocab/summary").await["ready_since"], 2);
+
+    // Judging without `advance_sweep` must not retire a batch: the watermark
+    // belongs to the sweep, not to any write that happens to pass through.
+    let (code, body) = app
+        .send(
+            "POST",
+            "/api/vocab/judge",
+            json!({ "judgements": [
+                { "headword": "憂鬱", "reading": "ゆううつ", "status": "known" },
+            ]}),
+        )
+        .await;
+    assert_eq!(code, 200);
+    assert_eq!(body["swept_through"], serde_json::Value::Null);
+    assert_eq!(app.get("/api/vocab/queue").await["scoped"], false);
+
+    // The sweep's own submit moves it.
+    let (code, body) = app
+        .send(
+            "POST",
+            "/api/vocab/judge",
+            json!({ "advance_sweep": true, "judgements": [
+                { "headword": "齟齬", "reading": "そご", "status": "unknown" },
+            ]}),
+        )
+        .await;
+    assert_eq!(code, 200);
+    assert!(body["swept_through"].as_f64().unwrap() >= now);
+
+    // A word met only before the mark is not in the next batch, and a word met
+    // since it is.
+    sqlx::query(
+        "INSERT INTO vocabulary (headword, reading, status, in_master, encounter_count, last_seen) VALUES \
+             ('逼迫', 'ひっぱく', 'new', 1, 9, ?), ('曖昧', 'あいまい', 'new', 1, 9, ?)",
+    )
+    .bind(now - 86_400.0)
+    .bind(now + 60.0)
+    .execute(app.knowledge.pool())
+    .await
+    .unwrap();
+
+    let q = app.get("/api/vocab/queue").await;
+    assert_eq!(q["scoped"], true);
+    let words: Vec<&str> = q["terms"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["headword"].as_str().unwrap())
+        .collect();
+    assert_eq!(words, vec!["曖昧"], "逼迫 was last read before the mark");
+    assert_eq!(q["pending"], 1);
+
+    // The tile agrees with the batch, and the backlog is still one flag away.
+    let v = app.get("/api/vocab/summary").await;
+    assert_eq!(v["ready_since"], 1);
+    assert_eq!(v["ready"], 2, "逼迫 is still ready, just not new");
+    assert_eq!(app.get("/api/vocab/queue?scoped=0").await["pending"], 2);
+}
+
 #[tokio::test]
 async fn an_unknown_status_is_refused_rather_than_defaulted() {
     let app = TestApp::new().await;

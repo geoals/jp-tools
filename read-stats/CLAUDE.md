@@ -311,6 +311,19 @@ assumes".
   because it decides what gets written and has to be testable without a
   browser; the client only seeds its checkboxes from it. Judging is confined to
   the rows on screen, so an interrupted sweep leaves a resumable queue.
+- **The sweep is scoped to what has been read since the last one.**
+  `sweep_through_ts` (an internal `read-stats.db` setting, like the ingest
+  watermarks) is compared against `vocabulary.last_seen`, so a fortnight's
+  reading produces a short batch rather than the standing backlog —
+  `spec/periodic-sweep.md`. Three rules hold it together: it **moves on submit,
+  never on load**, or an interrupted sweep loses its batch; it moves only for a
+  request that asked for it (`advance_sweep`), so a one-off judgement made from
+  the unscoped list cannot retire words nobody was shown; and it is a **filter
+  and nothing else** — `scoped=0` still reaches every ready row, and the
+  scoping judges nothing by itself. `last_seen` answers "met since the mark",
+  not "crossed the threshold since the mark", so a declined word returns the
+  next time it is read. That over-inclusion is deliberate and cheap;
+  `word_days` can answer it exactly if the batches ever come out noisy.
 - Selected-state has one vocabulary: `background: var(--meter-track)` with
   primary ink (`.segment-on`, `.toggle-on`, `.tab-on`). Not an accent border,
   not a saturated fill — `--series-1` at full strength is spent on the paused

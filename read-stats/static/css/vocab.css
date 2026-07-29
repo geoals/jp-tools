@@ -76,3 +76,22 @@
 .triage-actions button + button {
   margin-left: 6px;
 }
+
+/* The sweep nudge on the dashboard. Deliberately quieter than .paused-banner:
+   that one is an alarm and owns --series-1 outright, while this is an invitation
+   that can sit unanswered for a fortnight without anything being wrong. */
+.sweep-nudge {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  margin-bottom: 14px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+/* Spaced in CSS, not by a literal space in the template: htm collapses the
+   whitespace around a line break, so text beside ${...} is never safe. */
+.sweep-nudge a {
+  color: inherit;
+  margin-left: 6px;
+}
