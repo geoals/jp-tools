@@ -1111,26 +1111,59 @@ pub async fn repair_empty_readings(k: &Knowledge) -> Result<ReadingRepair, sqlx:
     Ok(out)
 }
 
-/// How many untriaged terms have been met often enough to be worth offering —
-/// the "seen" bucket.
+/// The two derived states an unjudged row can be in.
 ///
-/// Derived, not stored, and that is the point. `seen` is a fact about the
-/// encounter count, which every ingest already maintains; storing it would add
-/// a fourth writer to a column only the reader may write, and would freeze a
-/// threshold that should stay re-tunable over the whole history like every
-/// other read-stats derivation.
+/// `status` records what the *reader* asserted; encounters record what the
+/// *reading* did. They are orthogonal, so a row is legitimately "never judged"
+/// and "met 53 times" at once — which is what おじ is. Reporting the whole
+/// unjudged bucket as `new` therefore mislabels almost all of it: on
+/// 2026-07-29, 2,143 of 2,155 unjudged rows had been met.
 ///
-/// The lookup half of the triage rule is deliberately *not* applied here: this
-/// counts what has been seen, not what is ready to be called known.
-pub async fn seen_count(k: &Knowledge, min_encounters: i64) -> Result<i64, sqlx::Error> {
-    let (n,): (i64,) = sqlx::query_as(&format!(
-        "SELECT COUNT(*) FROM vocabulary \
-         WHERE status = 'new' AND encounter_count >= ? AND {COUNTS_AS_VOCAB}"
+/// Both figures are derived and neither is stored. Storing them would add a
+/// writer to a column only the reader may write, and freeze a threshold that
+/// should stay re-tunable over the whole history like every other read-stats
+/// derivation.
+#[derive(Debug, Clone, Default)]
+pub struct UnjudgedCounts {
+    /// Met while reading, never judged. The honest name for most of `new`.
+    pub seen: i64,
+    /// Never met and never judged — a row some import created for a word the
+    /// reading has not reached yet. Genuinely new.
+    pub never_met: i64,
+    /// Met at least `min_encounters` times and counting as vocabulary: what
+    /// the sweep can actually offer. A subset of `seen`.
+    ///
+    /// The lookup half of the triage rule is deliberately not applied — this
+    /// counts what is ready to be *asked about*, not what would be ticked.
+    pub ready: i64,
+    /// How many of `never_met` count as vocabulary, so a display can split the
+    /// stored `new` bucket's vocabulary column the same way it splits its total.
+    pub never_met_vocab: i64,
+}
+
+pub async fn unjudged_counts(
+    k: &Knowledge,
+    min_encounters: i64,
+) -> Result<UnjudgedCounts, sqlx::Error> {
+    let row = sqlx::query(&format!(
+        "SELECT \
+           COALESCE(SUM(CASE WHEN encounter_count > 0 THEN 1 ELSE 0 END), 0) AS seen, \
+           COALESCE(SUM(CASE WHEN encounter_count = 0 THEN 1 ELSE 0 END), 0) AS never_met, \
+           COALESCE(SUM(CASE WHEN encounter_count >= ? AND {COUNTS_AS_VOCAB} \
+                             THEN 1 ELSE 0 END), 0) AS ready, \
+           COALESCE(SUM(CASE WHEN encounter_count = 0 AND {COUNTS_AS_VOCAB} \
+                             THEN 1 ELSE 0 END), 0) AS never_met_vocab \
+         FROM vocabulary WHERE status = 'new'"
     ))
     .bind(min_encounters)
     .fetch_one(k.pool())
     .await?;
-    Ok(n)
+    Ok(UnjudgedCounts {
+        seen: row.get("seen"),
+        never_met: row.get("never_met"),
+        ready: row.get("ready"),
+        never_met_vocab: row.get("never_met_vocab"),
+    })
 }
 
 /// Whether the ledger has ever been populated. The one thing a caller needs to

@@ -67,18 +67,24 @@ pub async fn vocab_summary(State(state): State<AppState>) -> Result<Json<Value>,
     // "I know N words" figure and the first is what fills the queue.
     let words = lexeme::known_lexemes(&state.knowledge).await?;
 
-    // `seen` is derived, never stored: untriaged terms met often enough to be
-    // worth offering. It shares the triage floor so the number and the queue
-    // cannot disagree about what counts as met.
+    // The unjudged bucket, split into the two states it actually contains.
+    // `status = 'new'` means "never judged", which is orthogonal to whether the
+    // word was ever met — so reporting the whole bucket as `new` mislabels
+    // almost all of it. `ready` shares the triage floor, so the tile and the
+    // queue cannot disagree about what counts as met.
     let settings = db::load_settings(&state.local).await?;
-    let seen = vocabulary::seen_count(&state.knowledge, settings.triage_min_encounters).await?;
+    let unjudged =
+        vocabulary::unjudged_counts(&state.knowledge, settings.triage_min_encounters).await?;
 
     Ok(Json(json!({
         "total": total,
         "known_in_master": known,
         "known_words": words,
-        "seen": seen,
-        "seen_min_encounters": settings.triage_min_encounters,
+        "seen": unjudged.seen,
+        "never_met": unjudged.never_met,
+        "never_met_vocab": unjudged.never_met_vocab,
+        "ready": unjudged.ready,
+        "ready_min_encounters": settings.triage_min_encounters,
         "by_status": by_status,
     })))
 }

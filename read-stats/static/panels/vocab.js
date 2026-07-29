@@ -20,12 +20,18 @@ import { FrequencyView } from "./frequency.js";
 import { PromotionView } from "./promotion.js";
 import { TriageView } from "./triage.js";
 
-/** Every status, in the order the triage passes fill them, with what each one
- *  means. `new` first because it is the default and, today, the whole table. */
-const STATUSES = [
-  ["new", "ingested, never judged"],
+/** The states a row is displayed in, which are not quite the states it is
+ *  stored in. `status` records what the reader asserted, and `new` means only
+ *  "never judged" — orthogonal to whether the word was ever met. Almost every
+ *  unjudged row *has* been met (2,143 of 2,155 on 2026-07-29), so showing them
+ *  all as "new" mislabels the bucket. The stored `new` is therefore split here
+ *  against the encounter count, which is a fact the ingest already maintains
+ *  and nothing has to assert. */
+const STATES = [
   ["known", "I know this word"],
+  ["seen", "met while reading, never judged"],
   ["unknown", "judged, and not known — the sweep's snooze"],
+  ["new", "never met and never judged — waiting for the reading to reach it"],
   ["blacklisted", "never surface this again"],
 ];
 
@@ -90,7 +96,15 @@ function StatusSummary({ vocab, onImported }) {
   // Built whole rather than interpolated beside literal text: htm collapses
   // whitespace at a line break and prettier reflows markup there freely.
   const spellings = `(${vocab.known_in_master.toLocaleString("en")} spellings)`;
-  const seenHint = `Untriaged vocabulary met at least ${vocab.seen_min_encounters} times. Derived from the encounter count, not a stored status — change the threshold and the whole history re-reads under it.`;
+  const readyHint = `Unjudged vocabulary met at least ${vocab.ready_min_encounters} times — what a sweep can offer. Derived from the encounter count, not a stored status, so changing the threshold re-reads the whole history.`;
+  // The stored `new` bucket, split against the encounter count. Held here so
+  // the table below reads from one place.
+  const stateRows = new Map(byStatus);
+  stateRows.set("seen", {
+    total: vocab.seen,
+    in_master: (byStatus.get("new")?.in_master ?? 0) - (vocab.never_met_vocab ?? 0),
+  });
+  stateRows.set("new", { total: vocab.never_met, in_master: vocab.never_met_vocab ?? 0 });
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [err, setErr] = useState(null);
@@ -193,10 +207,10 @@ function StatusSummary({ vocab, onImported }) {
         </div>
         <div
           class="tile has-hint"
-          title=${seenHint}
+          title=${readyHint}
         >
-          <div class="label">seen</div>
-          <div class="value">${vocab.seen.toLocaleString("en")}</div>
+          <div class="label">ready to judge</div>
+          <div class="value">${vocab.ready.toLocaleString("en")}</div>
         </div>
         <div
           class="tile has-hint"
@@ -224,8 +238,8 @@ function StatusSummary({ vocab, onImported }) {
           </tr>
         </thead>
         <tbody>
-          ${STATUSES.map(([status, hint]) => {
-            const row = byStatus.get(status);
+          ${STATES.map(([status, hint]) => {
+            const row = stateRows.get(status);
             return html`
               <tr key=${status}>
                 <td><span title=${hint}>${status}</span></td>

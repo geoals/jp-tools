@@ -342,11 +342,29 @@ nothing to mark.
 what "no" writes. Without it, a word met often and not known returns in every
 periodic batch forever; it is the snooze, not a state anyone sets on purpose.
 
-**`seen` is derived, never stored** (`vocabulary::seen_count`): untriaged terms
-met at least `triage_min_encounters` times. Storing it would add a writer to a
-column only the reader may write, and would freeze a threshold that should stay
-re-tunable over the whole history like every other read-stats derivation. It
-shares the triage floor so the tile and the queue cannot disagree.
+**`seen` is derived, never stored** (`vocabulary::unjudged_counts`). Storing it
+would add a writer to a column only the reader may write, and freeze a
+threshold that should stay re-tunable over the whole history like every other
+read-stats derivation.
+
+The subtlety worth keeping straight: **`status` records what the reader
+asserted, encounters record what the reading did, and the two are orthogonal.**
+`new` means only "never judged" — so a row is legitimately never-judged *and*
+met 53 times, which is what おじ is. Reporting the whole unjudged bucket as
+`new` therefore mislabels almost all of it: 2,143 of 2,155 unjudged rows have
+been met. The stored `new` is split for display against the encounter count:
+
+| displayed state | means |
+|---|---|
+| `seen` | met while reading, never judged — 2,143 |
+| `new` | never met and never judged — 12, waiting for the reading to reach them |
+
+`ready` is the third figure and a subset of `seen`: met at least
+`triage_min_encounters` times *and* counting as vocabulary — 191, and what a
+sweep can actually offer. It shares the triage floor so the tile and the queue
+cannot disagree about what counts as met. The lookup half of the triage rule is
+deliberately not applied to it: it counts what is ready to be *asked about*,
+not what would be ticked.
 
 ## The vocabulary escape hatch
 
