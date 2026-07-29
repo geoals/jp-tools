@@ -23,7 +23,7 @@
 //! Adding a dictionary must therefore never move the denominator, which is what
 //! the role is for: a new import is `reference` until someone says otherwise.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use sqlx::{Row, SqlitePool};
 
@@ -186,6 +186,57 @@ pub async fn lexeme_dictionary(pool: &SqlitePool) -> Result<Option<i64>, sqlx::E
     .fetch_optional(pool)
     .await?;
     Ok(row.map(|r| r.0))
+}
+
+/// Every entry id in the lexeme dictionary, mapped to the forms of it that the
+/// **master** dictionary also lists.
+///
+/// The join is what makes an id-keyed import safe. jiten.moe exports JMdict
+/// entry ids and nothing else: an id names a *word*, but a word is spelt
+/// several ways and the ledger keys on spellings. This resolves one to the
+/// other, and the master join is the vocabulary gate — 長谷川 and JMdict's
+/// multi-word phrases resolve to no master form and so import as nothing.
+///
+/// Readings are compared under the kana convention both dictionaries use:
+/// an entry whose headword is already kana stores the reading either as the
+/// headword again or not at all, so both sides are normalized before matching.
+/// Without that, every kana headword failed to join and the import silently
+/// dropped a third of its rows.
+///
+/// Returned whole rather than queried per id: an import asks about ~13k ids,
+/// and one scan of the join beats 13k round trips.
+pub async fn master_forms_by_sequence(
+    pool: &SqlitePool,
+) -> Result<HashMap<i64, Vec<(String, String)>>, sqlx::Error> {
+    let Some(lex) = lexeme_dictionary(pool).await? else {
+        return Ok(HashMap::new());
+    };
+    let Some(master) = master(pool).await? else {
+        return Ok(HashMap::new());
+    };
+
+    let rows = sqlx::query(
+        "SELECT DISTINCT j.sequence AS seq, j.term AS term, \
+                COALESCE(NULLIF(j.reading, ''), j.term) AS reading \
+         FROM dictionary_entries j \
+         JOIN dictionary_entries m \
+           ON m.dictionary_id = ? AND m.term = j.term \
+          AND COALESCE(NULLIF(m.reading, ''), m.term) \
+              = COALESCE(NULLIF(j.reading, ''), j.term) \
+         WHERE j.dictionary_id = ? AND j.sequence IS NOT NULL",
+    )
+    .bind(master.id)
+    .bind(lex)
+    .fetch_all(pool)
+    .await?;
+
+    let mut out: HashMap<i64, Vec<(String, String)>> = HashMap::new();
+    for r in &rows {
+        out.entry(r.get("seq"))
+            .or_default()
+            .push((r.get("term"), r.get("reading")));
+    }
+    Ok(out)
 }
 
 pub async fn lookup_dictionary_entries(
@@ -535,5 +586,65 @@ mod tests {
                 .is_none()
         );
         assert!(master(k.pool()).await.unwrap().is_some(), "still marked");
+    }
+
+    /// The two dictionaries spell a kana headword's reading differently — one
+    /// repeats the headword, the other leaves it empty — and an exact
+    /// `reading = reading` join silently drops every one of them.
+    #[tokio::test]
+    async fn a_kana_headword_joins_across_the_two_reading_conventions() {
+        let k = with_dicts(&[("Sankoku", "/x/sankoku.zip"), ("Jitendex", "/x/jitendex.zip")]).await;
+        set_role(k.pool(), 1, Role::Master).await.unwrap();
+
+        // Sankoku stores the kana headword with no reading at all.
+        for (dict, term, reading, seq) in [
+            (1i64, "あそこ", "", None),
+            (1, "零れ落ちる", "こぼれおちる", None),
+            // Jitendex repeats the headword as the reading, and carries ids.
+            (2, "あそこ", "あそこ", Some(1000320i64)),
+            (2, "かしこ", "かしこ", Some(1000320)),
+            (2, "零れ落ちる", "こぼれおちる", Some(2002270)),
+            (2, "こぼれ落ちる", "こぼれおちる", Some(2002270)),
+        ] {
+            sqlx::query(
+                "INSERT INTO dictionary_entries (dictionary_id, term, reading, definitions_json, sequence) \
+                 VALUES (?, ?, ?, '[]', ?)",
+            )
+            .bind(dict).bind(term).bind(reading).bind(seq)
+            .execute(k.pool()).await.unwrap();
+        }
+
+        let map = master_forms_by_sequence(k.pool()).await.unwrap();
+
+        let mut asoko = map.get(&1000320).cloned().unwrap_or_default();
+        asoko.sort();
+        assert_eq!(
+            asoko,
+            vec![("あそこ".to_string(), "あそこ".to_string())],
+            "あそこ joins despite the empty reading; かしこ is not in the master dictionary and must not ride in on the shared entry id"
+        );
+
+        let mut koboreru = map.get(&2002270).cloned().unwrap_or_default();
+        koboreru.sort();
+        assert_eq!(
+            koboreru,
+            vec![("零れ落ちる".to_string(), "こぼれおちる".to_string())],
+            "only the spelling the master dictionary lists"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_entry_with_no_master_spelling_resolves_to_nothing() {
+        let k = with_dicts(&[("Sankoku", "/x/sankoku.zip"), ("Jitendex", "/x/jitendex.zip")]).await;
+        set_role(k.pool(), 1, Role::Master).await.unwrap();
+        // A surname: Jitendex has it, Sankoku does not.
+        sqlx::query(
+            "INSERT INTO dictionary_entries (dictionary_id, term, reading, definitions_json, sequence) \
+             VALUES (2, '長谷川', 'はせがわ', '[]', 2082430)",
+        )
+        .execute(k.pool()).await.unwrap();
+
+        let map = master_forms_by_sequence(k.pool()).await.unwrap();
+        assert!(map.get(&2082430).is_none(), "a name imports as nothing");
     }
 }

@@ -280,3 +280,44 @@ dictionary decides which rows are the same word.**
 First measurement: 6,207 known in-master forms → **6,098 words**. The 109
 collapsed are pure spelling — アイディア/アイデア, 飲む/呑む, 身体/体/躯,
 奴/ヤツ.
+
+## Pass 5: the jiten.moe export (built 2026-07-29)
+
+The first source that names **words** rather than spellings. jiten.moe's JSON
+export is a list of JMdict entry ids (`w` = `ent_seq`), which is the same key
+`dictionary_entries.sequence` now stores.
+
+That removes the problem passes 1 and 3 were built around. Both had to infer a
+reading from a bare headword and skip whatever came back ambiguous — 73 and 159
+terms. This pass guesses nothing: 辛い/つらい (1365860) is in the export and
+辛い/からい (1365850) is not, so exactly one of them is marked. There is no
+ambiguous-skipped count because there is no ambiguity.
+
+An id fans out to every spelling of it the master dictionary lists, which is
+only safe because counting collapses back: こちら and こっち are marked
+separately and reported as one word. The fan-out buys triage not asking about
+each spelling in turn; the lexeme layer stops it inflating the total.
+
+Two rules the import obeys, both learned the hard way in the first dry run:
+
+- **It seeds, it does not overrule.** `seed_status_each` writes only where the
+  status is still `new`. The first run used `set_status_each` and turned 16
+  rows the reader had judged `unknown` into `known` — a bulk assertion made
+  months ago elsewhere overruling one made here with the word on screen.
+- **It refreshes the dictionary flags afterwards.** Most of what it writes are
+  rows that did not exist: words never met in any reading, whose flags are all
+  zero. Without the refresh, `in_master` excluded the entire import from the
+  vocabulary scale — 6,255 seeded words counted as nothing.
+
+First real run, against the frozen dev copy of the live data:
+
+| | |
+|---|---|
+| cards / distinct ids | 14,132 / 13,312 |
+| entries with a master spelling | 10,544 |
+| dropped (names, JMdict-only phrases) | 2,768 |
+| spellings marked known | 7,272 |
+| **known words** | **6,098 → 11,694** |
+
+Note the spread the lexeme layer now covers: 13,479 known in-master spellings
+report as 11,694 words.

@@ -323,6 +323,90 @@ pub async fn vocab_anki_import(
     })))
 }
 
+/// jiten.moe's JSON export: a list of cards keyed by JMdict entry id.
+///
+/// Only `w` is read. The status field (`s`) is deliberately ignored — every
+/// card in the export is imported as `known`, by the reader's instruction:
+/// jiten's own maturity grades are its scheduler's business, not an assertion
+/// about what is known.
+#[derive(Deserialize)]
+pub struct JitenExport {
+    cards: Vec<JitenCard>,
+}
+
+#[derive(Deserialize)]
+pub struct JitenCard {
+    /// JMdict `ent_seq`. The same id `dictionary_entries.sequence` stores.
+    w: i64,
+}
+
+/// Pass 5: seed the ledger from a jiten.moe export.
+///
+/// The only source so far that names *words* rather than spellings. Passes 1
+/// and 3 both had to infer a reading from a bare headword and skip whatever
+/// came back ambiguous — 73 and 159 terms respectively. This one carries
+/// JMdict entry ids, so 辛い/つらい is marked and 辛い/からい is not, without
+/// anything being guessed. There is no ambiguous-skipped count here because
+/// there is no ambiguity.
+///
+/// An id fans out to every spelling of it the **master** dictionary lists, and
+/// that fan-out is safe only because counting collapses back:
+/// `jp_core::knowledge::lexeme` reports こちら and こっち as one word, so
+/// marking both cannot inflate the vocabulary figure. What the fan-out buys is
+/// that triage stops asking about each spelling separately.
+///
+/// Import order does not matter and re-running is free: `status` is set, never
+/// cleared, and counts are left alone (`set_status_each`).
+pub async fn vocab_jiten_import(
+    State(state): State<AppState>,
+    Json(export): Json<JitenExport>,
+) -> Result<Json<Value>, AppError> {
+    let forms_by_seq = dictionaries::master_forms_by_sequence(state.knowledge.pool()).await?;
+
+    let ids: std::collections::HashSet<i64> = export.cards.iter().map(|c| c.w).collect();
+    let mut terms: std::collections::HashSet<Term> = std::collections::HashSet::new();
+    let mut unresolved = 0i64;
+    for id in &ids {
+        match forms_by_seq.get(id) {
+            // No master spelling: a name, or one of JMdict's phrase entries.
+            // Not vocabulary, so it imports as nothing rather than as a row
+            // the triage queue would then have to reject.
+            None => unresolved += 1,
+            Some(forms) => {
+                for (headword, reading) in forms {
+                    terms.insert(Term::new(headword.clone(), reading));
+                }
+            }
+        }
+    }
+
+    let judgements: Vec<(Term, Status)> = terms.into_iter().map(|t| (t, Status::Known)).collect();
+    let marked = vocabulary::seed_status_each(&state.knowledge, &judgements, now_ts()).await?;
+
+    // Most of what this just wrote are rows that did not exist a moment ago —
+    // words never met in any reading — and a fresh row's dictionary flags are
+    // all zero until something fills them. Without this the vocabulary scale
+    // ignores the entire import: `in_master` is what the count gates on, and
+    // 6,255 freshly seeded words sat outside it.
+    vocabulary::refresh_dictionary_flags(&state.knowledge).await?;
+
+    info!(
+        cards = export.cards.len(),
+        ids = ids.len(),
+        resolved = ids.len() as i64 - unresolved,
+        unresolved,
+        marked,
+        "jiten import"
+    );
+    Ok(Json(json!({
+        "cards": export.cards.len(),
+        "ids": ids.len(),
+        "resolved_entries": ids.len() as i64 - unresolved,
+        "unresolved_entries": unresolved,
+        "terms_marked": marked,
+    })))
+}
+
 /// How many BCCWJ terms at or under a rank threshold are unjudged master
 /// vocabulary — the cheap count a threshold slider previews against before
 /// paging through the actual list.

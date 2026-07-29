@@ -82,6 +82,14 @@ pub fn build_router(state: AppState) -> Router {
             "/api/vocab/anki-import",
             axum::routing::post(vocab::vocab_anki_import),
         )
+        // The export is a few megabytes of JSON — past axum's 2 MB default,
+        // which rejects it as a bare 413 with nothing in the log to explain
+        // why. The limit is raised on this route alone.
+        .route(
+            "/api/vocab/jiten-import",
+            axum::routing::post(vocab::vocab_jiten_import)
+                .layer(axum::extract::DefaultBodyLimit::max(64 * 1024 * 1024)),
+        )
         .route(
             "/api/vocab/frequency-summary",
             get(vocab::vocab_frequency_summary),

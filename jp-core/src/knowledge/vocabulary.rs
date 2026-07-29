@@ -658,6 +658,46 @@ pub fn preselects_known(row: &VocabRow, min_encounters: i64) -> bool {
 /// `known` and `unknown` and has to land atomically, because a partially
 /// applied sweep leaves the reader unable to tell which rows they still owe an
 /// answer for.
+/// Assert `status` only where nothing has been asserted yet.
+///
+/// The write a *bulk seed* wants, as against [`set_status_each`]'s write,
+/// which a person clicking a row wants. A seed carries thousands of
+/// judgements made somewhere else and months ago; a row already saying
+/// `unknown` carries one made here, with the word on screen. The seed must
+/// not overrule it — the first jiten import quietly turned 16 `unknown` rows
+/// into `known`, which is exactly the demotion-in-reverse that
+/// "only the reader writes status" exists to prevent.
+///
+/// So an existing row is written only when it is still `new`. Rows that do
+/// not exist are created. That also makes the import idempotent and
+/// order-independent: running it twice, or after any other pass, cannot
+/// change an answer that is already there.
+pub async fn seed_status_each(
+    k: &Knowledge,
+    judgements: &[(Term, Status)],
+    ts: f64,
+) -> Result<u64, sqlx::Error> {
+    let mut tx = k.pool().begin().await?;
+    let mut n = 0;
+    for (term, status) in judgements {
+        n += sqlx::query(
+            "INSERT INTO vocabulary (headword, reading, status, status_ts) VALUES (?, ?, ?, ?) \
+             ON CONFLICT(headword, reading) DO UPDATE SET status = excluded.status, \
+                 status_ts = excluded.status_ts \
+             WHERE vocabulary.status = 'new'",
+        )
+        .bind(&term.headword)
+        .bind(&term.reading)
+        .bind(status.as_str())
+        .bind(ts)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+    }
+    tx.commit().await?;
+    Ok(n)
+}
+
 pub async fn set_status_each(
     k: &Knowledge,
     judgements: &[(Term, Status)],
@@ -1548,5 +1588,55 @@ mod tests {
                 .status,
             Status::New
         );
+    }
+
+    /// A bulk seed carries judgements made elsewhere and months ago. A row
+    /// already saying `unknown` carries one made here, with the word on
+    /// screen — and the first jiten import quietly turned 16 of those into
+    /// `known` before this guard existed.
+    #[tokio::test]
+    async fn a_seed_fills_new_rows_and_leaves_judged_ones_alone() {
+        let k = temp().await;
+        let judged = Term::new("辛い", "からい");
+        let untouched = Term::new("零れ落ちる", "こぼれおちる");
+        set_status(&k, &judged, Status::Unknown, 1.0).await.unwrap();
+        set_status(&k, &untouched, Status::New, 1.0).await.unwrap();
+
+        let fresh = Term::new("こぼれ落ちる", "こぼれおちる");
+        seed_status_each(
+            &k,
+            &[
+                (judged.clone(), Status::Known),
+                (untouched.clone(), Status::Known),
+                (fresh.clone(), Status::Known),
+            ],
+            9.0,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(get(&k, &judged).await.status, Status::Unknown, "a judgement survives a seed");
+        assert_eq!(get(&k, &untouched).await.status, Status::Known, "an unjudged row is filled");
+        assert_eq!(get(&k, &fresh).await.status, Status::Known, "a missing row is created");
+    }
+
+    /// Running it twice must land where running it once did.
+    #[tokio::test]
+    async fn seeding_is_idempotent() {
+        let k = temp().await;
+        let t = Term::new("零れ落ちる", "こぼれおちる");
+        let seed = [(t.clone(), Status::Known)];
+        seed_status_each(&k, &seed, 1.0).await.unwrap();
+        set_status(&k, &t, Status::Unknown, 2.0).await.unwrap();
+        seed_status_each(&k, &seed, 3.0).await.unwrap();
+        assert_eq!(
+            get(&k, &t).await.status,
+            Status::Unknown,
+            "a re-run cannot undo a judgement made between the two"
+        );
+    }
+
+    async fn get(k: &Knowledge, term: &Term) -> VocabRow {
+        fetch(k, term).await.unwrap().expect("row exists")
     }
 }
