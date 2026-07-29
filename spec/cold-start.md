@@ -321,3 +321,68 @@ First real run, against the frozen dev copy of the live data:
 
 Note the spread the lexeme layer now covers: 13,479 known in-master spellings
 report as 11,694 words.
+
+## The status model, settled 2026-07-29
+
+Four states, down from six. `learning` and `name` are gone: both carried zero
+rows, `learning` duplicated `mined` (which the Anki sync already maintains
+beside `status`), and a name never enters the ledger in the first place —
+Sudachi's 固有名詞 subclass keeps it out at ingest, so a status for one had
+nothing to mark.
+
+| state | written by | means |
+|---|---|---|
+| `new` | default | never offered |
+| `known` | the reader, the imports | — |
+| `unknown` | saying no in a sweep | offered and declined |
+| `blacklisted` | the non-word bulk action | never surface again |
+
+**`unknown` earns its place through the sweep, not through triage.** It is
+what "no" writes. Without it, a word met often and not known returns in every
+periodic batch forever; it is the snooze, not a state anyone sets on purpose.
+
+**`seen` is derived, never stored** (`vocabulary::seen_count`): untriaged terms
+met at least `triage_min_encounters` times. Storing it would add a writer to a
+column only the reader may write, and would freeze a threshold that should stay
+re-tunable over the whole history like every other read-stats derivation. It
+shares the triage floor so the tile and the queue cannot disagree.
+
+## The vocabulary escape hatch
+
+Sankoku decides what counts as vocabulary, and for domain words it decides
+wrong: 冪等性, 可用性 and 復号 are absent, and so are their stems, so no
+decomposition rule reaches them. Only 15 of the 280 non-master known terms are
+suffix derivations of a listed stem, so a rule is not the answer. Swapping in
+JMdict would admit them along with every idiom and orthographic variant, which
+is the noise the master role exists to exclude.
+
+So `vocabulary.promoted` is the reader's override, and
+`vocabulary::COUNTS_AS_VOCAB` is the one predicate every vocabulary figure
+gates on: `in_master = 1 OR promoted = 1`. Like `status`, only a person sets
+it, and promoting says *this is a word* — never *I know this word*.
+
+**Mining is what surfaces a candidate, and structurally it has to be.** The
+triage queue and the frequency pass both gate on the vocabulary predicate, so a
+word the master does not list can never be offered by reading-based triage. A
+card is the reader claiming the word. Terms read often join them, because the
+tokenizer sometimes cannot decompose a compound the master lists in parts
+(懲罰房, met 61 times, credited to nothing).
+
+## The empty-reading defect
+
+Pass 1 stores an empty reading when the master offers no candidate. Correct for
+a kana headword — that is the ledger's key convention — and wrong for a kanji
+one, in two shapes both found in live data:
+
+- **duplicates** — 復号 existed twice: `復号/ふくごう` with the encounters the
+  tokenizer recorded, and `復号/` with the `known` the Anki import wrote. One
+  word, two rows, every count split.
+- **orphans** — 冪等性 existed only as `冪等性/`, stranded on a key nothing
+  else writes to.
+
+`repair_empty_readings` asks a *reference* dictionary for the reading the
+master could not supply, then merges onto the properly-keyed row or re-keys in
+place. On live data: **207 re-keyed, 25 merged, 19 left alone** — 行く, 打つ and
+振る read two ways each, and guessing would fabricate the key everything joins
+on. Idempotent. Pass 1 itself should take the same fallback so the defect stops
+being created.

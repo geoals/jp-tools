@@ -91,6 +91,18 @@ pub fn build_router(state: AppState) -> Router {
                 .layer(axum::extract::DefaultBodyLimit::max(64 * 1024 * 1024)),
         )
         .route(
+            "/api/vocab/repair-empty-readings",
+            axum::routing::post(vocab::vocab_repair_empty_readings),
+        )
+        .route(
+            "/api/vocab/promotion-queue",
+            get(vocab::vocab_promotion_queue),
+        )
+        .route(
+            "/api/vocab/promote",
+            axum::routing::post(vocab::vocab_promote),
+        )
+        .route(
             "/api/vocab/frequency-summary",
             get(vocab::vocab_frequency_summary),
         )

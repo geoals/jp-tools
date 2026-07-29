@@ -32,6 +32,15 @@ use sqlx::{Row, SqlitePool};
 use super::Knowledge;
 use crate::text::kana;
 
+/// What counts toward "I know N words", as a SQL predicate.
+///
+/// One definition, used by every figure that reports a vocabulary size, so
+/// they cannot drift apart. The master dictionary's answer, **or** the
+/// reader's override where the master has nothing to say: Sankoku carries no
+/// 冪等性 and no 冪等 either, and admitting JMdict instead would drag in every
+/// idiom and orthographic variant. See the migration note on `promoted`.
+pub const COUNTS_AS_VOCAB: &str = "(in_master = 1 OR promoted = 1)";
+
 /// What the reader has asserted about a term. Never set by a sync.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
@@ -40,14 +49,13 @@ pub enum Status {
     New,
     Known,
     /// Judged, and not known.
+    ///
+    /// The sweep's snooze. Without it a word met often but not known comes
+    /// back in every periodic batch forever, so this is what "no" writes —
+    /// not a state anyone sets deliberately.
     Unknown,
-    /// Actively being learned. Set by hand; the Anki sync writes `mined`
-    /// instead, so re-syncing cannot demote anything.
-    Learning,
     /// Never surface this again.
     Blacklisted,
-    /// A proper noun, not vocabulary.
-    Name,
 }
 
 impl Status {
@@ -56,9 +64,7 @@ impl Status {
             Status::New => "new",
             Status::Known => "known",
             Status::Unknown => "unknown",
-            Status::Learning => "learning",
             Status::Blacklisted => "blacklisted",
-            Status::Name => "name",
         }
     }
 
@@ -69,9 +75,7 @@ impl Status {
         match s {
             "known" => Status::Known,
             "unknown" => Status::Unknown,
-            "learning" => Status::Learning,
             "blacklisted" => Status::Blacklisted,
-            "name" => Status::Name,
             _ => Status::New,
         }
     }
@@ -83,13 +87,17 @@ impl Status {
         matches!(self, Status::Known)
     }
 
-    pub const ALL: [Status; 6] = [
+    /// `learning` and `name` were removed in 2026-07: both carried zero rows.
+    /// `learning` duplicated `mined`, which the Anki sync already maintains
+    /// beside `status`; a name is kept out of the ledger at ingest by Sudachi's
+    /// 固有名詞 subclass, so a status for one had nothing to mark. Anything
+    /// still spelling them in the database reads back as `new` via [`parse`],
+    /// which is the safe answer.
+    pub const ALL: [Status; 4] = [
         Status::New,
         Status::Known,
         Status::Unknown,
-        Status::Learning,
         Status::Blacklisted,
-        Status::Name,
     ];
 }
 
@@ -879,10 +887,11 @@ pub struct StatusCount {
 }
 
 pub async fn status_counts(k: &Knowledge) -> Result<Vec<StatusCount>, sqlx::Error> {
-    let rows = sqlx::query(
-        "SELECT status, COUNT(*) AS total, SUM(in_master) AS in_master \
-         FROM vocabulary GROUP BY status ORDER BY total DESC",
-    )
+    let rows = sqlx::query(&format!(
+        "SELECT status, COUNT(*) AS total, \
+                SUM(CASE WHEN {COUNTS_AS_VOCAB} THEN 1 ELSE 0 END) AS in_master \
+         FROM vocabulary GROUP BY status ORDER BY total DESC"
+    ))
     .fetch_all(k.pool())
     .await?;
     Ok(rows
@@ -893,6 +902,235 @@ pub async fn status_counts(k: &Knowledge) -> Result<Vec<StatusCount>, sqlx::Erro
             in_master: r.get::<Option<i64>, _>("in_master").unwrap_or(0),
         })
         .collect())
+}
+
+/// A term that would count toward the vocabulary scale if the reader said so.
+///
+/// The escape hatch's queue. Only two things ever put a term here, and both
+/// are evidence the reader cares about it:
+///
+/// - **it was mined** — a card exists, which is the reader claiming the word.
+///   This is the main source, and structurally the *only* way a non-master
+///   term can reach them at all: the triage queue and the periodic sweep both
+///   gate on the vocabulary predicate, so a word Sankoku does not list can
+///   never be offered by reading-based triage.
+/// - **it was read often** — 懲罰房 was met 61 times and credited to nothing,
+///   because Sudachi tags it a place name and so it is never decomposed into
+///   parts the master dictionary does list.
+///
+/// Deliberately not "every non-master term": most of those are tokenizer
+/// noise, and the blacklist bulk action exists for them.
+#[derive(Debug, Clone)]
+pub struct PromotionCandidate {
+    pub term: Term,
+    pub mined: bool,
+    pub encounter_count: i64,
+    pub in_reference: bool,
+}
+
+/// Terms outside the vocabulary scale that are worth a promote/skip decision.
+///
+/// Mined first, then by how often they were read: the mined ones are the
+/// reader's own claims and the read ones are the dictionary's misses.
+pub async fn promotion_candidates(
+    k: &Knowledge,
+    min_encounters: i64,
+    limit: i64,
+) -> Result<Vec<PromotionCandidate>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT headword, reading, mined, encounter_count, in_reference \
+         FROM vocabulary \
+         WHERE promoted = 0 AND in_master = 0 AND in_name = 0 \
+           AND (mined = 1 OR encounter_count >= ?) \
+         ORDER BY mined DESC, encounter_count DESC LIMIT ?",
+    )
+    .bind(min_encounters)
+    .bind(limit)
+    .fetch_all(k.pool())
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| PromotionCandidate {
+            term: Term {
+                headword: r.get("headword"),
+                reading: r.get("reading"),
+            },
+            mined: r.get::<i64, _>("mined") != 0,
+            encounter_count: r.get("encounter_count"),
+            in_reference: r.get::<i64, _>("in_reference") != 0,
+        })
+        .collect())
+}
+
+/// How many candidates there are in total, since the queue is only its head.
+pub async fn promotion_pending(k: &Knowledge, min_encounters: i64) -> Result<i64, sqlx::Error> {
+    let (n,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM vocabulary \
+         WHERE promoted = 0 AND in_master = 0 AND in_name = 0 \
+           AND (mined = 1 OR encounter_count >= ?)",
+    )
+    .bind(min_encounters)
+    .fetch_one(k.pool())
+    .await?;
+    Ok(n)
+}
+
+/// Count these terms as vocabulary though no master dictionary lists them.
+///
+/// An assertion, like `status`: only ever written from a request the reader
+/// made. Never sets `status` as a side effect — promoting 冪等性 says it is a
+/// word, not that it is known, and the two questions have different answers
+/// for anything still in the queue.
+pub async fn set_promoted(
+    k: &Knowledge,
+    terms: &[Term],
+    promoted: bool,
+) -> Result<u64, sqlx::Error> {
+    let mut tx = k.pool().begin().await?;
+    let mut n = 0;
+    for term in terms {
+        n += sqlx::query(
+            "UPDATE vocabulary SET promoted = ? WHERE headword = ? AND reading = ?",
+        )
+        .bind(i64::from(promoted))
+        .bind(&term.headword)
+        .bind(&term.reading)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+    }
+    tx.commit().await?;
+    Ok(n)
+}
+
+/// What [`repair_empty_readings`] did.
+#[derive(Debug, Clone, Default)]
+pub struct ReadingRepair {
+    /// Rows re-keyed onto their real reading, no twin in the way.
+    pub rekeyed: u64,
+    /// Rows merged into a twin the tokenizer had already made.
+    pub merged: u64,
+    /// Left alone: no dictionary gives the headword a reading, or several do
+    /// and guessing would assert one.
+    pub unresolved: u64,
+}
+
+/// Re-key the empty-reading rows that should never have had one.
+///
+/// Pass 1 stores an empty reading when the master dictionary offers no
+/// candidate. For a kana headword that is correct and is the ledger's own
+/// convention. For a *kanji* headword it is a defect with two shapes, both
+/// found in live data:
+///
+/// - **a duplicate** — 復号 exists twice, once as `復号/ふくごう` carrying the
+///   encounters the tokenizer recorded and once as `復号/` carrying the
+///   `known` the Anki import wrote. One word, two rows, and every count split
+///   between them.
+/// - **an orphan** — 冪等性 exists only as `冪等性/`, on a key nothing else
+///   will ever write to, so its judgement is stranded.
+///
+/// Both are fixed by asking a *reference* dictionary for the reading the
+/// master could not supply, then merging onto the properly-keyed row or
+/// re-keying in place. A headword no dictionary reads, or one several read
+/// differently, is left exactly as it is: guessing here would fabricate the
+/// key everything else joins on.
+///
+/// Merging keeps the stronger assertion — a judged status is never replaced by
+/// `new` — and sums the counts, since both rows counted the same word.
+/// Idempotent: a second run finds nothing left to move.
+pub async fn repair_empty_readings(k: &Knowledge) -> Result<ReadingRepair, sqlx::Error> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT headword FROM vocabulary WHERE reading = ''",
+    )
+    .fetch_all(k.pool())
+    .await?;
+
+    let mut out = ReadingRepair::default();
+    for (headword,) in rows {
+        // A kana headword storing no reading is the convention, not a bug.
+        if kana::is_all_kana(&headword) {
+            continue;
+        }
+        let readings = super::dictionaries::any_readings(k.pool(), &headword).await?;
+        let [reading] = readings.as_slice() else {
+            out.unresolved += 1;
+            continue;
+        };
+        let target = Term::new(headword.clone(), reading);
+        let source = Term { headword: headword.clone(), reading: String::new() };
+        if target == source {
+            continue;
+        }
+
+        let exists: Option<(i64,)> = sqlx::query_as(
+            "SELECT 1 FROM vocabulary WHERE headword = ? AND reading = ?",
+        )
+        .bind(&target.headword)
+        .bind(&target.reading)
+        .fetch_optional(k.pool())
+        .await?;
+
+        let mut tx = k.pool().begin().await?;
+        if exists.is_some() {
+            // Fold the stranded row into the real one. `status` moves only
+            // when the target has nothing asserted, so a seed can never
+            // overrule a judgement here either.
+            sqlx::query(
+                "UPDATE vocabulary AS t SET \
+                     status = CASE WHEN t.status = 'new' THEN s.status ELSE t.status END, \
+                     status_ts = CASE WHEN t.status = 'new' THEN s.status_ts ELSE t.status_ts END, \
+                     mined = MAX(t.mined, s.mined), \
+                     promoted = MAX(t.promoted, s.promoted), \
+                     encounter_count = t.encounter_count + s.encounter_count, \
+                     lookup_count = t.lookup_count + s.lookup_count \
+                 FROM (SELECT * FROM vocabulary WHERE headword = ? AND reading = '') AS s \
+                 WHERE t.headword = ? AND t.reading = ?",
+            )
+            .bind(&headword)
+            .bind(&target.headword)
+            .bind(&target.reading)
+            .execute(&mut *tx)
+            .await?;
+            sqlx::query("DELETE FROM vocabulary WHERE headword = ? AND reading = ''")
+                .bind(&headword)
+                .execute(&mut *tx)
+                .await?;
+            out.merged += 1;
+        } else {
+            sqlx::query(
+                "UPDATE vocabulary SET reading = ? WHERE headword = ? AND reading = ''",
+            )
+            .bind(&target.reading)
+            .bind(&headword)
+            .execute(&mut *tx)
+            .await?;
+            out.rekeyed += 1;
+        }
+        tx.commit().await?;
+    }
+    Ok(out)
+}
+
+/// How many untriaged terms have been met often enough to be worth offering —
+/// the "seen" bucket.
+///
+/// Derived, not stored, and that is the point. `seen` is a fact about the
+/// encounter count, which every ingest already maintains; storing it would add
+/// a fourth writer to a column only the reader may write, and would freeze a
+/// threshold that should stay re-tunable over the whole history like every
+/// other read-stats derivation.
+///
+/// The lookup half of the triage rule is deliberately *not* applied here: this
+/// counts what has been seen, not what is ready to be called known.
+pub async fn seen_count(k: &Knowledge, min_encounters: i64) -> Result<i64, sqlx::Error> {
+    let (n,): (i64,) = sqlx::query_as(&format!(
+        "SELECT COUNT(*) FROM vocabulary \
+         WHERE status = 'new' AND encounter_count >= ? AND {COUNTS_AS_VOCAB}"
+    ))
+    .bind(min_encounters)
+    .fetch_one(k.pool())
+    .await?;
+    Ok(n)
 }
 
 /// Whether the ledger has ever been populated. The one thing a caller needs to

@@ -17,16 +17,15 @@ import { useState } from "preact/hooks";
 import { api } from "../api.js";
 import { SegmentedControl } from "../components/controls.js";
 import { FrequencyView } from "./frequency.js";
+import { PromotionView } from "./promotion.js";
 import { TriageView } from "./triage.js";
 
 /** Every status, in the order the triage passes fill them, with what each one
  *  means. `new` first because it is the default and, today, the whole table. */
 const STATUSES = [
-  ["new", "ingested from reading, never judged"],
+  ["new", "ingested, never judged"],
   ["known", "I know this word"],
-  ["learning", "actively being learned"],
-  ["unknown", "judged, and not known"],
-  ["name", "a proper noun, not vocabulary"],
+  ["unknown", "judged, and not known — the sweep's snooze"],
   ["blacklisted", "never surface this again"],
 ];
 
@@ -34,6 +33,7 @@ const SECTIONS = [
   { value: "status", label: "status" },
   { value: "triage", label: "triage" },
   { value: "frequency", label: "frequency" },
+  { value: "promote", label: "promote" },
 ];
 
 export function VocabView({ vocab, settings, onJudged }) {
@@ -74,7 +74,9 @@ export function VocabView({ vocab, settings, onJudged }) {
               maxFreqRank=${settings?.triage_max_freq_rank ?? 6000}
               onCommitted=${onJudged}
             />`
-          : html`<${StatusSummary} vocab=${vocab} onImported=${onJudged} />`
+          : section === "promote"
+            ? html`<${PromotionView} onPromoted=${onJudged} />`
+            : html`<${StatusSummary} vocab=${vocab} onImported=${onJudged} />`
     }
   `;
 }
@@ -88,6 +90,7 @@ function StatusSummary({ vocab, onImported }) {
   // Built whole rather than interpolated beside literal text: htm collapses
   // whitespace at a line break and prettier reflows markup there freely.
   const spellings = `(${vocab.known_in_master.toLocaleString("en")} spellings)`;
+  const seenHint = `Untriaged vocabulary met at least ${vocab.seen_min_encounters} times. Derived from the encounter count, not a stored status — change the threshold and the whole history re-reads under it.`;
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [err, setErr] = useState(null);
@@ -187,6 +190,13 @@ function StatusSummary({ vocab, onImported }) {
         >
           <div class="label">ledger terms</div>
           <div class="value">${vocab.total.toLocaleString("en")}</div>
+        </div>
+        <div
+          class="tile has-hint"
+          title=${seenHint}
+        >
+          <div class="label">seen</div>
+          <div class="value">${vocab.seen.toLocaleString("en")}</div>
         </div>
         <div
           class="tile has-hint"

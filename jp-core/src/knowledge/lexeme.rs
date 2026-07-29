@@ -58,7 +58,7 @@ use sqlx::Row;
 
 use super::Knowledge;
 use super::dictionaries;
-use super::vocabulary::Term;
+use super::vocabulary::{COUNTS_AS_VOCAB, Term};
 use crate::text::kana;
 
 /// What a form was collapsed onto. `Seq` is a dictionary entry id; `Form` is
@@ -108,7 +108,7 @@ impl KnownForm {
 async fn known_forms(k: &Knowledge) -> Result<Vec<KnownForm>, sqlx::Error> {
     let dict = dictionaries::lexeme_dictionary(k.pool()).await?;
 
-    let rows = sqlx::query(
+    let rows = sqlx::query(&format!(
         "SELECT v.headword, v.reading, de.sequence \
          FROM vocabulary v \
          LEFT JOIN dictionary_entries de \
@@ -116,8 +116,8 @@ async fn known_forms(k: &Knowledge) -> Result<Vec<KnownForm>, sqlx::Error> {
           AND de.term = v.headword \
           AND de.reading = CASE WHEN v.reading = '' THEN v.headword ELSE v.reading END \
           AND de.sequence IS NOT NULL \
-         WHERE v.status = 'known' AND v.in_master = 1",
-    )
+         WHERE v.status = 'known' AND {COUNTS_AS_VOCAB}"
+    ))
     .bind(dict)
     .fetch_all(k.pool())
     .await?;
@@ -239,7 +239,7 @@ pub async fn redundant_forms(k: &Knowledge) -> Result<HashSet<Term>, sqlx::Error
     }
 
     let rows = sqlx::query(
-        "SELECT headword, reading FROM vocabulary WHERE status != 'known' AND in_master = 1",
+        &format!("SELECT headword, reading FROM vocabulary WHERE status != 'known' AND {COUNTS_AS_VOCAB}"),
     )
     .fetch_all(k.pool())
     .await?;

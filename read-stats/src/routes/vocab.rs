@@ -67,10 +67,18 @@ pub async fn vocab_summary(State(state): State<AppState>) -> Result<Json<Value>,
     // "I know N words" figure and the first is what fills the queue.
     let words = lexeme::known_lexemes(&state.knowledge).await?;
 
+    // `seen` is derived, never stored: untriaged terms met often enough to be
+    // worth offering. It shares the triage floor so the number and the queue
+    // cannot disagree about what counts as met.
+    let settings = db::load_settings(&state.local).await?;
+    let seen = vocabulary::seen_count(&state.knowledge, settings.triage_min_encounters).await?;
+
     Ok(Json(json!({
         "total": total,
         "known_in_master": known,
         "known_words": words,
+        "seen": seen,
+        "seen_min_encounters": settings.triage_min_encounters,
         "by_status": by_status,
     })))
 }
@@ -404,6 +412,107 @@ pub async fn vocab_jiten_import(
         "resolved_entries": ids.len() as i64 - unresolved,
         "unresolved_entries": unresolved,
         "terms_marked": marked,
+    })))
+}
+
+/// How many encounters make a non-master term worth asking about, when no
+/// card exists for it. Low, because the two sources are asymmetric: a mined
+/// term is already the reader's own claim, while a read one has only the
+/// tokenizer's word for it, and the queue would fill with noise at 1.
+const PROMOTION_MIN_ENCOUNTERS: i64 = 5;
+
+/// Rows per page of promotion candidates. Small — this is a judgement per
+/// row, not a sweep.
+const PROMOTION_PAGE: i64 = 200;
+
+/// The escape hatch's queue: terms the master dictionary does not list, but
+/// which the reader has either mined or read repeatedly.
+///
+/// Sankoku carries no 冪等性, no 可用性, and no stem of either, so no
+/// decomposition rule reaches them; JMdict would admit them along with every
+/// idiom and orthographic variant. So the reader decides, one term at a time —
+/// and mining is what surfaces the term, since every reading-based queue gates
+/// on the vocabulary predicate and can never offer a non-master word.
+pub async fn vocab_promotion_queue(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
+    let rows = vocabulary::promotion_candidates(
+        &state.knowledge,
+        PROMOTION_MIN_ENCOUNTERS,
+        PROMOTION_PAGE,
+    )
+    .await?;
+    let pending = vocabulary::promotion_pending(&state.knowledge, PROMOTION_MIN_ENCOUNTERS).await?;
+    let terms: Vec<Value> = rows
+        .iter()
+        .map(|c| {
+            json!({
+                "headword": c.term.headword,
+                "reading": c.term.display_reading(),
+                "mined": c.mined,
+                "encounter_count": c.encounter_count,
+                "in_reference": c.in_reference,
+            })
+        })
+        .collect();
+    Ok(Json(json!({
+        "terms": terms,
+        "pending": pending,
+        "min_encounters": PROMOTION_MIN_ENCOUNTERS,
+    })))
+}
+
+#[derive(Deserialize)]
+pub struct PromoteRequest {
+    terms: Vec<TermRef>,
+    /// Absent means promote. Sent explicitly to undo one.
+    #[serde(default = "yes")]
+    promoted: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+#[derive(Deserialize)]
+pub struct TermRef {
+    headword: String,
+    #[serde(default)]
+    reading: String,
+}
+
+/// Count these terms as vocabulary, or stop counting them.
+///
+/// Never touches `status`: promoting 冪等性 asserts it is a word, not that it
+/// is known, and for anything still in this queue those have different
+/// answers.
+pub async fn vocab_promote(
+    State(state): State<AppState>,
+    Json(req): Json<PromoteRequest>,
+) -> Result<Json<Value>, AppError> {
+    let terms: Vec<Term> = req
+        .terms
+        .iter()
+        .map(|t| Term::new(t.headword.clone(), &t.reading))
+        .collect();
+    let changed = vocabulary::set_promoted(&state.knowledge, &terms, req.promoted).await?;
+    info!(changed, promoted = req.promoted, "vocabulary promotion");
+    Ok(Json(json!({ "changed": changed })))
+}
+
+/// Repair the empty-reading rows Pass 1 created for kanji headwords.
+///
+/// Reader-triggered rather than automatic: it merges and deletes rows, and a
+/// destructive repair should happen when someone asked for it. Idempotent, so
+/// running it twice is harmless.
+pub async fn vocab_repair_empty_readings(
+    State(state): State<AppState>,
+) -> Result<Json<Value>, AppError> {
+    let r = vocabulary::repair_empty_readings(&state.knowledge).await?;
+    vocabulary::refresh_dictionary_flags(&state.knowledge).await?;
+    info!(rekeyed = r.rekeyed, merged = r.merged, unresolved = r.unresolved, "reading repair");
+    Ok(Json(json!({
+        "rekeyed": r.rekeyed,
+        "merged": r.merged,
+        "unresolved": r.unresolved,
     })))
 }
 

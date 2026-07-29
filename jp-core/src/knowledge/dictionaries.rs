@@ -481,6 +481,32 @@ pub async fn master_readings(pool: &SqlitePool, term: &str) -> Result<Vec<String
     Ok(readings)
 }
 
+/// Every reading any loaded dictionary gives this headword.
+///
+/// The fallback for a term the master does not list. Pass 1 stores an empty
+/// reading when [`master_readings`] comes back empty, which is right for a
+/// kana headword (the ledger's key convention) and wrong for everything else:
+/// 復号 and 冪等性 are real words with real readings that Sankoku simply does
+/// not carry, and keying them on an empty reading either strands the judgement
+/// on a row nothing writes to or duplicates a row the tokenizer already made.
+///
+/// Deliberately wider than the master gate. This answers "how is it read",
+/// which any dictionary may answer; it does not admit anything into the
+/// vocabulary scale, which only the master and [`super::vocabulary::COUNTS_AS_VOCAB`] decide.
+pub async fn any_readings(pool: &SqlitePool, term: &str) -> Result<Vec<String>, sqlx::Error> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT DISTINCT reading FROM dictionary_entries \
+         WHERE term = ? AND reading != '' AND reading != term",
+    )
+    .bind(term)
+    .fetch_all(pool)
+    .await?;
+    let mut readings: Vec<String> = rows.into_iter().map(|(r,)| r).collect();
+    readings.sort();
+    readings.dedup();
+    Ok(readings)
+}
+
 /// Mark the dictionary whose `source_path` ends with `marker` as master, and
 /// demote any other master. Idempotent, and a no-op when nothing matches — the
 /// master is named in configuration, and a config naming a dictionary that

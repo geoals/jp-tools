@@ -195,6 +195,22 @@ impl Knowledge {
             .execute(&self.0)
             .await?;
         }
+        // The master dictionary's escape hatch. Sankoku is a general-purpose
+        // dictionary and does not carry domain vocabulary — 冪等性, 可用性 and
+        // 復号 are absent, and so are their stems, so no decomposition rule
+        // reaches them either. Swapping in JMdict would admit them at the cost
+        // of every idiom and orthographic variant, which is the noise the
+        // master role exists to keep out.
+        //
+        // So the dictionary keeps answering the dictionary's question
+        // (`in_master`) and the reader answers theirs. A promoted term counts
+        // toward the vocabulary scale though no master dictionary lists it.
+        // Like `status`, it is an assertion: only a person sets it.
+        if !has_column(&self.0, "vocabulary", "promoted").await? {
+            sqlx::raw_sql("ALTER TABLE vocabulary ADD COLUMN promoted INTEGER NOT NULL DEFAULT 0")
+                .execute(&self.0)
+                .await?;
+        }
         // Runs after the ALTERs above, not in the loop: it indexes a column
         // they add.
         sqlx::raw_sql(MIGRATION_LEXEME).execute(&self.0).await?;
