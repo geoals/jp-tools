@@ -97,19 +97,95 @@ pub async fn import_dictionary(
         let definitions_json =
             serde_json::to_string(&entry.definitions).unwrap_or_else(|_| "[]".into());
         sqlx::query(
-            "INSERT INTO dictionary_entries (dictionary_id, term, reading, score, definitions_json) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO dictionary_entries (dictionary_id, term, reading, score, definitions_json, sequence) VALUES (?, ?, ?, ?, ?, ?)",
         )
         .bind(dict_id)
         .bind(&entry.term)
         .bind(&entry.reading)
         .bind(entry.score)
         .bind(&definitions_json)
+        .bind(entry.sequence)
         .execute(&mut *tx)
         .await?;
     }
 
+    // A fresh import read the sequences straight off the term banks, so there
+    // is nothing for the backfill to do.
+    sqlx::query("UPDATE dictionaries SET seq_checked = 1 WHERE id = ?")
+        .bind(dict_id)
+        .execute(&mut *tx)
+        .await?;
+
     tx.commit().await?;
     Ok(dict_id)
+}
+
+/// Whether this dictionary's zip has already been read for entry ids.
+///
+/// Separate from "has any sequences": a dictionary that publishes none
+/// (Sankoku) must answer `true` once checked, or every startup re-parses a
+/// large zip to learn the same nothing.
+pub async fn needs_sequence_backfill(
+    pool: &SqlitePool,
+    dictionary_id: i64,
+) -> Result<bool, sqlx::Error> {
+    let (checked,): (i64,) = sqlx::query_as("SELECT seq_checked FROM dictionaries WHERE id = ?")
+        .bind(dictionary_id)
+        .fetch_one(pool)
+        .await?;
+    Ok(checked == 0)
+}
+
+/// Attach entry ids to a dictionary cached before `sequence` existed.
+///
+/// Matched on `(term, reading)` — the same pair the entries were stored
+/// under, so this is a straight update and never invents a row. Marks the
+/// dictionary checked either way.
+pub async fn backfill_sequences(
+    pool: &SqlitePool,
+    dictionary_id: i64,
+    entries: &[DictionaryEntry],
+) -> Result<u64, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let mut updated = 0;
+    for entry in entries {
+        let Some(seq) = entry.sequence else { continue };
+        updated += sqlx::query(
+            "UPDATE dictionary_entries SET sequence = ? \
+             WHERE dictionary_id = ? AND term = ? AND reading = ?",
+        )
+        .bind(seq)
+        .bind(dictionary_id)
+        .bind(&entry.term)
+        .bind(&entry.reading)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+    }
+    sqlx::query("UPDATE dictionaries SET seq_checked = 1 WHERE id = ?")
+        .bind(dictionary_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(updated)
+}
+
+/// The dictionary whose entry ids define lexemes — the one carrying the most
+/// of them.
+///
+/// Deliberately not the master dictionary. Sankoku is monolingual and
+/// publishes no stable ids, so the question "are these two spellings one
+/// word?" can only be answered by a reference dictionary, even though the
+/// master alone decides what counts as vocabulary. The two roles are
+/// independent and both are needed.
+pub async fn lexeme_dictionary(pool: &SqlitePool) -> Result<Option<i64>, sqlx::Error> {
+    let row: Option<(i64,)> = sqlx::query_as(
+        "SELECT dictionary_id FROM dictionary_entries WHERE sequence IS NOT NULL \
+         GROUP BY dictionary_id ORDER BY COUNT(*) DESC LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|r| r.0))
 }
 
 pub async fn lookup_dictionary_entries(
@@ -118,7 +194,7 @@ pub async fn lookup_dictionary_entries(
     term: &str,
 ) -> Result<Vec<DictionaryEntry>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT term, reading, score, definitions_json FROM dictionary_entries WHERE dictionary_id = ? AND term = ?",
+        "SELECT term, reading, score, definitions_json, sequence FROM dictionary_entries WHERE dictionary_id = ? AND term = ?",
     )
     .bind(dictionary_id)
     .bind(term)
@@ -135,6 +211,7 @@ pub async fn lookup_dictionary_entries(
                 reading: r.get("reading"),
                 score: r.get("score"),
                 definitions,
+                sequence: r.get("sequence"),
             }
         })
         .collect())

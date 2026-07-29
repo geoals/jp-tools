@@ -1,4 +1,4 @@
-use tracing::info;
+use tracing::{info, warn};
 
 use read_stats::app::{AppState, build_router};
 use read_stats::config::Config;
@@ -32,6 +32,23 @@ async fn main() {
     db::retire_pauses(&local, &knowledge)
         .await
         .expect("failed to retire the pauses table");
+
+    // Best-effort, and off the boot path: attach JMdict entry ids to any
+    // dictionary cached before they were stored. They are what tells the
+    // vocabulary count that 叔父, 伯父 and おじ are one word
+    // (`jp_core::knowledge::lexeme`). Until it finishes, the count is merely
+    // conservative — it over-reports by a few dozen spellings — so nothing
+    // needs to wait for it. Parsing Jitendex takes a while and runs once.
+    tokio::spawn({
+        let knowledge = knowledge.clone();
+        async move {
+            match jp_core::dictionary::Dictionary::backfill_sequences(knowledge.pool()).await {
+                Ok(0) => {}
+                Ok(n) => info!(updated = n, "dictionary entry ids backfilled"),
+                Err(e) => warn!(error = %e, "could not backfill dictionary entry ids"),
+            }
+        }
+    });
 
     let http = reqwest::Client::new();
 

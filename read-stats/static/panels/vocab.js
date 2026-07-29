@@ -85,6 +85,9 @@ export function VocabView({ vocab, settings, onJudged }) {
 function StatusSummary({ vocab, onImported }) {
   const byStatus = new Map(vocab.by_status.map((s) => [s.status, s]));
   const asserted = vocab.total - (byStatus.get("new")?.total ?? 0);
+  // Built whole rather than interpolated beside literal text: htm collapses
+  // whitespace at a line break and prettier reflows markup there freely.
+  const spellings = `(${vocab.known_in_master.toLocaleString("en")} spellings)`;
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [err, setErr] = useState(null);
@@ -124,11 +127,12 @@ function StatusSummary({ vocab, onImported }) {
       <div class="tile-row" style="margin-top:0">
         <div
           class="tile has-hint"
-          title="Terms marked known that the master dictionary lists — the vocabulary scale"
+          title="Distinct words marked known, collapsing spellings of one word — 叔父 / 伯父 / おじ count once. The sub-figure is the ledger rows behind them."
         >
           <div class="label">known words</div>
           <div class="value">
-            ${vocab.known_in_master.toLocaleString("en")}
+            ${vocab.known_words.toLocaleString("en")}
+            <span class="value-sub">${spellings}</span>
           </div>
         </div>
         <div

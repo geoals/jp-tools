@@ -260,12 +260,14 @@ async fn dictionary_lookup_exact_match() {
             reading: "たべる".into(),
             definitions: vec!["to eat".into()],
             score: 100,
+            sequence: None,
         },
         DictionaryEntry {
             term: "食べる".into(),
             reading: "たべる".into(),
             definitions: vec!["to consume".into()],
             score: 50,
+            sequence: None,
         },
     ];
     let dict = Dictionary::from_entries(entries);

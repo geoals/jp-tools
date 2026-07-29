@@ -19,6 +19,16 @@ pub struct DictionaryEntry {
     pub reading: String,
     pub definitions: Vec<String>,
     pub score: i64,
+    /// The dictionary's own entry id, when it has one — Yomitan term-bank
+    /// field 6. For Jitendex this is JMdict's `ent_seq`, and it is the only
+    /// thing in the workspace that says two *spellings* are one *word*:
+    /// 零れ落ちる and こぼれ落ちる share 2002270, while 辛い/からい and
+    /// 辛い/つらい correctly do not (1365850 vs 1365860).
+    ///
+    /// `None` for dictionaries that publish no ids — Sankoku, being
+    /// monolingual, has none, which is why the master dictionary cannot be
+    /// the one asked this question.
+    pub sequence: Option<i64>,
 }
 
 /// Pitch accent data for a single reading of a term.
@@ -134,11 +144,16 @@ fn parse_entry(arr: &[Value], images: &HashMap<String, String>) -> Option<Dictio
     let reading = arr[1].as_str().unwrap_or("").to_string();
     let score = arr[4].as_i64().unwrap_or(0);
     let definitions = parse_definitions(&arr[5], images);
+    // Field 6 is the entry id. Yomitan's own schema allows a string here, and
+    // dictionaries that have no ids write 0 — neither is a usable lexeme key,
+    // so both become `None` rather than a number that groups unrelated words.
+    let sequence = arr[6].as_i64().filter(|n| *n > 0);
     Some(DictionaryEntry {
         term,
         reading,
         definitions,
         score,
+        sequence,
     })
 }
 
@@ -600,6 +615,48 @@ impl Dictionary {
                 freq: HashMap::new(),
             },
         }
+    }
+
+    /// Attach entry ids to every cached dictionary that has not been checked
+    /// for them, resolving each zip from the `source_path` it was imported
+    /// under.
+    ///
+    /// Standalone rather than folded into [`Dictionary::load_or_import`]
+    /// because read-stats — the app that owns the vocabulary ledger and is the
+    /// only one that needs lexemes — never calls it: it reads the dictionary
+    /// cache out of the database directly. Hanging the backfill off the import
+    /// path would mean the ids appeared only when yt-mine or manga-mine
+    /// happened to boot.
+    ///
+    /// Idempotent, and safe to run at startup: each dictionary is marked
+    /// checked whether or not it yielded anything, so a dictionary that
+    /// publishes no ids (Sankoku) is parsed once and never again. A zip that
+    /// has since moved is skipped without being marked, so it is retried if it
+    /// comes back.
+    pub async fn backfill_sequences(pool: &sqlx::SqlitePool) -> Result<u64, DictionaryError> {
+        use crate::knowledge::dictionaries as db;
+
+        let mut total = 0;
+        for dict in db::list_dictionaries(pool).await? {
+            if !db::needs_sequence_backfill(pool, dict.id).await? {
+                continue;
+            }
+            let path = Path::new(&dict.source_path);
+            if !path.exists() {
+                warn!(title = %dict.title, path = %dict.source_path, "cannot backfill entry ids: zip is gone");
+                continue;
+            }
+            let fresh = Self::load_from_zip(path)?;
+            let DictionaryStorage::InMemory { ref entries, .. } = fresh.storage else {
+                unreachable!("load_from_zip always creates InMemory");
+            };
+            let flat: Vec<DictionaryEntry> =
+                entries.values().flat_map(|v| v.iter()).cloned().collect();
+            let n = db::backfill_sequences(pool, dict.id, &flat).await?;
+            info!(title = %dict.title, updated = n, "backfilled entry ids into cache");
+            total += n;
+        }
+        Ok(total)
     }
 
     /// Load a dictionary from the SQLite cache, or import from the zip file if not cached.

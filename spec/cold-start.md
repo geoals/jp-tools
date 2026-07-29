@@ -246,3 +246,37 @@ and hand homographs to a human.
 4. **Pass 4** is then nearly free: its query is the same predicate the triage
    preselect already uses, so it is a re-run of an existing screen rather than
    new logic.
+
+## The lexeme layer (built 2026-07-29)
+
+Every pass above asserts things about `(headword, reading)` — an orthographic
+*form*. Counting those forms is not counting words: 叔父, 伯父 and おじ are
+three rows and one word, and a seeding pass that imports spellings in bulk
+inflates the figure it exists to raise.
+
+`jp_core::knowledge::lexeme` collapses forms to words at read time. Two rules
+about it:
+
+- **It is derived, never stored.** There is no `redundant` column and there
+  must not be one: a flag written at import time depends on what was already
+  in the ledger, so importing Anki before jiten.moe and jiten.moe before Anki
+  would leave different databases. Derived, every order converges — which is
+  what makes a bulk seed safe to run repeatedly and in any sequence.
+- **Counting and asking are different questions.** `known_lexemes` collapses
+  in both directions (叔父 ≡ 伯父 ≡ おじ, one word). `redundant_forms` — what
+  triage should stop offering — runs one direction only: a form is settled by
+  a known form whose kanji are a superset of its own. Knowing 零れ落ちる
+  settles こぼれ落ちる; knowing こぼれ落ちる settles nothing about whether 零
+  can be read. Running that both ways would silently mark unread kanji
+  spellings known.
+
+The grouping comes from JMdict `ent_seq`, carried in Yomitan term-bank field 6
+and now stored as `dictionary_entries.sequence`. Jitendex supplies it (293k
+entries); Sankoku publishes ids too but splits 叔父 from 伯父, so the
+larger-coverage dictionary wins. The two roles stay independent and both are
+needed: **the master dictionary decides what counts as vocabulary, a reference
+dictionary decides which rows are the same word.**
+
+First measurement: 6,207 known in-master forms → **6,098 words**. The 109
+collapsed are pure spelling — アイディア/アイデア, 飲む/呑む, 身体/体/躯,
+奴/ヤツ.

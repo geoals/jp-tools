@@ -13,6 +13,7 @@ use std::net::SocketAddr;
 use axum::Json;
 use axum::extract::{ConnectInfo, Query, State};
 use jp_core::knowledge::dictionaries;
+use jp_core::knowledge::lexeme;
 use jp_core::knowledge::vocabulary::{self, Status, Term};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -60,9 +61,16 @@ pub async fn vocab_summary(State(state): State<AppState>) -> Result<Json<Value>,
         .map(|c| c.in_master)
         .sum();
 
+    // `known_in_master` counts ledger *rows*; `known_words` counts words.
+    // They differ by spelling alone — alternate kanji forms of one entry, and
+    // kana spellings of words known in kanji — so the second is the honest
+    // "I know N words" figure and the first is what fills the queue.
+    let words = lexeme::known_lexemes(&state.knowledge).await?;
+
     Ok(Json(json!({
         "total": total,
         "known_in_master": known,
+        "known_words": words,
         "by_status": by_status,
     })))
 }

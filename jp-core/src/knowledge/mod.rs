@@ -33,6 +33,7 @@
 //! move, and the tables will not have to.
 
 pub mod dictionaries;
+pub mod lexeme;
 pub mod vocabulary;
 pub mod work_terms;
 
@@ -47,6 +48,7 @@ const MIGRATION_FREQ: &str = include_str!("../../migrations/knowledge/003_freque
 const MIGRATION_READING: &str = include_str!("../../migrations/knowledge/004_reading.sql");
 const MIGRATION_VOCAB: &str = include_str!("../../migrations/knowledge/005_vocabulary.sql");
 const MIGRATION_WORK_TERMS: &str = include_str!("../../migrations/knowledge/006_work_terms.sql");
+const MIGRATION_LEXEME: &str = include_str!("../../migrations/knowledge/007_lexeme.sql");
 
 /// A connection pool for `knowledge.db`.
 ///
@@ -177,6 +179,25 @@ impl Knowledge {
             .execute(&self.0)
             .await?;
         }
+        // The lexeme layer. `sequence` is the dictionary's own entry id, the
+        // only thing that says two spellings are one word; `seq_checked` marks
+        // a cached dictionary whose zip has already been re-read for them, so
+        // one that simply publishes none is not re-parsed every startup.
+        if !has_column(&self.0, "dictionary_entries", "sequence").await? {
+            sqlx::raw_sql("ALTER TABLE dictionary_entries ADD COLUMN sequence INTEGER")
+                .execute(&self.0)
+                .await?;
+        }
+        if !has_column(&self.0, "dictionaries", "seq_checked").await? {
+            sqlx::raw_sql(
+                "ALTER TABLE dictionaries ADD COLUMN seq_checked INTEGER NOT NULL DEFAULT 0",
+            )
+            .execute(&self.0)
+            .await?;
+        }
+        // Runs after the ALTERs above, not in the loop: it indexes a column
+        // they add.
+        sqlx::raw_sql(MIGRATION_LEXEME).execute(&self.0).await?;
         Ok(())
     }
 }
