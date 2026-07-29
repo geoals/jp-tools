@@ -28,7 +28,7 @@ and this replaces its role in the daily loop.
 | the queue + counts | `vocabulary::triage_queue`, `triage_pending` | filters `status='new' AND in_master=1 AND encounter_count>=?` |
 | the batch write | `vocabulary::set_status_each` | mixed statuses, one transaction |
 | the seed write | `vocabulary::seed_status_each` | only fills `new`; use this if a sweep should never overrule |
-| `seen` count | `vocabulary::seen_count` | derived, shares the triage floor |
+| the three unjudged figures | `vocabulary::unjudged_counts` | `seen` / `never_met` / `ready`, all derived |
 | the threshold | `settings.triage_min_encounters`, default 3 | persisted in `read-stats.db` |
 | the UI | `read-stats/static/panels/triage.js` | the existing per-row sweep, over `/api/vocab/queue` + `/judge` |
 
@@ -62,7 +62,16 @@ see the open question below.
 loses its batch.
 
 **4. Surface it.** A count on `#vocab` ("142 words ready since 21 Jul") and
-ideally on the dashboard, since the trigger is "after a day of reading".
+ideally on the dashboard, since the trigger is "after a day of reading". The
+`ready to judge` tile already shows the un-scoped version of this number.
+
+**5. Deal with the character names first, or the first batch is junk.** The four
+most-encountered unjudged rows in the whole ledger are ミリオ (314), メルル
+(168), ナノカ (167) and ゴクチョー (76) — a VN's cast. The 固有名詞 filter that
+keeps names out of the ledger does not catch katakana names Sudachi fails to
+tag, so they will head every batch forever until blacklisted. Either widen the
+ingest filter or run the existing non-word blacklist over the non-master tail
+before the sweep ships.
 
 ## Decisions already made — do not relitigate
 
@@ -71,9 +80,12 @@ ideally on the dashboard, since the trigger is "after a day of reading".
 - **`unknown` is the sweep's snooze.** It is what "no" writes, not a state
   anyone sets deliberately. It exists *because* of this feature: without it a
   word met often and not known returns in every batch forever.
-- **`seen` is derived, never stored** (`seen_count`). Storing it would add a
-  writer to a column only the reader may write, and freeze a threshold that
-  should stay re-tunable over the whole history.
+- **`seen` is derived, never stored** (`unjudged_counts`). Storing it would add
+  a writer to a column only the reader may write, and freeze a threshold that
+  should stay re-tunable over the whole history. Note `status = 'new'` means
+  only "never judged" and says nothing about whether the word was met — the two
+  are orthogonal, and 2,143 of 2,155 unjudged rows *have* been met. The batch
+  this feature builds is drawn from `ready`, not from `status = 'new'`.
 - **Only the reader writes `status`.** A sweep is reader-triggered, so it
   qualifies; a *scheduled* job that wrote statuses without a person accepting
   them would not, and must not be built.
@@ -88,19 +100,22 @@ ideally on the dashboard, since the trigger is "after a day of reading".
 
 | | |
 |---|---|
-| ledger rows | 15,945 |
-| `known` / `new` / `unknown` / `blacklisted` | 13,758 / 2,151 / 35 / 1 |
+| ledger rows | 15,949 |
+| stored `known` / `new` / `unknown` / `blacklisted` | 13,758 / 2,155 / 35 / 1 |
 | known **words** (lexeme-collapsed) | 11,694 |
 | known spellings (in master) | 13,479 |
-| `seen` (new, in master, ≥3 encounters) | 188 |
+| `seen` (met, unjudged) | 2,143 |
+| `ready` (met ≥3, counts as vocabulary) | 191 |
+| genuinely `new` (never met) | 12 |
 | promotion candidates | 351 |
 
 **Line-level tracking begins 2026-07-19** — about 500k characters, plus 17
 manual sessions back to 2025-12-29. That is why ~9,000 `known` rows have
 `encounter_count = 0`: they came from the jiten, Anki and frequency imports,
-not from tracked reading. Expect the sweep's batches to be *small* — 188 rows
-are eligible today — and to grow slowly as reading accumulates. This is a
-trickle feature, not a bulk one; the bulk was the jiten import.
+not from tracked reading. Expect the sweep's batches to be *small* — 191 rows
+are eligible today, before any since-last-sweep scoping narrows that further —
+and to grow slowly as reading accumulates. This is a trickle feature, not a bulk
+one; the bulk was the jiten import.
 
 ## Open questions for the reader
 
