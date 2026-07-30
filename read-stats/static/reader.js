@@ -407,31 +407,33 @@ export function Reader() {
           ${pausedBanner}
         </button>`
       }
-      ${
-        toast &&
-        html`<div class="reader-toast ${toast.ok ? "ok" : "err"}">
-          <span>${toast.text}</span>
-          ${
-            (toast.undo || toast.judged) &&
-            html`<button
-              class="reader-undo"
-              onClick=${toast.judged ? undoJudge : undoClear}
-            >
-              undo
-            </button>`
-          }
-        </div>`
-      }
-      <div
-        class="reader-lines"
-        ref=${listRef}
-        onScroll=${onScroll}
-        onClick=${judgeAt}
-        style=${`font-size: ${fontPx}px`}
-      >
-        <div class="reader-marks" ref=${marksRef} aria-hidden="true"></div>
-        ${lines.length === 0 && html`<p class="reader-empty">${emptyLabel}</p>`}
-        ${lines.map((l) => renderLine(l, lineEls.current))}
+      <div class="reader-feed">
+        <div
+          class="reader-lines"
+          ref=${listRef}
+          onScroll=${onScroll}
+          onClick=${judgeAt}
+          style=${`font-size: ${fontPx}px`}
+        >
+          <div class="reader-marks" ref=${marksRef} aria-hidden="true"></div>
+          ${lines.length === 0 && html`<p class="reader-empty">${emptyLabel}</p>`}
+          ${lines.map((l) => renderLine(l, lineEls.current))}
+        </div>
+        ${
+          toast &&
+          html`<div class="reader-toast ${toast.ok ? "ok" : "err"}">
+            <span>${toast.text}</span>
+            ${
+              (toast.undo || toast.judged) &&
+              html`<button
+                class="reader-undo"
+                onClick=${toast.judged ? undoJudge : undoClear}
+              >
+                undo
+              </button>`
+            }
+          </div>`
+        }
       </div>
       ${
         (explaining || explain) &&
