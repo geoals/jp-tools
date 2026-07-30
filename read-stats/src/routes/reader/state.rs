@@ -34,5 +34,9 @@ pub async fn reader_state(State(state): State<AppState>) -> Result<Json<Value>, 
         // Quality-only: capture works without it, so the reader shows a hint
         // rather than disabling the mine button.
         "trim_available": whisper_reachable(&state).await,
+        // What the feed groups lines into sessions by — the same gap the
+        // dashboard's own session derivation uses, so a header here agrees
+        // with what `#today` would call the same sitting.
+        "session_gap_secs": settings.session_gap_secs,
     })))
 }

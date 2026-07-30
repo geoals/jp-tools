@@ -130,6 +130,7 @@ pub fn build_router(state: AppState) -> Router {
         )
         // Reading view: live line feed + the mine trigger.
         .route("/api/lines/stream", get(reader::stream::lines_stream))
+        .route("/api/lines/before", get(reader::lines::lines_before))
         .route("/api/reader/state", get(reader::state::reader_state))
         .route(
             "/api/lines/discard",

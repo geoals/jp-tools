@@ -16,9 +16,6 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { html } from "htm/preact";
 import { api } from "./api.js";
 
-/** Kept in the DOM at once. Enough to scroll back over a scene, small enough
- *  that a long session doesn't grow the page without bound. */
-const MAX_LINES = 300;
 const FONT_KEY = "reader-font-px";
 const FONT_DEFAULT = 20;
 const HIGHLIGHT_KEY = "reader-highlight";
@@ -48,6 +45,16 @@ const STATE_POLL_MS = 20_000;
  *  pronoun or an unstated subject without turning a quick read into a scene
  *  dump; the server caps it again in case the feed grows. */
 const EXPLAIN_CONTEXT_LINES = 8;
+/** Used to group the feed into sessions before `/api/reader/state` answers,
+ *  so the very first paint doesn't show one header for everything. Replaced
+ *  the moment the real setting arrives. */
+const DEFAULT_SESSION_GAP_SECS = 600;
+/** One backscroll page, matching the server's default so a full page really
+ *  is more history rather than a partial one that reads as "nothing left". */
+const HISTORY_PAGE = 200;
+/** How close to the top of the scroller counts as "reaching for more
+ *  history" — close enough that the fetch lands before the reader gets there. */
+const HISTORY_TRIGGER_PX = 300;
 
 export function Reader() {
   const [lines, setLines] = useState([]);
@@ -57,6 +64,11 @@ export function Reader() {
   const [explaining, setExplaining] = useState(false);
   const [explain, setExplain] = useState(null);
   const [toast, setToast] = useState(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  /** Set once a backscroll page comes back empty — there is nothing older, so
+   *  the trigger stops firing. A ref rather than state: it only ever gates the
+   *  next fetch, and nothing on screen changes when it flips. */
+  const historyExhausted = useRef(false);
   const [fontPx, setFontPx] = useState(
     () => Number(localStorage.getItem(FONT_KEY)) || FONT_DEFAULT,
   );
@@ -90,7 +102,7 @@ export function Reader() {
         // ids are monotonic; anything at or below the tail is a reconnect replay.
         const last = prev.length ? prev[prev.length - 1].id : 0;
         if (line.id <= last) return prev;
-        return [...prev, line].slice(-MAX_LINES);
+        return [...prev, line];
       });
     };
     return () => es.close();
@@ -108,6 +120,17 @@ export function Reader() {
     const t = setInterval(load, STATE_POLL_MS);
     return () => clearInterval(t);
   }, []);
+
+  // A feed shorter than its pane never fires a scroll event, so the trigger
+  // above can't be reached and the sessions above it would be stranded —
+  // which is exactly the case of a sitting that has just started. Pull pages
+  // until there is something to scroll, or there is no more history.
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el || loadingHistory || historyExhausted.current) return;
+    if (el.scrollHeight > el.clientHeight) return;
+    loadMoreHistory();
+  }, [lines, loadingHistory, fontPx]);
 
   // Re-pin to the bottom on a new line, and also whenever the explain panel
   // opens, fills in, or closes — each resizes the lines pane, and without this
@@ -172,6 +195,44 @@ export function Reader() {
     const el = e.currentTarget;
     stick.current =
       el.scrollHeight - el.scrollTop - el.clientHeight < STICK_SLOP_PX;
+    if (el.scrollTop < HISTORY_TRIGGER_PX) loadMoreHistory();
+  }
+
+  /** Pull one more page of history onto the top of the feed, for the reader
+   *  who scrolled back looking for an earlier session. Fires from the scroll
+   *  handler rather than an IntersectionObserver: the trigger is a plain
+   *  distance from the top of one known scroller, and this needs no separate
+   *  element to watch for it.
+   *
+   *  Prepending shifts every line below it, so the scroll position is
+   *  restored from the height *added* rather than pinned to an id — the
+   *  browser would otherwise yank the view down to where the feed now starts. */
+  async function loadMoreHistory() {
+    const el = listRef.current;
+    const oldest = lines[0];
+    if (!el || !oldest || loadingHistory || historyExhausted.current) return;
+    setLoadingHistory(true);
+    try {
+      const r = await api(
+        `/api/lines/before?before=${oldest.id}&limit=${HISTORY_PAGE}`,
+      );
+      if (!r.lines.length) {
+        historyExhausted.current = true;
+        return;
+      }
+      const prevHeight = el.scrollHeight;
+      const prevTop = el.scrollTop;
+      setLines((prev) => [...r.lines, ...prev]);
+      // Runs after the DOM has the new rows (state update flushed before the
+      // next paint), so the height delta is measured against the final layout.
+      requestAnimationFrame(() => {
+        el.scrollTop = prevTop + (el.scrollHeight - prevHeight);
+      });
+    } catch {
+      // A failed page just leaves the trigger zone armed for the next scroll.
+    } finally {
+      setLoadingHistory(false);
+    }
   }
 
   function toggleHighlight() {
@@ -303,7 +364,7 @@ export function Reader() {
       setLines((prev) => {
         const byId = new Map(prev.map((l) => [l.id, l]));
         for (const l of batch) byId.set(l.id, l);
-        return [...byId.values()].sort((a, b) => a.id - b.id).slice(-MAX_LINES);
+        return [...byId.values()].sort((a, b) => a.id - b.id);
       });
       setToast(null);
     } catch (err) {
@@ -391,7 +452,11 @@ export function Reader() {
         >
           <div class="reader-marks" ref=${marksRef} aria-hidden="true"></div>
           ${lines.length === 0 && html`<p class="reader-empty">${emptyLabel}</p>`}
-          ${lines.map((l) => renderLine(l, lineEls.current))}
+          ${renderFeed(
+            lines,
+            lineEls.current,
+            (state && state.session_gap_secs) || DEFAULT_SESSION_GAP_SECS,
+          )}
         </div>
         ${
           toast &&
@@ -500,6 +565,71 @@ function clearedText(n) {
   return `cleared ${n} ${n === 1 ? "line" : "lines"}`;
 }
 
+/** The feed as a flat run of `<p>`s with a header before each sitting — a
+ *  gap over `sessionGapSecs` between two consecutive lines starts a new one,
+ *  the same rule `stats::derive_sessions` splits sessions on server-side, so
+ *  a header here agrees with what the dashboard would call the same sitting.
+ *
+ *  Grouped and flattened right back rather than kept nested: `paintMarks`,
+ *  `spanAtPoint` and `withStatus` all index `lines` directly, and the
+ *  underlying `lines` state stays that flat array — only this render pass
+ *  needs to know where the sessions divide. */
+function renderFeed(lines, els, sessionGapSecs) {
+  const groups = groupSessions(lines, sessionGapSecs);
+  const out = [];
+  groups.forEach((g, i) => {
+    // Recomputed every render, so the last group's end time keeps up as its
+    // session is still being read — there is no "closed" flag from the
+    // server, only the next line's absence so far.
+    const ongoing = i === groups.length - 1;
+    out.push(
+      html`<div class="reader-session-header" key=${`h${g.lines[0].id}`}>
+        ${sessionHeaderLabel(g.start_ts, g.end_ts, ongoing)}
+      </div>`,
+    );
+    for (const line of g.lines) out.push(renderLine(line, els));
+  });
+  return out;
+}
+
+/** Split a time-ordered run of lines into sittings the same way the server's
+ *  `stats::derive_sessions` does: a gap over `sessionGapSecs` between two
+ *  consecutive lines starts a new one. */
+function groupSessions(lines, sessionGapSecs) {
+  const groups = [];
+  for (const line of lines) {
+    const g = groups[groups.length - 1];
+    if (!g || line.ts - g.end_ts > sessionGapSecs) {
+      groups.push({ start_ts: line.ts, end_ts: line.ts, lines: [line] });
+    } else {
+      g.end_ts = line.ts;
+      g.lines.push(line);
+    }
+  }
+  return groups;
+}
+
+/** "started 14:32" for the sitting still being read — there is no end time
+ *  yet, only the last line so far — and "14:32–15:07" for one that closed
+ *  because another began after it. Built whole rather than split around the
+ *  times, since htm collapses the whitespace where literal text meets an
+ *  interpolation across a line break. */
+function sessionHeaderLabel(startTs, endTs, ongoing) {
+  return ongoing
+    ? `started ${fmtTime(startTs)}`
+    : `${fmtTime(startTs)}–${fmtTime(endTs)}`;
+}
+
+/** "14:32". Pinned to en-GB rather than the browser's locale, the same way the
+ *  sittings table does it: the default locale puts an AM/PM on it, and these
+ *  headers sit in a pane kept narrow beside the VN. */
+function fmtTime(ts) {
+  return new Date(ts * 1000).toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 /** One line of the feed.
  *
  *  Its own function for one reason: the `<p>` must have exactly one child and
@@ -514,8 +644,9 @@ function renderLine(line, els) {
 }
 
 /** Track (or forget) the element holding a line. Preact calls the ref with
- *  `null` as a row leaves, which is what keeps the map from growing past the
- *  MAX_LINES on screen. */
+ *  `null` as a row leaves, so the map holds exactly the lines currently on
+ *  screen — which is now the whole session and whatever history was scrolled
+ *  back into, rather than a fixed window of it. */
 function keepLineEl(els, id, el) {
   if (el) els.set(id, el);
   else els.delete(id);

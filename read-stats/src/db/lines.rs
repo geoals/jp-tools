@@ -111,6 +111,66 @@ pub async fn max_line_id(k: &Knowledge) -> Result<i64, sqlx::Error> {
     Ok(row.get("max_id"))
 }
 
+/// Every line of the sitting still in progress, oldest first — what a reader
+/// opening the page gets, so the view starts with the whole session in front of
+/// them rather than a fixed tail of it.
+///
+/// The boundary is the same one `stats::derive_sessions` splits on: walking
+/// back from the newest line, the first gap over `session_gap_secs` ends it.
+/// Derived here rather than read from a sessions table because there is no such
+/// table — a session is a shape the line stream is read in, never a stored row.
+///
+/// `max` bounds it regardless, so a marathon sitting cannot hand a browser an
+/// unbounded first paint; the reader scrolls back for anything past it exactly
+/// as they would for an earlier session.
+pub async fn fetch_current_session_lines(
+    k: &Knowledge,
+    session_gap_secs: f64,
+    max: i64,
+) -> Result<Vec<ReaderLine>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT id, ts, chars, text FROM lines
+         WHERE text IS NOT NULL AND discarded = 0 ORDER BY id DESC LIMIT ?",
+    )
+    .bind(max)
+    .fetch_all(k.pool())
+    .await?;
+    // Newest first here, so a gap is measured against the line *after* it in
+    // reading order — the one already kept.
+    let mut lines: Vec<ReaderLine> = Vec::new();
+    for line in rows.iter().map(reader_line) {
+        if let Some(last) = lines.last()
+            && last.ts - line.ts > session_gap_secs
+        {
+            break;
+        }
+        lines.push(line);
+    }
+    lines.reverse();
+    Ok(lines)
+}
+
+/// The `limit` lines immediately before `before_id`, oldest first — one page of
+/// backscroll for the reader, which starts from the oldest id it currently
+/// holds and asks for what came before it.
+pub async fn fetch_lines_before_id(
+    k: &Knowledge,
+    before_id: i64,
+    limit: i64,
+) -> Result<Vec<ReaderLine>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT id, ts, chars, text FROM lines
+         WHERE id < ? AND text IS NOT NULL AND discarded = 0 ORDER BY id DESC LIMIT ?",
+    )
+    .bind(before_id)
+    .bind(limit)
+    .fetch_all(k.pool())
+    .await?;
+    let mut lines: Vec<ReaderLine> = rows.iter().map(reader_line).collect();
+    lines.reverse();
+    Ok(lines)
+}
+
 /// Whether a line arrived in the last `within_secs` — "is a VN being read right
 /// now", asked at the moment a lookup comes in.
 ///

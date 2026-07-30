@@ -801,6 +801,87 @@ async fn the_reader_backlog_comes_back_oldest_first() {
 }
 
 #[tokio::test]
+async fn the_reader_opens_on_the_whole_sitting_not_a_fixed_tail() {
+    // What a fresh client gets on open. The boundary must be the one
+    // `derive_sessions` splits on, so the header the feed draws over these
+    // lines names the same sitting the dashboard would.
+    let app = TestApp::new().await;
+    let base = today_start() + 3600.0;
+    // An earlier sitting, then a gap well over the 600s default, then the
+    // current one — deliberately more lines than the old 40-line backlog was
+    // never the point; the point is that the split lands between the two.
+    app.add_line(base, "むかし", None).await;
+    app.add_line(base + 10.0, "むかしむかし", None).await;
+    app.add_line(base + 5000.0, "いち", None).await;
+    app.add_line(base + 5010.0, "に", None).await;
+    app.add_line(base + 5020.0, "さん", None).await;
+
+    let lines = read_stats::db::fetch_current_session_lines(&app.knowledge, 600.0, 500)
+        .await
+        .unwrap();
+    let texts: Vec<&str> = lines.iter().map(|l| l.text.as_str()).collect();
+    assert_eq!(
+        texts,
+        ["いち", "に", "さん"],
+        "only the sitting in progress, oldest first — the 5000s gap ends it"
+    );
+
+    // A gap wide enough to swallow the break makes it all one sitting, which
+    // is what proves the cut is the gap rule and not a fixed count.
+    let all = read_stats::db::fetch_current_session_lines(&app.knowledge, 6000.0, 500)
+        .await
+        .unwrap();
+    assert_eq!(all.len(), 5, "one sitting under a wider gap");
+
+    // And the cap still bounds a marathon, taking the newest of it.
+    let capped = read_stats::db::fetch_current_session_lines(&app.knowledge, 6000.0, 2)
+        .await
+        .unwrap();
+    assert_eq!(
+        capped.iter().map(|l| l.text.as_str()).collect::<Vec<_>>(),
+        ["に", "さん"],
+        "capped to the newest, still oldest first"
+    );
+}
+
+#[tokio::test]
+async fn scrolling_back_pages_through_history_without_gaps_or_overlap() {
+    // The backscroll endpoint. Chained by feeding each page's oldest id back
+    // as `before`, it must tile the history exactly once.
+    let app = TestApp::new().await;
+    let base = today_start() + 3600.0;
+    for i in 0..10 {
+        app.add_line(base + i as f64 * 10.0, "あ", None).await;
+    }
+
+    let newest = read_stats::db::max_line_id(&app.knowledge).await.unwrap();
+    let mut before = newest + 1;
+    let mut seen: Vec<i64> = Vec::new();
+    loop {
+        let page = read_stats::db::fetch_lines_before_id(&app.knowledge, before, 4)
+            .await
+            .unwrap();
+        if page.is_empty() {
+            break;
+        }
+        let ids: Vec<i64> = page.iter().map(|l| l.id).collect();
+        assert!(ids.windows(2).all(|w| w[0] < w[1]), "page is oldest-first");
+        assert!(
+            ids.iter().all(|&i| i < before),
+            "a page must precede `before`"
+        );
+        before = ids[0];
+        // Pages arrive newest-first, so each one goes on the front.
+        seen.splice(0..0, ids);
+    }
+    assert_eq!(seen.len(), 10, "every line, once");
+    assert!(
+        seen.windows(2).all(|w| w[0] < w[1]),
+        "no overlap and no reordering across pages"
+    );
+}
+
+#[tokio::test]
 async fn reader_state_reports_what_the_reader_can_do() {
     let app = TestApp::new().await;
     let s = app.get("/api/reader/state").await;

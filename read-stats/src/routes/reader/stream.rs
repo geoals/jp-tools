@@ -26,17 +26,18 @@ use crate::db;
 /// block the logger's writes, so this is not a contention risk either.
 const POLL_INTERVAL: Duration = Duration::from_millis(30);
 
-/// Lines shown on open when the client isn't resuming.
-const DEFAULT_BACKLOG: i64 = 40;
-
 /// Cap on a single catch-up batch, so a client resuming after hours away
-/// doesn't pull the whole history in one go.
+/// doesn't pull the whole history in one go. Also the ceiling on the opening
+/// session (see below), for the same reason.
 const MAX_BATCH: i64 = 500;
 
 #[derive(Deserialize)]
 pub struct StreamQuery {
     /// Resume after this line id instead of sending a backlog.
     pub after: Option<i64>,
+    /// Fixed number of trailing lines to open with, instead of the whole
+    /// current sitting. Only a caller that wants a *short* feed has any use
+    /// for this; the reading view deliberately does not pass it.
     pub backlog: Option<i64>,
 }
 
@@ -55,18 +56,20 @@ pub async fn lines_stream(
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse::<i64>().ok())
         .or(q.after);
-    let backlog = q.backlog.unwrap_or(DEFAULT_BACKLOG).clamp(0, MAX_BATCH);
+    let backlog = q.backlog.map(|n| n.clamp(0, MAX_BATCH));
 
     let stream = async_stream::stream! {
         // Built here rather than per line: the first caller pays the dictionary
         // load, everyone after it pays nothing. `None` streams untinted.
         let hl = highlight::shared(&state).await;
 
-        // Opening batch: everything missed since `resume`, or the tail of the
-        // log for a fresh client.
+        // Opening batch: everything missed since `resume`, or — for a fresh
+        // client — the whole sitting in progress, so the view opens with the
+        // session it is part of rather than an arbitrary tail of it. Anything
+        // older is a scroll back, served by `/api/lines/before`.
         let mut last_id = match resume {
             Some(id) => id,
-            None => match db::fetch_recent_lines(&state.knowledge, backlog).await {
+            None => match opening_batch(&state, backlog).await {
                 Ok(lines) => {
                     let last = lines.last().map(|l| l.id);
                     for line in &lines {
@@ -104,6 +107,27 @@ pub async fn lines_stream(
 
     // Comment pings keep the connection open through idle timeouts.
     Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+}
+
+/// What a fresh client opens with: the whole sitting in progress, or a fixed
+/// tail if the caller asked for one.
+async fn opening_batch(
+    state: &AppState,
+    backlog: Option<i64>,
+) -> Result<Vec<db::ReaderLine>, sqlx::Error> {
+    let Some(n) = backlog else {
+        let gap = match db::load_settings(&state.local).await {
+            Ok(s) => s.session_gap_secs,
+            // The feed matters more than the grouping: open on a plain tail
+            // rather than dropping the reader on a blank page.
+            Err(e) => {
+                warn!(error = %e, "reader backlog: settings unreadable, using default gap");
+                600.0
+            }
+        };
+        return db::fetch_current_session_lines(&state.knowledge, gap, MAX_BATCH).await;
+    };
+    db::fetch_recent_lines(&state.knowledge, n).await
 }
 
 /// A line as the reading view receives it: the row, plus where its unknown
