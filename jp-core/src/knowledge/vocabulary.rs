@@ -27,7 +27,7 @@
 //! `status` is touched by none of them. It holds assertions and nothing else,
 //! so a resync can never demote a word the reader marked known.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use sqlx::{Row, SqlitePool};
 
@@ -589,6 +589,54 @@ pub async fn fetch_many(
         .iter()
         .map(row_to_vocab)
         .map(|r| (r.term.clone(), r))
+        .collect())
+}
+
+/// Which of these headwords are known under *any* of their readings, and under
+/// which one.
+///
+/// The lookup behind "a word judged under one reading is not judged again" —
+/// `UNJUDGED_HEADWORD`'s rule and `work_terms::IS_KNOWN`'s, for a caller
+/// holding terms rather than writing SQL. The ledger keys on
+/// `(headword, reading)` for the homograph case, but most pairs it produces are
+/// one word the dictionary lists twice, and Sudachi's reading for an inflected
+/// form is a third way to land on a second row: 通れ resolves to the headword
+/// 通る with the reading とおれる, which is a row of its own beside 通る/とおる.
+/// Anything that shows the reader a *word* should treat them as one.
+///
+/// The reading comes back with it because a caller that lets the reader *act*
+/// on the word needs to know which row carries the assertion: taking 通る back
+/// has to write to 通る/とおる, the row that says known, not to the 通る/とおれる
+/// the tokenizer happened to produce — which would leave the word looking
+/// exactly as it did and the ledger still claiming it is known. Readings are
+/// ordered so the answer is stable when a headword is known under two.
+///
+/// Deliberately not [`fetch_many`] with a looser key: this asks a different
+/// question ("is this word known at all") and a caller wanting the exact row's
+/// status still gets it from there.
+pub async fn known_readings(
+    k: &Knowledge,
+    headwords: &[String],
+) -> Result<HashMap<String, String>, sqlx::Error> {
+    if headwords.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let placeholders = vec!["?"; headwords.len()].join(", ");
+    let sql = format!(
+        "SELECT headword, reading FROM vocabulary \
+         WHERE headword IN ({placeholders}) AND (status = 'known' OR mined = 1) \
+         ORDER BY reading DESC"
+    );
+    let mut q = sqlx::query(&sql);
+    for h in headwords {
+        q = q.bind(h);
+    }
+    // DESC, then collect: the last row for a headword wins, so this keeps the
+    // first reading in order rather than an arbitrary one.
+    Ok(q.fetch_all(k.pool())
+        .await?
+        .iter()
+        .map(|r| (r.get("headword"), r.get("reading")))
         .collect())
 }
 

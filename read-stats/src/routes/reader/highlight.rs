@@ -261,9 +261,33 @@ pub async fn spans(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Span> {
             return Vec::new();
         }
     };
+    // Judged under *one* reading is judged, full stop — `work_terms::IS_KNOWN`
+    // and the triage queue both already say so, and a mark is a question, so it
+    // has to obey the same rule. Sudachi gives an inflected form the reading of
+    // that form (通れ → the headword 通る with the reading とおれる), so without
+    // this the reading view marks a word the reader marked known, under a
+    // spelling they never chose and cannot see.
+    let headwords: Vec<String> = terms.iter().map(|t| t.headword.clone()).collect();
+    let known = match vocabulary::known_readings(k, &headwords).await {
+        Ok(known) => known,
+        Err(e) => {
+            tracing::warn!(error = %e, "reader highlight known-headword lookup failed");
+            return Vec::new();
+        }
+    };
     candidates
         .into_iter()
         .filter_map(|(term, span)| {
+            // A word known under another reading is known, and the span points
+            // at the row that says so — a tap on it takes *that* assertion
+            // back, which is the one the reader made.
+            if let Some(reading) = known.get(&term.headword) {
+                return Some(Span {
+                    status: Tier::Known.as_str(),
+                    reading: reading.clone(),
+                    ..span
+                });
+            }
             let tier = match rows.get(&term) {
                 Some(row) => tier_for(row)?,
                 // No row: nothing has ingested this line yet, so the ledger

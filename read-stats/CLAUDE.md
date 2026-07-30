@@ -219,6 +219,16 @@ taught to `vn-capture.sh`.
   because that is what a `Range` indexes in, and `renderLine` carries a
   `prettier-ignore` so no reflow can put a whitespace node in front of the text
   and shift every mark on the line.
+  **A word judged under one reading is not marked under another**, the same
+  rule the triage queue and `work_terms::IS_KNOWN` apply — a mark is a
+  question, so it obeys the rule about not asking twice. This is not only the
+  言う/ゆう case: Sudachi gives an inflected form the reading of *that form*, so
+  通れ arrives as the headword 通る with the reading とおれる, a row of its own
+  beside the 通る/とおる the reader marked known. Without the rule the feed marks
+  a word they judged, under a spelling they never chose and cannot see. The span
+  then points at the row carrying the assertion (`known_readings`), so a tap
+  takes back *that* judgement rather than writing to the inflected row and
+  leaving the word looking exactly as it did.
   Three tiers are painted and `known` is not one of them — the *absence* of a
   mark is what makes the marks readable — but a `known` span **is** sent, since
   a span is also the region a tap judges and a word just marked known has to
