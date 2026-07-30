@@ -2,7 +2,32 @@
    sheet assumes is already set. */
 
 /* Palette roles (dataviz reference palette): light values, dark under both the
-   OS signal and an explicit data-theme stamp, so a toggle wins both ways. */
+   OS signal and an explicit data-theme stamp, so a toggle wins both ways.
+
+   --vocab-* is the one scale written in HSL rather than hex, because it is a
+   scale and not three colours. Two rules generate it, and a fourth status
+   would follow them rather than be picked by eye:
+
+     hue      names the status, one hue each, far enough apart to be told
+              apart at a glance and in the corner of the eye: 211 (blue) is
+              never met before, 276 (violet) is met but never judged, 28
+              (amber) is judged and not known. They were shades of one hue
+              first, and two shades of a blue are a thing you have to stop and
+              compare — which is the one thing a mark on a line being read
+              must never ask for.
+     lightness says how loudly, and it is what keeps three hues from becoming
+              three alarms: `new` is the rarest and sits furthest from the
+              page, `seen` is most of a line and sits nearest it. The dark ramp
+              mirrors the light one about the page rather than reusing its
+              values: same distance from the background, opposite direction.
+
+   They are backgrounds behind body text in both themes, so every one of them
+   is a *tint* — saturation stays high enough to name the hue and lightness
+   stays close enough to --page that --text-primary keeps its contrast on top.
+   Where they are used: the reading view's word highlights (reader.css, painted
+   through the CSS Custom Highlight API) and the #vocab status counts, which is
+   the point of their being shared — the tint under a word in the feed is the
+   same colour as the pile it is counted in. */
 :root {
   color-scheme: light;
   --page: #f9f9f7;
@@ -19,6 +44,10 @@
   --meter-track: #cde2fb;
   --good: #006300;
   --warn: #b3261e;
+  --vocab-new: hsl(211 88% 84%);
+  --vocab-seen: hsl(276 62% 89%);
+  --vocab-unknown: hsl(28 92% 84%);
+  --vocab-ink: var(--text-primary);
 }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
@@ -37,6 +66,10 @@
     --meter-track: #0d366b;
     --good: #0ca30c;
     --warn: #cf3b31;
+    --vocab-new: hsl(211 62% 33%);
+    --vocab-seen: hsl(276 38% 29%);
+    --vocab-unknown: hsl(28 55% 31%);
+    --vocab-ink: var(--text-primary);
   }
 }
 :root[data-theme="dark"] {
@@ -55,6 +88,10 @@
   --meter-track: #0d366b;
   --good: #0ca30c;
   --warn: #cf3b31;
+  --vocab-new: hsl(211 62% 33%);
+  --vocab-seen: hsl(276 38% 29%);
+  --vocab-unknown: hsl(28 55% 31%);
+  --vocab-ink: var(--text-primary);
 }
 
 * {

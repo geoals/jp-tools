@@ -62,6 +62,7 @@ impl TestApp {
             vn_capture_script: PathBuf::from("/nonexistent"),
             anthropic_api_key: None,
             whisper_url: "http://127.0.0.1:9".into(),
+            highlighter: Default::default(),
         };
         TestApp {
             router: build_router(state.clone()),

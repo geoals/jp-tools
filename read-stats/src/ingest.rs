@@ -219,18 +219,18 @@ async fn watermark(state: &AppState, key: &str) -> Result<i64, AppError> {
 /// The master dictionary's headwords, for decomposing compounds Sudachi holds
 /// whole but Sankoku does not list (懲罰房 → 懲罰 + 房). See
 /// `SudachiTokenizer::decompose`.
-async fn master_lexicon(state: &AppState) -> Result<HashSet<String>, AppError> {
+pub(crate) async fn master_lexicon(state: &AppState) -> Result<HashSet<String>, AppError> {
     Ok(jp_core::knowledge::dictionaries::master_headwords(state.knowledge.pool()).await?)
 }
 
 /// The master dictionary's readings, for recomposing the compounds Sudachi's
 /// lexicon splits (しゃくり + あげる → 噦り上げる). See
 /// `SudachiTokenizer::recompose`.
-async fn master_readings(state: &AppState) -> Result<Vec<(String, String)>, AppError> {
+pub(crate) async fn master_readings(state: &AppState) -> Result<Vec<(String, String)>, AppError> {
     Ok(jp_core::knowledge::dictionaries::master_entries(state.knowledge.pool()).await?)
 }
 
-async fn validation_headwords(state: &AppState) -> Result<HashSet<String>, AppError> {
+pub(crate) async fn validation_headwords(state: &AppState) -> Result<HashSet<String>, AppError> {
     Ok(db::fetch_anki_notes(&state.knowledge)
         .await?
         .into_iter()

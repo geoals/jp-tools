@@ -60,6 +60,10 @@
 
 .reader-lines {
   flex: 1;
+  /* The marks layer positions against this box, and scrolls with the content
+     because it is inside the scroller — which is why nothing has to run on
+     scroll. */
+  position: relative;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 10px 14px 16px;
@@ -69,6 +73,9 @@
   -webkit-user-select: text;
 }
 .reader-line {
+  /* Positioned, and after the marks layer in the DOM, so the text paints over
+     its own mark rather than under it. */
+  position: relative;
   margin: 0 0 0.75em;
   line-height: 1.75;
   font-family: "Noto Sans JP", "IBM Plex Sans", sans-serif;
@@ -81,6 +88,42 @@
 .reader-line:not(:last-child) {
   color: var(--text-secondary);
 }
+/* Word marks.
+ *
+ * A layer of rounded rectangles *behind* the text, positioned by reader.js from
+ * the client rects of Ranges over the line — not markup wrapped around the
+ * words. The lines stay one text node each, which is the invariant reader.js is
+ * built around: Yomitan scans this DOM, and nothing here may change what it
+ * walks. Drawing behind rather than through is also what buys the radius and
+ * the padding: ::highlight(), the other way to tint text without touching it,
+ * takes background and colour and nothing else.
+ *
+ * The colours are the shared --vocab-* scale (base.css), the same three the
+ * #vocab counts use. Known words get no mark at all: on a page where most words
+ * are known, the absence of a mark is what makes the marks readable. */
+.reader-marks {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* Purely decorative, and sitting under text that has to stay selectable —
+     Yomitan needs a real selection to scan, and a layer that swallowed the
+     press would break lookups as surely as wrapping the words would. */
+  pointer-events: none;
+}
+.reader-mark {
+  position: absolute;
+  border-radius: 3px;
+}
+.reader-mark.new {
+  background: var(--vocab-new);
+}
+.reader-mark.seen {
+  background: var(--vocab-seen);
+}
+.reader-mark.unknown {
+  background: var(--vocab-unknown);
+}
+
 .reader-empty {
   color: var(--muted);
   font-size: 14px;
@@ -274,4 +317,12 @@
   padding: 10px 14px;
   text-align: center;
   cursor: pointer;
+}
+
+/* The highlight toggle in the reader bar, in the app's one selected-state
+   vocabulary: the --meter-track tint with primary ink, as on .tab-on and
+   .segment-on. */
+.reader-bar .ghost.on {
+  background: var(--meter-track);
+  color: var(--text-primary);
 }

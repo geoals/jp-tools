@@ -179,6 +179,35 @@ taught to `vn-capture.sh`.
   `POST /api/vocab/rebuild` re-derive the ledger from the full history without
   double-counting a single day — and it is the repair path for any future
   re-tokenization.
+- **The reading view marks words, and never with markup.** `#read` marks the
+  words you have not judged known, and does it without adding a single node to
+  the feed: `routes/reader/highlight.rs` sends *offsets* with each streamed
+  line, and `paintMarks` draws a rounded rectangle per word into a layer
+  **behind** the text, positioned from the client rects of Ranges over it.
+  Yomitan scans this DOM, so the one text node per line is not a detail of the
+  current implementation — it is the constraint. Drawing behind the text rather
+  than through it is what satisfies both halves: the words stay untouched, and
+  the marks are real elements, so they take a border radius and horizontal
+  padding. (The CSS Custom Highlight API is the other way to tint text without
+  touching it, and it was the first implementation — but `::highlight()` takes
+  background, colour and text-decoration and nothing else, so its marks can only
+  ever be flat bands with square edges.) The layer lives inside the scroll
+  container and is measured in content coordinates, so it scrolls with the lines
+  and nothing runs on scroll; it repaints on a new line, a font change and a
+  resize, which is every way the text can reflow. Offsets are UTF-16 code units
+  because that is what a `Range` indexes in, and `renderLine` carries a
+  `prettier-ignore` so no reflow can put a whitespace node in front of the text
+  and shift every mark on the line.
+  Three tiers, and `known` is not one of them — the *absence* of a mark is what
+  makes the marks readable. `new` and `seen` split the ledger's `new` on the
+  encounter count exactly as the `#vocab` counts do (at 1 rather than 0: ingest
+  may already have credited the occurrence being drawn). Names, blacklisted
+  terms and non-words are never marked; a word too fresh to have a ledger row is
+  tested against the master headword set instead, since the never-before-seen
+  word is the one the feature exists to point at. The pipeline is the ingest
+  pipeline — same Sudachi, same decompose/recompose — built once on the first
+  line that needs it and *not* rebuilt: importing a dictionary changes the
+  tints only after a restart.
 - **Note ids are epoch milliseconds.** That is why a card's creation time needs
   no extra column, and why the id list is kept sorted.
 - **Only engagement actions leave `reader_marks`.** Explain does; clear
@@ -342,6 +371,16 @@ assumes".
   not "crossed the threshold since the mark", so a declined word returns the
   next time it is read. That over-inclusion is deliberate and cheap;
   `word_days` can answer it exactly if the batches ever come out noisy.
+- **Status colour is one scale, in HSL, in `base.css`.** `--vocab-new`,
+  `--vocab-seen` and `--vocab-unknown` are written as `hsl()` rather than hex
+  because they are generated, not chosen: hue names the status — one each, 211
+  blue / 276 violet / 28 amber — and lightness says how loudly, with the dark
+  ramp mirrored about the page rather than picked afresh. They were shades of
+  one hue first and it did not work: two blues have to be compared, and a mark
+  on a line being read has to be recognised instead. Both places that show a status read them —
+  the reading view's highlights and the `#vocab` swatches — so the tint under a
+  word in the feed is the colour of the pile it is counted in. A fourth status
+  follows the two rules; it does not get a colour by eye.
 - Selected-state has one vocabulary: `background: var(--meter-track)` with
   primary ink (`.segment-on`, `.toggle-on`, `.tab-on`). Not an accent border,
   not a saturated fill — `--series-1` at full strength is spent on the paused

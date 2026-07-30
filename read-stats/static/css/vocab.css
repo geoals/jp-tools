@@ -95,3 +95,29 @@
   color: inherit;
   margin-left: 6px;
 }
+
+/* The swatch beside each status, in the shared --vocab-* scale (base.css).
+ *
+ * Its whole job is to make the counts and the reading view the same statement:
+ * the colour under a word in the feed is the colour of the pile it is counted
+ * in here. `known` and `blacklisted` keep an empty outline rather than a fill —
+ * neither is ever painted over a word, and inventing a colour for them here
+ * would promise a mark the feed never makes. */
+.vocab-swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 7px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  vertical-align: baseline;
+}
+.vocab-swatch.new {
+  background: var(--vocab-new);
+}
+.vocab-swatch.seen {
+  background: var(--vocab-seen);
+}
+.vocab-swatch.unknown {
+  background: var(--vocab-unknown);
+}

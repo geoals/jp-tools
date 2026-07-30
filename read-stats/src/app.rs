@@ -38,6 +38,9 @@ pub struct AppState {
     pub anthropic_api_key: Option<String>,
     /// whisper-service base URL, probed for the reader's trim-status indicator.
     pub whisper_url: String,
+    /// The reading view's Sudachi pipeline, built on the first line that needs
+    /// it and shared from then on. See [`reader::highlight::Shared`].
+    pub highlighter: reader::highlight::Shared,
 }
 
 async fn spa_shell() -> Html<&'static str> {

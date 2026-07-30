@@ -27,6 +27,8 @@
 //! `status` is touched by none of them. It holds assertions and nothing else,
 //! so a resync can never demote a word the reader marked known.
 
+use std::collections::HashMap;
+
 use sqlx::{Row, SqlitePool};
 
 use super::Knowledge;
@@ -556,6 +558,38 @@ pub async fn fetch(k: &Knowledge, term: &Term) -> Result<Option<VocabRow>, sqlx:
         .fetch_optional(k.pool())
         .await?;
     Ok(row.as_ref().map(row_to_vocab))
+}
+
+/// The rows for a handful of terms at once, keyed by term.
+///
+/// For the reader's highlighter, which asks about the dozen or so words in one
+/// hooked line and needs the answer between the line arriving and it being
+/// drawn. One query rather than a [`fetch`] per token: the round trips, not the
+/// index seeks, are what would show up beside a 30ms poll.
+///
+/// Terms with no row are simply absent from the map — a word nobody has
+/// ingested yet is not an error, it is the ordinary state of a line that was
+/// hooked a second ago.
+pub async fn fetch_many(
+    k: &Knowledge,
+    terms: &[Term],
+) -> Result<HashMap<Term, VocabRow>, sqlx::Error> {
+    if terms.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let placeholders = vec!["(?, ?)"; terms.len()].join(", ");
+    let sql =
+        format!("SELECT * FROM vocabulary WHERE (headword, reading) IN ({placeholders})");
+    let mut q = sqlx::query(&sql);
+    for t in terms {
+        q = q.bind(&t.headword).bind(&t.reading);
+    }
+    let rows = q.fetch_all(k.pool()).await?;
+    Ok(rows
+        .iter()
+        .map(row_to_vocab)
+        .map(|r| (r.term.clone(), r))
+        .collect())
 }
 
 /// Every row, most-encountered first — what a triage list is built from.

@@ -10,6 +10,7 @@ use futures_core::Stream;
 use serde::Deserialize;
 use tracing::warn;
 
+use super::highlight;
 use crate::app::AppState;
 use crate::db;
 
@@ -57,6 +58,10 @@ pub async fn lines_stream(
     let backlog = q.backlog.unwrap_or(DEFAULT_BACKLOG).clamp(0, MAX_BATCH);
 
     let stream = async_stream::stream! {
+        // Built here rather than per line: the first caller pays the dictionary
+        // load, everyone after it pays nothing. `None` streams untinted.
+        let hl = highlight::shared(&state).await;
+
         // Opening batch: everything missed since `resume`, or the tail of the
         // log for a fresh client.
         let mut last_id = match resume {
@@ -65,7 +70,7 @@ pub async fn lines_stream(
                 Ok(lines) => {
                     let last = lines.last().map(|l| l.id);
                     for line in &lines {
-                        yield Ok(line_event(line));
+                        yield Ok(line_event(line, tokens(&state, hl.as_deref(), line).await));
                     }
                     match last {
                         Some(id) => id,
@@ -86,7 +91,7 @@ pub async fn lines_stream(
                 Ok(lines) => {
                     for line in &lines {
                         last_id = line.id;
-                        yield Ok(line_event(line));
+                        yield Ok(line_event(line, tokens(&state, hl.as_deref(), line).await));
                     }
                 }
                 // A transient DB error must not end the stream — the client
@@ -101,10 +106,39 @@ pub async fn lines_stream(
     Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
 }
 
-fn line_event(line: &db::ReaderLine) -> Event {
-    // json_data only fails on non-serializable values; ReaderLine is plain data.
+/// A line as the reading view receives it: the row, plus where its unknown
+/// words sit.
+///
+/// Flattened over [`db::ReaderLine`] rather than nested, so the client keeps
+/// reading `line.text` and `line.id` exactly as it did — `tokens` is an
+/// addition to the event, not a new shape for it.
+#[derive(serde::Serialize)]
+struct LineEvent<'a> {
+    #[serde(flatten)]
+    line: &'a db::ReaderLine,
+    /// Empty whenever the pipeline could not answer — no dictionary, a
+    /// tokenizer failure, a database blip. The line still arrives; it simply
+    /// arrives untinted, which is what the view did before highlighting
+    /// existed.
+    tokens: Vec<highlight::Span>,
+}
+
+/// One line's spans, or none if there is no highlighter to ask.
+async fn tokens(
+    state: &AppState,
+    hl: Option<&highlight::Highlighter>,
+    line: &db::ReaderLine,
+) -> Vec<highlight::Span> {
+    match hl {
+        Some(h) => highlight::spans(&state.knowledge, h, &line.text).await,
+        None => Vec::new(),
+    }
+}
+
+fn line_event(line: &db::ReaderLine, tokens: Vec<highlight::Span>) -> Event {
+    // json_data only fails on non-serializable values; both halves are plain data.
     Event::default()
         .id(line.id.to_string())
-        .json_data(line)
+        .json_data(LineEvent { line, tokens })
         .unwrap_or_else(|_| Event::default().comment("unserializable line"))
 }

@@ -110,9 +110,13 @@ function StatusSummary({ vocab, onImported }) {
   const stateRows = new Map(byStatus);
   stateRows.set("seen", {
     total: vocab.seen,
-    in_master: (byStatus.get("new")?.in_master ?? 0) - (vocab.never_met_vocab ?? 0),
+    in_master:
+      (byStatus.get("new")?.in_master ?? 0) - (vocab.never_met_vocab ?? 0),
   });
-  stateRows.set("new", { total: vocab.never_met, in_master: vocab.never_met_vocab ?? 0 });
+  stateRows.set("new", {
+    total: vocab.never_met,
+    in_master: vocab.never_met_vocab ?? 0,
+  });
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [err, setErr] = useState(null);
@@ -213,10 +217,7 @@ function StatusSummary({ vocab, onImported }) {
           <div class="label">ledger terms</div>
           <div class="value">${vocab.total.toLocaleString("en")}</div>
         </div>
-        <div
-          class="tile has-hint"
-          title=${readyHint}
-        >
+        <div class="tile has-hint" title=${readyHint}>
           <div class="label">ready to judge</div>
           <div class="value">
             ${vocab.ready.toLocaleString("en")}
@@ -253,7 +254,10 @@ function StatusSummary({ vocab, onImported }) {
             const row = stateRows.get(status);
             return html`
               <tr key=${status}>
-                <td><span title=${hint}>${status}</span></td>
+                <td>
+                  <span class="vocab-swatch ${status}"></span>
+                  <span title=${hint}>${status}</span>
+                </td>
                 <td>${(row?.total ?? 0).toLocaleString("en")}</td>
                 <td>${(row?.in_master ?? 0).toLocaleString("en")}</td>
               </tr>

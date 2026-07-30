@@ -15,6 +15,7 @@
 //! | module | does |
 //! |---|---|
 //! | [`stream`] | the SSE line feed, resumable by `Last-Event-ID` |
+//! | [`highlight`] | which words in a line are worth marking, and where |
 //! | [`lines`] | clearing lines from the figures, and undoing that |
 //! | [`capture`] | the mine button, and the window picker behind it |
 //! | [`explain`] | "what does this line say", via the model |
@@ -22,6 +23,7 @@
 
 pub mod capture;
 pub mod explain;
+pub mod highlight;
 pub mod lines;
 pub mod state;
 pub mod stream;
