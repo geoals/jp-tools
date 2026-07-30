@@ -407,6 +407,21 @@ export function Reader() {
           ${pausedBanner}
         </button>`
       }
+      ${
+        toast &&
+        html`<div class="reader-toast ${toast.ok ? "ok" : "err"}">
+          <span>${toast.text}</span>
+          ${
+            (toast.undo || toast.judged) &&
+            html`<button
+              class="reader-undo"
+              onClick=${toast.judged ? undoJudge : undoClear}
+            >
+              undo
+            </button>`
+          }
+        </div>`
+      }
       <div
         class="reader-lines"
         ref=${listRef}
@@ -436,21 +451,6 @@ export function Reader() {
           <div class="reader-explain-body">
             ${explaining ? "explaining…" : renderMarkdown(explain.text)}
           </div>
-        </div>`
-      }
-      ${
-        toast &&
-        html`<div class="reader-toast ${toast.ok ? "ok" : "err"}">
-          <span>${toast.text}</span>
-          ${
-            (toast.undo || toast.judged) &&
-            html`<button
-              class="reader-undo"
-              onClick=${toast.judged ? undoJudge : undoClear}
-            >
-              undo
-            </button>`
-          }
         </div>`
       }
       <div class="reader-actions">
