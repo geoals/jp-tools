@@ -111,10 +111,14 @@ taught to `vn-capture.sh`.
 - **A tap in the feed judges the word under it**, and is the second writer of
   `vocabulary.status` after `#vocab` — a person tapped a word, so it passes the
   rule below. Two states, because two is all a reader can answer without leaving
-  the line: anything marked becomes `known` on the first tap, and a word already
-  known becomes `unknown` on the next. `new` and `seen` are never written by
-  hand; they are what the ledger holds before anyone has judged, which is what
-  the toast's undo restores. The judgement applies to every occurrence on
+  the line: anything marked becomes `known`, and a word already known becomes
+  `unknown`. **`new` and `seen` are unreachable by hand and must stay that way** —
+  they are what the ledger holds *before* anyone has judged, so writing one
+  would be asserting that nothing has been asserted. Tapping past a mistake is
+  one more tap, which is why there is no undo and no toast here: the mark is the
+  report, it changes under the finger that asked, and a failed write is the mark
+  coming back. (The toast still exists for `clear last`, whose undo is the only
+  route back to a cleared line.) The judgement applies to every occurrence on
   screen, not the tapped one — one word is one assertion, and leaving the same
   term marked three lines up reads as a write that failed.
   Two things hold it together. It is hit-tested with `caretPositionFromPoint`

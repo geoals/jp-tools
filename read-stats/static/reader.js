@@ -149,7 +149,7 @@ export function Reader() {
     // Successes clear themselves; failures stay until the next attempt.
     if (!toast || !toast.ok) return;
     // Both undoable toasts get the longer life: they are the only route back.
-    const ms = toast.undo || toast.judged ? UNDO_TOAST_MS : TOAST_MS;
+    const ms = toast.undo ? UNDO_TOAST_MS : TOAST_MS;
     const t = setTimeout(() => setToast(null), ms);
     return () => clearTimeout(t);
   }, [toast]);
@@ -185,20 +185,21 @@ export function Reader() {
    *
    *  The one write the reading view makes to the ledger, and it exists because
    *  the marks put the question right where the reader already is: the word is
-   *  in front of them, in context, at the moment they know the answer. Two
-   *  states, since that is the whole question a reader can answer without
-   *  leaving the line — the first tap on anything marked says "I have this",
-   *  and a tap on a word that is already known takes it back. `new` and `seen`
-   *  are not written by hand: they are what the ledger says before anyone has
-   *  judged, and taking a judgement back restores exactly that.
+   *  in front of them, in context, at the moment they know the answer.
+   *
+   *  Two states, and they are the two a reader can answer without leaving the
+   *  line: anything marked becomes known, and a word already known becomes
+   *  unknown. `new` and `seen` are not among them — they are what the ledger
+   *  says *before* anyone has judged, so writing one by hand would be asserting
+   *  that nothing has been asserted. Tapping past a mistake is one more tap.
+   *
+   *  No toast: the mark itself is the report. It changes colour or goes away
+   *  under the finger that asked, which is both faster to read than a line of
+   *  text and impossible to miss — and a failed write is the mark coming back.
    *
    *  Optimistic, and applied to every occurrence of the term on screen rather
    *  than the one tapped — the same word three lines up is the same assertion,
-   *  and leaving it marked would read as a failed write.
-   *
-   *  The undo in the toast matters more here than anywhere else in this view:
-   *  this is a tap on the same text Yomitan is scanning, so a misfire has to
-   *  cost one more tap and nothing else. */
+   *  and leaving it marked would read as a failed write. */
   async function judgeAt(event) {
     if (!highlightOn) return;
     // A tap that ends a selection is a lookup or an explain-focus, not a
@@ -212,48 +213,21 @@ export function Reader() {
       event.clientY,
     );
     if (!hit) return;
-    const next = hit.token.status === "known" ? "unknown" : "known";
-    // What the ledger held before, so undo restores it rather than guessing.
-    // `new` and `seen` are one stored status; either restores as `new`.
-    const before = hit.token.status === "unknown" ? "unknown" : "new";
-    await writeStatus(hit.token, next, before);
-  }
-
-  async function writeStatus(token, status, before) {
+    const token = hit.token;
+    const status = token.status === "known" ? "unknown" : "known";
     const term = { headword: token.headword, reading: token.reading };
-    const applied = { ...term, status };
     setLines((prev) => withStatus(prev, term, status));
     try {
       await api("/api/vocab/judge", {
         method: "POST",
         body: { judgements: [{ ...term, status }] },
       });
-      setToast({
-        ok: true,
-        text: judgedText(token.headword, status),
-        judged: { applied, before },
-      });
-    } catch (err) {
-      // Put the mark back: the assertion did not land, and a view that shows
-      // it as though it did is worse than no feedback at all.
+    } catch {
+      // Put the mark back. The assertion did not land, and a view that shows it
+      // as though it did is worse than any message about it — the mark
+      // returning is the report, in the place the reader is already looking.
       setLines((prev) => withStatus(prev, term, token.status));
-      setToast({ ok: false, text: err.message });
     }
-  }
-
-  async function undoJudge() {
-    const j = toast && toast.judged;
-    if (!j) return;
-    setToast(null);
-    await writeStatus(
-      {
-        headword: j.applied.headword,
-        reading: j.applied.reading,
-        status: j.applied.status,
-      },
-      j.before,
-      j.applied.status,
-    );
   }
 
   function bumpFont(delta) {
@@ -424,11 +398,8 @@ export function Reader() {
           html`<div class="reader-toast ${toast.ok ? "ok" : "err"}">
             <span>${toast.text}</span>
             ${
-              (toast.undo || toast.judged) &&
-              html`<button
-                class="reader-undo"
-                onClick=${toast.judged ? undoJudge : undoClear}
-              >
+              toast.undo &&
+              html`<button class="reader-undo" onClick=${undoClear}>
                 undo
               </button>`
             }
@@ -683,10 +654,4 @@ function withStatus(lines, term, status) {
 
 function sameTerm(token, term) {
   return token.headword === term.headword && token.reading === term.reading;
-}
-
-/** "知る → known" — built whole rather than split around the word, since htm
- *  collapses the whitespace where literal text meets an interpolation. */
-function judgedText(headword, status) {
-  return `${headword} → ${status}`;
 }
