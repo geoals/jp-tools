@@ -22,9 +22,13 @@ const MAX_LINES = 300;
 const FONT_KEY = "reader-font-px";
 const FONT_DEFAULT = 20;
 const HIGHLIGHT_KEY = "reader-highlight";
-/** The tiers the server sends. Anything else is ignored rather than drawn in a
- *  default colour — an unrecognised status is a version skew, not a word. */
-const TIERS = ["seen", "new", "unknown"];
+/** The statuses that get a colour. `known` is sent too — a span is also the
+ *  region a tap judges, so a word just marked known must stay tappable — but it
+ *  is deliberately absent here: on a page where most words are known, the
+ *  absence of a mark is what makes the marks readable. Anything unrecognised is
+ *  ignored rather than drawn in a default colour; that is a version skew, not a
+ *  word. */
+const PAINTED = ["seen", "new", "unknown"];
 /** How far a mark reaches past its word on each side. Enough to look like a
  *  deliberate band rather than a tight box, small enough that two marked words
  *  next to each other don't merge into one. */
@@ -144,7 +148,8 @@ export function Reader() {
   useEffect(() => {
     // Successes clear themselves; failures stay until the next attempt.
     if (!toast || !toast.ok) return;
-    const ms = toast.undo ? UNDO_TOAST_MS : TOAST_MS;
+    // Both undoable toasts get the longer life: they are the only route back.
+    const ms = toast.undo || toast.judged ? UNDO_TOAST_MS : TOAST_MS;
     const t = setTimeout(() => setToast(null), ms);
     return () => clearTimeout(t);
   }, [toast]);
@@ -174,6 +179,81 @@ export function Reader() {
       localStorage.setItem(HIGHLIGHT_KEY, on ? "off" : "on");
       return !on;
     });
+  }
+
+  /** Judge the word under a tap.
+   *
+   *  The one write the reading view makes to the ledger, and it exists because
+   *  the marks put the question right where the reader already is: the word is
+   *  in front of them, in context, at the moment they know the answer. Two
+   *  states, since that is the whole question a reader can answer without
+   *  leaving the line — the first tap on anything marked says "I have this",
+   *  and a tap on a word that is already known takes it back. `new` and `seen`
+   *  are not written by hand: they are what the ledger says before anyone has
+   *  judged, and taking a judgement back restores exactly that.
+   *
+   *  Optimistic, and applied to every occurrence of the term on screen rather
+   *  than the one tapped — the same word three lines up is the same assertion,
+   *  and leaving it marked would read as a failed write.
+   *
+   *  The undo in the toast matters more here than anywhere else in this view:
+   *  this is a tap on the same text Yomitan is scanning, so a misfire has to
+   *  cost one more tap and nothing else. */
+  async function judgeAt(event) {
+    if (!highlightOn) return;
+    // A tap that ends a selection is a lookup or an explain-focus, not a
+    // judgement. `isCollapsed` is what tells those apart.
+    const sel = window.getSelection?.();
+    if (sel && !sel.isCollapsed) return;
+    const hit = spanAtPoint(
+      lines,
+      lineEls.current,
+      event.clientX,
+      event.clientY,
+    );
+    if (!hit) return;
+    const next = hit.token.status === "known" ? "unknown" : "known";
+    // What the ledger held before, so undo restores it rather than guessing.
+    // `new` and `seen` are one stored status; either restores as `new`.
+    const before = hit.token.status === "unknown" ? "unknown" : "new";
+    await writeStatus(hit.token, next, before);
+  }
+
+  async function writeStatus(token, status, before) {
+    const term = { headword: token.headword, reading: token.reading };
+    const applied = { ...term, status };
+    setLines((prev) => withStatus(prev, term, status));
+    try {
+      await api("/api/vocab/judge", {
+        method: "POST",
+        body: { judgements: [{ ...term, status }] },
+      });
+      setToast({
+        ok: true,
+        text: judgedText(token.headword, status),
+        judged: { applied, before },
+      });
+    } catch (err) {
+      // Put the mark back: the assertion did not land, and a view that shows
+      // it as though it did is worse than no feedback at all.
+      setLines((prev) => withStatus(prev, term, token.status));
+      setToast({ ok: false, text: err.message });
+    }
+  }
+
+  async function undoJudge() {
+    const j = toast && toast.judged;
+    if (!j) return;
+    setToast(null);
+    await writeStatus(
+      {
+        headword: j.applied.headword,
+        reading: j.applied.reading,
+        status: j.applied.status,
+      },
+      j.before,
+      j.applied.status,
+    );
   }
 
   function bumpFont(delta) {
@@ -331,6 +411,7 @@ export function Reader() {
         class="reader-lines"
         ref=${listRef}
         onScroll=${onScroll}
+        onClick=${judgeAt}
         style=${`font-size: ${fontPx}px`}
       >
         <div class="reader-marks" ref=${marksRef} aria-hidden="true"></div>
@@ -362,8 +443,13 @@ export function Reader() {
         html`<div class="reader-toast ${toast.ok ? "ok" : "err"}">
           <span>${toast.text}</span>
           ${
-            toast.undo &&
-            html`<button class="reader-undo" onClick=${undoClear}>undo</button>`
+            (toast.undo || toast.judged) &&
+            html`<button
+              class="reader-undo"
+              onClick=${toast.judged ? undoJudge : undoClear}
+            >
+              undo
+            </button>`
           }
         </div>`
       }
@@ -499,7 +585,7 @@ function paintMarks(lines, els, enabled, listEl, layerEl) {
         // The offsets are UTF-16 code units from the server, which is what a
         // Range indexes in. A span past the end means the text and the tokens
         // came from different reads of the line; skip it rather than throw.
-        if (!TIERS.includes(t.status) || t.start + t.len > node.length)
+        if (!PAINTED.includes(t.status) || t.start + t.len > node.length)
           continue;
         const range = document.createRange();
         range.setStart(node, t.start);
@@ -529,4 +615,76 @@ function paintMarks(lines, els, enabled, listEl, layerEl) {
       return div;
     }),
   );
+}
+
+/** The span under a point, or null if the point isn't on a marked word.
+ *
+ *  Hit-tested against the text itself — `caretPositionFromPoint` gives the text
+ *  node and offset under the finger, and the offsets already on screen say
+ *  which word that is. Nothing in the feed is made clickable to achieve it:
+ *  an interactive layer over the lines would sit between the reader and the
+ *  text Yomitan scans, and a mark that swallowed a long-press would cost a
+ *  lookup to gain a judgement.
+ *
+ *  A tap on an unmarked word — a name, a non-word, anything the ledger will not
+ *  hold — finds no span and does nothing, which is the intended silence rather
+ *  than a case to report. */
+function spanAtPoint(lines, els, x, y) {
+  const caret = caretAt(x, y);
+  if (!caret) return null;
+  for (const line of lines) {
+    const el = els.get(line.id);
+    const node = el && el.firstChild;
+    if (node !== caret.node) continue;
+    for (const token of line.tokens || []) {
+      const inside =
+        caret.offset >= token.start && caret.offset < token.start + token.len;
+      if (inside) return { line, token };
+    }
+    return null;
+  }
+  return null;
+}
+
+/** The text node and offset under a point, across the two spellings browsers
+ *  give this: the standard `caretPositionFromPoint` and WebKit's older
+ *  `caretRangeFromPoint`. */
+function caretAt(x, y) {
+  if (document.caretPositionFromPoint) {
+    const pos = document.caretPositionFromPoint(x, y);
+    if (!pos) return null;
+    return { node: pos.offsetNode, offset: pos.offset };
+  }
+  if (document.caretRangeFromPoint) {
+    const range = document.caretRangeFromPoint(x, y);
+    if (!range) return null;
+    return { node: range.startContainer, offset: range.startOffset };
+  }
+  return null;
+}
+
+/** Every occurrence of one term on screen, restatused. One word is one
+ *  assertion: the same term three lines up carries the judgement just made, and
+ *  leaving it marked would read as a write that failed. */
+function withStatus(lines, term, status) {
+  return lines.map((line) => {
+    if (!line.tokens || !line.tokens.some((t) => sameTerm(t, term)))
+      return line;
+    return {
+      ...line,
+      tokens: line.tokens.map((t) =>
+        sameTerm(t, term) ? { ...t, status } : t,
+      ),
+    };
+  });
+}
+
+function sameTerm(token, term) {
+  return token.headword === term.headword && token.reading === term.reading;
+}
+
+/** "知る → known" — built whole rather than split around the word, since htm
+ *  collapses the whitespace where literal text meets an interpolation. */
+function judgedText(headword, status) {
+  return `${headword} → ${status}`;
 }

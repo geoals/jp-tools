@@ -108,6 +108,23 @@ taught to `vn-capture.sh`.
   `dictionary_form_word_id`; `POST /api/vocab/repair-readings` folds what the
   old pairing wrote, and is idempotent. Anything keyed on `(headword, reading)`
   — the ledger, `work_terms` — depends on this being right.
+- **A tap in the feed judges the word under it**, and is the second writer of
+  `vocabulary.status` after `#vocab` — a person tapped a word, so it passes the
+  rule below. Two states, because two is all a reader can answer without leaving
+  the line: anything marked becomes `known` on the first tap, and a word already
+  known becomes `unknown` on the next. `new` and `seen` are never written by
+  hand; they are what the ledger holds before anyone has judged, which is what
+  the toast's undo restores. The judgement applies to every occurrence on
+  screen, not the tapped one — one word is one assertion, and leaving the same
+  term marked three lines up reads as a write that failed.
+  Two things hold it together. It is hit-tested with `caretPositionFromPoint`
+  against the text, and **nothing in the feed is made clickable**: an
+  interactive layer over the lines would sit between the reader and the text
+  Yomitan scans, and a mark that swallowed a long-press would cost a lookup to
+  gain a judgement. And a tap that ends a selection is ignored — that is a
+  lookup or an explain-focus, not a judgement. A tap on anything unmarked (a
+  name, a non-word, a blacklisted term) finds no span and does nothing, which is
+  why the `known` spans have to be sent and the rest must not be.
 - **Only the reader writes `vocabulary.status`.** Not ingest, not the Anki
   sync, not the lookup sync — a resync must never demote a word marked known,
   and an encounter count must never promote one (`spec/cold-start.md` Pass 4).
@@ -198,8 +215,10 @@ taught to `vn-capture.sh`.
   because that is what a `Range` indexes in, and `renderLine` carries a
   `prettier-ignore` so no reflow can put a whitespace node in front of the text
   and shift every mark on the line.
-  Three tiers, and `known` is not one of them — the *absence* of a mark is what
-  makes the marks readable. `new` and `seen` split the ledger's `new` on the
+  Three tiers are painted and `known` is not one of them — the *absence* of a
+  mark is what makes the marks readable — but a `known` span **is** sent, since
+  a span is also the region a tap judges and a word just marked known has to
+  stay tappable to be taken back. `new` and `seen` split the ledger's `new` on the
   encounter count exactly as the `#vocab` counts do (at 1 rather than 0: ingest
   may already have credited the occurrence being drawn). Names, blacklisted
   terms and non-words are never marked; a word too fresh to have a ledger row is

@@ -8,11 +8,13 @@
 //! text node and Yomitan's DOM scan sees exactly what it saw before this
 //! existed. That constraint is the whole reason this returns ranges.
 //!
-//! Three things are deliberately not highlighted:
+//! Two things get no span at all, and a third gets one that is not drawn:
 //!
 //! - **Known words**, by [`VocabRow::is_known`]'s rule — asserted known *or*
-//!   mined. A line where every word you have is tinted is a line you cannot
-//!   read; the absence of a mark is the signal.
+//!   mined — are sent but never painted. A line where every word you have is
+//!   marked is a line you cannot read; the absence of a mark is the signal. They
+//!   are sent because a span is also the region a tap judges, and a word just
+//!   marked known has to stay tappable to be taken back.
 //! - **Names.** Sudachi's 固有名詞 flag, same as ingest. A VN's cast would
 //!   otherwise be the loudest thing on every line and learning them is not
 //!   learning Japanese.
@@ -25,7 +27,7 @@
 //! The status the rest becomes is not `vocabulary.status` verbatim — the
 //! ledger's `new` covers both "you have met this fifty times and never judged
 //! it" and "you have never met this at all", and those are the two the reader
-//! most wants told apart. [`Highlight`] splits them on `encounter_count`.
+//! most wants told apart. [`Tier`] splits them on `encounter_count`.
 
 use std::collections::HashSet;
 
@@ -56,15 +58,24 @@ const NEW_MAX_ENCOUNTERS: i64 = 1;
 pub struct Span {
     pub start: usize,
     pub len: usize,
-    /// `new`, `seen` or `unknown`. Serialized as the string the CSS highlight
-    /// name is built from, so adding a status is a Rust change and a CSS rule
-    /// and nothing in between.
+    /// `new`, `seen`, `unknown` or `known`. The string the mark's class is
+    /// built from, so adding a status is a Rust change and a CSS rule and
+    /// nothing in between.
     pub status: &'static str,
+    /// The ledger key this word judges, so a tap on it can write a status
+    /// without a round trip to ask what it is called. It is the *term's*
+    /// spelling, not the surface under the finger: 振っ is judged as 振る.
+    pub headword: String,
+    pub reading: String,
 }
 
-/// The three tiers the reader sees, and the rule that assigns them.
+/// What a word is to the reader, and the rule that assigns it.
 ///
-/// `known` is not among them on purpose: it is the absence of a span.
+/// `Known` is here but is not drawn: a span is also the region a tap judges,
+/// and a word marked known has to stay tappable to be taken back. So the three
+/// visible tiers and the invisible one are one enum, and the client decides
+/// which of them gets a colour — the alternative is a word that can be judged
+/// exactly once and never revisited.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Tier {
     /// Never judged, and never (or barely) met.
@@ -73,6 +84,8 @@ enum Tier {
     Seen,
     /// Judged, and judged not known.
     Unknown,
+    /// Asserted known, or mined. Sent, never painted.
+    Known,
 }
 
 impl Tier {
@@ -81,6 +94,7 @@ impl Tier {
             Tier::New => "new",
             Tier::Seen => "seen",
             Tier::Unknown => "unknown",
+            Tier::Known => "known",
         }
     }
 }
@@ -158,7 +172,16 @@ fn locate(text: &str, tokens: Vec<jp_core::tokenize::Token>) -> Vec<(Term, Span)
         // The tier is decided against the ledger; `Seen` is a placeholder the
         // caller overwrites, never a classification.
         let status = Tier::Seen.as_str();
-        out.push((term, Span { start, len, status }));
+        out.push((
+            term.clone(),
+            Span {
+                start,
+                len,
+                status,
+                headword: term.headword,
+                reading: term.reading,
+            },
+        ));
     }
     out
 }
@@ -258,8 +281,13 @@ pub async fn spans(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Span> {
 
 /// One ledger row's tier, or `None` for a word that gets no mark at all.
 fn tier_for(row: &VocabRow) -> Option<Tier> {
-    if row.is_known() || row.status == Status::Blacklisted || !row.is_word() {
+    // Blacklisted and non-words get no span at all, which is also what makes a
+    // tap on them do nothing: there is nothing under the finger to judge.
+    if row.status == Status::Blacklisted || !row.is_word() {
         return None;
+    }
+    if row.is_known() {
+        return Some(Tier::Known);
     }
     match row.status {
         Status::Unknown => Some(Tier::Unknown),
@@ -354,11 +382,13 @@ mod tests {
     }
 
     #[test]
-    fn known_and_mined_get_no_mark() {
-        assert_eq!(tier_for(&row(Status::Known, 50)), None);
+    fn known_and_mined_are_sent_as_known() {
+        // Sent, so a tap can take them back; the client is what declines to
+        // paint them.
+        assert_eq!(tier_for(&row(Status::Known, 50)), Some(Tier::Known));
         let mut mined = row(Status::New, 50);
         mined.mined = true;
-        assert_eq!(tier_for(&mined), None);
+        assert_eq!(tier_for(&mined), Some(Tier::Known));
     }
 
     #[test]
