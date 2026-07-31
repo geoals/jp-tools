@@ -580,8 +580,7 @@ pub async fn fetch_many(
         return Ok(HashMap::new());
     }
     let placeholders = vec!["(?, ?)"; terms.len()].join(", ");
-    let sql =
-        format!("SELECT * FROM vocabulary WHERE (headword, reading) IN ({placeholders})");
+    let sql = format!("SELECT * FROM vocabulary WHERE (headword, reading) IN ({placeholders})");
     let mut q = sqlx::query(&sql);
     for t in terms {
         q = q.bind(&t.headword).bind(&t.reading);
@@ -1110,15 +1109,13 @@ pub async fn set_promoted(
     let mut tx = k.pool().begin().await?;
     let mut n = 0;
     for term in terms {
-        n += sqlx::query(
-            "UPDATE vocabulary SET promoted = ? WHERE headword = ? AND reading = ?",
-        )
-        .bind(i64::from(promoted))
-        .bind(&term.headword)
-        .bind(&term.reading)
-        .execute(&mut *tx)
-        .await?
-        .rows_affected();
+        n += sqlx::query("UPDATE vocabulary SET promoted = ? WHERE headword = ? AND reading = ?")
+            .bind(i64::from(promoted))
+            .bind(&term.headword)
+            .bind(&term.reading)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
     }
     tx.commit().await?;
     Ok(n)
@@ -1160,11 +1157,9 @@ pub struct ReadingRepair {
 /// `new` — and sums the counts, since both rows counted the same word.
 /// Idempotent: a second run finds nothing left to move.
 pub async fn repair_empty_readings(k: &Knowledge) -> Result<ReadingRepair, sqlx::Error> {
-    let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT headword FROM vocabulary WHERE reading = ''",
-    )
-    .fetch_all(k.pool())
-    .await?;
+    let rows: Vec<(String,)> = sqlx::query_as("SELECT headword FROM vocabulary WHERE reading = ''")
+        .fetch_all(k.pool())
+        .await?;
 
     let mut out = ReadingRepair::default();
     for (headword,) in rows {
@@ -1178,18 +1173,20 @@ pub async fn repair_empty_readings(k: &Knowledge) -> Result<ReadingRepair, sqlx:
             continue;
         };
         let target = Term::new(headword.clone(), reading);
-        let source = Term { headword: headword.clone(), reading: String::new() };
+        let source = Term {
+            headword: headword.clone(),
+            reading: String::new(),
+        };
         if target == source {
             continue;
         }
 
-        let exists: Option<(i64,)> = sqlx::query_as(
-            "SELECT 1 FROM vocabulary WHERE headword = ? AND reading = ?",
-        )
-        .bind(&target.headword)
-        .bind(&target.reading)
-        .fetch_optional(k.pool())
-        .await?;
+        let exists: Option<(i64,)> =
+            sqlx::query_as("SELECT 1 FROM vocabulary WHERE headword = ? AND reading = ?")
+                .bind(&target.headword)
+                .bind(&target.reading)
+                .fetch_optional(k.pool())
+                .await?;
 
         let mut tx = k.pool().begin().await?;
         if exists.is_some() {
@@ -1220,13 +1217,11 @@ pub async fn repair_empty_readings(k: &Knowledge) -> Result<ReadingRepair, sqlx:
                 .await?;
             out.merged += 1;
         } else {
-            sqlx::query(
-                "UPDATE vocabulary SET reading = ? WHERE headword = ? AND reading = ''",
-            )
-            .bind(&target.reading)
-            .bind(&headword)
-            .execute(&mut *tx)
-            .await?;
+            sqlx::query("UPDATE vocabulary SET reading = ? WHERE headword = ? AND reading = ''")
+                .bind(&target.reading)
+                .bind(&headword)
+                .execute(&mut *tx)
+                .await?;
             out.rekeyed += 1;
         }
         tx.commit().await?;
@@ -1509,7 +1504,8 @@ mod tests {
         .unwrap();
         let detail: Vec<&str> = plan.iter().map(|r| r.3.as_str()).collect();
         assert!(
-            detail.iter().any(|d| d.contains("SEARCH de USING INDEX idx_dictionary_entries_lookup")
+            detail.iter().any(|d| d
+                .contains("SEARCH de USING INDEX idx_dictionary_entries_lookup")
                 && d.contains("dictionary_id=?")
                 && d.contains("term=?")),
             "the reading-count subquery must seek on (dictionary_id, term), not just dictionary_id: {detail:?}"
@@ -1546,8 +1542,14 @@ mod tests {
         set_status(&k, &Term::new("犬", "いぬ"), Status::Unknown, 1.0)
             .await
             .unwrap();
-        assert_eq!(frequency_queue(&k, 2, 1, 100, 10, 0).await.unwrap().len(), 0);
-        assert_eq!(frequency_pending(&k, 2, 1, 100).await.unwrap().committable, 0);
+        assert_eq!(
+            frequency_queue(&k, 2, 1, 100, 10, 0).await.unwrap().len(),
+            0
+        );
+        assert_eq!(
+            frequency_pending(&k, 2, 1, 100).await.unwrap().committable,
+            0
+        );
     }
 
     #[tokio::test]
@@ -1586,7 +1588,10 @@ mod tests {
         assert!(offered.iter().any(|t| t == "鍵/かぎ"));
         // The count has to agree with the queue, or it promises rows nobody
         // will be shown.
-        assert_eq!(triage_pending(&k, 1, None).await.unwrap().0, offered.len() as i64);
+        assert_eq!(
+            triage_pending(&k, 1, None).await.unwrap().0,
+            offered.len() as i64
+        );
     }
 
     #[tokio::test]
@@ -2044,9 +2049,21 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(get(&k, &judged).await.status, Status::Unknown, "a judgement survives a seed");
-        assert_eq!(get(&k, &untouched).await.status, Status::Known, "an unjudged row is filled");
-        assert_eq!(get(&k, &fresh).await.status, Status::Known, "a missing row is created");
+        assert_eq!(
+            get(&k, &judged).await.status,
+            Status::Unknown,
+            "a judgement survives a seed"
+        );
+        assert_eq!(
+            get(&k, &untouched).await.status,
+            Status::Known,
+            "an unjudged row is filled"
+        );
+        assert_eq!(
+            get(&k, &fresh).await.status,
+            Status::Known,
+            "a missing row is created"
+        );
     }
 
     /// Running it twice must land where running it once did.

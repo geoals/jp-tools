@@ -235,12 +235,15 @@ pub async fn redundant_forms(k: &Knowledge) -> Result<HashSet<Term>, sqlx::Error
     // spelling of the same reading, so that is the whole search space.
     let mut by_reading: HashMap<&str, Vec<&Term>> = HashMap::new();
     for term in known.keys() {
-        by_reading.entry(term.display_reading()).or_default().push(term);
+        by_reading
+            .entry(term.display_reading())
+            .or_default()
+            .push(term);
     }
 
-    let rows = sqlx::query(
-        &format!("SELECT headword, reading FROM vocabulary WHERE status != 'known' AND {COUNTS_AS_VOCAB}"),
-    )
+    let rows = sqlx::query(&format!(
+        "SELECT headword, reading FROM vocabulary WHERE status != 'known' AND {COUNTS_AS_VOCAB}"
+    ))
     .fetch_all(k.pool())
     .await?;
 
@@ -312,34 +315,47 @@ mod tests {
     /// tests are about grouping, not about the wordhood gate.
     async fn know(k: &Knowledge, headword: &str, reading: &str) {
         let term = Term::new(headword, reading);
-        vocabulary::set_status(k, &term, Status::Known, 1.0).await.unwrap();
+        vocabulary::set_status(k, &term, Status::Known, 1.0)
+            .await
+            .unwrap();
         sqlx::query("UPDATE vocabulary SET in_master = 1 WHERE headword = ? AND reading = ?")
-            .bind(&term.headword).bind(&term.reading)
-            .execute(k.pool()).await.unwrap();
+            .bind(&term.headword)
+            .bind(&term.reading)
+            .execute(k.pool())
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
     async fn two_spellings_of_one_entry_are_one_word() {
         let k = temp().await;
-        with_dict(&k, &[
-            ("零れ落ちる", "こぼれおちる", 2002270),
-            ("こぼれ落ちる", "こぼれおちる", 2002270),
-        ]).await;
+        with_dict(
+            &k,
+            &[
+                ("零れ落ちる", "こぼれおちる", 2002270),
+                ("こぼれ落ちる", "こぼれおちる", 2002270),
+            ],
+        )
+        .await;
         know(&k, "零れ落ちる", "こぼれおちる").await;
         know(&k, "こぼれ落ちる", "こぼれおちる").await;
 
         let c = known_counts(&k).await.unwrap();
-        assert_eq!(c.forms, 2, "both rows still exist and keep their own counts");
+        assert_eq!(
+            c.forms, 2,
+            "both rows still exist and keep their own counts"
+        );
         assert_eq!(c.lexemes, 1, "but they are one word");
     }
 
     #[tokio::test]
     async fn a_homograph_stays_two_words() {
         let k = temp().await;
-        with_dict(&k, &[
-            ("辛い", "からい", 1365850),
-            ("辛い", "つらい", 1365860),
-        ]).await;
+        with_dict(
+            &k,
+            &[("辛い", "からい", 1365850), ("辛い", "つらい", 1365860)],
+        )
+        .await;
         know(&k, "辛い", "からい").await;
         know(&k, "辛い", "つらい").await;
 
@@ -351,11 +367,15 @@ mod tests {
         let k = temp().await;
         // 叔父 and 伯父 are one entry; 小父 is a different word that happens to
         // read the same, and is not known.
-        with_dict(&k, &[
-            ("叔父", "おじ", 1607070),
-            ("伯父", "おじ", 1607070),
-            ("小父", "おじ", 2140540),
-        ]).await;
+        with_dict(
+            &k,
+            &[
+                ("叔父", "おじ", 1607070),
+                ("伯父", "おじ", 1607070),
+                ("小父", "おじ", 2140540),
+            ],
+        )
+        .await;
         know(&k, "叔父", "おじ").await;
         know(&k, "伯父", "おじ").await;
         know(&k, "おじ", "おじ").await;
@@ -370,10 +390,11 @@ mod tests {
         let k = temp().await;
         // Jitendex really does list からい separately from 辛い/からい. Taking
         // the form's own id first would count them as two words.
-        with_dict(&k, &[
-            ("辛い", "からい", 1365850),
-            ("からい", "からい", 1609860),
-        ]).await;
+        with_dict(
+            &k,
+            &[("辛い", "からい", 1365850), ("からい", "からい", 1609860)],
+        )
+        .await;
         know(&k, "辛い", "からい").await;
         know(&k, "からい", "からい").await;
 
@@ -383,11 +404,15 @@ mod tests {
     #[tokio::test]
     async fn a_reading_shared_by_different_words_does_not_collapse() {
         let k = temp().await;
-        with_dict(&k, &[
-            ("層", "そう", 1400700),
-            ("沿う", "そう", 1385600),
-            ("そう", "そう", 2137720),
-        ]).await;
+        with_dict(
+            &k,
+            &[
+                ("層", "そう", 1400700),
+                ("沿う", "そう", 1385600),
+                ("そう", "そう", 2137720),
+            ],
+        )
+        .await;
         know(&k, "層", "そう").await;
         know(&k, "沿う", "そう").await;
         know(&k, "そう", "そう").await;
@@ -406,7 +431,11 @@ mod tests {
         know(&k, "叔父", "おじ").await;
         know(&k, "腹を探る", "はらをさぐる").await;
 
-        assert_eq!(known_lexemes(&k).await.unwrap(), 2, "nothing is dropped for being unresolvable");
+        assert_eq!(
+            known_lexemes(&k).await.unwrap(),
+            2,
+            "nothing is dropped for being unresolvable"
+        );
     }
 
     #[tokio::test]
@@ -440,16 +469,24 @@ mod tests {
     #[tokio::test]
     async fn redundancy_runs_from_the_harder_spelling_to_the_easier() {
         let k = temp().await;
-        with_dict(&k, &[
-            ("零れ落ちる", "こぼれおちる", 2002270),
-            ("こぼれ落ちる", "こぼれおちる", 2002270),
-        ]).await;
+        with_dict(
+            &k,
+            &[
+                ("零れ落ちる", "こぼれおちる", 2002270),
+                ("こぼれ落ちる", "こぼれおちる", 2002270),
+            ],
+        )
+        .await;
         know(&k, "零れ落ちる", "こぼれおちる").await;
         // Not known, and in the queue.
         let easier = Term::new("こぼれ落ちる", "こぼれおちる");
-        vocabulary::set_status(&k, &easier, Status::New, 1.0).await.unwrap();
+        vocabulary::set_status(&k, &easier, Status::New, 1.0)
+            .await
+            .unwrap();
         sqlx::query("UPDATE vocabulary SET in_master = 1 WHERE headword = 'こぼれ落ちる'")
-            .execute(k.pool()).await.unwrap();
+            .execute(k.pool())
+            .await
+            .unwrap();
 
         assert!(
             redundant_forms(&k).await.unwrap().contains(&easier),
@@ -460,15 +497,23 @@ mod tests {
     #[tokio::test]
     async fn redundancy_does_not_run_the_other_way() {
         let k = temp().await;
-        with_dict(&k, &[
-            ("零れ落ちる", "こぼれおちる", 2002270),
-            ("こぼれ落ちる", "こぼれおちる", 2002270),
-        ]).await;
+        with_dict(
+            &k,
+            &[
+                ("零れ落ちる", "こぼれおちる", 2002270),
+                ("こぼれ落ちる", "こぼれおちる", 2002270),
+            ],
+        )
+        .await;
         know(&k, "こぼれ落ちる", "こぼれおちる").await;
         let harder = Term::new("零れ落ちる", "こぼれおちる");
-        vocabulary::set_status(&k, &harder, Status::New, 1.0).await.unwrap();
+        vocabulary::set_status(&k, &harder, Status::New, 1.0)
+            .await
+            .unwrap();
         sqlx::query("UPDATE vocabulary SET in_master = 1 WHERE headword = '零れ落ちる'")
-            .execute(k.pool()).await.unwrap();
+            .execute(k.pool())
+            .await
+            .unwrap();
 
         assert!(
             !redundant_forms(&k).await.unwrap().contains(&harder),

@@ -633,7 +633,11 @@ mod tests {
     /// `reading = reading` join silently drops every one of them.
     #[tokio::test]
     async fn a_kana_headword_joins_across_the_two_reading_conventions() {
-        let k = with_dicts(&[("Sankoku", "/x/sankoku.zip"), ("Jitendex", "/x/jitendex.zip")]).await;
+        let k = with_dicts(&[
+            ("Sankoku", "/x/sankoku.zip"),
+            ("Jitendex", "/x/jitendex.zip"),
+        ])
+        .await;
         set_role(k.pool(), 1, Role::Master).await.unwrap();
 
         // Sankoku stores the kana headword with no reading at all.
@@ -675,7 +679,11 @@ mod tests {
 
     #[tokio::test]
     async fn an_entry_with_no_master_spelling_resolves_to_nothing() {
-        let k = with_dicts(&[("Sankoku", "/x/sankoku.zip"), ("Jitendex", "/x/jitendex.zip")]).await;
+        let k = with_dicts(&[
+            ("Sankoku", "/x/sankoku.zip"),
+            ("Jitendex", "/x/jitendex.zip"),
+        ])
+        .await;
         set_role(k.pool(), 1, Role::Master).await.unwrap();
         // A surname: Jitendex has it, Sankoku does not.
         sqlx::query(
