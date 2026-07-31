@@ -10,8 +10,8 @@ use tower_http::set_header::SetResponseHeaderLayer;
 
 use crate::routes::ankiproxy;
 use crate::routes::{
-    anki, days, dialogue, kanji, lookups, reader, sessions, settings, summary, timeline, vocab,
-    works,
+    anki, days, dialogue, kanji, lookups, reader, sessions, settings, summary, timeline, tokenize,
+    vocab, works,
 };
 
 const SPA_HTML: &str = include_str!("../templates/spa.html");
@@ -59,6 +59,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/sessions/{id}", delete(sessions::delete_session))
         .route("/api/sessions/{id}/content", get(sessions::session_content))
         .route("/api/text/count", post(sessions::count_text))
+        .route("/api/tokenize", post(tokenize::tokenize_text))
         .route("/api/day/timeline", get(timeline::day_timeline))
         .route("/api/works", get(works::works).post(works::upsert_work))
         .route("/api/works/detail", get(works::work_detail))

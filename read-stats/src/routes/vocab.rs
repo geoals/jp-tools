@@ -399,7 +399,8 @@ pub async fn vocab_anki_import(
         }
     }
 
-    let imported = vocabulary::set_status_each(&state.knowledge, &judgements, now_ts(), "jiten").await?;
+    let imported =
+        vocabulary::set_status_each(&state.knowledge, &judgements, now_ts(), "jiten").await?;
     Ok(Json(json!({
         "imported": imported,
         "ambiguous_skipped": ambiguous_skipped,
@@ -583,7 +584,12 @@ pub async fn vocab_repair_empty_readings(
 ) -> Result<Json<Value>, AppError> {
     let r = vocabulary::repair_empty_readings(&state.knowledge).await?;
     vocabulary::refresh_dictionary_flags(&state.knowledge).await?;
-    info!(rekeyed = r.rekeyed, merged = r.merged, unresolved = r.unresolved, "reading repair");
+    info!(
+        rekeyed = r.rekeyed,
+        merged = r.merged,
+        unresolved = r.unresolved,
+        "reading repair"
+    );
     Ok(Json(json!({
         "rekeyed": r.rekeyed,
         "merged": r.merged,
@@ -599,7 +605,10 @@ pub async fn vocab_frequency_summary(
     Query(params): Query<FrequencyParams>,
 ) -> Result<Json<Value>, AppError> {
     let settings = db::load_settings(&state.local).await?;
-    let max_rank = params.max_rank.unwrap_or(settings.triage_max_freq_rank).max(1);
+    let max_rank = params
+        .max_rank
+        .unwrap_or(settings.triage_max_freq_rank)
+        .max(1);
     let (bccwj, master) = frequency_dictionaries(&state).await?;
     let pending = vocabulary::frequency_pending(&state.knowledge, bccwj, master, max_rank).await?;
     Ok(Json(json!({
@@ -630,7 +639,10 @@ pub async fn vocab_frequency_queue(
     Query(params): Query<FrequencyParams>,
 ) -> Result<Json<Value>, AppError> {
     let settings = db::load_settings(&state.local).await?;
-    let max_rank = params.max_rank.unwrap_or(settings.triage_max_freq_rank).max(1);
+    let max_rank = params
+        .max_rank
+        .unwrap_or(settings.triage_max_freq_rank)
+        .max(1);
     let limit = params.limit.unwrap_or(FREQUENCY_PAGE).clamp(1, 2000);
     let offset = params.offset.unwrap_or(0).max(0);
     let (bccwj, master) = frequency_dictionaries(&state).await?;
@@ -682,15 +694,19 @@ pub async fn vocab_frequency_commit(
     let pending = vocabulary::frequency_pending(&state.knowledge, bccwj, master, max_rank).await?;
     // Unbounded (SQLite's own convention: LIMIT -1 means no limit), at this
     // scale a few thousand rows even at a generous threshold.
-    let rows = vocabulary::frequency_queue(&state.knowledge, bccwj, master, max_rank, -1, 0).await?;
+    let rows =
+        vocabulary::frequency_queue(&state.knowledge, bccwj, master, max_rank, -1, 0).await?;
     let judgements: Vec<(Term, Status)> = rows
         .iter()
         .map(|r| (Term::new(r.term.clone(), &r.reading), Status::Known))
         .collect();
 
-    let written = vocabulary::set_status_each(&state.knowledge, &judgements, now_ts(), "frequency").await?;
+    let written =
+        vocabulary::set_status_each(&state.knowledge, &judgements, now_ts(), "frequency").await?;
     db::save_setting(&state.local, "triage_max_freq_rank", &max_rank.to_string()).await?;
-    Ok(Json(json!({ "written": written, "ambiguous_skipped": pending.ambiguous })))
+    Ok(Json(
+        json!({ "written": written, "ambiguous_skipped": pending.ambiguous }),
+    ))
 }
 
 /// The two dictionary ids frequency triage joins against — BCCWJ (by title,

@@ -115,15 +115,12 @@ pub struct Highlighter {
 
 impl Highlighter {
     pub fn new(tokenizer: SudachiTokenizer, lexicon: HashSet<String>) -> Highlighter {
-        Highlighter {
-            tokenizer,
-            lexicon,
-        }
+        Highlighter { tokenizer, lexicon }
     }
 
-    /// The candidate words in `text`, with their spans — everything before the
-    /// ledger is consulted.
-    fn candidates(&self, text: &str) -> Vec<(Term, Span)> {
+    /// Every token in `text`, with its span — everything before the ledger is
+    /// consulted.
+    fn candidates(&self, text: &str) -> Vec<Candidate> {
         match self.tokenizer.tokenize(text) {
             Ok(tokens) => locate(text, tokens),
             Err(e) => {
@@ -139,7 +136,68 @@ impl Highlighter {
     }
 }
 
-/// Pair each content word with where it sits in the line.
+/// One token of the pipeline's output, placed in the line.
+///
+/// Not every candidate becomes a [`Span`]: a particle or a name is located all
+/// the same, because `#tokenize` shows the whole token stream and "what did the
+/// pipeline drop, and why" is the question that page exists to answer. The feed
+/// filters them out; nothing else here does.
+#[derive(Debug, Clone)]
+struct Candidate {
+    term: Term,
+    span: Span,
+    surface: String,
+    pos: String,
+    proper_noun: bool,
+    content: bool,
+}
+
+/// Why a token carries no status — the same three exclusions this module's
+/// header lists, told apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Excluded {
+    /// Not a content word at all: a particle, an auxiliary, punctuation.
+    Grammar,
+    /// Sudachi's 固有名詞. A cast list is not vocabulary.
+    Name,
+    /// Judged never to surface again.
+    Blacklisted,
+    /// Tokenizer noise, or a term no dictionary lists.
+    NonWord,
+}
+
+impl Excluded {
+    fn as_str(self) -> &'static str {
+        match self {
+            Excluded::Grammar => "grammar",
+            Excluded::Name => "name",
+            Excluded::Blacklisted => "blacklisted",
+            Excluded::NonWord => "non-word",
+        }
+    }
+}
+
+/// One token as `#tokenize` shows it: where it sits, what the ledger calls it,
+/// and either the tier the feed would tint it or the reason it would not.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Analyzed {
+    pub surface: String,
+    pub start: usize,
+    pub len: usize,
+    pub headword: String,
+    pub reading: String,
+    pub pos: String,
+    /// `new`, `seen`, `unknown` or `known` — `None` for a token the feed gives
+    /// no span at all.
+    pub status: Option<&'static str>,
+    /// Set exactly when `status` is `None`.
+    pub excluded: Option<&'static str>,
+    /// How often the ledger has met this term, or `None` when it has no row.
+    pub encounter_count: Option<i64>,
+    pub lookup_count: Option<i64>,
+}
+
+/// Pair each token with where it sits in the line.
 ///
 /// Sudachi's tokens carry no offsets, and `decompose`/`recompose` regroup
 /// surfaces without ever altering one — which is what makes a single forward
@@ -149,7 +207,7 @@ impl Highlighter {
 ///
 /// Free-standing and pure so the offset arithmetic — the part that silently
 /// produces a plausible wrong answer — is testable without a dictionary.
-fn locate(text: &str, tokens: Vec<jp_core::tokenize::Token>) -> Vec<(Term, Span)> {
+fn locate(text: &str, tokens: Vec<jp_core::tokenize::Token>) -> Vec<Candidate> {
     let mut out = Vec::new();
     let mut byte_cursor = 0usize;
     let mut utf16_cursor = 0usize;
@@ -165,23 +223,24 @@ fn locate(text: &str, tokens: Vec<jp_core::tokenize::Token>) -> Vec<(Term, Span)
         let len = t.surface.encode_utf16().count();
         utf16_cursor += len;
 
-        if !is_content_word(&t.pos) || t.proper_noun {
-            continue;
-        }
         let term = Term::new(t.base_form, &t.reading);
         // The tier is decided against the ledger; `Seen` is a placeholder the
         // caller overwrites, never a classification.
-        let status = Tier::Seen.as_str();
-        out.push((
-            term.clone(),
-            Span {
-                start,
-                len,
-                status,
-                headword: term.headword,
-                reading: term.reading,
-            },
-        ));
+        let span = Span {
+            start,
+            len,
+            status: Tier::Seen.as_str(),
+            headword: term.headword.clone(),
+            reading: term.reading.clone(),
+        };
+        out.push(Candidate {
+            term,
+            span,
+            content: is_content_word(&t.pos),
+            surface: t.surface,
+            pos: t.pos,
+            proper_noun: t.proper_noun,
+        });
     }
     out
 }
@@ -242,6 +301,28 @@ pub async fn shared(state: &crate::app::AppState) -> Option<std::sync::Arc<Highl
 /// an empty list, never an error. The feed is what the reader is reading — it
 /// must not stall because a word could not be classified.
 pub async fn spans(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Span> {
+    analyze(k, h, text)
+        .await
+        .into_iter()
+        .filter_map(|a| {
+            Some(Span {
+                start: a.start,
+                len: a.len,
+                status: a.status?,
+                headword: a.headword,
+                reading: a.reading,
+            })
+        })
+        .collect()
+}
+
+/// Every token in `text`, classified — the feed's spans and the tokens it drops
+/// in one list, in reading order.
+///
+/// This is what `#tokenize` renders, and it is deliberately the *same* call the
+/// feed makes: a page for testing the pipeline that ran a second pipeline would
+/// answer a question nobody asked. [`spans`] is this, filtered.
+pub async fn analyze(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Analyzed> {
     let candidates = h.candidates(text);
     if candidates.is_empty() {
         return Vec::new();
@@ -250,7 +331,8 @@ pub async fn spans(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Span> {
         let mut seen = HashSet::new();
         candidates
             .iter()
-            .map(|(t, _)| t.clone())
+            .filter(|c| c.content && !c.proper_noun)
+            .map(|c| c.term.clone())
             .filter(|t| seen.insert(t.clone()))
             .collect()
     };
@@ -277,48 +359,63 @@ pub async fn spans(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Span> {
     };
     candidates
         .into_iter()
-        .filter_map(|(term, span)| {
-            // A word known under another reading is known, and the span points
-            // at the row that says so — a tap on it takes *that* assertion
-            // back, which is the one the reader made.
-            if let Some(reading) = known.get(&term.headword) {
-                return Some(Span {
-                    status: Tier::Known.as_str(),
-                    reading: reading.clone(),
-                    ..span
-                });
-            }
-            let tier = match rows.get(&term) {
-                Some(row) => tier_for(row)?,
-                // No row: nothing has ingested this line yet, so the ledger
-                // cannot answer and the master dictionary is asked instead.
-                None if h.in_master_lexicon(&term) => Tier::New,
-                None => return None,
+        .map(|c| {
+            let row = rows.get(&c.term);
+            let mut reading = c.term.reading.clone();
+            let verdict = if !c.content {
+                Err(Excluded::Grammar)
+            } else if c.proper_noun {
+                Err(Excluded::Name)
+            } else if let Some(known_reading) = known.get(&c.term.headword) {
+                // A word known under another reading is known, and the span
+                // points at the row that says so — a tap on it takes *that*
+                // assertion back, which is the one the reader made.
+                reading = known_reading.clone();
+                Ok(Tier::Known)
+            } else {
+                match row {
+                    Some(row) => tier_for(row),
+                    // No row: nothing has ingested this line yet, so the ledger
+                    // cannot answer and the master dictionary is asked instead.
+                    None if h.in_master_lexicon(&c.term) => Ok(Tier::New),
+                    None => Err(Excluded::NonWord),
+                }
             };
-            Some(Span {
-                status: tier.as_str(),
-                ..span
-            })
+            Analyzed {
+                surface: c.surface,
+                start: c.span.start,
+                len: c.span.len,
+                headword: c.term.headword,
+                reading,
+                pos: c.pos,
+                status: verdict.ok().map(Tier::as_str),
+                excluded: verdict.err().map(Excluded::as_str),
+                encounter_count: row.map(|r| r.encounter_count),
+                lookup_count: row.map(|r| r.lookup_count),
+            }
         })
         .collect()
 }
 
-/// One ledger row's tier, or `None` for a word that gets no mark at all.
-fn tier_for(row: &VocabRow) -> Option<Tier> {
+/// One ledger row's tier, or why the word gets no mark at all.
+fn tier_for(row: &VocabRow) -> Result<Tier, Excluded> {
     // Blacklisted and non-words get no span at all, which is also what makes a
     // tap on them do nothing: there is nothing under the finger to judge.
-    if row.status == Status::Blacklisted || !row.is_word() {
-        return None;
+    if row.status == Status::Blacklisted {
+        return Err(Excluded::Blacklisted);
+    }
+    if !row.is_word() {
+        return Err(Excluded::NonWord);
     }
     if row.is_known() {
-        return Some(Tier::Known);
+        return Ok(Tier::Known);
     }
     match row.status {
-        Status::Unknown => Some(Tier::Unknown),
+        Status::Unknown => Ok(Tier::Unknown),
         // `new` is the untriaged state, split by whether this is a first
         // meeting or the fiftieth — see NEW_MAX_ENCOUNTERS.
-        _ if row.encounter_count <= NEW_MAX_ENCOUNTERS => Some(Tier::New),
-        _ => Some(Tier::Seen),
+        _ if row.encounter_count <= NEW_MAX_ENCOUNTERS => Ok(Tier::New),
+        _ => Ok(Tier::Seen),
     }
 }
 
@@ -326,6 +423,16 @@ fn tier_for(row: &VocabRow) -> Option<Tier> {
 mod tests {
     use super::*;
     use jp_core::tokenize::Token;
+
+    /// The spans the feed would draw from a located line — what `locate`
+    /// returned before it started carrying the dropped tokens too.
+    fn marked_spans(candidates: Vec<Candidate>) -> Vec<Span> {
+        candidates
+            .into_iter()
+            .filter(|c| c.content && !c.proper_noun)
+            .map(|c| c.span)
+            .collect()
+    }
 
     fn token(surface: &str, pos: &str) -> Token {
         Token {
@@ -347,7 +454,7 @@ mod tests {
             token("を", "助詞"),
             token("読む", "動詞"),
         ];
-        let got: Vec<Span> = locate(text, tokens).into_iter().map(|(_, s)| s).collect();
+        let got: Vec<Span> = marked_spans(locate(text, tokens));
         assert_eq!(
             got.iter().map(|s| (s.start, s.len)).collect::<Vec<_>>(),
             vec![(0, 2), (3, 1), (5, 2)],
@@ -361,7 +468,7 @@ mod tests {
         // here would put every later span one unit to the left of its word.
         let text = "𠮟る本";
         let tokens = vec![token("𠮟る", "動詞"), token("本", "名詞")];
-        let got: Vec<Span> = locate(text, tokens).into_iter().map(|(_, s)| s).collect();
+        let got: Vec<Span> = marked_spans(locate(text, tokens));
         assert_eq!(
             got.iter().map(|s| (s.start, s.len)).collect::<Vec<_>>(),
             vec![(0, 3), (3, 1)]
@@ -373,8 +480,12 @@ mod tests {
         // The cursor only ever moves forward, so the second 本 must not be
         // matched back at the first one's offset.
         let text = "本と本";
-        let tokens = vec![token("本", "名詞"), token("と", "助詞"), token("本", "名詞")];
-        let got: Vec<Span> = locate(text, tokens).into_iter().map(|(_, s)| s).collect();
+        let tokens = vec![
+            token("本", "名詞"),
+            token("と", "助詞"),
+            token("本", "名詞"),
+        ];
+        let got: Vec<Span> = marked_spans(locate(text, tokens));
         assert_eq!(
             got.iter().map(|s| (s.start, s.len)).collect::<Vec<_>>(),
             vec![(0, 1), (2, 1)]
@@ -385,7 +496,7 @@ mod tests {
     fn a_name_gets_no_span() {
         let mut name = token("間宮", "名詞");
         name.proper_noun = true;
-        assert!(locate("間宮", vec![name]).is_empty());
+        assert!(marked_spans(locate("間宮", vec![name])).is_empty());
     }
 
     fn row(status: Status, encounters: i64) -> VocabRow {
@@ -409,31 +520,34 @@ mod tests {
     fn known_and_mined_are_sent_as_known() {
         // Sent, so a tap can take them back; the client is what declines to
         // paint them.
-        assert_eq!(tier_for(&row(Status::Known, 50)), Some(Tier::Known));
+        assert_eq!(tier_for(&row(Status::Known, 50)), Ok(Tier::Known));
         let mut mined = row(Status::New, 50);
         mined.mined = true;
-        assert_eq!(tier_for(&mined), Some(Tier::Known));
+        assert_eq!(tier_for(&mined), Ok(Tier::Known));
     }
 
     #[test]
     fn blacklisted_and_non_words_get_no_mark() {
-        assert_eq!(tier_for(&row(Status::Blacklisted, 5)), None);
+        assert_eq!(
+            tier_for(&row(Status::Blacklisted, 5)),
+            Err(Excluded::Blacklisted)
+        );
         let mut noise = row(Status::New, 5);
         noise.in_master = false;
-        assert_eq!(tier_for(&noise), None);
+        assert_eq!(tier_for(&noise), Err(Excluded::NonWord));
     }
 
     #[test]
     fn untriaged_splits_on_encounter_count() {
-        assert_eq!(tier_for(&row(Status::New, 1)), Some(Tier::New));
-        assert_eq!(tier_for(&row(Status::New, 2)), Some(Tier::Seen));
+        assert_eq!(tier_for(&row(Status::New, 1)), Ok(Tier::New));
+        assert_eq!(tier_for(&row(Status::New, 2)), Ok(Tier::Seen));
     }
 
     #[test]
     fn judged_unknown_outranks_its_encounter_count() {
         // A word judged unknown stays unknown however often it is met — the
         // assertion is the reader's and outranks a count.
-        assert_eq!(tier_for(&row(Status::Unknown, 1)), Some(Tier::Unknown));
-        assert_eq!(tier_for(&row(Status::Unknown, 90)), Some(Tier::Unknown));
+        assert_eq!(tier_for(&row(Status::Unknown, 1)), Ok(Tier::Unknown));
+        assert_eq!(tier_for(&row(Status::Unknown, 90)), Ok(Tier::Unknown));
     }
 }

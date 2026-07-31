@@ -24,6 +24,7 @@ import { html } from "htm/preact";
 import { api } from "./api.js";
 import { fmtTsDate } from "./lib/format.js";
 import { Reader } from "./reader.js";
+import { TokenizeView } from "./panels/tokenize.js";
 import { CurrentReading } from "./panels/current-reading.js";
 import { DayCard } from "./panels/day.js";
 import { LibraryView } from "./panels/library.js";
@@ -161,6 +162,13 @@ function App({ view, sub }) {
       <div class="header-right">
         <a
           class="pause-btn"
+          href="#tokenize"
+          title="Run text through the reading view's tokenizer"
+        >
+          🔤 tokenize
+        </a>
+        <a
+          class="pause-btn"
           href="#read"
           title="Live line feed + explain button"
         >
@@ -275,6 +283,9 @@ function useHashRoute() {
 function Root() {
   const hash = useHashRoute();
   if (hash === "#read") return html`<${Reader} />`;
+  // Its own route, not a tab: it shares none of the dashboard's poll, and it
+  // asks about the tokenizer rather than about the reading.
+  if (hash === "#tokenize") return html`<${TokenizeView} />`;
   // Titles are percent-encoded, and encodeURIComponent escapes "/" too, so
   // splitting on it can never cut a title in half.
   const [view, ...rest] = hash.replace(/^#/, "").split("/");

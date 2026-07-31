@@ -168,7 +168,11 @@ pub fn clean_field(raw: &str) -> String {
 }
 
 /// Note ids matching an AnkiConnect search query.
-async fn find_notes(client: &reqwest::Client, url: &str, query: &str) -> Result<Vec<i64>, AppError> {
+async fn find_notes(
+    client: &reqwest::Client,
+    url: &str,
+    query: &str,
+) -> Result<Vec<i64>, AppError> {
     let ids_val = call(client, url, "findNotes", json!({ "query": query })).await?;
     Ok(ids_val
         .as_array()

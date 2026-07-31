@@ -375,6 +375,16 @@ assumes".
   ledger is seeded — against `vocabulary.status`, not against the deck.
   **Vocab** — `vocab.js`, two sections over the knowledge
   ledger: the status counts, and `triage.js`, the pass that fills them.
+- **`#tokenize` is a page, not a tab** (`panels/tokenize.js` over
+  `POST /api/tokenize`), reached from the header beside `📖 read`. Paste text,
+  see what the pipeline made of it: the line tinted exactly as the feed tints
+  it, and under it every token — including the ones the feed drops, each with
+  the rule that dropped it (`grammar`, `name`, `non-word`, `blacklisted`). It
+  calls `reader::highlight::analyze`, the same function `spans` is a filter
+  over, and that is the whole point: a page for checking the tokenizer that ran
+  a second, subtly different pipeline would answer a question nobody asked. It
+  writes nothing — no ledger row, no `word_days` count, no presence mark; text
+  pasted there was not read.
 - **A bulk write shows its rows first.** `blacklist-non-words` judges rows the
   queue never displays, so `GET /api/vocab/non-words` lists them (commonest
   first) and the button only appears once they are on screen. That preview

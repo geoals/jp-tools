@@ -1,0 +1,165 @@
+/* `#tokenize` — the pipeline's output for pasted text.
+ *
+ * The word tints are the shared --vocab-* scale (base.css), the same three the
+ * feed paints and the #vocab counts use: a word that reads as `seen` here has
+ * to be the colour it would be under the line, or the page is testing something
+ * other than what runs while reading. They are inline spans rather than the
+ * feed's positioned layer — that layer exists only so Yomitan keeps seeing one
+ * text node per line, and nothing scans this page.
+ *
+ * `dropped` gets no colour at all. It is the absence of a judgement, not a
+ * fourth status, and giving it one would put a fourth swatch in a legend whose
+ * whole point is the three the reader already knows.
+ */
+.tokenize-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.tokenize-header {
+  justify-content: space-between;
+}
+
+.tokenize-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 17px;
+  line-height: 1.7;
+  resize: vertical;
+}
+.tokenize-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+.tokenize-actions button[type="submit"] {
+  padding: 7px 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--series-1);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.tokenize-actions button[type="submit"]:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.tokenize-actions .linkish {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.tokenize-error {
+  color: #d03b3b;
+  font-size: 14px;
+}
+
+/* Line height with room under it: the marks sit behind the words in the feed,
+   and a tinted box on a tightly-set paragraph would touch the line above. */
+.tokenize-text {
+  margin: 0;
+  font-size: 20px;
+  line-height: 2;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tok-mark {
+  border-radius: 3px;
+  padding: 2px 1px;
+}
+.tok-mark.new {
+  background: var(--vocab-new);
+}
+.tok-mark.seen {
+  background: var(--vocab-seen);
+}
+.tok-mark.unknown {
+  background: var(--vocab-unknown);
+}
+
+.tokenize-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 14px;
+  font-size: 12px;
+}
+.tokenize-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tok-status {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+.tok-status.new {
+  background: var(--vocab-new);
+}
+.tok-status.seen {
+  background: var(--vocab-seen);
+}
+.tok-status.unknown {
+  background: var(--vocab-unknown);
+}
+.tok-status.known {
+  border: 1px solid var(--border);
+}
+.tok-status.dropped {
+  color: var(--muted);
+}
+
+.tokenize-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.tokenize-table th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--grid);
+}
+.tokenize-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--grid);
+  color: var(--text-secondary);
+}
+.tokenize-table .jp {
+  color: var(--text-primary);
+  font-size: 16px;
+}
+.tokenize-page .muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+.tokenize-table .num,
+.tokenize-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* Dimmed, not hidden: what the pipeline dropped is half of what this page is
+   read for, but it is not what the eye should land on first. */
+.tokenize-table tr.excluded .jp {
+  color: var(--text-secondary);
+}
