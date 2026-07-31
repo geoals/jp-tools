@@ -33,7 +33,7 @@ use std::collections::HashSet;
 
 use jp_core::knowledge::Knowledge;
 use jp_core::knowledge::vocabulary::{self, Status, Term, VocabRow};
-use jp_core::tokenize::{SudachiTokenizer, Tokenizer, is_content_word};
+use jp_core::tokenize::{MasterWords, SudachiTokenizer, Tokenizer, counts_as_word};
 
 /// The encounter count at or below which a word is called `new` rather than
 /// `seen`.
@@ -111,18 +111,30 @@ pub struct Highlighter {
     /// The master dictionary's headwords — the wordhood test for a term the
     /// ledger has no row for yet.
     lexicon: HashSet<String>,
+    /// The same dictionary keyed by `(headword, reading)`, for the affix half
+    /// of the wordhood gate. Ingest asks it the identical question, which is
+    /// what keeps a tint and a ledger row from disagreeing about 達.
+    master: MasterWords,
 }
 
 impl Highlighter {
-    pub fn new(tokenizer: SudachiTokenizer, lexicon: HashSet<String>) -> Highlighter {
-        Highlighter { tokenizer, lexicon }
+    pub fn new(
+        tokenizer: SudachiTokenizer,
+        lexicon: HashSet<String>,
+        master: MasterWords,
+    ) -> Highlighter {
+        Highlighter {
+            tokenizer,
+            lexicon,
+            master,
+        }
     }
 
     /// Every token in `text`, with its span — everything before the ledger is
     /// consulted.
     fn candidates(&self, text: &str) -> Vec<Candidate> {
         match self.tokenizer.tokenize(text) {
-            Ok(tokens) => locate(text, tokens),
+            Ok(tokens) => locate(text, tokens, &self.master),
             Err(e) => {
                 tracing::warn!(error = %e, "reader highlight tokenize failed");
                 Vec::new()
@@ -207,7 +219,11 @@ pub struct Analyzed {
 ///
 /// Free-standing and pure so the offset arithmetic — the part that silently
 /// produces a plausible wrong answer — is testable without a dictionary.
-fn locate(text: &str, tokens: Vec<jp_core::tokenize::Token>) -> Vec<Candidate> {
+fn locate(
+    text: &str,
+    tokens: Vec<jp_core::tokenize::Token>,
+    master: &MasterWords,
+) -> Vec<Candidate> {
     let mut out = Vec::new();
     let mut byte_cursor = 0usize;
     let mut utf16_cursor = 0usize;
@@ -223,6 +239,7 @@ fn locate(text: &str, tokens: Vec<jp_core::tokenize::Token>) -> Vec<Candidate> {
         let len = t.surface.encode_utf16().count();
         utf16_cursor += len;
 
+        let content = counts_as_word(&t, master);
         let term = Term::new(t.base_form, &t.reading);
         // The tier is decided against the ledger; `Seen` is a placeholder the
         // caller overwrites, never a classification.
@@ -236,7 +253,7 @@ fn locate(text: &str, tokens: Vec<jp_core::tokenize::Token>) -> Vec<Candidate> {
         out.push(Candidate {
             term,
             span,
-            content: is_content_word(&t.pos),
+            content,
             surface: t.surface,
             pos: t.pos,
             proper_noun: t.proper_noun,
@@ -271,6 +288,7 @@ pub async fn shared(state: &crate::app::AppState) -> Option<std::sync::Arc<Highl
             let vocab = crate::ingest::validation_headwords(state).await?;
             let lexicon = crate::ingest::master_lexicon(state).await?;
             let readings = crate::ingest::master_readings(state).await?;
+            let master = MasterWords::new(lexicon.clone(), &readings);
             // Dictionary load is CPU-bound and measured in seconds; it must not
             // sit on the runtime while other readers' streams are polling.
             tokio::task::spawn_blocking(move || {
@@ -278,7 +296,9 @@ pub async fn shared(state: &crate::app::AppState) -> Option<std::sync::Arc<Highl
                     .map_err(|e| crate::error::AppError::Upstream(format!("sudachi: {e}")))?
                     .with_lexicon(lexicon.clone())
                     .with_master_readings(&readings);
-                Ok(std::sync::Arc::new(Highlighter::new(tokenizer, lexicon)))
+                Ok(std::sync::Arc::new(Highlighter::new(
+                    tokenizer, lexicon, master,
+                )))
             })
             .await
             .map_err(|e| {
@@ -424,6 +444,13 @@ mod tests {
     use super::*;
     use jp_core::tokenize::Token;
 
+    /// A master dictionary that lists nothing, for the offset tests: what
+    /// `locate` does with an affix is [`counts_as_word`]'s business and is
+    /// tested there.
+    fn no_master() -> MasterWords {
+        MasterWords::new(HashSet::new(), &[])
+    }
+
     /// The spans the feed would draw from a located line — what `locate`
     /// returned before it started carrying the dropped tokens too.
     fn marked_spans(candidates: Vec<Candidate>) -> Vec<Span> {
@@ -454,7 +481,7 @@ mod tests {
             token("を", "助詞"),
             token("読む", "動詞"),
         ];
-        let got: Vec<Span> = marked_spans(locate(text, tokens));
+        let got: Vec<Span> = marked_spans(locate(text, tokens, &no_master()));
         assert_eq!(
             got.iter().map(|s| (s.start, s.len)).collect::<Vec<_>>(),
             vec![(0, 2), (3, 1), (5, 2)],
@@ -468,7 +495,7 @@ mod tests {
         // here would put every later span one unit to the left of its word.
         let text = "𠮟る本";
         let tokens = vec![token("𠮟る", "動詞"), token("本", "名詞")];
-        let got: Vec<Span> = marked_spans(locate(text, tokens));
+        let got: Vec<Span> = marked_spans(locate(text, tokens, &no_master()));
         assert_eq!(
             got.iter().map(|s| (s.start, s.len)).collect::<Vec<_>>(),
             vec![(0, 3), (3, 1)]
@@ -485,7 +512,7 @@ mod tests {
             token("と", "助詞"),
             token("本", "名詞"),
         ];
-        let got: Vec<Span> = marked_spans(locate(text, tokens));
+        let got: Vec<Span> = marked_spans(locate(text, tokens, &no_master()));
         assert_eq!(
             got.iter().map(|s| (s.start, s.len)).collect::<Vec<_>>(),
             vec![(0, 1), (2, 1)]
@@ -496,7 +523,7 @@ mod tests {
     fn a_name_gets_no_span() {
         let mut name = token("間宮", "名詞");
         name.proper_noun = true;
-        assert!(marked_spans(locate("間宮", vec![name])).is_empty());
+        assert!(marked_spans(locate("間宮", vec![name], &no_master())).is_empty());
     }
 
     fn row(status: Status, encounters: i64) -> VocabRow {

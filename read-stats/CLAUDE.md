@@ -185,6 +185,22 @@ taught to `vn-capture.sh`.
   characters minimum. Verified by diffing the token stream of all 14,575 lines
   before and after: 1,530 lines changed, every one a pure regrouping — no
   surface altered, nothing dropped or relabelled.
+- **An affix the master dictionary lists is a word.** Sudachi tags the trailing
+  達 of 私達 as 接尾辞, and the content-word gate threw it away — so a compound
+  the master does not list was decomposed into 私 + 達, both of which it *does*
+  list, and then half of it was credited to nothing. The same defect as 懲罰房,
+  arriving through the part-of-speech tag instead of through `decompose`.
+  `jp_core::tokenize::counts_as_word` therefore admits 接尾辞/接頭辞 when the
+  master lists the `(headword, reading)` pair — the pair, because the ledger
+  keys on it and because 鬼/き and 鬼/おに are both Sankoku entries. That test is
+  the whole fence: it admits 達/たち, 御/お, 的/てき, 鬼/き and refuses げ, ぷ,
+  さん/さーん, 日/じつ — 40 terms over 198 occurrences in the first 16,325 lines
+  — with no stoplist to maintain. Ingest and the reader's highlighter ask the
+  identical question, so a tint and a ledger row cannot disagree about 達.
+  It is worth knowing what this costs before the numbers move: 232 terms /
+  5,542 occurrences enter the three sinks, led by ちゃん×1461, さん×807,
+  達×520 and 御×390, which are tinted on nearly every line until each is judged
+  once.
 - **A name is not vocabulary.** Sudachi's 固有名詞 subclass keeps a work's cast
   out of the ledger and `work_terms` (they were the top of every per-work
   unknown list), while `word_days` still counts them — that sink asks what text

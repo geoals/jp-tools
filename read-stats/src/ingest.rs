@@ -33,7 +33,7 @@ use std::collections::{HashMap, HashSet};
 
 use jp_core::knowledge::vocabulary::{Encounter, Term};
 use jp_core::knowledge::work_terms::WorkEncounter;
-use jp_core::tokenize::{SudachiTokenizer, Token, Tokenizer, is_content_word};
+use jp_core::tokenize::{MasterWords, SudachiTokenizer, Token, Tokenizer, counts_as_word};
 use tracing::{info, warn};
 
 use crate::app::AppState;
@@ -84,8 +84,12 @@ impl IngestOutcome {
 /// Kept together so the tokenizer runs once: loading the Sudachi dictionary
 /// costs more than tokenizing a day's lines, and the ledger backfill is a pass
 /// over the whole history.
-#[derive(Default)]
 struct Harvest {
+    /// The master dictionary, for the affix half of the wordhood gate — see
+    /// [`jp_core::tokenize::counts_as_word`]. Held here rather than passed per
+    /// token because all three sinks take the same tokens and must agree about
+    /// which of them are words.
+    master: MasterWords,
     /// `(lemma, day) → count`
     days: HashMap<(String, String), i64>,
     /// `term → (pos, count, first_ts, last_ts)`
@@ -97,6 +101,18 @@ struct Harvest {
     proper: HashMap<Term, (i64, i64)>,
     /// `(term, work) → count`
     works: HashMap<(Term, String), i64>,
+}
+
+impl Harvest {
+    fn new(master: MasterWords) -> Harvest {
+        Harvest {
+            master,
+            days: HashMap::new(),
+            terms: HashMap::new(),
+            proper: HashMap::new(),
+            works: HashMap::new(),
+        }
+    }
 }
 
 /// Which sinks a piece of text is behind on, and what work it belongs to.
@@ -116,7 +132,7 @@ struct Sinks<'a> {
 impl Harvest {
     /// Fold one token in, into whichever sinks this piece of text is behind on.
     fn add(&mut self, t: Token, date: &str, ts: f64, sinks: Sinks<'_>) {
-        if !is_content_word(&t.pos) {
+        if !counts_as_word(&t, &self.master) {
             return;
         }
         if sinks.days {
@@ -286,9 +302,9 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
     let harvest = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
         let tokenizer = SudachiTokenizer::new(&dict_path, vocab)
             .map_err(|e| AppError::Upstream(format!("sudachi: {e}")))?
-            .with_lexicon(lexicon)
+            .with_lexicon(lexicon.clone())
             .with_master_readings(&readings);
-        let mut harvest = Harvest::default();
+        let mut harvest = Harvest::new(MasterWords::new(lexicon, &readings));
         for line in &lines {
             let date = stats::date_key(line.ts, rollover, tz).to_string();
             let sinks = Sinks {
@@ -367,9 +383,9 @@ pub async fn ingest_new_sessions(state: &AppState) -> Result<IngestOutcome, AppE
     let harvest = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
         let tokenizer = SudachiTokenizer::new(&dict_path, vocab)
             .map_err(|e| AppError::Upstream(format!("sudachi: {e}")))?
-            .with_lexicon(lexicon)
+            .with_lexicon(lexicon.clone())
             .with_master_readings(&readings);
-        let mut harvest = Harvest::default();
+        let mut harvest = Harvest::new(MasterWords::new(lexicon, &readings));
         for s in &sessions {
             let date = stats::date_key(s.start_ts, rollover, tz).to_string();
             // Articles collapse under one synthetic work here exactly as they
@@ -483,8 +499,17 @@ mod tests {
         }
     }
 
+    /// A master dictionary for the tests: 達/たち, so the affix rule has
+    /// something to admit, and nothing else.
+    fn test_master() -> MasterWords {
+        MasterWords::new(
+            ["達".to_string()].into_iter().collect(),
+            &[("達".to_string(), "たち".to_string())],
+        )
+    }
+
     fn harvest(tokens: Vec<Token>) -> Harvest {
-        let mut h = Harvest::default();
+        let mut h = Harvest::new(test_master());
         for t in tokens {
             h.add(t, "2026-07-27", 0.0, all_sinks());
         }
@@ -523,8 +548,30 @@ mod tests {
     }
 
     #[test]
+    fn a_suffix_the_master_lists_reaches_the_ledger() {
+        // 私達 is not a master entry, so it arrives as 私 + 達. Dropping the
+        // suffix half credited the compound's second word to nothing — the
+        // 懲罰房 defect, arriving through the part-of-speech tag instead.
+        let mut suffix = tok("達", "たち", false);
+        suffix.pos = "接尾辞".to_string();
+        let h = harvest(vec![suffix; 3]);
+        assert_eq!(h.encounters().len(), 1);
+        assert_eq!(h.encounters()[0].count, 3);
+    }
+
+    #[test]
+    fn a_suffix_no_dictionary_lists_is_still_dropped() {
+        // げ, ぷ, さん/さーん — tokenizer output with nothing behind it.
+        let mut noise = tok("げ", "げ", false);
+        noise.pos = "接尾辞".to_string();
+        let h = harvest(vec![noise; 9]);
+        assert!(h.encounters().is_empty());
+        assert!(h.day_rows().is_empty());
+    }
+
+    #[test]
     fn unlabeled_text_reaches_every_sink_but_the_per_work_one() {
-        let mut h = Harvest::default();
+        let mut h = Harvest::new(test_master());
         h.add(
             tok("猫", "ねこ", false),
             "2026-07-27",

@@ -495,6 +495,62 @@ pub fn is_content_word(pos: &str) -> bool {
     matches!(pos, "名詞" | "動詞" | "形容詞" | "形状詞" | "副詞")
 }
 
+/// Sudachi's affix classes — the tags [`MasterWords`] arbitrates.
+fn is_affix(pos: &str) -> bool {
+    matches!(pos, "接尾辞" | "接頭辞")
+}
+
+/// The master dictionary, asked the only question the affix rule needs: does it
+/// list this `(headword, reading)`?
+///
+/// Keyed the way `knowledge::vocabulary::Term` is keyed, and it has to be: a
+/// kana-only headword stores no reading there (ちゃん is one fact, not two), so
+/// asking for a pair would never match one. The reading is folded to hiragana
+/// for the same reason — Sudachi emits katakana, the dictionaries hold
+/// hiragana.
+pub struct MasterWords {
+    headwords: HashSet<String>,
+    pairs: HashSet<(String, String)>,
+}
+
+impl MasterWords {
+    pub fn new(headwords: HashSet<String>, entries: &[(String, String)]) -> MasterWords {
+        let pairs = entries
+            .iter()
+            .map(|(term, reading)| (term.clone(), crate::text::kana::to_hiragana(reading)))
+            .collect();
+        MasterWords { headwords, pairs }
+    }
+
+    pub fn lists(&self, headword: &str, reading: &str) -> bool {
+        if crate::text::kana::is_all_kana(headword) {
+            return self.headwords.contains(headword);
+        }
+        self.pairs.contains(&(
+            headword.to_string(),
+            crate::text::kana::to_hiragana(reading),
+        ))
+    }
+}
+
+/// Whether a token is one the ledger counts as a word.
+///
+/// Content words, plus **an affix the master dictionary lists under the reading
+/// it was used with**. That second clause is not a special case, it is the
+/// decomposition rule finishing its sentence: 私達 is not a Sankoku entry, so it
+/// arrives as 私 + 達 — and 達/たち *is* a Sankoku entry, so throwing it away
+/// credited half the compound to nothing, exactly as 懲罰房 did. Sudachi tags
+/// the trailing part 接尾辞 rather than 名詞, which is the only reason the
+/// content-word gate ever saw a difference between the two halves.
+///
+/// The pair test is the whole fence, and it is the same authority every other
+/// decision here answers to. It admits 達/たち, 御/お, 的/てき, 鬼/き; it refuses
+/// げ, ぷ, さん/さーん and 日/じつ — 40 terms over 198 occurrences in the first
+/// 16,325 lines — without a stoplist to maintain or a shape to guess at.
+pub fn counts_as_word(t: &Token, master: &MasterWords) -> bool {
+    is_content_word(&t.pos) || (is_affix(&t.pos) && master.lists(&t.base_form, &t.reading))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -522,6 +578,80 @@ mod tests {
     #[test]
     fn is_content_word_matches_adverbs() {
         assert!(is_content_word("副詞"));
+    }
+
+    fn affix(surface: &str, base: &str, reading: &str, pos: &str) -> Token {
+        Token {
+            surface: surface.to_string(),
+            base_form: base.to_string(),
+            reading: reading.to_string(),
+            pos: pos.to_string(),
+            proper_noun: false,
+        }
+    }
+
+    /// Sankoku as far as these tests are concerned: 達/たち, 鬼/き, ちゃん.
+    fn master() -> MasterWords {
+        MasterWords::new(
+            ["達", "鬼", "ちゃん"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            &[
+                ("達".to_string(), "たち".to_string()),
+                ("鬼".to_string(), "き".to_string()),
+                ("鬼".to_string(), "おに".to_string()),
+            ],
+        )
+    }
+
+    #[test]
+    fn a_listed_suffix_counts_as_a_word() {
+        // 私達 is not a Sankoku entry, so it arrives as 私 + 達 — and 達/たち is
+        // one, so the suffix half has to be credited too.
+        let m = master();
+        assert!(counts_as_word(&affix("達", "達", "タチ", "接尾辞"), &m));
+        assert!(counts_as_word(&affix("鬼", "鬼", "キ", "接尾辞"), &m));
+    }
+
+    #[test]
+    fn a_kana_suffix_matches_on_the_headword_alone() {
+        // Term::new stores no reading for a kana headword, so a pair lookup
+        // would never match ちゃん however it was written.
+        assert!(counts_as_word(
+            &affix("ちゃん", "ちゃん", "チャン", "接尾辞"),
+            &master()
+        ));
+    }
+
+    #[test]
+    fn an_unlisted_suffix_is_still_dropped() {
+        // げ, ぷ, さん/さーん: real Sudachi output, no dictionary behind it.
+        assert!(!counts_as_word(
+            &affix("げ", "げ", "ゲ", "接尾辞"),
+            &master()
+        ));
+    }
+
+    #[test]
+    fn a_listed_headword_under_the_wrong_reading_is_dropped() {
+        // 鬼 is listed as き and おに and nothing else; a third reading is the
+        // tokenizer having produced something the dictionary does not claim.
+        assert!(!counts_as_word(
+            &affix("鬼", "鬼", "シコ", "接尾辞"),
+            &master()
+        ));
+    }
+
+    #[test]
+    fn the_affix_rule_never_admits_a_particle() {
+        // The gate is content-word OR *affix*; a particle the master happens to
+        // list as a headword must not slip through it.
+        let m = MasterWords::new(
+            ["は".to_string()].into_iter().collect(),
+            &[("は".to_string(), "は".to_string())],
+        );
+        assert!(!counts_as_word(&affix("は", "は", "ハ", "助詞"), &m));
     }
 
     #[test]
