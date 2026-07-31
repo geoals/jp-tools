@@ -199,6 +199,16 @@ export function Reader() {
   // toggle. Layout effect rather than effect — this measures nodes that were
   // just committed, and a frame with the text drawn but not yet marked is a
   // flash on every single line.
+  //
+  // `keptIds` belongs in here with the rest, because `visible` is derived from
+  // it and it settles a render *later* than `lines` does. Backscrolling with
+  // the filter on is the case: the prepended page grows `lines`, this repaints
+  // — against the old `keptIds`, so none of the new lines are in `visible` yet
+  // — and then the effect that admits them to the filter adds them to the DOM,
+  // pushing every line already on screen down. Nothing in the old dependency
+  // list changed on that second render, so the marks stayed where the first one
+  // put them, a page-height above the words they belong to, until any other
+  // repaint (a new line, a resize, the words toggle) corrected them.
   useLayoutEffect(() => {
     paintMarks(
       visible,
@@ -207,7 +217,7 @@ export function Reader() {
       listRef.current,
       marksRef.current,
     );
-  }, [lines, highlightOn, fontPx, markedOnly]);
+  }, [lines, keptIds, highlightOn, fontPx, markedOnly]);
 
   // The other way the text reflows: the window, or the split pane beside the
   // VN, changing width. Nothing re-renders then, so nothing above would fire.
@@ -219,7 +229,7 @@ export function Reader() {
     );
     ro.observe(el);
     return () => ro.disconnect();
-  }, [lines, highlightOn, fontPx, markedOnly]);
+  }, [lines, keptIds, highlightOn, fontPx, markedOnly]);
 
   useEffect(() => {
     // Successes clear themselves; failures stay until the next attempt.

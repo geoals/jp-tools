@@ -281,7 +281,15 @@ taught to `vn-capture.sh`.
   the filter comes off would read as a write that failed. Two consequences that
   are not obvious. Everything that measures or hit-tests the text —
   `paintMarks`, `spanAtPoint` — takes `visible`, since a hidden line has no
-  element to range over. And `clear last` is disabled while it is on: it drops
+  element to range over — and because `visible` is derived from `keptIds`, the
+  repaint must **depend on `keptIds`, not only on `lines`**. It settles a render
+  later than `lines` does, which is what stranded every mark on a backscroll:
+  the prepended page grew `lines` and repainted against the old `keptIds` (so
+  none of the new lines were in `visible` yet), then the effect admitting them
+  to the filter put them in the DOM and pushed everything already on screen
+  down, with nothing in the dependency list changed to repaint it. The marks sat
+  a page-height off their words until an unrelated repaint — a new line, a
+  resize, the words toggle — corrected them. And `clear last` is disabled while it is on: it drops
   *the newest line*, which the filter may be hiding, and discarding something
   off screen is discarding the wrong thing. A line counts as marked by the
   painted tiers only — `known` spans are sent for every judged word, so counting
