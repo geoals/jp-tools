@@ -101,10 +101,18 @@ impl AudioDownloader for YtDlpDownloader {
 
             // Download video at low resolution — 480p is enough for Anki screenshots,
             // and keeps the file small. yt-dlp's -S prefers formats closest to 480p.
+            //
+            // Force the mp4 merge container. Left to itself yt-dlp picks the container
+            // from the audio stream, so opus audio makes it merge into webm — and
+            // ffmpeg's webm muxer rejects a stream-copied AV1 video track partway
+            // through ("Invalid data found when processing input"), failing the whole
+            // download. mp4 muxes both AV1 and opus without complaint.
             let child = tokio::process::Command::new("yt-dlp")
                 .args([
                     "-S",
                     "res:480",
+                    "--merge-output-format",
+                    "mp4",
                     "--print",
                     "duration",
                     "--print",
