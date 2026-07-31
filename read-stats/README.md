@@ -294,9 +294,12 @@ it but doesn't manage it.
   for this VN (empty string clears)
 - `PUT  /api/works/{id}` / `DELETE /api/works/{id}` — same fields by id / remove
 - `GET  /api/lines/stream` — SSE, one event per hooked line, `data` being
-  `{id, ts, chars, text}` and the event id being the line id. Sends the last
-  `?backlog=` lines (40) on open, or resumes after `?after=<id>` /
-  `Last-Event-ID` so a reconnecting client doesn't replay or skip
+  `{id, ts, chars, text}` and the event id being the line id. Opens on the
+  sitting in progress, widened to 200 lines when that sitting is shorter than
+  that, so a feed opened onto a session that has just started still has
+  something to look back over; `?backlog=<n>` asks for a fixed tail instead, and
+  `?after=<id>` / `Last-Event-ID` resumes so a reconnecting client doesn't
+  replay or skip
 - `POST /api/lines/discard` — `{ids: [...]}` (max 500), flags those lines
   `discarded` so every derived figure drops them; returns the ids actually
   changed, which is what undo re-sends. `POST /api/lines/undiscard` is the

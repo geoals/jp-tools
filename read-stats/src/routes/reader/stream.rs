@@ -31,6 +31,20 @@ const POLL_INTERVAL: Duration = Duration::from_millis(30);
 /// session (see below), for the same reason.
 const MAX_BATCH: i64 = 500;
 
+/// Floor on the opening batch, so a feed does not open on a handful of lines.
+///
+/// The sitting in progress is what the view wants to open on, but a sitting
+/// that has just started — or one picked up again after a break — is a few
+/// lines, and the reader then waits on a backscroll before there is anything to
+/// look back over. Below this, the opening batch reaches past the session
+/// boundary into what came before it, which the feed already knows how to show:
+/// it groups by the same gap rule and puts a header on each sitting.
+///
+/// 200 is one backscroll page (`HISTORY_PAGE` in reader.js) — enough that a
+/// short sitting opens with the reading around it, and the same size the view
+/// would have fetched anyway the moment it was scrolled.
+const MIN_OPENING_LINES: i64 = 200;
+
 #[derive(Deserialize)]
 pub struct StreamQuery {
     /// Resume after this line id instead of sending a backlog.
@@ -65,8 +79,9 @@ pub async fn lines_stream(
 
         // Opening batch: everything missed since `resume`, or — for a fresh
         // client — the whole sitting in progress, so the view opens with the
-        // session it is part of rather than an arbitrary tail of it. Anything
-        // older is a scroll back, served by `/api/lines/before`.
+        // session it is part of rather than an arbitrary tail of it, widened to
+        // `MIN_OPENING_LINES` when that sitting is a short one. Anything older
+        // is a scroll back, served by `/api/lines/before`.
         let mut last_id = match resume {
             Some(id) => id,
             None => match opening_batch(&state, backlog).await {
@@ -109,8 +124,9 @@ pub async fn lines_stream(
     Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
 }
 
-/// What a fresh client opens with: the whole sitting in progress, or a fixed
-/// tail if the caller asked for one.
+/// What a fresh client opens with: the whole sitting in progress — widened to
+/// `MIN_OPENING_LINES` if that sitting is short — or a fixed tail if the caller
+/// asked for one.
 async fn opening_batch(
     state: &AppState,
     backlog: Option<i64>,
@@ -125,7 +141,16 @@ async fn opening_batch(
                 600.0
             }
         };
-        return db::fetch_current_session_lines(&state.knowledge, gap, MAX_BATCH).await;
+        let session = db::fetch_current_session_lines(&state.knowledge, gap, MAX_BATCH).await?;
+        // A short sitting opens with the reading that preceded it rather than
+        // with itself alone. `fetch_recent_lines` is a superset of what the
+        // session query just returned — both take the newest lines, one of them
+        // stopping at the gap — so this replaces that answer rather than adding
+        // to it, and cannot double a line.
+        if (session.len() as i64) < MIN_OPENING_LINES {
+            return db::fetch_recent_lines(&state.knowledge, MIN_OPENING_LINES).await;
+        }
+        return Ok(session);
     };
     db::fetch_recent_lines(&state.knowledge, n).await
 }
