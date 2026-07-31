@@ -107,6 +107,9 @@ export function Reader() {
    *  routing a few hundred absolutely-positioned rectangles through the vdom
    *  would re-render the feed to move a box. */
   const marksRef = useRef(null);
+  /** The line a backscroll is holding still — `{id, offsetTop}` for the topmost
+   *  line on screen when the page was requested. See the effect below. */
+  const historyAnchor = useRef(null);
 
   /** The lines actually on screen. `lines` stays the whole feed whatever the
    *  filter is doing — judging a word rewrites every occurrence in it, including
@@ -195,6 +198,36 @@ export function Reader() {
     }
   }, [newestVisibleId, explain, explaining, markedOnly]);
 
+  // Put the reader's place back after a page of history lands on top of the
+  // feed, by holding one *line* still rather than by adding up heights.
+  //
+  // The height sum is what this replaced, and it could not survive the filter.
+  // It ran one frame after the prepend, which is a render too early when the
+  // `◌ marked` filter is on: `keptIds` has not admitted the new lines yet, so
+  // nothing has been added, the delta is zero and `scrollTop` stays at 0. The
+  // lines then appear above the reader a render later — and being pinned at the
+  // very top is a dead end, because a browser fires no scroll event when there
+  // is nowhere further to scroll, so the trigger that pulls the *next* page can
+  // never run again. That is why the filter had to be toggled off and on to
+  // load anything more.
+  //
+  // An anchor line has no such deadline. It keys on `keptIds` as well as
+  // `lines`, and re-baselines each time, so it corrects on whichever render
+  // actually moves the line — one for an unfiltered prepend, two for a filtered
+  // one — and a page that admits nothing simply never moves it. Declared above
+  // the paint so the marks are measured against the settled scroll offset.
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    const anchor = historyAnchor.current;
+    if (!el || !anchor) return;
+    const anchorEl = lineEls.current.get(anchor.id);
+    if (!anchorEl) return;
+    const delta = anchorEl.offsetTop - anchor.offsetTop;
+    if (!delta) return;
+    el.scrollTop += delta;
+    anchor.offsetTop = anchorEl.offsetTop;
+  }, [lines, keptIds]);
+
   // Repaint whenever the text could have moved: a new line, a font change, the
   // toggle. Layout effect rather than effect — this measures nodes that were
   // just committed, and a frame with the text drawn but not yet marked is a
@@ -267,13 +300,18 @@ export function Reader() {
    *  distance from the top of one known scroller, and this needs no separate
    *  element to watch for it.
    *
-   *  Prepending shifts every line below it, so the scroll position is
-   *  restored from the height *added* rather than pinned to an id — the
-   *  browser would otherwise yank the view down to where the feed now starts. */
+   *  Prepending shifts every line below it, so the reader's place has to be put
+   *  back or the browser leaves them looking at where the feed now *starts*.
+   *  That is `historyAnchor`: the topmost line on screen is noted here, and the
+   *  effect above keeps it where it was. */
   async function loadMoreHistory() {
     const el = listRef.current;
     const oldest = lines[0];
     if (!el || !oldest || loadingHistory || historyExhausted.current) return;
+    // The topmost *rendered* line, which under the filter is not lines[0] —
+    // a hidden line has no element to measure.
+    const anchor = visible[0];
+    const anchorEl = anchor && lineEls.current.get(anchor.id);
     setLoadingHistory(true);
     try {
       const r = await api(
@@ -283,14 +321,13 @@ export function Reader() {
         historyExhausted.current = true;
         return;
       }
-      const prevHeight = el.scrollHeight;
-      const prevTop = el.scrollTop;
+      if (anchorEl) {
+        historyAnchor.current = {
+          id: anchor.id,
+          offsetTop: anchorEl.offsetTop,
+        };
+      }
       setLines((prev) => [...r.lines, ...prev]);
-      // Runs after the DOM has the new rows (state update flushed before the
-      // next paint), so the height delta is measured against the final layout.
-      requestAnimationFrame(() => {
-        el.scrollTop = prevTop + (el.scrollHeight - prevHeight);
-      });
     } catch {
       // A failed page just leaves the trigger zone armed for the next scroll.
     } finally {
