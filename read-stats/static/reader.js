@@ -157,11 +157,20 @@ export function Reader() {
   // opens, fills in, or closes — each resizes the lines pane, and without this
   // the newest line would slip out of view above the panel instead of sitting
   // right on top of it. Respects a manual scroll-up (stick=false) either way.
+  //
+  // Keyed on the id of the newest line on screen, *not* on `lines`. Judging a
+  // word rebuilds that array without adding anything to it, so depending on it
+  // made every tap re-pin: scroll back a couple of lines — still inside
+  // STICK_SLOP_PX, so still "following along" — tap a word, and the feed jumped
+  // to the bottom, moving the word out from under the finger that had just
+  // judged it. Prepended history is excluded for the same reason: the id at the
+  // bottom has not changed, and `loadMoreHistory` restores the position itself.
+  const newestVisibleId = visible.length ? visible[visible.length - 1].id : 0;
   useEffect(() => {
     if (stick.current && listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
-  }, [lines, explain, explaining, markedOnly]);
+  }, [newestVisibleId, explain, explaining, markedOnly]);
 
   // Repaint whenever the text could have moved: a new line, a font change, the
   // toggle. Layout effect rather than effect — this measures nodes that were

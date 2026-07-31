@@ -241,6 +241,14 @@ taught to `vn-capture.sh`.
   pipeline — same Sudachi, same decompose/recompose — built once on the first
   line that needs it and *not* rebuilt: importing a dictionary changes the
   tints only after a restart.
+- **The feed re-pins to the bottom on a new *line*, not on a new `lines`.** The
+  stick-to-bottom effect keys on the id of the newest line on screen, because
+  judging a word rebuilds the whole array without adding anything to it. Keyed
+  on `lines` it fired on every tap: scroll back a couple of lines — still inside
+  `STICK_SLOP_PX`, so still "following along" — tap a word, and the feed jumped
+  to the bottom, taking the word out from under the finger that had just judged
+  it. Prepended history is excluded by the same key: the id at the bottom has
+  not changed, and `loadMoreHistory` restores the position itself.
 - **The `◌ marked` filter is a view, never a write.** The reading view can hide
   every line with nothing marked in it, for scrolling back over a finished
   sitting looking for what is left to judge. `lines` stays the whole feed and
