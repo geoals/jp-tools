@@ -19,6 +19,7 @@ import { api } from "./api.js";
 const FONT_KEY = "reader-font-px";
 const FONT_DEFAULT = 20;
 const HIGHLIGHT_KEY = "reader-highlight";
+const MARKED_ONLY_KEY = "reader-marked-only";
 /** The statuses that get a colour. `known` is sent too — a span is also the
  *  region a tap judges, so a word just marked known must stay tappable — but it
  *  is deliberately absent here: on a page where most words are known, the
@@ -78,6 +79,12 @@ export function Reader() {
   const [highlightOn, setHighlightOn] = useState(
     () => localStorage.getItem(HIGHLIGHT_KEY) !== "off",
   );
+  // Off by default and remembered: it is a way of looking back over what has
+  // been read, not a way of reading. Persisted like the font and the tinting
+  // so a reload beside the VN comes back the way it was left.
+  const [markedOnly, setMarkedOnly] = useState(
+    () => localStorage.getItem(MARKED_ONLY_KEY) === "on",
+  );
   const listRef = useRef(null);
   const stick = useRef(true);
   /** line id → the <p> holding it, for the Ranges the highlights are built
@@ -89,6 +96,15 @@ export function Reader() {
    *  routing a few hundred absolutely-positioned rectangles through the vdom
    *  would re-render the feed to move a box. */
   const marksRef = useRef(null);
+
+  /** The lines actually on screen. `lines` stays the whole feed whatever the
+   *  filter is doing — judging a word rewrites every occurrence in it, including
+   *  the ones a filter is hiding, and a mark that came back when the filter was
+   *  cleared would read as a write that failed. So the filter is applied at the
+   *  last possible moment, and everything that measures or hit-tests the text
+   *  (`paintMarks`, `spanAtPoint`) is given *this* list rather than `lines`:
+   *  those index into elements, and a hidden line has none. */
+  const visible = markedOnly ? lines.filter(hasMark) : lines;
 
   useEffect(() => {
     // EventSource reconnects on its own and replays from Last-Event-ID, so a
@@ -128,9 +144,14 @@ export function Reader() {
   useEffect(() => {
     const el = listRef.current;
     if (!el || loadingHistory || historyExhausted.current) return;
+    // Not while filtering. A filtered feed is short by construction, so this
+    // would page back through the entire history a hundred lines at a time
+    // trying to fill a pane that most lines are excluded from. Scrolling still
+    // pulls more; only the automatic top-up is off.
+    if (markedOnly) return;
     if (el.scrollHeight > el.clientHeight) return;
     loadMoreHistory();
-  }, [lines, loadingHistory, fontPx]);
+  }, [lines, loadingHistory, fontPx, markedOnly]);
 
   // Re-pin to the bottom on a new line, and also whenever the explain panel
   // opens, fills in, or closes — each resizes the lines pane, and without this
@@ -140,7 +161,7 @@ export function Reader() {
     if (stick.current && listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
-  }, [lines, explain, explaining]);
+  }, [lines, explain, explaining, markedOnly]);
 
   // Repaint whenever the text could have moved: a new line, a font change, the
   // toggle. Layout effect rather than effect — this measures nodes that were
@@ -148,13 +169,13 @@ export function Reader() {
   // flash on every single line.
   useLayoutEffect(() => {
     paintMarks(
-      lines,
+      visible,
       lineEls.current,
       highlightOn,
       listRef.current,
       marksRef.current,
     );
-  }, [lines, highlightOn, fontPx]);
+  }, [lines, highlightOn, fontPx, markedOnly]);
 
   // The other way the text reflows: the window, or the split pane beside the
   // VN, changing width. Nothing re-renders then, so nothing above would fire.
@@ -162,11 +183,11 @@ export function Reader() {
     const el = listRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() =>
-      paintMarks(lines, lineEls.current, highlightOn, el, marksRef.current),
+      paintMarks(visible, lineEls.current, highlightOn, el, marksRef.current),
     );
     ro.observe(el);
     return () => ro.disconnect();
-  }, [lines, highlightOn, fontPx]);
+  }, [lines, highlightOn, fontPx, markedOnly]);
 
   useEffect(() => {
     // Successes clear themselves; failures stay until the next attempt.
@@ -235,6 +256,25 @@ export function Reader() {
     }
   }
 
+  /** Show only the lines with a word worth marking in them, and back.
+   *
+   *  The feed answers "what did I read"; filtered, it answers "where in it is
+   *  there anything I have not judged known" — the question asked when scrolling
+   *  back over a finished sitting, where most lines hold nothing new. It is a
+   *  view over the same lines and nothing else: no line is cleared, nothing is
+   *  fetched, and turning it off brings the feed back exactly as it was.
+   *
+   *  A line counts as marked by the tiers that are actually *painted*, so what
+   *  the filter keeps is what the reader can see. `known` spans are sent for
+   *  every judged word on the page, so counting them would keep nearly every
+   *  line and the button would look broken. */
+  function toggleMarkedOnly() {
+    setMarkedOnly((on) => {
+      localStorage.setItem(MARKED_ONLY_KEY, on ? "off" : "on");
+      return !on;
+    });
+  }
+
   function toggleHighlight() {
     setHighlightOn((on) => {
       localStorage.setItem(HIGHLIGHT_KEY, on ? "off" : "on");
@@ -268,7 +308,7 @@ export function Reader() {
     const sel = window.getSelection?.();
     if (sel && !sel.isCollapsed) return;
     const hit = spanAtPoint(
-      lines,
+      visible,
       lineEls.current,
       event.clientX,
       event.clientY,
@@ -390,9 +430,12 @@ export function Reader() {
   const explainLabel = explaining ? "explaining…" : "ℹ explain last line";
   const pauseLabel = paused ? "▶ resume capture" : "⏸ pause capture";
   const clearLabel = clearing ? "…" : "✕ clear last";
-  const emptyLabel = live
-    ? "Waiting for the next hooked line…"
-    : "Not connected — is read-stats reachable?";
+  const emptyLabel =
+    markedOnly && lines.length
+      ? "No marked words in the lines loaded — scroll up for more, or show every line."
+      : live
+        ? "Waiting for the next hooked line…"
+        : "Not connected — is read-stats reachable?";
   const explainOff = state && state.explain_available === false;
   // Quality-only: mining still works, so this is a quiet hint, not a disable.
   const trimOff = state && state.trim_available === false;
@@ -411,6 +454,16 @@ export function Reader() {
   // the feed goes silent while paused, so a forgotten pause costs the lines
   // themselves rather than just their credit. Nothing can recover them.
   const pausedBanner = "⏸ PAUSED — no lines are being recorded. Tap to resume.";
+  const markedOnlyLabel = markedOnly ? "◍ marked" : "◌ marked";
+  const markedOnlyTitle = markedOnly
+    ? "Showing only lines with a marked word — tap to show every line"
+    : "Show only the lines with a word you have not judged known";
+  // Off while filtering: it drops *the newest line*, which the filter may well
+  // be hiding, and a button that discards something not on screen is a button
+  // that clears the wrong line.
+  const clearTitle = markedOnly
+    ? "Show every line first — this drops the newest one, which the filter may be hiding"
+    : "Drop the newest line from the stats — lines hooked while finding the route, or a stretch re-read after skipping back";
   const highlightLabel = highlightOn ? "◨ words" : "◫ words";
   const highlightTitle = highlightOn
     ? "Tinting words you have not judged known — tap to read the line plain"
@@ -426,6 +479,13 @@ export function Reader() {
           trimOff &&
           html`<span class="reader-trimoff" title=${trimTitle}>✂ off</span>`
         }
+        <button
+          class="ghost ${markedOnly ? "on" : ""}"
+          onClick=${toggleMarkedOnly}
+          title=${markedOnlyTitle}
+        >
+          ${markedOnlyLabel}
+        </button>
         <button
           class="ghost ${highlightOn ? "on" : ""}"
           onClick=${toggleHighlight}
@@ -451,9 +511,9 @@ export function Reader() {
           style=${`font-size: ${fontPx}px`}
         >
           <div class="reader-marks" ref=${marksRef} aria-hidden="true"></div>
-          ${lines.length === 0 && html`<p class="reader-empty">${emptyLabel}</p>`}
+          ${visible.length === 0 && html`<p class="reader-empty">${emptyLabel}</p>`}
           ${renderFeed(
-            lines,
+            visible,
             lineEls.current,
             (state && state.session_gap_secs) || DEFAULT_SESSION_GAP_SECS,
           )}
@@ -501,9 +561,9 @@ export function Reader() {
         </button>
         <button
           class="reader-clear"
-          disabled=${clearing || lines.length === 0}
+          disabled=${clearing || lines.length === 0 || markedOnly}
           onClick=${clearLast}
-          title="Drop the newest line from the stats — lines hooked while finding the route, or a stretch re-read after skipping back"
+          title=${clearTitle}
         >
           ${clearLabel}
         </button>
@@ -650,6 +710,15 @@ function renderLine(line, els) {
 function keepLineEl(els, id, el) {
   if (el) els.set(id, el);
   else els.delete(id);
+}
+
+/** Whether a line holds a word the feed would tint — the filter's whole rule.
+ *
+ *  Tested against PAINTED rather than "has any token": every judged word on the
+ *  line arrives as a `known` span too, so any-token would keep nearly every line
+ *  and the filter would look broken. */
+function hasMark(line) {
+  return (line.tokens || []).some((t) => PAINTED.includes(t.status));
 }
 
 /** Draw the marks: one rounded, padded rectangle behind each word the server

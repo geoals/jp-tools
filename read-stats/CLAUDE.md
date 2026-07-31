@@ -241,6 +241,21 @@ taught to `vn-capture.sh`.
   pipeline — same Sudachi, same decompose/recompose — built once on the first
   line that needs it and *not* rebuilt: importing a dictionary changes the
   tints only after a restart.
+- **The `◌ marked` filter is a view, never a write.** The reading view can hide
+  every line with nothing marked in it, for scrolling back over a finished
+  sitting looking for what is left to judge. `lines` stays the whole feed and
+  the filter is applied at the last moment (`visible`): a judgement rewrites
+  every occurrence in `lines`, hidden ones included, so a mark reappearing when
+  the filter comes off would read as a write that failed. Two consequences that
+  are not obvious. Everything that measures or hit-tests the text —
+  `paintMarks`, `spanAtPoint` — takes `visible`, since a hidden line has no
+  element to range over. And `clear last` is disabled while it is on: it drops
+  *the newest line*, which the filter may be hiding, and discarding something
+  off screen is discarding the wrong thing. A line counts as marked by the
+  painted tiers only — `known` spans are sent for every judged word, so counting
+  any token would keep nearly every line. The automatic backscroll top-up is
+  also off while filtering: a filtered feed rarely overflows its pane, so the
+  "pull until it scrolls" loop would page back through the entire history.
 - **Note ids are epoch milliseconds.** That is why a card's creation time needs
   no extra column, and why the id list is kept sorted.
 - **Only engagement actions leave `reader_marks`.** Explain does; clear
