@@ -251,7 +251,15 @@ taught to `vn-capture.sh`.
   not changed, and `loadMoreHistory` restores the position itself.
 - **The `◌ marked` filter is a view, never a write.** The reading view can hide
   every line with nothing marked in it, for scrolling back over a finished
-  sitting looking for what is left to judge. `lines` stays the whole feed and
+  sitting looking for what is left to judge. It filters on **membership, not on
+  a live predicate**: `keptIds` holds every line that has *had* a marked word in
+  it since the filter was switched on, grows as marked lines arrive, and never
+  shrinks. A line judged empty therefore stays where it is, plain — judging the
+  last marked word in a line under a live predicate deleted that line from under
+  the finger that judged it, moving the feed at the one moment the reader is
+  watching it. The line staying, unmarked, is also the report. Toggling the
+  filter off and on is what clears the judged lines out, and is the only thing
+  that does. `lines` stays the whole feed and
   the filter is applied at the last moment (`visible`): a judgement rewrites
   every occurrence in `lines`, hidden ones included, so a mark reappearing when
   the filter comes off would read as a write that failed. Two consequences that

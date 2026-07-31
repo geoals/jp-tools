@@ -85,6 +85,17 @@ export function Reader() {
   const [markedOnly, setMarkedOnly] = useState(
     () => localStorage.getItem(MARKED_ONLY_KEY) === "on",
   );
+  /** The ids the filter is letting through: every line that has *had* a marked
+   *  word in it since the filter was turned on. It only ever grows while the
+   *  filter is on, and is rebuilt from scratch each time it is turned on again.
+   *
+   *  Membership rather than a live predicate, because judging the last marked
+   *  word in a line would otherwise delete that line from under the finger that
+   *  judged it — the feed shifting by a line at the moment of a tap, which is
+   *  the thing the reader is looking at. A judged line staying put, plain, is
+   *  also the report: the mark is gone and the line is still there. Toggling the
+   *  filter off and on is what clears them out. */
+  const [keptIds, setKeptIds] = useState(() => new Set());
   const listRef = useRef(null);
   const stick = useRef(true);
   /** line id → the <p> holding it, for the Ranges the highlights are built
@@ -104,7 +115,7 @@ export function Reader() {
    *  last possible moment, and everything that measures or hit-tests the text
    *  (`paintMarks`, `spanAtPoint`) is given *this* list rather than `lines`:
    *  those index into elements, and a hidden line has none. */
-  const visible = markedOnly ? lines.filter(hasMark) : lines;
+  const visible = markedOnly ? lines.filter((l) => keptIds.has(l.id)) : lines;
 
   useEffect(() => {
     // EventSource reconnects on its own and replays from Last-Event-ID, so a
@@ -136,6 +147,18 @@ export function Reader() {
     const t = setInterval(load, STATE_POLL_MS);
     return () => clearInterval(t);
   }, []);
+
+  // A line that arrives (or is scrolled back into) while the filter is on joins
+  // it if it has a marked word — otherwise a filtered feed could never grow. It
+  // is only ever added: see `keptIds`.
+  useEffect(() => {
+    if (!markedOnly) return;
+    setKeptIds((prev) => {
+      const next = new Set(prev);
+      for (const l of lines) if (hasMark(l)) next.add(l.id);
+      return next.size === prev.size ? prev : next;
+    });
+  }, [lines, markedOnly]);
 
   // A feed shorter than its pane never fires a scroll event, so the trigger
   // above can't be reached and the sessions above it would be stranded —
@@ -280,6 +303,12 @@ export function Reader() {
   function toggleMarkedOnly() {
     setMarkedOnly((on) => {
       localStorage.setItem(MARKED_ONLY_KEY, on ? "off" : "on");
+      // Seeded here rather than left to the effect above, which would render one
+      // empty frame first. Turning it *off* keeps nothing: the next turn-on is a
+      // fresh question, and lines judged in the meantime should drop out then.
+      setKeptIds(
+        on ? new Set() : new Set(lines.filter(hasMark).map((l) => l.id)),
+      );
       return !on;
     });
   }
