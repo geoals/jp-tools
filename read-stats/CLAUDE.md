@@ -265,6 +265,15 @@ taught to `vn-capture.sh`.
   to the bottom, taking the word out from under the finger that had just judged
   it. Prepended history is excluded by the same key: the id at the bottom has
   not changed, and `loadMoreHistory` restores the position itself.
+  **A reflow re-pins too, on a height test rather than an id** (`pinToBottom`).
+  An id-keyed pin cannot see the feed moving underneath a reader who never
+  touched it, and three things move it on an ordinary load: the web font landing
+  after first paint (`display=swap`, so every line is measured twice), a page of
+  history arriving on top, and the pane being resized. Cold, that opened the
+  feed 1500px from the bottom and drifting further with each page. Comparing the
+  height against the last pinned height is what makes it safe to watch `lines`
+  here after all — judging a word changes no height, so a tap is a no-op and the
+  word stays under the finger, which is the rule above still holding.
 - **The `◌ marked` filter is a view, never a write.** The reading view can hide
   every line with nothing marked in it, for scrolling back over a finished
   sitting looking for what is left to judge. It filters on **membership, not on

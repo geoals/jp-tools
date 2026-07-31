@@ -116,6 +116,9 @@ export function Reader() {
   /** The line a backscroll is holding still — `{id, offsetTop}` for the topmost
    *  line on screen when the page was requested. See the effect below. */
   const historyAnchor = useRef(null);
+  /** The feed's height the last time the bottom was pinned. A reflow moves the
+   *  bottom edge without changing any line id, which is what this notices. */
+  const pinnedHeight = useRef(0);
   /** Pages the automatic top-up has spent trying to fill the pane while
    *  filtering. Reset each time the filter is turned on, since that is a fresh
    *  question over whatever has since been read. */
@@ -215,10 +218,52 @@ export function Reader() {
   // bottom has not changed, and `loadMoreHistory` restores the position itself.
   const newestVisibleId = visible.length ? visible[visible.length - 1].id : 0;
   useEffect(() => {
-    if (stick.current && listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
-    }
+    pinToBottom(true);
   }, [newestVisibleId, explain, explaining, markedOnly]);
+
+  /** Put the newest line back on the bottom edge, if the reader is following
+   *  along at all (`stick`). `force` is for the events that mean "the bottom
+   *  moved" outright — a new line, the explain panel opening; everything else
+   *  goes through the height test below. */
+  function pinToBottom(force) {
+    const el = listRef.current;
+    if (!el || !stick.current) return;
+    if (!force && el.scrollHeight === pinnedHeight.current) return;
+    el.scrollTop = el.scrollHeight;
+    pinnedHeight.current = el.scrollHeight;
+  }
+
+  // The other half of staying at the bottom: the feed *reflowing* under a
+  // reader who never moved. Nothing above catches that — the pin keys on the
+  // newest line's id, and a reflow changes no id — so the bottom edge simply
+  // drifted out of view and stayed there.
+  //
+  // Three things reflow it, and all three happen on an ordinary page load. The
+  // web font lands after first paint (`display=swap`, so every line is measured
+  // twice); the top-up pulls pages of history onto the top; and the pane can be
+  // resized. Cold, with the font arriving late, this left the feed 1500px from
+  // the bottom on open and drifting further with each page that arrived.
+  //
+  // The height test is what makes it safe to depend on `lines`, which the pin
+  // above must not do: judging a word rebuilds that array without changing the
+  // height, so this is a no-op on a tap and the word stays under the finger.
+  useLayoutEffect(() => {
+    pinToBottom(false);
+  }, [lines, keptIds, fontPx, markedOnly]);
+
+  useEffect(() => {
+    // `display=swap` reflows every line when the font arrives, which is after
+    // the feed has been painted and pinned. Fires once, and resolves
+    // immediately on a warm cache.
+    if (!document.fonts) return;
+    let cancelled = false;
+    document.fonts.ready.then(() => {
+      if (!cancelled) pinToBottom(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Put the reader's place back after a page of history lands on top of the
   // feed, by holding one *line* still rather than by adding up heights.
@@ -275,13 +320,16 @@ export function Reader() {
   }, [lines, keptIds, highlightOn, fontPx, markedOnly]);
 
   // The other way the text reflows: the window, or the split pane beside the
-  // VN, changing width. Nothing re-renders then, so nothing above would fire.
+  // VN, changing width. Nothing re-renders then, so nothing above would fire —
+  // for the marks or for the bottom edge, which a narrower pane pushes down as
+  // the lines wrap.
   useLayoutEffect(() => {
     const el = listRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() =>
-      paintMarks(visible, lineEls.current, highlightOn, el, marksRef.current),
-    );
+    const ro = new ResizeObserver(() => {
+      paintMarks(visible, lineEls.current, highlightOn, el, marksRef.current);
+      pinToBottom(false);
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, [lines, keptIds, highlightOn, fontPx, markedOnly]);
