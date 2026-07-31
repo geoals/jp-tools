@@ -149,6 +149,10 @@
   color: var(--text-primary);
   font-size: 16px;
 }
+.tokenize-table .judged-as {
+  color: var(--muted);
+  font-size: 13px;
+}
 .tokenize-page .muted {
   color: var(--muted);
   font-size: 12px;

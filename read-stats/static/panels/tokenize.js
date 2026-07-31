@@ -100,6 +100,7 @@ function Result({ result }) {
             <th>surface</th>
             <th>headword</th>
             <th>reading</th>
+            <th>judged as</th>
             <th>part of speech</th>
             <th>status</th>
             <th class="num">met</th>
@@ -113,6 +114,7 @@ function Result({ result }) {
                 <td class="jp">${t.surface}</td>
                 <td class="jp">${t.headword}</td>
                 <td class="jp">${t.reading}</td>
+                <td class="jp judged-as">${judgedAs(t)}</td>
                 <td class="muted">${t.pos}</td>
                 <td>
                   <span
@@ -134,6 +136,18 @@ function Result({ result }) {
       </table>
     </div>
   `;
+}
+
+/** The reading the *status* came from, when it is not this token's own.
+ *
+ *  The reading column is the tokenizer's output and nothing else — the suffix
+ *  鬼 of 殺人鬼 is read き. But the status beside it can come from another row
+ *  for the same headword (鬼/おに, marked known), because a word judged under one
+ *  reading is not asked about again. That is worth seeing rather than hiding:
+ *  the two readings are separate dictionary entries, and this column is where
+ *  the folding shows up. */
+function judgedAs(t) {
+  return t.judged_as ? `via ${t.judged_as}` : "";
 }
 
 /** An em dash, not a zero: no ledger row at all is a different fact from a row

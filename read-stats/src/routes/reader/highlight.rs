@@ -197,7 +197,18 @@ pub struct Analyzed {
     pub start: usize,
     pub len: usize,
     pub headword: String,
+    /// **The reading the tokenizer produced**, never another row's.
+    ///
+    /// This is the field `#tokenize` exists to show, so the "judged under one
+    /// reading is judged" substitution must not reach it: the suffix 鬼 in
+    /// 殺人鬼 is read き, and reporting it as おに because 鬼/おに is marked
+    /// known would be the page misreporting its own subject. Where that rule
+    /// fired, `judged_as` says so instead.
     pub reading: String,
+    /// The reading of the row that actually carries the assertion, when the
+    /// status came from a *different* row for the same headword. `None` when
+    /// the status is this term's own.
+    pub judged_as: Option<String>,
     pub pos: String,
     /// `new`, `seen`, `unknown` or `known` — `None` for a token the feed gives
     /// no span at all.
@@ -330,7 +341,11 @@ pub async fn spans(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Span> {
                 len: a.len,
                 status: a.status?,
                 headword: a.headword,
-                reading: a.reading,
+                // The span points at the row carrying the assertion, so a tap
+                // takes back the judgement the reader actually made rather than
+                // writing to an inflected or homographic row they never chose.
+                // `analyze` keeps the two apart; only the feed folds them.
+                reading: a.judged_as.unwrap_or(a.reading),
             })
         })
         .collect()
@@ -381,7 +396,7 @@ pub async fn analyze(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Analyzed
         .into_iter()
         .map(|c| {
             let row = rows.get(&c.term);
-            let mut reading = c.term.reading.clone();
+            let mut judged_as = None;
             let verdict = if !c.content {
                 Err(Excluded::Grammar)
             } else if c.proper_noun {
@@ -390,7 +405,9 @@ pub async fn analyze(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Analyzed
                 // A word known under another reading is known, and the span
                 // points at the row that says so — a tap on it takes *that*
                 // assertion back, which is the one the reader made.
-                reading = known_reading.clone();
+                if known_reading != &c.term.reading {
+                    judged_as = Some(known_reading.clone());
+                }
                 Ok(Tier::Known)
             } else {
                 match row {
@@ -406,7 +423,8 @@ pub async fn analyze(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Analyzed
                 start: c.span.start,
                 len: c.span.len,
                 headword: c.term.headword,
-                reading,
+                reading: c.term.reading,
+                judged_as,
                 pos: c.pos,
                 status: verdict.ok().map(Tier::as_str),
                 excluded: verdict.err().map(Excluded::as_str),

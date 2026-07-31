@@ -422,6 +422,15 @@ assumes".
   ledger is seeded — against `vocabulary.status`, not against the deck.
   **Vocab** — `vocab.js`, two sections over the knowledge
   ledger: the status counts, and `triage.js`, the pass that fills them.
+- **`#tokenize` reports the tokenizer, not the ledger's folding.** `Analyzed.reading`
+  is the reading the token was produced with and nothing else; where the status
+  came from a *different* row for the same headword ("judged under one reading
+  is judged"), `judged_as` carries that row's reading and the page shows it in
+  its own column. The feed still folds them — a span has to point at the row a
+  tap takes back — and `spans` is where that happens, on the way out of
+  `analyze`. Overwriting the reading upstream of both made the page report 鬼 as
+  おに inside 殺人鬼, where the tokenizer plainly said き: a debug view
+  misreporting its own subject, and the two are separate Sankoku entries.
 - **`#tokenize` is a page, not a tab** (`panels/tokenize.js` over
   `POST /api/tokenize`), reached from the header beside `📖 read`. Paste text,
   see what the pipeline made of it: the line tinted exactly as the feed tints
