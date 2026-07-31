@@ -27,7 +27,7 @@
 //! `status` is touched by none of them. It holds assertions and nothing else,
 //! so a resync can never demote a word the reader marked known.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use sqlx::{Row, SqlitePool};
 
@@ -357,9 +357,10 @@ pub async fn set_status(
     ts: f64,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "INSERT INTO vocabulary (headword, reading, status, status_ts) VALUES (?, ?, ?, ?) \
+        "INSERT INTO vocabulary (headword, reading, status, status_ts, status_source) \
+             VALUES (?, ?, ?, ?, 'assert') \
          ON CONFLICT(headword, reading) DO UPDATE SET status = excluded.status, \
-             status_ts = excluded.status_ts",
+             status_ts = excluded.status_ts, status_source = excluded.status_source",
     )
     .bind(&term.headword)
     .bind(&term.reading)
@@ -383,9 +384,10 @@ pub async fn set_status_bulk(
     let mut n = 0;
     for term in terms {
         n += sqlx::query(
-            "INSERT INTO vocabulary (headword, reading, status, status_ts) VALUES (?, ?, ?, ?) \
+            "INSERT INTO vocabulary (headword, reading, status, status_ts, status_source) \
+                 VALUES (?, ?, ?, ?, 'bulk') \
              ON CONFLICT(headword, reading) DO UPDATE SET status = excluded.status, \
-                 status_ts = excluded.status_ts",
+                 status_ts = excluded.status_ts, status_source = excluded.status_source",
         )
         .bind(&term.headword)
         .bind(&term.reading)
@@ -799,9 +801,10 @@ pub async fn seed_status_each(
     let mut n = 0;
     for (term, status) in judgements {
         n += sqlx::query(
-            "INSERT INTO vocabulary (headword, reading, status, status_ts) VALUES (?, ?, ?, ?) \
+            "INSERT INTO vocabulary (headword, reading, status, status_ts, status_source) \
+                 VALUES (?, ?, ?, ?, 'seed') \
              ON CONFLICT(headword, reading) DO UPDATE SET status = excluded.status, \
-                 status_ts = excluded.status_ts \
+                 status_ts = excluded.status_ts, status_source = excluded.status_source \
              WHERE vocabulary.status = 'new'",
         )
         .bind(&term.headword)
@@ -816,23 +819,29 @@ pub async fn seed_status_each(
     Ok(n)
 }
 
+/// `source` labels the pass in the history log — `triage`, `jiten`,
+/// `frequency`. It is informational; it never affects what is written to
+/// `vocabulary` itself.
 pub async fn set_status_each(
     k: &Knowledge,
     judgements: &[(Term, Status)],
     ts: f64,
+    source: &str,
 ) -> Result<u64, sqlx::Error> {
     let mut tx = k.pool().begin().await?;
     let mut n = 0;
     for (term, status) in judgements {
         n += sqlx::query(
-            "INSERT INTO vocabulary (headword, reading, status, status_ts) VALUES (?, ?, ?, ?) \
+            "INSERT INTO vocabulary (headword, reading, status, status_ts, status_source) \
+                 VALUES (?, ?, ?, ?, ?) \
              ON CONFLICT(headword, reading) DO UPDATE SET status = excluded.status, \
-                 status_ts = excluded.status_ts",
+                 status_ts = excluded.status_ts, status_source = excluded.status_source",
         )
         .bind(&term.headword)
         .bind(&term.reading)
         .bind(status.as_str())
         .bind(ts)
+        .bind(source)
         .execute(&mut *tx)
         .await?
         .rows_affected();
@@ -865,7 +874,8 @@ pub async fn carry_judgement(k: &Knowledge, from: &Term, into: &Term) -> Result<
         "UPDATE vocabulary SET status = (SELECT status FROM vocabulary \
                                          WHERE headword = ? AND reading = ?), \
                                status_ts = (SELECT status_ts FROM vocabulary \
-                                            WHERE headword = ? AND reading = ?) \
+                                            WHERE headword = ? AND reading = ?), \
+                               status_source = 'carry' \
          WHERE headword = ? AND reading = ? AND status = 'new' \
            AND EXISTS (SELECT 1 FROM vocabulary \
                        WHERE headword = ? AND reading = ? AND status != 'new')",
@@ -976,7 +986,8 @@ pub async fn non_words_total(k: &Knowledge) -> Result<i64, sqlx::Error> {
 /// and not names.
 pub async fn blacklist_non_words(k: &Knowledge, ts: f64) -> Result<u64, sqlx::Error> {
     let n = sqlx::query(
-        "UPDATE vocabulary SET status = 'blacklisted', status_ts = ? \
+        "UPDATE vocabulary SET status = 'blacklisted', status_ts = ?, \
+                               status_source = 'blacklist' \
          WHERE status = 'new' AND in_master = 0 AND in_name = 0 AND in_reference = 0",
     )
     .bind(ts)
@@ -1189,6 +1200,8 @@ pub async fn repair_empty_readings(k: &Knowledge) -> Result<ReadingRepair, sqlx:
                 "UPDATE vocabulary AS t SET \
                      status = CASE WHEN t.status = 'new' THEN s.status ELSE t.status END, \
                      status_ts = CASE WHEN t.status = 'new' THEN s.status_ts ELSE t.status_ts END, \
+                     status_source = CASE WHEN t.status = 'new' THEN 'merge' \
+                                          ELSE t.status_source END, \
                      mined = MAX(t.mined, s.mined), \
                      promoted = MAX(t.promoted, s.promoted), \
                      encounter_count = t.encounter_count + s.encounter_count, \
@@ -1883,6 +1896,7 @@ mod tests {
                     (unknown.clone(), Status::Unknown),
                 ],
                 7.0,
+                "test",
             )
             .await
             .unwrap(),

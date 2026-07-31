@@ -237,7 +237,7 @@ pub async fn vocab_judge(
     }
 
     let now = now_ts();
-    let written = vocabulary::set_status_each(&state.knowledge, &judgements, now).await?;
+    let written = vocabulary::set_status_each(&state.knowledge, &judgements, now, "triage").await?;
     if req.advance_sweep {
         db::save_setting(&state.local, SWEEP_WATERMARK_KEY, &now.to_string()).await?;
     }
@@ -399,7 +399,7 @@ pub async fn vocab_anki_import(
         }
     }
 
-    let imported = vocabulary::set_status_each(&state.knowledge, &judgements, now_ts()).await?;
+    let imported = vocabulary::set_status_each(&state.knowledge, &judgements, now_ts(), "jiten").await?;
     Ok(Json(json!({
         "imported": imported,
         "ambiguous_skipped": ambiguous_skipped,
@@ -688,7 +688,7 @@ pub async fn vocab_frequency_commit(
         .map(|r| (Term::new(r.term.clone(), &r.reading), Status::Known))
         .collect();
 
-    let written = vocabulary::set_status_each(&state.knowledge, &judgements, now_ts()).await?;
+    let written = vocabulary::set_status_each(&state.knowledge, &judgements, now_ts(), "frequency").await?;
     db::save_setting(&state.local, "triage_max_freq_rank", &max_rank.to_string()).await?;
     Ok(Json(json!({ "written": written, "ambiguous_skipped": pending.ambiguous })))
 }

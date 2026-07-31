@@ -49,6 +49,8 @@ const MIGRATION_READING: &str = include_str!("../../migrations/knowledge/004_rea
 const MIGRATION_VOCAB: &str = include_str!("../../migrations/knowledge/005_vocabulary.sql");
 const MIGRATION_WORK_TERMS: &str = include_str!("../../migrations/knowledge/006_work_terms.sql");
 const MIGRATION_LEXEME: &str = include_str!("../../migrations/knowledge/007_lexeme.sql");
+const MIGRATION_VOCAB_HISTORY: &str =
+    include_str!("../../migrations/knowledge/008_vocab_history.sql");
 
 /// A connection pool for `knowledge.db`.
 ///
@@ -211,9 +213,20 @@ impl Knowledge {
                 .execute(&self.0)
                 .await?;
         }
+        // The channel by which a write tells the history trigger which pass it
+        // was. Nullable: a site that forgets it loses a label, not an event.
+        if !has_column(&self.0, "vocabulary", "status_source").await? {
+            sqlx::raw_sql("ALTER TABLE vocabulary ADD COLUMN status_source TEXT")
+                .execute(&self.0)
+                .await?;
+        }
         // Runs after the ALTERs above, not in the loop: it indexes a column
         // they add.
         sqlx::raw_sql(MIGRATION_LEXEME).execute(&self.0).await?;
+        // Likewise: its triggers read `promoted` and `status_source`.
+        sqlx::raw_sql(MIGRATION_VOCAB_HISTORY)
+            .execute(&self.0)
+            .await?;
         Ok(())
     }
 }
