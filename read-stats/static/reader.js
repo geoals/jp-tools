@@ -56,6 +56,12 @@ const HISTORY_PAGE = 200;
 /** How close to the top of the scroller counts as "reaching for more
  *  history" — close enough that the fetch lands before the reader gets there. */
 const HISTORY_TRIGGER_PX = 300;
+/** How many pages the automatic top-up may pull while the `◌ marked` filter is
+ *  on, before it gives up on filling the pane. A page is `HISTORY_PAGE` lines
+ *  of which the filter keeps perhaps a fifth, so one page usually overflows a
+ *  pane on its own and five is the budget for a filter that is keeping very
+ *  little — enough to reach a scrollable feed, far short of the whole history. */
+const FILTERED_TOPUP_PAGES = 5;
 
 export function Reader() {
   const [lines, setLines] = useState([]);
@@ -110,6 +116,10 @@ export function Reader() {
   /** The line a backscroll is holding still — `{id, offsetTop}` for the topmost
    *  line on screen when the page was requested. See the effect below. */
   const historyAnchor = useRef(null);
+  /** Pages the automatic top-up has spent trying to fill the pane while
+   *  filtering. Reset each time the filter is turned on, since that is a fresh
+   *  question over whatever has since been read. */
+  const filteredTopUps = useRef(0);
 
   /** The lines actually on screen. `lines` stays the whole feed whatever the
    *  filter is doing — judging a word rewrites every occurrence in it, including
@@ -167,17 +177,29 @@ export function Reader() {
   // above can't be reached and the sessions above it would be stranded —
   // which is exactly the case of a sitting that has just started. Pull pages
   // until there is something to scroll, or there is no more history.
+  //
+  // While filtering it runs on a budget rather than not at all, which is what
+  // it did before. Off entirely was the wrong half of the trade: a filtered
+  // feed really is short by construction, so on a sitting that has just started
+  // it could hold a single line — nothing to scroll, and the scroll trigger is
+  // the only other way to ask for history, so the view was stuck there for good
+  // and the filter had to be turned off to escape. The budget keeps what that
+  // rule was protecting: at `FILTERED_TOPUP_PAGES` it stops, so a filter that
+  // admits almost nothing costs a bounded number of pages instead of walking
+  // back through the whole history a hundred lines at a time.
   useEffect(() => {
     const el = listRef.current;
     if (!el || loadingHistory || historyExhausted.current) return;
-    // Not while filtering. A filtered feed is short by construction, so this
-    // would page back through the entire history a hundred lines at a time
-    // trying to fill a pane that most lines are excluded from. Scrolling still
-    // pulls more; only the automatic top-up is off.
-    if (markedOnly) return;
     if (el.scrollHeight > el.clientHeight) return;
+    if (markedOnly) {
+      if (filteredTopUps.current >= FILTERED_TOPUP_PAGES) return;
+      filteredTopUps.current += 1;
+    }
     loadMoreHistory();
-  }, [lines, loadingHistory, fontPx, markedOnly]);
+    // `keptIds` belongs here for the same reason the paint needs it: while
+    // filtering it is what actually puts a line on screen, so it — not `lines`
+    // — is what changes the height this decides on.
+  }, [lines, keptIds, loadingHistory, fontPx, markedOnly]);
 
   // Re-pin to the bottom on a new line, and also whenever the explain panel
   // opens, fills in, or closes — each resizes the lines pane, and without this
@@ -356,6 +378,9 @@ export function Reader() {
       setKeptIds(
         on ? new Set() : new Set(lines.filter(hasMark).map((l) => l.id)),
       );
+      // A fresh budget for the fresh question: turning the filter on again over
+      // a feed that has grown since should be allowed to fill the pane again.
+      filteredTopUps.current = 0;
       return !on;
     });
   }

@@ -293,9 +293,16 @@ taught to `vn-capture.sh`.
   *the newest line*, which the filter may be hiding, and discarding something
   off screen is discarding the wrong thing. A line counts as marked by the
   painted tiers only — `known` spans are sent for every judged word, so counting
-  any token would keep nearly every line. The automatic backscroll top-up is
-  also off while filtering: a filtered feed rarely overflows its pane, so the
-  "pull until it scrolls" loop would page back through the entire history.
+  any token would keep nearly every line. The automatic backscroll top-up runs
+  **on a budget** while filtering (`FILTERED_TOPUP_PAGES`) rather than not at
+  all: a filtered feed rarely overflows its pane, so an uncapped "pull until it
+  scrolls" loop would page back through the entire history — but off entirely
+  was worse, because a feed that cannot scroll cannot reach the scroll trigger
+  either, and the scroll trigger is the only other way to ask for history. On a
+  sitting that has just started the filtered feed could hold a single line, and
+  the view was then stuck there permanently: the filter had to be turned off to
+  escape it. The budget is reset each time the filter is turned on, since that
+  is a fresh question over whatever has since been read.
 - **Note ids are epoch milliseconds.** That is why a card's creation time needs
   no extra column, and why the id list is kept sorted.
 - **Only engagement actions leave `reader_marks`.** Explain does; clear
