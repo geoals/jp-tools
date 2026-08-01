@@ -110,9 +110,14 @@ and a ledger row cannot disagree):
   excluded from decomposition.
 - **A name is not vocabulary** — 固有名詞 keeps a work's cast out of the ledger.
   The verdict is per _term_ over a whole pass, never per occurrence.
-- **An affix the master dictionary lists is a word.** `counts_as_word` admits
-  接尾辞/接頭辞 when the master lists the `(headword, reading)` pair — that test
-  is the whole fence, with no stoplist to maintain.
+- **Anything the master dictionary lists is a word, whatever its tag.**
+  `counts_as_word` admits a content word, or any token whose
+  `(headword, reading)` pair Sankoku lists — so 達/たち, ながら and は all get
+  ledger rows, and げ, ぷ, さん/さーん do not. That pair test is the whole fence,
+  with no stoplist to maintain. The scale is "how many Sankoku headwords am I
+  familiar with", and widening this gate cannot inflate it: `COUNTS_AS_VOCAB`
+  counts master terms only, so this decides what gets a *row*, not what gets
+  counted.
 - **A re-tokenization strands judgements, and the rebuild re-homes them.**
   `carry_stranded_judgements` moves a status to whatever the term is called now,
   never over the target's own assertion.

@@ -42,19 +42,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // the end rather than filtered as they go.
     let mut counts: HashMap<Term, i64> = HashMap::new();
     let mut proper: HashMap<Term, (i64, i64)> = HashMap::new();
-    let mut affix_only: HashSet<Term> = HashSet::new();
+    let mut non_content: HashSet<Term> = HashSet::new();
     let mut fold = |tokens: Vec<Token>, counts: &mut HashMap<Term, i64>| {
         for t in tokens {
             if !counts_as_word(&t, &master) {
                 continue;
             }
-            let admitted_by_affix_rule = !is_content_word(&t.pos);
+            let admitted_by_listing = !is_content_word(&t.pos);
             let term = Term::new(t.base_form, &t.reading);
             let seen = proper.entry(term.clone()).or_default();
             seen.0 += i64::from(t.proper_noun);
             seen.1 += 1;
-            if admitted_by_affix_rule {
-                affix_only.insert(term.clone());
+            if admitted_by_listing {
+                non_content.insert(term.clone());
             }
             *counts.entry(term).or_default() += 1;
         }
@@ -126,9 +126,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .filter(|t| !existing.contains_key(t))
         .collect();
     let new_vocab = new_terms.iter().filter(|t| counts_as_vocab(t)).count();
-    let new_from_affix = new_terms
+    let new_from_listing = new_terms
         .iter()
-        .filter(|t| affix_only.contains(**t) && counts_as_vocab(t))
+        .filter(|t| non_content.contains(**t) && counts_as_vocab(t))
         .count();
 
     // prune_untouched: rows this pass no longer produces, minus the judged and
@@ -145,10 +145,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!("the pass produces: {} terms", counts.len());
     println!(
-        "  new rows:        {} ({} count as vocabulary, of which {} arrive via the affix rule)",
+        "  new rows:        {} ({} count as vocabulary, of which {} arrive as non-content words)",
         new_terms.len(),
         new_vocab,
-        new_from_affix
+        new_from_listing
     );
     println!(
         "  pruned rows:     {} unjudged rows the pass no longer produces ({} counted as vocabulary)",
@@ -161,14 +161,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         now_vocab + new_vocab - pruned_vocab
     );
 
-    let mut affix_new: Vec<(&Term, i64)> = new_terms
+    let mut listing_new: Vec<(&Term, i64)> = new_terms
         .iter()
-        .filter(|t| affix_only.contains(**t))
+        .filter(|t| non_content.contains(**t))
         .map(|t| (*t, counts[*t]))
         .collect();
-    affix_new.sort_by_key(|(_, n)| -*n);
-    println!("\nthe affix rows that would be added, by encounters:");
-    for (t, n) in affix_new.iter().take(25) {
+    listing_new.sort_by_key(|(_, n)| -*n);
+    println!("\nthe non-content rows that would be added, by encounters:");
+    for (t, n) in listing_new.iter().take(25) {
         println!("{n:>6}  {}/{}", t.headword, t.reading);
     }
     Ok(())

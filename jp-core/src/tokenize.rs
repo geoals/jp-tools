@@ -457,14 +457,15 @@ impl Tokenizer for SudachiTokenizer {
 }
 
 /// Returns true if the part-of-speech tag represents a content word
-/// (noun, verb, adjective, adjectival noun, adverb).
+/// (noun, pronoun, verb, adjective, adjectival noun, adverb).
+///
+/// 代名詞 is a top-level Sudachi tag rather than a subtype of 名詞, so leaving it
+/// out dropped 彼女, 私, 君, これ — ordinary words by any reading of the term.
 pub fn is_content_word(pos: &str) -> bool {
-    matches!(pos, "名詞" | "動詞" | "形容詞" | "形状詞" | "副詞")
-}
-
-/// Sudachi's affix classes — the tags [`MasterWords`] arbitrates.
-fn is_affix(pos: &str) -> bool {
-    matches!(pos, "接尾辞" | "接頭辞")
+    matches!(
+        pos,
+        "名詞" | "代名詞" | "動詞" | "形容詞" | "形状詞" | "副詞"
+    )
 }
 
 /// The master dictionary, asked the only question the affix rule needs: does it
@@ -500,17 +501,21 @@ impl MasterWords {
 
 /// Whether a token is one the ledger counts as a word.
 ///
-/// Content words, plus **an affix the master dictionary lists under the reading
-/// it was used with**. Not a special case: 私達 is not a Sankoku entry so it
-/// arrives as 私 + 達, and 達/たち *is* one, so discarding it credited half the
-/// compound to nothing — the same defect as 懲罰房, arriving through the
-/// part-of-speech tag instead.
+/// A content word, or **anything the master dictionary lists under the reading
+/// it was used with**, whatever its part of speech. The scale the ledger feeds
+/// is "how many Sankoku headwords am I familiar with", so a part-of-speech tag
+/// is the wrong thing to refuse on: は, ながら and 彼女 are Sankoku headwords and
+/// a reader is either familiar with them or not. The count cannot be inflated by
+/// admitting them, because [`COUNTS_AS_VOCAB`] takes only master terms —
+/// widening here widens what gets a ledger row, not what gets counted.
 ///
 /// The pair test is the whole fence. It admits 達/たち, 御/お, 的/てき, 鬼/き and
 /// refuses げ, ぷ, さん/さーん, 日/じつ, with no stoplist to maintain. The pair,
 /// because 鬼/き and 鬼/おに are both Sankoku entries.
+///
+/// [`COUNTS_AS_VOCAB`]: crate::knowledge::vocabulary::COUNTS_AS_VOCAB
 pub fn counts_as_word(t: &Token, master: &MasterWords) -> bool {
-    is_content_word(&t.pos) || (is_affix(&t.pos) && master.lists(&t.base_form, &t.reading))
+    is_content_word(&t.pos) || master.lists(&t.base_form, &t.reading)
 }
 
 #[cfg(test)]
@@ -606,14 +611,29 @@ mod tests {
     }
 
     #[test]
-    fn the_affix_rule_never_admits_a_particle() {
-        // The gate is content-word OR *affix*; a particle the master happens to
-        // list as a headword must not slip through it.
+    fn a_listed_particle_counts_as_a_word() {
+        // The scale is Sankoku headwords, and は is one of them. A particle is
+        // admitted on the listing, not on its tag.
         let m = MasterWords::new(
             ["は".to_string()].into_iter().collect(),
             &[("は".to_string(), "は".to_string())],
         );
-        assert!(!counts_as_word(&affix("は", "は", "ハ", "助詞"), &m));
+        assert!(counts_as_word(&affix("は", "は", "ハ", "助詞"), &m));
+    }
+
+    #[test]
+    fn an_unlisted_particle_is_still_dropped() {
+        assert!(!counts_as_word(&affix("は", "は", "ハ", "助詞"), &master()));
+    }
+
+    #[test]
+    fn a_pronoun_counts_as_a_word() {
+        // 代名詞 is not a subtype of 名詞; 彼女 fell out of the gate entirely.
+        assert!(is_content_word("代名詞"));
+        assert!(counts_as_word(
+            &affix("彼女", "彼女", "カノジョ", "代名詞"),
+            &MasterWords::new(HashSet::new(), &[])
+        ));
     }
 
     #[test]
