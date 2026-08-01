@@ -9,7 +9,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 3px;
-  margin: 10px 0 12px;
+  margin: 16px 0 12px;
   /* Long tails are long. Scrolling the grid keeps the cards below reachable
      without collapsing the thing the page is about into a teaser. */
   max-height: 420px;
@@ -54,8 +54,8 @@
 }
 
 .kanji-sort {
-  margin-top: 8px;
-  margin-bottom: 4px;
+  margin-top: 14px;
+  margin-bottom: 0;
   align-items: center;
 }
 .kanji-sort-label {

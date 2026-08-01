@@ -170,19 +170,14 @@ header h1 {
   align-items: center;
   gap: 14px;
 }
-.streak {
-  color: var(--text-secondary);
-  font-size: 14px;
-}
-.streak strong {
-  color: var(--text-primary);
-}
-
 .pause-btn {
   padding: 5px 12px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--surface-1);
+  /* Anchors use this class too, and a button that is underlined reads as a
+     link inside a button. */
+  text-decoration: none;
   color: var(--text-secondary);
   font: inherit;
   font-size: 13px;

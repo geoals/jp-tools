@@ -20,8 +20,7 @@ import { SegmentedControl } from "../components/controls.js";
 
 const SORTS = [
   { value: "count", label: "most read" },
-  { value: "bccwj", label: "commonest in Japanese" },
-  { value: "grade", label: "school grade" },
+  { value: "bccwj", label: "most common" },
   { value: "recent", label: "newest to you" },
 ];
 
@@ -129,9 +128,6 @@ function GridCard({ rows, solidAt }) {
   const max = rows[0].count;
   const shown = useMemo(() => {
     const by = {
-      // Ungraded kanji sort last rather than first: 0 means "no grade", not
-      // "easiest".
-      grade: (a, b) => (a.grade ?? 99) - (b.grade ?? 99) || b.count - a.count,
       // Kanji BCCWJ never saw sort last, after every ranked one — "unlisted"
       // is rarer than rank 6937, not commoner than rank 1.
       bccwj: (a, b) =>

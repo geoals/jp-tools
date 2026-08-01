@@ -161,13 +161,6 @@ function App({ view, sub }) {
         >
           📖 read
         </a>
-        <a
-          class=${`pause-btn${offTab ? " paused" : ""}`}
-          href=${offTab ? "#today" : "#settings"}
-          title="Goal, thresholds, theme and the tokenizer"
-        >
-          ⚙
-        </a>
         ${
           // Capture belongs where reading happens: `#read` has its own, and ⚙.
           offTab &&
@@ -179,14 +172,13 @@ function App({ view, sub }) {
             ${summary.paused ? "▶ resume capture" : "⏸ pause capture"}
           </button>`
         }
-        <span class="streak"
-          >streak <strong>${summary.streak.current}</strong> days
-          ${
-            summary.streak.best > summary.streak.current
-              ? ` · best ${summary.streak.best}`
-              : " · personal best"
-          }</span
+        <a
+          class=${`pause-btn${offTab ? " paused" : ""}`}
+          href=${offTab ? "#today" : "#settings"}
+          title="Goal, thresholds, theme and the tokenizer"
         >
+          ⚙
+        </a>
       </div>
     </header>
     ${
