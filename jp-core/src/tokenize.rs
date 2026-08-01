@@ -17,14 +17,10 @@ pub struct Token {
     /// The word's canonical written form: Sudachi's *normalized* form, not its
     /// dictionary form.
     ///
-    /// The two differ exactly where Japanese spells one word several ways —
-    /// いう/言う, できる/出来る, みんな/皆, わかる/分かる — and keying anything on
-    /// the dictionary form makes each spelling a separate word with its own
-    /// counts and its own status. A reader who judged 言う was then asked to
-    /// judge いう, which is the same word wearing kana.
-    ///
-    /// Normalization subsumes the inflection case too (振っ → 振る), so this is
-    /// strictly more canonical than what it replaces.
+    /// The two differ where Japanese spells one word several ways —
+    /// いう/言う, できる/出来る, みんな/皆 — and keying on the dictionary form
+    /// makes each spelling a separate word with its own counts and status.
+    /// Normalization subsumes inflection too (振っ → 振る).
     pub base_form: String,
     pub reading: String,
     /// Top-level part of speech (名詞, 動詞, …).
@@ -96,10 +92,9 @@ impl SudachiTokenizer {
     /// kana half of [`SudachiTokenizer::recompose`].
     ///
     /// Separate from [`with_lexicon`](Self::with_lexicon) because it is the
-    /// weaker signal and a caller may reasonably want spelling-matched
-    /// recomposition without it. A reading naming more than one headword is
-    /// dropped rather than arbitrated: おこす is 起こす and 興す, and merging
-    /// two tokens into a guess about which is worse than leaving them apart.
+    /// weaker signal. A reading naming more than one headword is dropped rather
+    /// than arbitrated — おこす is both 起こす and 興す, and merging two tokens
+    /// into a guess is worse than leaving them apart.
     pub fn with_master_readings(mut self, entries: &[(String, String)]) -> Self {
         let mut ambiguous: HashSet<String> = HashSet::new();
         for (term, reading) in entries {
@@ -128,16 +123,13 @@ impl SudachiTokenizer {
 
     /// Which spelling of a word to store: the one the master dictionary uses.
     ///
-    /// Sudachi normalizes to *its* canonical orthography, and the two
-    /// dictionaries do not always agree. する normalizes to 為る, which Sankoku
-    /// does not list — so the commonest verb in the language landed as an
-    /// unrecognised term with 2,544 encounters, ineligible for triage (the
-    /// queue is master-only) and sitting at the top of every unknown-word list.
+    /// Sudachi normalizes to *its* orthography and the two dictionaries do not
+    /// always agree: する normalizes to 為る, which Sankoku does not list, which
+    /// put the commonest verb in the language outside the triage queue.
     ///
-    /// Where they disagree the master dictionary wins, because it is the one
-    /// that decides what counts as vocabulary at all. Where it lists neither
-    /// spelling, normalization stands: it is still the better canonicaliser of
-    /// the two (いう → 言う, サーバ → サーバー).
+    /// **Where they disagree the master dictionary wins**, being the one that
+    /// decides what counts as vocabulary. Where it lists neither spelling,
+    /// normalization stands — it is still the better canonicaliser.
     fn written_form(&self, normalized: &str, dictionary: &str) -> String {
         if self.lexicon.is_empty() || self.lexicon.contains(normalized) {
             return normalized.to_string();
@@ -150,26 +142,19 @@ impl SudachiTokenizer {
 
     /// Split a compound no dictionary lists into parts that one does.
     ///
-    /// Sudachi's own splitting is bounded by its entries: 懲罰房 is a single
-    /// entry with no sub-units, so Mode A, B and C all return it whole, and
-    /// 懲罰 — a word Sankoku lists, read sixty-one times — was credited to
-    /// nothing at all. 医務室 splits fine. Which of the two happens is a
-    /// property of Sudachi's dictionary rather than of the language.
+    /// Sudachi's splitting stops at its own entries: 懲罰房 is one entry with no
+    /// sub-units, so every mode returns it whole and 懲罰 — a Sankoku word read
+    /// sixty-one times — was credited to nothing, while 医務室 splits fine.
     ///
-    /// So: longest match from the left, every part a master-dictionary
-    /// headword, the whole string consumed, at least two parts.
+    /// So: longest match from the left, every part a master headword, the whole
+    /// string consumed, at least two parts.
     ///
-    /// A one-character part must be kanji. Kana of either alphabet shreds:
-    /// ミリア becomes ミ + リ + ア, and 楽しみ becomes 楽し + み — a dictionary
-    /// lists み as a noun, so the pieces pass every test except sense. Allowing
-    /// hiragana produced み ×69 and め ×38 out of nothing, against 凛と's two
-    /// sightings of 凛 that it recovered. A compound ending in a bare kana is
-    /// therefore left whole, and lands in the non-vocabulary tail if no
-    /// dictionary claims it.
+    /// **A one-character part must be kanji.** Bare kana shreds — み is a noun,
+    /// so 楽しみ split into 楽し + み, and ミリア into three letters. A compound
+    /// ending in kana is left whole.
     ///
-    /// Returns `None` when the compound cannot be built from known words,
-    /// which leaves it exactly where it was: whole, and visible in the
-    /// non-vocabulary tail.
+    /// `None` when it cannot be built from known words, which leaves it whole
+    /// and visible in the non-vocabulary tail.
     fn decompose(&self, word: &str) -> Option<Vec<String>> {
         if self.lexicon.is_empty() || self.lexicon.contains(word) {
             return None;
@@ -204,46 +189,32 @@ impl SudachiTokenizer {
 
     /// Join adjacent tokens that the master dictionary lists as one word.
     ///
-    /// The mirror of [`decompose`](Self::decompose), and the case neither it
-    /// nor the C→B→A pass could reach. Both of those only ever *split*: the
-    /// wordhood gate can reject a token into smaller pieces and never build a
-    /// larger one, so a compound Sudachi's own lexicon lacks is gone before any
-    /// of our logic sees it. しゃくりあげる is not a Sudachi entry, so Mode C
-    /// hands back しゃくり + あげ and the ledger credited しゃくる and 上げる —
-    /// while 噦り上げる, which Sankoku lists, was never met once. It is not a
-    /// rare shape: over the first 14,519 tracked lines, 570 distinct
-    /// master-dictionary compounds were being shredded this way across 1,663
-    /// occurrences (落ち着く, 思い出す, 立ち上がる, 振り返る, 巻き込む…), and
-    /// 317 of the ledger rows for them sat at zero encounters while their parts
-    /// collected the sightings.
+    /// The mirror of [`decompose`](Self::decompose), and the case neither it nor
+    /// the C→B→A pass can reach — both only ever *split*, so a compound
+    /// Sudachi's lexicon lacks is gone before any of this logic sees it.
+    /// しゃくりあげる is not a Sudachi entry, so Mode C returned しゃくり + あげ
+    /// and credited しゃくる and 上げる while 噦り上げる was never met once. Over
+    /// the first 14.5k lines that was 570 distinct compounds across 1,663
+    /// occurrences (落ち着く, 思い出す, 振り返る…).
     ///
-    /// Longest match first, left to right, at most [`MAX_COMPOUND_PARTS`] parts.
-    /// A run is joined on either of two signals:
+    /// Longest match first, left to right, at most [`MAX_COMPOUND_PARTS`] parts,
+    /// joined on either signal:
     ///
     /// - **spelling** — the parts as written spell a master headword
-    ///   (振り + 返る → 振り返る). Matching the dictionary's literal headword is
-    ///   strong evidence on its own.
-    /// - **reading** — the parts read as a master headword
-    ///   (しゃくり + あげる → しゃくりあげる → 噦り上げる). Needed because the
-    ///   text writes in kana what the dictionary spells in kanji, and this is
-    ///   the same gap the non-word gate had before it learned to match
-    ///   readings.
+    ///   (振り + 返る → 振り返る).
+    /// - **reading** — the parts read as one (しゃくり + あげる → 噦り上げる),
+    ///   needed because the text writes in kana what the dictionary spells in
+    ///   kanji.
     ///
-    /// The reading signal is the weaker one and is fenced in accordingly: every
-    /// part must be a verb, and every part but the last must already be kana.
-    /// Without that fence it merges そう + する into 相する and こと + し into
-    /// 今年 — adverb-plus-verb and noun-plus-verb runs that happen to *read*
-    /// like a listed word. Verb + verb is the shape the defect actually takes.
+    /// **The reading signal is fenced to verb + verb with kana heads**, or
+    /// そう + する merges into 相する and こと + し into 今年.
     ///
-    /// Three guards apply to both signals. Every part must be a content word,
-    /// or ていた becomes 訂 + 板. **No part may be a proper noun** — the same
-    /// rule `decompose` needs in the other direction, and for the same reason:
-    /// a general dictionary lists no cast member, so a name beside a noun is a
-    /// compound waiting to be invented. And the result must be at least three
-    /// characters, which is what keeps two-character kana homographs out.
+    /// Three guards apply to both: every part a content word (or ていた becomes
+    /// 訂 + 板), **no part a proper noun** (a name beside a noun is a compound
+    /// waiting to be invented), and three characters minimum, which keeps
+    /// two-character kana homographs out.
     ///
-    /// The joined token takes the master's own spelling and reading, so the
-    /// ledger keys it the way every other pass would.
+    /// The joined token takes the master's own spelling and reading.
     fn recompose(&self, tokens: Vec<Token>) -> Vec<Token> {
         if self.lexicon.is_empty() && self.by_reading.is_empty() {
             return tokens;
@@ -338,21 +309,17 @@ struct Joined {
 impl SudachiTokenizer {
     /// The reading of the morpheme's **dictionary form**, not of its surface.
     ///
-    /// `Morpheme::reading_form` is the reading of the text as it appeared:
-    /// 振って gives フッ, 知らない gives シラ. Pairing that with
-    /// `dictionary_form` — which is the lemma, 振る — produces a term nobody
-    /// ever wrote, 振る/ふっ, and worse, splits one word across as many ledger
-    /// rows as it has inflected stems (知る appeared as しる, しら and しっ,
-    /// each with its own counts and its own status).
+    /// `Morpheme::reading_form` is the reading of the surface: 振って gives フッ.
+    /// Paired with `dictionary_form` (the lemma, 振る) that produces 振る/ふっ,
+    /// a term nobody ever wrote, and splits one word across as many rows as it
+    /// has inflected stems — 知る appeared as しる, しら and しっ.
     ///
-    /// Sudachi already knows the answer: a conjugated entry carries the word id
-    /// of its dictionary form, so the reading is one lexicon lookup away. It
-    /// resolves that id itself for the *surface* of the dictionary form and
-    /// stops there, which is why this has to ask for the reading separately.
+    /// Sudachi knows the answer: a conjugated entry carries the word id of its
+    /// dictionary form. It resolves that id for the *surface* of the dictionary
+    /// form and stops, so the reading has to be asked for separately.
     ///
-    /// Falls back to the surface reading whenever there is no dictionary form
-    /// to consult (out-of-vocabulary morphemes, or an entry that is already its
-    /// own lemma) — for those the two are the same thing anyway.
+    /// Falls back to the surface reading when there is no dictionary form to
+    /// consult, where the two are the same thing anyway.
     fn dictionary_form_reading<T: DictionaryAccess>(&self, m: &Morpheme<'_, T>) -> String {
         let surface_reading = || m.reading_form().to_string();
         let wid = m.word_id();
@@ -503,11 +470,9 @@ fn is_affix(pos: &str) -> bool {
 /// The master dictionary, asked the only question the affix rule needs: does it
 /// list this `(headword, reading)`?
 ///
-/// Keyed the way `knowledge::vocabulary::Term` is keyed, and it has to be: a
-/// kana-only headword stores no reading there (ちゃん is one fact, not two), so
-/// asking for a pair would never match one. The reading is folded to hiragana
-/// for the same reason — Sudachi emits katakana, the dictionaries hold
-/// hiragana.
+/// Keyed the way `knowledge::vocabulary::Term` is, and it has to be: a kana-only
+/// headword stores no reading there, so asking for a pair would never match one.
+/// The reading folds to hiragana for the same reason.
 pub struct MasterWords {
     headwords: HashSet<String>,
     pairs: HashSet<(String, String)>,
@@ -536,17 +501,14 @@ impl MasterWords {
 /// Whether a token is one the ledger counts as a word.
 ///
 /// Content words, plus **an affix the master dictionary lists under the reading
-/// it was used with**. That second clause is not a special case, it is the
-/// decomposition rule finishing its sentence: 私達 is not a Sankoku entry, so it
-/// arrives as 私 + 達 — and 達/たち *is* a Sankoku entry, so throwing it away
-/// credited half the compound to nothing, exactly as 懲罰房 did. Sudachi tags
-/// the trailing part 接尾辞 rather than 名詞, which is the only reason the
-/// content-word gate ever saw a difference between the two halves.
+/// it was used with**. Not a special case: 私達 is not a Sankoku entry so it
+/// arrives as 私 + 達, and 達/たち *is* one, so discarding it credited half the
+/// compound to nothing — the same defect as 懲罰房, arriving through the
+/// part-of-speech tag instead.
 ///
-/// The pair test is the whole fence, and it is the same authority every other
-/// decision here answers to. It admits 達/たち, 御/お, 的/てき, 鬼/き; it refuses
-/// げ, ぷ, さん/さーん and 日/じつ — 40 terms over 198 occurrences in the first
-/// 16,325 lines — without a stoplist to maintain or a shape to guess at.
+/// The pair test is the whole fence. It admits 達/たち, 御/お, 的/てき, 鬼/き and
+/// refuses げ, ぷ, さん/さーん, 日/じつ, with no stoplist to maintain. The pair,
+/// because 鬼/き and 鬼/おに are both Sankoku entries.
 pub fn counts_as_word(t: &Token, master: &MasterWords) -> bool {
     is_content_word(&t.pos) || (is_affix(&t.pos) && master.lists(&t.base_form, &t.reading))
 }

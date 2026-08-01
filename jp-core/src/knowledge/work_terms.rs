@@ -9,16 +9,14 @@
 //! Keyed on `(headword, reading)` like the ledger, so the join to it is exact —
 //! `word_days`' lemma key would let 辛い borrow the status of its homograph.
 //!
-//! Two figures come out of this, and they are not interchangeable:
+//! Two figures, not interchangeable:
 //!
-//! - **by type** — of the distinct words in this work, how many are known. That
-//!   is how much studying it needs.
-//! - **by token** — of its running text, how much is known. That is how it will
-//!   *feel* to read.
+//! - **by type** — of the distinct words in this work, how many are known: how
+//!   much studying it needs.
+//! - **by token** — of its running text, how much is known: how it will *feel*.
 //!
-//! They routinely sit ten points apart, because the words a work repeats are
-//! the common ones. Reporting either alone would answer a question nobody
-//! asked.
+//! They routinely sit ten points apart, because the words a work repeats are the
+//! common ones.
 
 use sqlx::Row;
 
@@ -105,16 +103,13 @@ const IS_WORD: &str = "(v.in_master = 1 OR v.in_name = 1 OR v.in_reference = 1)"
 /// Known: asserted so, mined, **or** known under another reading of the same
 /// headword.
 ///
-/// The last clause exists because the triage queue refuses to ask about a
-/// headword already judged (see `vocabulary::triage_queue`): 皆 was marked
-/// known as みな, so 皆/みんな is never offered and stays `new` forever.
-/// Counting it as unknown here would contradict the page next door — and the
-/// reader's own answer, which was about the word, not the reading.
+/// The last clause matches `vocabulary::triage_queue`, which never offers a
+/// headword already judged: 皆 marked known as みな leaves 皆/みんな `new`
+/// forever, and counting it unknown here would contradict the page next door.
 ///
-/// The cost is a genuine homograph whose readings differ in knownness (空 as
-/// そら but not から) counting as known throughout. That is the same trade the
-/// queue already makes, and making it in one place and not the other is worse
-/// than either choice.
+/// The cost is a genuine homograph whose readings differ in knownness counting
+/// as known throughout — the same trade the queue makes, and making it in one
+/// place but not the other would be worse than either choice.
 const IS_KNOWN: &str = "(v.status = 'known' OR v.mined = 1 OR EXISTS ( \
      SELECT 1 FROM vocabulary o WHERE o.headword = v.headword AND o.status = 'known'))";
 

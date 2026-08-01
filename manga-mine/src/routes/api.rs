@@ -160,7 +160,7 @@ async fn photo_path(state: &AppState, name: &str) -> Result<PathBuf, AppError> {
 }
 
 /// Previously used manga titles, most recent first, persisted as a dotfile in
-/// the inbox (invisible to the queue listing). Filesystem-as-state (ADR-010).
+/// the inbox (invisible to the queue listing) — the filesystem is the state.
 const SOURCES_FILE: &str = ".sources.json";
 const SOURCES_MAX: usize = 30;
 
@@ -439,7 +439,7 @@ pub async fn get_thumbnail(
 
 /// Crop the user-drawn region, OCR it, and return the text split into
 /// tokenized sentences. Nothing is persisted — crop coords and OCR text are
-/// transient (ADR-010).
+/// transient.
 pub async fn ocr_crop(
     State(state): State<AppState>,
     Path(name): Path<String>,
@@ -510,7 +510,7 @@ pub async fn word_preview(
 }
 
 /// Export one card: target word + its sentence + definition + the whole photo
-/// (compressed) as the card image (ADR-006). No audio (ADR-005).
+/// (compressed) as the card image. No audio.
 pub async fn export_card(
     State(state): State<AppState>,
     ClientAddr(client): ClientAddr,
@@ -648,7 +648,7 @@ pub async fn export_card(
 
 /// Marking a photo mined or skipped deletes it — the original still lives in
 /// the phone's gallery and the compressed copy lives in Anki, so keeping
-/// full-quality photos on the server only grows the inbox (amends ADR-010's
+/// full-quality photos on the server only grows the inbox (amends the original
 /// file-move with deletion; the queue-is-the-folder model is unchanged).
 pub async fn mark_photo(
     State(state): State<AppState>,

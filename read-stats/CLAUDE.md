@@ -80,7 +80,7 @@ The ledger (`vocabulary`):
 
 - **Only the reader writes `status`.** Not ingest, not the Anki sync, not the
   lookup sync — a resync must never demote a word marked known, and an encounter
-  count must never promote one (`spec/cold-start.md` Pass 4). Today's writers:
+  count must never promote one. Today's writers:
   `/api/vocab/judge`, `/api/vocab/blacklist-non-words`, the tap in `#read`, and
   the `anki-import` / `jiten-import` / frequency imports.
 - **`new` ≠ `unknown`.** `new` means never judged; collapsing them is
@@ -93,7 +93,7 @@ The ledger (`vocabulary`):
 - **Each ingest sink has its own watermark.** One pass fills `word_days`, the
   ledger and `work_terms`, but their three watermarks move independently. The
   sinks are additive and not idempotent, so a row goes to a sink only when its
-  id is past *that sink's* mark — which is what lets `POST /api/vocab/rebuild`
+  id is past _that sink's_ mark — which is what lets `POST /api/vocab/rebuild`
   re-derive the ledger without double-counting.
 
 Tokenization (all in `jp_core::tokenize`, shared with the highlighter so a tint
@@ -102,14 +102,14 @@ and a ledger row cannot disagree):
 - **A term's reading is the reading of its headword**, not of the surface —
   otherwise 知る splits across しる, しら and しっ.
 - **One word, one row, spelt the way the master dictionary spells it.** Terms
-  key on Sudachi's *normalized* form. Where Sudachi and Sankoku disagree,
+  key on Sudachi's _normalized_ form. Where Sudachi and Sankoku disagree,
   Sankoku wins (`written_form`).
 - **Compounds the master dictionary doesn't list are decomposed into parts it
   does** (`decompose`), and **adjacent parts it lists as one word are rejoined**
   (`recompose`). Names are never decomposed and never rejoined; bare kana is
   excluded from decomposition.
 - **A name is not vocabulary** — 固有名詞 keeps a work's cast out of the ledger.
-  The verdict is per *term* over a whole pass, never per occurrence.
+  The verdict is per _term_ over a whole pass, never per occurrence.
 - **An affix the master dictionary lists is a word.** `counts_as_word` admits
   接尾辞/接頭辞 when the master lists the `(headword, reading)` pair — that test
   is the whole fence, with no stoplist to maintain.
@@ -126,13 +126,13 @@ The reading view:
   `caretPositionFromPoint`, and **nothing in the feed is made clickable**: an
   interactive layer would sit between the reader and the text Yomitan scans.
 - **Marks are drawn, never markup.** `routes/reader/highlight.rs` sends offsets
-  per line and `paintMarks` draws a rectangle per word into a layer *behind* the
+  per line and `paintMarks` draws a rectangle per word into a layer _behind_ the
   text. Yomitan scans this DOM, so one text node per line is a constraint.
   Offsets are UTF-16 code units because that is what a `Range` indexes in.
   Three tiers are painted and `known` is not one of them — the absence of a mark
   is what makes the marks readable — but a `known` span is still sent, since a
   span is also the region a tap judges.
-- **The feed re-pins to the bottom on a new *line*, not on a new `lines`** —
+- **The feed re-pins to the bottom on a new _line_, not on a new `lines`** —
   judging a word rebuilds the array without adding to it, and an id-keyed pin
   kept yanking the word out from under the finger. A reflow re-pins too, on a
   height test (`pinToBottom`), because the web font, a page of history and a
@@ -151,7 +151,7 @@ Mining:
 - **A capture is anchored at the add, not at the capture.** The proxy stamps
   `now_ts()` when `addNote` arrives and passes it as `VN_ANCHOR_TS`. Nothing may
   be awaited in front of the capture: in `enrich_added_note` the CompactDef call
-  runs *alongside* it (`tokio::join!`) with its Anki write after. The two
+  runs _alongside_ it (`tokio::join!`) with its Anki write after. The two
   `updateNoteFields` stay strictly ordered.
 - **An accepted Anki write is not a stored value.** If the note is open in
   Anki's editor, the editor's next save overwrites the field with nothing
@@ -159,7 +159,7 @@ Mining:
   reads the field back. It does not retry — don't open a freshly mined card for
   a few seconds.
 - **The chime is the only report a mine gets.** `services::chime::mine_complete`
-  plays only when the capture reported `ok` *and* the CompactDef write verified.
+  plays only when the capture reported `ok` _and_ the CompactDef write verified.
   Keep it that strict: silence is the signal to check the log.
 - **The audio window's next-line bound is a hard cut, and that is a known
   defect.** When the next line is unvoiced the previous voice legitimately
@@ -169,17 +169,6 @@ Mining:
   it needs a real session's data first.
 - **Note ids are epoch milliseconds**, so they double as card creation times.
 - **Only engagement actions leave `reader_marks`.** Explain does; clear does not.
-
-## Not built
-
-Per-work **difficulty**, two measures side by side: *text difficulty* (share of
-tokens outside the frequency core, share of non-jōyō kanji, mean sentence
-length) which stays put as the reader improves, against *measured cost*
-(lookups/1k and chars/hour vs baseline) which moves. Plotting every work one
-against the other puts engagement in the residual — a work read faster than its
-prose predicts. Neither figure exists for a work with no reading behind it.
-
-Also unbuilt: i+1 marking, and a "read often, never carded" list on `#kanji`.
 
 ## Working on it
 
@@ -196,7 +185,7 @@ scripts/dev-instance.sh browser         # the SPA actually renders
 
 For a refactor that must not change behaviour, the snapshot diff is the proof.
 The browser check exists because the client is unbundled ES modules loaded
-straight from disk: a bad import path renders *nothing at all* while every JSON
+straight from disk: a bad import path renders _nothing at all_ while every JSON
 endpoint still passes.
 
 `run` holds the terminal and has no `stop`, so a backgrounded instance outlives
@@ -230,8 +219,8 @@ add to when the question is "does the SQL select what the derivation assumes".
   replaces the tab with `work-detail.js` over `GET /api/works/detail`, keyed by
   title. A work with no reading behind it does not appear. Logged articles
   collapse into one `Articles` row (`stats::work::ARTICLES_WORK`). The log form
-  has two modes over one POST: *pages* estimates chars from a page count,
-  *paste text* counts the article exactly, via `/api/text/count` rather than a
+  has two modes over one POST: _pages_ estimates chars from a page count,
+  _paste text_ counts the article exactly, via `/api/text/count` rather than a
   `length` in JS.
 - **`#tokenize` reports the tokenizer, not the ledger's folding.**
   `Analyzed.reading` is the reading the token was produced with; where the

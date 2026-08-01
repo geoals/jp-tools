@@ -2,8 +2,7 @@
 //! call that emits it: the CompactDef gloss (`compactdef.rs`) and the reader's
 //! explain button (`llm.rs`). Both used to carry their own paraphrase of these
 //! definitions and had already drifted apart; this is the single source of truth
-//! so a wording change lands everywhere at once. The prose in
-//! `spec/anki-compactdef.md` documents the reasoning; keep it in sync with this.
+//! so a wording change lands everywhere at once.
 //!
 //! FAMILIARITY uses the sharpened definitions: the axis turns on the single
 //! question "can you be certain EVERY native adult recognizes it?", with COMMON

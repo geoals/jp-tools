@@ -14,8 +14,7 @@
 //!
 //! The wholesale three mirror a table that already owns the truth. Encounters
 //! are incremental because re-tokenizing all of `lines` on every Anki refresh
-//! would be minutes of CPU. `status` is assertions only —
-//! `spec/knowledge-db.md`.
+//! would be minutes of CPU. `status` is assertions only.
 
 use std::collections::HashMap;
 
@@ -26,11 +25,10 @@ use crate::text::kana;
 
 /// What counts toward "I know N words", as a SQL predicate.
 ///
-/// One definition, used by every figure that reports a vocabulary size, so
-/// they cannot drift apart. The master dictionary's answer, **or** the
-/// reader's override where the master has nothing to say: Sankoku carries no
-/// 冪等性 and no 冪等 either, and admitting JMdict instead would drag in every
-/// idiom and orthographic variant. See the migration note on `promoted`.
+/// One definition, used by every figure that reports a vocabulary size, so they
+/// cannot drift apart. The master dictionary's answer, **or** the reader's
+/// override where the master has nothing to say — Sankoku carries no 冪等性, and
+/// admitting JMdict instead would drag in every idiom and variant spelling.
 pub const COUNTS_AS_VOCAB: &str = "(in_master = 1 OR promoted = 1)";
 
 /// What the reader has asserted about a term. Never set by a sync.
@@ -79,12 +77,9 @@ impl Status {
         matches!(self, Status::Known)
     }
 
-    /// `learning` and `name` were removed in 2026-07: both carried zero rows.
-    /// `learning` duplicated `mined`, which the Anki sync already maintains
-    /// beside `status`; a name is kept out of the ledger at ingest by Sudachi's
-    /// 固有名詞 subclass, so a status for one had nothing to mark. Anything
-    /// still spelling them in the database reads back as `new` via [`parse`],
-    /// which is the safe answer.
+    /// `learning` and `name` were removed: `learning` duplicated `mined`, and
+    /// names never reach the ledger. Either still in the database reads back as
+    /// `new` via [`parse`].
     pub const ALL: [Status; 4] = [
         Status::New,
         Status::Known,
@@ -105,17 +100,13 @@ pub struct Term {
 }
 
 impl Term {
-    /// Normalize a `(headword, reading)` pair as the tokenizer produced it.
+    /// Normalize a `(headword, reading)` pair, so the same word lands on one
+    /// row whether it came from a VN line, a pasted article or an Anki card:
     ///
-    /// Two rules, both of which exist so that the same word ingested from a VN
-    /// line, a pasted article and an Anki card lands on one row:
-    ///
-    /// 1. The reading is folded to hiragana. Sudachi emits katakana, the
+    /// 1. The reading folds to hiragana — Sudachi emits katakana, the
     ///    dictionaries hold hiragana, and the ledger joins them.
-    /// 2. A kana-only headword stores an empty reading. There the two strings
-    ///    are the same fact; keeping both would make ください/くださいa
-    ///    different row from ください alone, depending on which writer got
-    ///    there first.
+    /// 2. A kana-only headword stores an empty reading, since there the two
+    ///    strings are the same fact.
     pub fn new(headword: impl Into<String>, reading: &str) -> Term {
         let headword = headword.into();
         let reading = if kana::is_all_kana(&headword) {
@@ -209,9 +200,8 @@ pub struct Encounter {
 /// `encounter_count` and cannot tell a re-ingest from new reading.
 ///
 /// `status` is untouched on an existing row, including when it is still `new`:
-/// encountering a word again says nothing about whether it is known, which is
-/// exactly cold-start.md's Pass 4 caveat. Promotion is a decision the reader
-/// makes in the triage UI, never something ingest does behind them.
+/// meeting a word again says nothing about whether it is known. Promotion is a
+/// decision the reader makes, never something ingest does behind them.
 pub async fn record_encounters(k: &Knowledge, batch: &[Encounter]) -> Result<(), sqlx::Error> {
     if batch.is_empty() {
         return Ok(());
@@ -242,12 +232,10 @@ pub async fn record_encounters(k: &Knowledge, batch: &[Encounter]) -> Result<(),
 
 /// Mirror `anki_notes` into the `mined` flag, wholesale.
 ///
-/// Matched on headword alone, because that is all Anki has: the VocabKanji
-/// field is a dictionary form with no reading beside it. A homograph therefore
-/// marks every reading of itself as mined — 辛い mined as からい also shows
-/// mined under つらい. That is the honest limit of the source, and it fails in
-/// the safe direction for the highlighter (a mined word is not highlighted);
-/// the fix, if it ever matters, is a reading on the card, not a guess here.
+/// Matched on headword alone, because that is all Anki has — so a homograph
+/// marks every reading of itself as mined. That is the limit of the source, and
+/// it fails safe for the highlighter; the fix would be a reading on the card,
+/// not a guess here.
 ///
 /// Returns how many rows now carry the flag.
 pub async fn sync_mined(k: &Knowledge) -> Result<i64, sqlx::Error> {
@@ -270,11 +258,9 @@ pub async fn sync_mined(k: &Knowledge) -> Result<i64, sqlx::Error> {
 
 /// Recompute `lookup_count` from the `lookups` table, wholesale.
 ///
-/// Also matched on headword alone: Yomitan sends a dictionary form to
-/// AnkiConnect and no reading, so a homograph's lookups can't be split between
-/// its readings. Recomputed rather than incremented so that discarding lines
-/// or fixing the capture guard is reflected on the next refresh instead of
-/// leaving a count that can only grow.
+/// Also matched on headword alone, since Yomitan sends no reading. Recomputed
+/// rather than incremented, so discarding lines or fixing the capture guard is
+/// reflected on the next refresh instead of leaving a count that only grows.
 pub async fn sync_lookup_counts(k: &Knowledge) -> Result<(), sqlx::Error> {
     sqlx::query(
         "UPDATE vocabulary SET lookup_count = \
@@ -288,22 +274,16 @@ pub async fn sync_lookup_counts(k: &Knowledge) -> Result<(), sqlx::Error> {
 /// Recompute the three dictionary flags from `dictionary_entries` + the roles.
 ///
 /// A term matches a dictionary if the dictionary lists its headword. The
-/// reading is deliberately not required to match: a dictionary that spells a
-/// reading differently (送り仮名 variants, an entry with no reading at all)
-/// would otherwise make a real word look like tokenizer noise, and the flags
-/// exist to answer "is this a word", not "is this exact pair attested".
+/// reading deliberately need not match: a dictionary spelling one differently
+/// would make a real word look like tokenizer noise, and these flags answer "is
+/// this a word", not "is this exact pair attested".
 ///
-/// **Each subquery must be able to seek `idx_dictionary_entries_lookup`.**
-/// That index is `(dictionary_id, term)`, so filtering on `d.role` through a
-/// join leaves its leading column unconstrained and SQLite scans all 500k
-/// entries *per ledger row*, three times over. Resolving the role to its ids
-/// first turns each subquery into a seek on `(dictionary_id = ? AND term = ?)`.
-///
-/// Not a micro-optimisation: against the real database — 8,276 ledger rows,
-/// 518,744 entries — the join form took **six minutes**, and it holds the
-/// write lock throughout, so every triage submit and Anki sync during it failed
-/// with "database is locked". That is how it was found. The rewrite runs in
-/// 15 ms.
+/// **Each subquery must be able to seek `idx_dictionary_entries_lookup`.** That
+/// index is `(dictionary_id, term)`, so filtering on `d.role` through a join
+/// leaves its leading column unconstrained and SQLite scans every entry per
+/// ledger row. Resolving the role to its ids first makes each subquery a seek.
+/// The join form took six minutes and held the write lock throughout, failing
+/// every concurrent write with "database is locked"; this runs in 15 ms.
 pub async fn refresh_dictionary_flags(k: &Knowledge) -> Result<(), sqlx::Error> {
     // Two EXISTS rather than one with an OR inside: each has to be able to
     // seek its own index, and an OR across two columns leaves SQLite scanning.
@@ -403,16 +383,12 @@ pub struct FrequencyCandidate {
 }
 
 /// The shared filter behind both frequency-triage functions: BCCWJ rows within
-/// `dictionary_id`, restricted to master-dictionary terms (the same rule the
-/// triage queue uses, so a frequency word not in the master scale can't be
-/// marked known here either), excluding any headword already carrying a
-/// non-`new` status under *any* of its readings — the same "don't ask about a
-/// word twice" rule `UNJUDGED_HEADWORD` applies, but simpler here since no
-/// ledger row need exist yet for a term this pass has never seen.
+/// `dictionary_id`, restricted to master-dictionary terms, excluding any
+/// headword already judged under *any* of its readings — `UNJUDGED_HEADWORD`'s
+/// rule, simpler here because no ledger row need exist yet.
 ///
-/// Both EXISTS clauses seek `idx_dictionary_entries_lookup`/
-/// `idx_vocabulary_headword` rather than scanning — see the perf note on
-/// [`refresh_dictionary_flags`] for why that distinction matters here too.
+/// Both EXISTS clauses must seek rather than scan; see the note on
+/// [`refresh_dictionary_flags`].
 const FREQUENCY_FILTER: &str = "df.dictionary_id = ? \
      AND EXISTS (SELECT 1 FROM dictionary_entries de \
                  WHERE de.dictionary_id = ? AND de.term = df.term) \
@@ -422,14 +398,10 @@ const FREQUENCY_FILTER: &str = "df.dictionary_id = ? \
 /// How many pending terms at a threshold a commit would actually write, and
 /// how many it would skip as homographs.
 ///
-/// Kept as two numbers rather than one "pending" count because a term with no
-/// ledger row yet stays pending forever once it's a homograph — nothing here
-/// ever resolves one, so an ambiguous term reappears at every future preview
-/// or commit at the same threshold. A single count conflated the two and let
-/// a "mark all N known" button promise work a second commit could not do: hit
-/// once, everything committable is gone, and what's left is only the
-/// standing homograph tail — the same N showing up again looks like the
-/// button did nothing, when what happened is it did exactly what it could.
+/// Two numbers rather than one, because a homograph stays pending forever —
+/// nothing here resolves one. Conflated, a "mark all N known" button promised
+/// work a second commit could not do: after the first, the same N reappears as
+/// the standing homograph tail and the button looks broken.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct FrequencyPending {
     pub committable: i64,
@@ -441,19 +413,12 @@ pub struct FrequencyPending {
 /// for.
 ///
 /// **The reading-count subquery is pinned to `idx_dictionary_entries_lookup`
-/// with `INDEXED BY`, and must stay pinned.** `COUNT(DISTINCT de.reading)`
-/// gives the planner a reason to prefer `idx_dictionary_entries_reading`
-/// instead — that index is keyed `(dictionary_id, reading)`, so it can only
-/// seek on `dictionary_id`, and the `term = df.term` filter becomes a scan of
-/// every master-dictionary entry for that dictionary, once per BCCWJ row this
-/// pass considers. Caught here rather than shipped: `EXPLAIN QUERY PLAN`
-/// showed `SEARCH de USING INDEX idx_dictionary_entries_reading
-/// (dictionary_id=?)` — no `term` bound at all — and the query itself hung
-/// past a 15s timeout at a 6,000-word threshold against the real database.
-/// Forcing the lookup index turned that into 0.6s. Exactly the class of bug
-/// [`refresh_dictionary_flags`]'s doc comment warns about: check `EXPLAIN
-/// QUERY PLAN` says SEARCH with both key columns bound, not a bare
-/// `dictionary_id` seek standing in for one.
+/// with `INDEXED BY`, and must stay pinned.** `COUNT(DISTINCT de.reading)` gives
+/// the planner a reason to prefer `idx_dictionary_entries_reading`, which is
+/// keyed `(dictionary_id, reading)` and so can only seek on `dictionary_id` —
+/// turning the `term` filter into a scan per BCCWJ row. Unpinned this hung past
+/// 15s; pinned it runs in 0.6s. Check `EXPLAIN QUERY PLAN` says SEARCH with
+/// **both** key columns bound, not a bare `dictionary_id` seek.
 pub async fn frequency_pending(
     k: &Knowledge,
     bccwj_id: i64,
@@ -485,23 +450,14 @@ pub async fn frequency_pending(
     })
 }
 
-/// A page of the frequency-triage candidates, commonest (lowest rank) first —
-/// **committable ones only**. A homograph is excluded here, not merely
-/// flagged, for two reasons: nothing this pass can do with it (it cannot be
-/// written without guessing a reading), and a page is worth exactly as much
-/// as the rows on it can be acted on — spending page slots on rows the reader
-/// has to click past for no gain is the friction this pass exists to remove.
-/// [`frequency_pending`]'s `ambiguous` count is where that word is still
-/// visible, as a total rather than a name.
+/// A page of frequency-triage candidates, commonest first — **committable ones
+/// only**. A homograph is excluded rather than flagged: it cannot be written
+/// without guessing a reading, so a page slot spent on one is a row the reader
+/// clicks past for nothing. [`frequency_pending`]'s `ambiguous` count is where
+/// it stays visible, as a total.
 ///
-/// Both extra subqueries resolve the reading count and the reading itself
-/// through `idx_dictionary_entries_lookup`, `INDEXED BY`-pinned for the same
-/// reason [`frequency_pending`]'s is: `COUNT`/`MIN` over `reading` gives the
-/// planner a reason to prefer `idx_dictionary_entries_reading`, which cannot
-/// seek on `term` and turns each row into a scan of the whole master
-/// dictionary. That regression is exactly what sent a next-page click into
-/// several extra seconds before this was pinned — on top of what committing a
-/// reading per row in Rust, one round trip at a time, already cost.
+/// Both extra subqueries are `INDEXED BY`-pinned to
+/// `idx_dictionary_entries_lookup` for the reason [`frequency_pending`]'s is.
 pub async fn frequency_queue(
     k: &Knowledge,
     bccwj_id: i64,
@@ -554,14 +510,12 @@ pub async fn fetch(k: &Knowledge, term: &Term) -> Result<Option<VocabRow>, sqlx:
 
 /// The rows for a handful of terms at once, keyed by term.
 ///
-/// For the reader's highlighter, which asks about the dozen or so words in one
-/// hooked line and needs the answer between the line arriving and it being
-/// drawn. One query rather than a [`fetch`] per token: the round trips, not the
-/// index seeks, are what would show up beside a 30ms poll.
+/// For the highlighter, which asks about a line's dozen words between the line
+/// arriving and being drawn. One query rather than a [`fetch`] per token: the
+/// round trips are what would show beside a 30ms poll.
 ///
-/// Terms with no row are simply absent from the map — a word nobody has
-/// ingested yet is not an error, it is the ordinary state of a line that was
-/// hooked a second ago.
+/// Terms with no row are absent from the map — that is the ordinary state of a
+/// line hooked a second ago, not an error.
 pub async fn fetch_many(
     k: &Knowledge,
     terms: &[Term],
@@ -587,24 +541,19 @@ pub async fn fetch_many(
 /// which one.
 ///
 /// The lookup behind "a word judged under one reading is not judged again" —
-/// `UNJUDGED_HEADWORD`'s rule and `work_terms::IS_KNOWN`'s, for a caller
-/// holding terms rather than writing SQL. The ledger keys on
-/// `(headword, reading)` for the homograph case, but most pairs it produces are
-/// one word the dictionary lists twice, and Sudachi's reading for an inflected
-/// form is a third way to land on a second row: 通れ resolves to the headword
-/// 通る with the reading とおれる, which is a row of its own beside 通る/とおる.
-/// Anything that shows the reader a *word* should treat them as one.
+/// `UNJUDGED_HEADWORD`'s rule and `work_terms::IS_KNOWN`'s, for a caller holding
+/// terms rather than writing SQL. The ledger keys on `(headword, reading)` for
+/// homographs, but most pairs are one word the dictionary lists twice, and an
+/// inflected form is a third way to a second row (通れ → 通る/とおれる, beside
+/// 通る/とおる).
 ///
-/// The reading comes back with it because a caller that lets the reader *act*
-/// on the word needs to know which row carries the assertion: taking 通る back
-/// has to write to 通る/とおる, the row that says known, not to the 通る/とおれる
-/// the tokenizer happened to produce — which would leave the word looking
-/// exactly as it did and the ledger still claiming it is known. Readings are
-/// ordered so the answer is stable when a headword is known under two.
+/// The reading comes back too, because a caller that lets the reader *act* on
+/// the word must write to the row carrying the assertion — taking 通る back has
+/// to hit 通る/とおる, not whatever the tokenizer produced. Readings are ordered
+/// so the answer is stable when a headword is known under two.
 ///
-/// Deliberately not [`fetch_many`] with a looser key: this asks a different
-/// question ("is this word known at all") and a caller wanting the exact row's
-/// status still gets it from there.
+/// Not [`fetch_many`] with a looser key: this asks whether the *word* is known
+/// at all, and a caller wanting one row's status still gets it from there.
 pub async fn known_readings(
     k: &Knowledge,
     headwords: &[String],
@@ -645,34 +594,24 @@ pub async fn fetch_all(k: &Knowledge) -> Result<Vec<VocabRow>, sqlx::Error> {
 
 /// The triage queue: untriaged vocabulary, most-encountered first.
 ///
-/// Three filters, each of which is the difference between a queue worth working
-/// and one that wastes keystrokes:
+/// Three filters:
 ///
 /// - **`status = 'new'`** — only the never-judged. Re-asking about a word the
-///   reader has already ruled on is how a triage pass loses their trust.
-/// - **[`COUNTS_AS_VOCAB`]** — only master-dictionary terms, plus the ones the
-///   reader promoted where the master has nothing to say. The rest are Jitendex
-///   phrase headwords, names, and tokenizer noise (`っっ`, `あああ`): they belong
-///   in the ledger, but judging them one at a time is pointless, and they are
-///   not vocabulary by the definition the scale uses. `spec/knowledge-db.md`.
+///   reader has ruled on is how a triage pass loses their trust.
+/// - **[`COUNTS_AS_VOCAB`]** — master-dictionary terms plus the reader's
+///   promotions. The rest are phrase headwords, names and tokenizer noise:
+///   they belong in the ledger, but not in a queue judged one row at a time.
 /// - **`encounter_count >= min_encounters`** — a word met twice is not yet
 ///   evidence of anything.
 ///
-/// Ordered by encounter count because that is what makes the pass pay: the
-/// words met most are the ones every downstream feature will hit most.
-/// A word the reader has already judged under one of its readings is not
-/// offered again under another.
+/// Ordered by encounter count, since the words met most are the ones every
+/// downstream feature hits most.
 ///
-/// The ledger keys on `(headword, reading)` because 空 is そら or から and
-/// judging one must not judge the other. But most of the pairs that produces
-/// are not homographs — they are one word the dictionary lists twice (言う as
-/// いう and ゆう, 皆 as みな and みんな), and offering the second after the
-/// reader has judged the first asks them to rule on the same word again.
-///
-/// This only stops the asking. It writes nothing: the second row stays `new`,
-/// which is true — nobody judged *it* — and a reader who wants it judged can
-/// still reach it. Inheriting the status instead would be a sync writing
-/// `status`, which nothing here is allowed to do.
+/// **A word judged under one of its readings is not offered under another.**
+/// The ledger keys on `(headword, reading)` because 空 is そら or から, but most
+/// pairs are one word the dictionary lists twice (言う as いう and ゆう). This
+/// only stops the asking — the second row stays `new`, which is true, since
+/// inheriting the status would be a sync writing `status`.
 const UNJUDGED_HEADWORD: &str = "NOT EXISTS (SELECT 1 FROM vocabulary o \
      WHERE o.headword = vocabulary.headword AND o.reading != vocabulary.reading \
        AND o.status != 'new')";
@@ -720,10 +659,9 @@ pub async fn triage_queue(
 /// How many rows the queue would offer at a given threshold, and how many of
 /// those the preselect rule would default to `known`.
 ///
-/// Separate from [`triage_queue`] because the UI needs the totals to show what
-/// a threshold change does *before* paging through it — a `limit`ed queue
-/// cannot answer "how many are left". `since_ts` must match the queue's, or
-/// the header would count a different batch from the one on screen.
+/// Separate from [`triage_queue`] because a `limit`ed queue cannot answer "how
+/// many are left". `since_ts` must match the queue's, or the header counts a
+/// different batch from the one on screen.
 pub async fn triage_pending(
     k: &Knowledge,
     min_encounters: i64,
@@ -746,40 +684,29 @@ pub async fn triage_pending(
 /// Whether the triage default would call this term known.
 ///
 /// `encounter_count` alone cannot tell "met 47 times and read straight past it"
-/// from "met 47 times and looked up on 12 of them" — and the second is the
-/// profile of a word the reader does *not* have. So a single lookup disqualifies
-/// the default, whatever the encounter count.
+/// from "met 47 times and looked up twelve of them", and the second is a word
+/// the reader does *not* have. So **a single lookup disqualifies the default**,
+/// whatever the encounter count.
 ///
-/// This is deliberately the same predicate as `spec/cold-start.md`'s Pass 4
-/// review query (`status='new' AND encounter_count > n AND lookup_count = 0`),
-/// so the ongoing pass is a re-run of this one rather than a second rule that
-/// can drift from it.
-///
-/// It decides a *default*, never a write: the reader submits the judgement.
+/// It decides a default, never a write: the reader submits the judgement.
 pub fn preselects_known(row: &VocabRow, min_encounters: i64) -> bool {
     row.encounter_count >= min_encounters && row.lookup_count == 0
 }
 
 /// Assert a different status per term, in one transaction.
 ///
-/// [`set_status_bulk`]'s sibling, for the triage submit: a batch is a mix of
-/// `known` and `unknown` and has to land atomically, because a partially
-/// applied sweep leaves the reader unable to tell which rows they still owe an
-/// answer for.
+/// [`set_status_bulk`]'s sibling, for the triage submit: a batch mixes `known`
+/// and `unknown` and must land atomically, or the reader cannot tell which rows
+/// they still owe an answer for.
 /// Assert `status` only where nothing has been asserted yet.
 ///
-/// The write a *bulk seed* wants, as against [`set_status_each`]'s write,
-/// which a person clicking a row wants. A seed carries thousands of
-/// judgements made somewhere else and months ago; a row already saying
-/// `unknown` carries one made here, with the word on screen. The seed must
-/// not overrule it — the first jiten import quietly turned 16 `unknown` rows
-/// into `known`, which is exactly the demotion-in-reverse that
-/// "only the reader writes status" exists to prevent.
+/// The write a *bulk seed* wants, against [`set_status_each`]'s, which is what
+/// a person clicking a row wants. A seed carries thousands of judgements made
+/// elsewhere months ago; a row saying `unknown` carries one made here with the
+/// word on screen, and the seed must not overrule it.
 ///
-/// So an existing row is written only when it is still `new`. Rows that do
-/// not exist are created. That also makes the import idempotent and
-/// order-independent: running it twice, or after any other pass, cannot
-/// change an answer that is already there.
+/// So an existing row is written only while still `new`, and missing rows are
+/// created. That also makes the import idempotent and order-independent.
 pub async fn seed_status_each(
     k: &Knowledge,
     judgements: &[(Term, Status)],
@@ -841,16 +768,14 @@ pub async fn set_status_each(
 /// Move a judgement from a key the ingest no longer produces onto the one it
 /// does, and delete the old row.
 ///
-/// Re-tokenization strands assertions. When the ledger began keying on
-/// Sudachi's *normalized* form, いっぱい and あげる became 一杯 and 上げる, and
-/// 209 words the reader had marked known were left on rows nothing writes to
-/// any more — present, correct, and attached to a spelling the ingest has
-/// stopped producing.
+/// Re-tokenization strands assertions: when the ledger began keying on
+/// Sudachi's *normalized* form, いっぱい became 一杯 and every judgement on the
+/// old spelling was left on a row nothing writes to any more.
 ///
-/// Only the judgement moves: the counts on a stranded row are zero by
-/// definition (the rebuild recomputed them onto the new key). A target that
-/// already carries its own assertion keeps it — this repairs a key change, it
-/// does not arbitrate between two things the reader said.
+/// Only the judgement moves — a stranded row's counts are zero by definition,
+/// the rebuild having recomputed them onto the new key. A target carrying its
+/// own assertion keeps it: this repairs a key change, it does not arbitrate
+/// between two things the reader said.
 ///
 /// Returns whether anything moved.
 pub async fn carry_judgement(k: &Knowledge, from: &Term, into: &Term) -> Result<bool, sqlx::Error> {
@@ -910,16 +835,12 @@ pub async fn stranded_judgements(k: &Knowledge) -> Result<Vec<VocabRow>, sqlx::E
 
 /// Drop rows a rebuild left with nothing behind them.
 ///
-/// After `reset_vocabulary` + a re-ingest, a row that ends on zero encounters
-/// is one the current tokenizer no longer produces — a proper noun now that
-/// names are excluded, or a term a re-tokenization split differently. Keeping
-/// it would leave the ledger's totals counting words that are not in the
-/// reading any more.
+/// After `reset_vocabulary` plus a re-ingest, a row on zero encounters is one
+/// the current tokenizer no longer produces, and keeping it leaves the totals
+/// counting words that are not in the reading.
 ///
-/// Deletes only what nobody has said anything about: never judged (`new`) and
-/// not in Anki. A reader's assertion and a mined card both outlive the counts,
-/// which is the same rule that lets a rebuild zero the aggregates in the first
-/// place.
+/// Deletes only what nobody has said anything about: never judged and not in
+/// Anki. An assertion and a mined card both outlive the counts.
 pub async fn prune_untouched(k: &Knowledge) -> Result<u64, sqlx::Error> {
     Ok(sqlx::query(
         "DELETE FROM vocabulary \
@@ -933,10 +854,9 @@ pub async fn prune_untouched(k: &Knowledge) -> Result<u64, sqlx::Error> {
 /// The rows [`blacklist_non_words`] would hit, commonest first, one page at a
 /// time.
 ///
-/// A bulk write the reader cannot see before it lands asks them to trust a
-/// predicate they have never been shown. This is that predicate, as a list —
-/// the same `WHERE`, and every row of it reachable, because "the top 60"
-/// answers whether the head looks like noise and not whether the tail does.
+/// A bulk write the reader cannot see first asks them to trust a predicate blind.
+/// Same `WHERE`, every row reachable by paging — the tail is the part in
+/// question, not the head.
 pub async fn non_words(
     k: &Knowledge,
     limit: i64,
@@ -967,11 +887,9 @@ pub async fn non_words_total(k: &Knowledge) -> Result<i64, sqlx::Error> {
 
 /// Bulk-`blacklisted` the non-vocabulary tail: rows no dictionary calls a word.
 ///
-/// The counterpart to the queue's `in_master` filter — these are what it
-/// excludes, and the only useful action on them is to stop them being offered.
-/// The test is the negation of [`VocabRow::is_word`], the lenient one, so this
-/// hits only what *nothing* recognizes: tokenizer noise, not obscure vocabulary
-/// and not names.
+/// The counterpart to the queue's `in_master` filter. The test is the negation
+/// of [`VocabRow::is_word`], the lenient one, so this hits only what *nothing*
+/// recognizes: tokenizer noise, not obscure vocabulary and not names.
 pub async fn blacklist_non_words(k: &Knowledge, ts: f64) -> Result<u64, sqlx::Error> {
     let n = sqlx::query(
         "UPDATE vocabulary SET status = 'blacklisted', status_ts = ?, \
@@ -987,7 +905,7 @@ pub async fn blacklist_non_words(k: &Knowledge, ts: f64) -> Result<u64, sqlx::Er
 
 /// How many rows sit in each status, and how many of those count toward the
 /// vocabulary scale (master-dictionary terms only — see
-/// `spec/knowledge-db.md`).
+/// the master scale).
 #[derive(Debug, Clone, Default)]
 pub struct StatusCount {
     pub status: String,
@@ -1015,20 +933,17 @@ pub async fn status_counts(k: &Knowledge) -> Result<Vec<StatusCount>, sqlx::Erro
 
 /// A term that would count toward the vocabulary scale if the reader said so.
 ///
-/// The escape hatch's queue. Only two things ever put a term here, and both
-/// are evidence the reader cares about it:
+/// The escape hatch's queue. Two things put a term here, both evidence the
+/// reader cares about it:
 ///
-/// - **it was mined** — a card exists, which is the reader claiming the word.
-///   This is the main source, and structurally the *only* way a non-master
-///   term can reach them at all: the triage queue and the periodic sweep both
-///   gate on the vocabulary predicate, so a word Sankoku does not list can
-///   never be offered by reading-based triage.
+/// - **it was mined** — a card exists. Structurally the only way a non-master
+///   term reaches them at all, since every reading-based queue gates on the
+///   vocabulary predicate.
 /// - **it was read often** — 懲罰房 was met 61 times and credited to nothing,
-///   because Sudachi tags it a place name and so it is never decomposed into
-///   parts the master dictionary does list.
+///   Sudachi tagging it a place name so it is never decomposed.
 ///
-/// Deliberately not "every non-master term": most of those are tokenizer
-/// noise, and the blacklist bulk action exists for them.
+/// Not "every non-master term": most of those are tokenizer noise, and the
+/// blacklist bulk action exists for them.
 #[derive(Debug, Clone)]
 pub struct PromotionCandidate {
     pub term: Term,
@@ -1086,10 +1001,9 @@ pub async fn promotion_pending(k: &Knowledge, min_encounters: i64) -> Result<i64
 
 /// Count these terms as vocabulary though no master dictionary lists them.
 ///
-/// An assertion, like `status`: only ever written from a request the reader
-/// made. Never sets `status` as a side effect — promoting 冪等性 says it is a
-/// word, not that it is known, and the two questions have different answers
-/// for anything still in the queue.
+/// An assertion like `status`: only ever written from a request the reader made.
+/// Never sets `status` as a side effect — promoting 冪等性 says it is a word,
+/// not that it is known.
 pub async fn set_promoted(
     k: &Knowledge,
     terms: &[Term],
@@ -1124,27 +1038,21 @@ pub struct ReadingRepair {
 
 /// Re-key the empty-reading rows that should never have had one.
 ///
-/// Pass 1 stores an empty reading when the master dictionary offers no
-/// candidate. For a kana headword that is correct and is the ledger's own
-/// convention. For a *kanji* headword it is a defect with two shapes, both
-/// found in live data:
+/// The Anki import stores an empty reading when the master dictionary offers no
+/// candidate. For a kana headword that is the ledger's convention; for a *kanji*
+/// headword it is a defect in two shapes:
 ///
-/// - **a duplicate** — 復号 exists twice, once as `復号/ふくごう` carrying the
-///   encounters the tokenizer recorded and once as `復号/` carrying the
-///   `known` the Anki import wrote. One word, two rows, and every count split
-///   between them.
-/// - **an orphan** — 冪等性 exists only as `冪等性/`, on a key nothing else
-///   will ever write to, so its judgement is stranded.
+/// - **a duplicate** — 復号/ふくごう carries the encounters and 復号/ carries
+///   the `known`, splitting one word's counts across two rows.
+/// - **an orphan** — 冪等性 exists only as `冪等性/`, so its judgement sits on a
+///   key nothing else will ever write to.
 ///
-/// Both are fixed by asking a *reference* dictionary for the reading the
-/// master could not supply, then merging onto the properly-keyed row or
-/// re-keying in place. A headword no dictionary reads, or one several read
-/// differently, is left exactly as it is: guessing here would fabricate the
-/// key everything else joins on.
+/// Both are fixed by asking a *reference* dictionary for the missing reading,
+/// then merging or re-keying. A headword no dictionary reads, or one several
+/// read differently, is left alone — guessing would fabricate the key
+/// everything joins on.
 ///
-/// Merging keeps the stronger assertion — a judged status is never replaced by
-/// `new` — and sums the counts, since both rows counted the same word.
-/// Idempotent: a second run finds nothing left to move.
+/// Merging keeps the stronger assertion and sums the counts. Idempotent.
 pub async fn repair_empty_readings(k: &Knowledge) -> Result<ReadingRepair, sqlx::Error> {
     let rows: Vec<(String,)> = sqlx::query_as("SELECT headword FROM vocabulary WHERE reading = ''")
         .fetch_all(k.pool())
@@ -1220,16 +1128,12 @@ pub async fn repair_empty_readings(k: &Knowledge) -> Result<ReadingRepair, sqlx:
 
 /// The two derived states an unjudged row can be in.
 ///
-/// `status` records what the *reader* asserted; encounters record what the
-/// *reading* did. They are orthogonal, so a row is legitimately "never judged"
-/// and "met 53 times" at once — which is what おじ is. Reporting the whole
-/// unjudged bucket as `new` therefore mislabels almost all of it: on
-/// 2026-07-29, 2,143 of 2,155 unjudged rows had been met.
+/// `status` records what the *reader* asserted, encounters what the *reading*
+/// did. Orthogonal, so a row is legitimately "never judged" and "met 53 times"
+/// at once — reporting the whole bucket as `new` mislabels nearly all of it.
 ///
-/// Both figures are derived and neither is stored. Storing them would add a
-/// writer to a column only the reader may write, and freeze a threshold that
-/// should stay re-tunable over the whole history like every other read-stats
-/// derivation.
+/// Both figures are derived, never stored: storing them would add a writer to a
+/// column only the reader may write, and freeze a re-tunable threshold.
 #[derive(Debug, Clone, Default)]
 pub struct UnjudgedCounts {
     /// Met while reading, never judged. The honest name for most of `new`.
@@ -1462,14 +1366,9 @@ mod tests {
         );
     }
 
-    /// Pins the plan for the same reason as the test above: `frequency_pending`
-    /// hung past a 15s timeout against the real database before the reading
-    /// count subquery was pinned to `idx_dictionary_entries_lookup` —
-    /// `COUNT(DISTINCT reading)` made the planner prefer
-    /// `idx_dictionary_entries_reading`, which can only seek on
-    /// `dictionary_id` and turned the `term` filter into a per-row scan of
-    /// every master entry. A correctness test alone would not have caught it:
-    /// the counts were right, just minutes late.
+    /// Pins the plan for the same reason as the test above. A correctness test
+    /// would not have caught the regression: the counts were right, just
+    /// minutes late.
     #[tokio::test]
     async fn frequency_pending_seeks_the_dictionary_index_for_readings_too() {
         let k = temp().await;

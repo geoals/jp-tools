@@ -6,8 +6,7 @@ pub use jp_mine_core::config::AnkiConfig;
 pub struct Config {
     pub db_path: String,
     /// jp-core's shared knowledge database: the dictionary cache and the
-    /// reading record. Separate from this app's own DB — see
-    /// spec/knowledge-db.md.
+    /// reading record. Separate from this app's own DB.
     pub knowledge_db_path: String,
     /// Which loaded dictionary defines the vocabulary scale. Matched against
     /// the end of a dictionary's source path, or its exact title.

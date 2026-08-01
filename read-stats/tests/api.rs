@@ -739,7 +739,7 @@ async fn the_vocabulary_scale_counts_master_terms_not_ledger_rows() {
     let app = TestApp::new().await;
     // Two known words, but only one of them is vocabulary: the other is a
     // phrase Jitendex happens to give a headword to. The scale must not count
-    // it — that is the whole reason `in_master` exists (spec/knowledge-db.md).
+    // it — that is the whole reason `in_master` exists.
     sqlx::query(
         "INSERT INTO vocabulary (headword, reading, status, in_master) VALUES \
              ('読む', 'よむ', 'known', 1), ('ああ見えても', '', 'known', 0), \

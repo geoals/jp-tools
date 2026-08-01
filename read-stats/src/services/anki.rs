@@ -223,7 +223,7 @@ pub async fn fetch_deck_vocab(
 
 /// Fetch (note_id, vocab) for notes past Anki's new/learning queues — the
 /// deck's review pile, evidence the reader actually has the word rather than
-/// merely having queued it (`spec/cold-start.md` Pass 1).
+/// merely having queued it.
 pub async fn fetch_reviewed_deck_vocab(
     client: &reqwest::Client,
     url: &str,

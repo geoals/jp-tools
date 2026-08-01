@@ -1,8 +1,7 @@
 //! `knowledge.db` — the shared database, and the handle that opens it.
 //!
 //! Holds what is about the language and what has been read, rather than about
-//! one app's workflow. CLAUDE.md lists the contents; `spec/knowledge-db.md` has
-//! the reasoning.
+//! one app's workflow. The root CLAUDE.md lists the contents and the reasoning.
 //!
 //! One file because term identity is dictionary-gated — "is this a word", "what
 //! is its `(headword, reading)`", "is it a name" — and every count is keyed on

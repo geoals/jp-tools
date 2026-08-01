@@ -15,10 +15,9 @@
 //! existed (2026-07-26) were deleted rather than filtered, for the same reason:
 //! a row that means "somewhere else" has no reading to belong to.
 //!
-//! Two uses, and they want different things from the same rows: as *presence
-//! marks* (proof the reader was at the keyboard) only the timestamps matter,
-//! and as the mining funnel the term matters. `spec/knowledge-db.md` generalizes
-//! this into the ledger's `encounters` log, tagged by source type.
+//! Two uses wanting different things from the same rows: as *presence marks*
+//! (proof the reader was at the keyboard) only the timestamps matter, and as the
+//! mining funnel the term matters.
 
 use jp_core::knowledge::Knowledge;
 use sqlx::Row;

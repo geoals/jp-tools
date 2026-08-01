@@ -12,8 +12,7 @@
 //!
 //! A row may carry the `content` it was read from — an article pasted in
 //! whole. That is what makes its `chars` exact rather than pages × a constant,
-//! and `spec/knowledge-db.md` has it feeding the same tokenization the live
-//! line stream does. The text itself is *not* loaded with the row: every day's
+//! and it feeds the same tokenization the live line stream does. The text itself is *not* loaded with the row: every day's
 //! sessions are fetched to render a timeline, and an article body is orders of
 //! magnitude larger than everything else on it. [`fetch_content`] reads one.
 

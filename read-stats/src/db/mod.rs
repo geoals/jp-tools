@@ -30,9 +30,8 @@
 //! the highlighter, the triage UI and yt-mine all read the same ledger, which
 //! is the second-consumer test the rest of these tables have not met yet.
 //!
-//! The split follows `spec/knowledge-db.md`: what is *about the reading* is
-//! shared, because other tools ask questions of it; what is about this app's
-//! own behaviour stays local. Only two places straddle the line —
+//! The split: what is *about the reading* is shared, because other tools ask
+//! questions of it; what is about this app's own behaviour stays local. Only two places straddle the line —
 //! [`works::current_work_vn_window`] and [`covers::fetch_work_covers`] — and
 //! both do the join in memory rather than attaching one database to the other.
 

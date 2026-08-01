@@ -18,8 +18,8 @@ tax against reading speed.
   Two databases are in play: `knowledge.db` holds what was read (`lines`,
   `works`, `manual_sessions`, `anki_notes`, `word_days`, `lookups`) plus the
   dictionary cache, and is jp-core's; `read-stats.db` holds this app's own
-  state (`settings`, `reader_marks`, `work_covers`). See
-  `spec/knowledge-db.md` for why the line falls there.
+  state (`settings`, `reader_marks`, `work_covers`). The root CLAUDE.md has why
+  the line falls there.
 - **Characters are counted like texthooker-ui does**
   (`jp_core::text::chars`, mirrored
   in `vn-ws-logger.py`): an allowlist of kana, kanji, radicals and
@@ -498,7 +498,7 @@ curl -X POST localhost:3200/api/sessions -H 'Content-Type: application/json' \
   VN line), the proxy forwards it unchanged and then, in the background,
   generates a ≤2-second CompactDef gloss from the note's word + sentence and
   writes it to that field. Needs `JP_TOOLS_ANTHROPIC_API_KEY`; set the field
-  name empty to disable. See `spec/anki-compactdef.md`.
+  name empty to disable.
 - `JP_TOOLS_AUTO_CAPTURE_ON_ADD` (default **on**) — fire `vn-capture.sh` after a
   proxied card add (audio + picture, best-effort). This *is* mining now; there
   is no button. Set to `0` on a machine that serves the dashboard but doesn't

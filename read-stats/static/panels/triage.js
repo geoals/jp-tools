@@ -1,6 +1,6 @@
 // Vocabulary triage: turn untriaged terms into assertions.
 //
-// This is spec/cold-start.md's Pass 2 over the words already in the ledger, and
+// This judges the words already in the ledger, and
 // the first thing in the workspace that writes `status` at all. Everything
 // downstream — the #read highlighter, i+1 filtering, the vocabulary count —
 // reduces to a status lookup, so until this has been run they all read as

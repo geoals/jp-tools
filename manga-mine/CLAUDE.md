@@ -1,7 +1,10 @@
 # manga-mine — Physical Manga Sentence Mining
 
-Rust 2024 edition. Axum JSON API + Preact frontend (no build step), **no database**
-(ADR-010 in `spec/sentence-mining-manga.md`).
+Rust 2024 edition. Axum JSON API + Preact frontend (no build step), **and no
+database of its own**: the inbox folder *is* the queue, the finished card lives
+in Anki, and mined/skipped state is a file move into `processed/` or `skipped/`.
+Re-mining is moving the file back. The server is stateless — crop coordinates and
+OCR text are transient.
 
 ## Pipeline
 
@@ -11,9 +14,9 @@ jp-core tokenization → target word tap → dictionary lookup → Anki export (
 ## Statelessness
 
 - **The inbox folder is the queue** — every image file in `JP_TOOLS_MANGA_INBOX`
-  is an un-mined photo. Marking a photo mined/skipped **deletes** it (amends
-  ADR-010's file-move): the original lives in the phone gallery, the compressed
-  copy lives in Anki, so the server keeps nothing.
+  is an un-mined photo. Marking a photo mined/skipped **deletes** it: the
+  original lives in the phone gallery and the compressed copy lives in Anki, so
+  the server keeps nothing.
 - The finished card lives in Anki (image via `storeMediaFile`; the temp
   compressed copy in `JP_TOOLS_MEDIA_DIR` is removed after export).
 - Crop coordinates and OCR text are transient — nothing outlives the request.
@@ -22,7 +25,7 @@ jp-core tokenization → target word tap → dictionary lookup → Anki export (
   and the UI preselects the latest.
 - The dictionary cache lives in the shared `knowledge.db`
   (`JP_TOOLS_KNOWLEDGE_DB_PATH`); manga-mine only reads/imports dictionaries
-  there. See `spec/knowledge-db.md`.
+  there.
 
 ## Key design decisions
 
@@ -30,14 +33,14 @@ jp-core tokenization → target word tap → dictionary lookup → Anki export (
   render EXIF rotation applied; `image_ops` applies the same orientation before
   cropping so pixels match what the user drew on.
 - **Card image = whole photo (compressed, max 1280px, q80 — configurable); the
-  crop feeds OCR only** (ADR-006). The inbox keeps the original full-res photo;
+  crop feeds OCR only.** The inbox keeps the original full-res photo;
   only the Anki copy is compressed.
 - **Client AnkiConnect detection** — on export, the server probes the
   *requesting client's* IP on port 8765 (800 ms timeout). If the phone runs its
   own AnkiConnect, the card lands in the phone's collection; otherwise the
   configured `JP_TOOLS_ANKI_URL` is used. Loopback clients skip the probe.
   Disable with `JP_TOOLS_ANKI_USE_CLIENT=false`.
-- **No audio, ever** (ADR-005) — `audio_clip_path` is always `None`.
+- **No audio, ever** — `audio_clip_path` is always `None`.
 - **Export dedup is Anki's** — AnkiConnect rejects a note whose first field
   (VocabKanji) already exists; surfaced as an export error.
 - Traits (`OcrEngine`, `AnkiExporter`, `Tokenizer`) enable mockall route tests.

@@ -5,7 +5,7 @@
 // or not. `in_master` is the subset the master dictionary lists, which is the
 // only one that means anything as a vocabulary count: Jitendex gives headwords
 // to phrases (ああでもないこうでもない), so counting rows would inflate the
-// figure without bound. See spec/knowledge-db.md.
+// figure without bound.
 //
 // The statuses are listed in full even at zero. A status missing from the
 // response means no row carries it, and that is worth seeing — while nothing

@@ -1,17 +1,13 @@
 /** The reading view: the live Textractor line feed, sized to sit beside the
  *  running VN.
  *
- *  There is no mine button. Adding a card in Yomitan goes through this server's
- *  AnkiConnect proxy, and the proxy fires vn-capture.sh itself once Anki has
- *  accepted the note — so the audio and screenshot attach to every mine
- *  automatically, including the ones made from the desktop. A button would only
- *  be a second, manual way to do what already happened.
+ *  There is no mine button — Yomitan's addNote goes through the AnkiConnect
+ *  proxy, which fires vn-capture.sh once Anki accepts the note.
  *
- *  Lines are plain text nodes on purpose — Yomitan scans the DOM, so anything
- *  clever here (virtualized rows, per-token spans) would break lookups. The
- *  word marks are painted *around* that rule rather than through it: they are a
- *  layer of rectangles behind the text, never markup inside it. See
- *  `paintMarks` at the foot of this file. */
+ *  **Lines are plain text nodes.** Yomitan scans the DOM, so virtualized rows or
+ *  per-token spans would break lookups. The word marks work around that rather
+ *  than through it: a layer of rectangles behind the text, never markup inside
+ *  it. See `paintMarks` at the foot of this file. */
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { html } from "htm/preact";
 import { api } from "./api.js";
@@ -20,16 +16,13 @@ const FONT_KEY = "reader-font-px";
 const FONT_DEFAULT = 20;
 const HIGHLIGHT_KEY = "reader-highlight";
 const MARKED_ONLY_KEY = "reader-marked-only";
-/** The statuses that get a colour. `known` is sent too — a span is also the
- *  region a tap judges, so a word just marked known must stay tappable — but it
- *  is deliberately absent here: on a page where most words are known, the
- *  absence of a mark is what makes the marks readable. Anything unrecognised is
- *  ignored rather than drawn in a default colour; that is a version skew, not a
- *  word. */
+/** The statuses that get a colour. `known` is sent too, since a span is also
+ *  the region a tap judges, but is absent here: the absence of a mark is what
+ *  makes the marks readable. Anything unrecognised is ignored rather than
+ *  drawn — that is version skew, not a word. */
 const PAINTED = ["seen", "new", "unknown"];
-/** How far a mark reaches past its word on each side. Enough to look like a
- *  deliberate band rather than a tight box, small enough that two marked words
- *  next to each other don't merge into one. */
+/** How far a mark reaches past its word on each side — enough to look
+ *  deliberate, small enough that two adjacent marks don't merge. */
 const MARK_PAD_PX = 2;
 /** Distance from the bottom that still counts as "following along", so
  *  scrolling up to re-read isn't yanked back by the next line. */
@@ -38,29 +31,23 @@ const TOAST_MS = 6000;
 /** Longer than an ordinary toast: this one is the only route back to a cleared
  *  line, and clearing a handful of them is several taps. */
 const UNDO_TOAST_MS = 15000;
-/** How often the work title / pause state are re-read. Slow enough to be free,
- *  fast enough that switching works on the dashboard lands before the next
- *  card is mined. */
+/** How often the work title and pause state are re-read — fast enough that
+ *  switching works on the dashboard lands before the next card is mined. */
 const STATE_POLL_MS = 20_000;
-/** Lines sent to the model with the last one to explain. Enough to place a
- *  pronoun or an unstated subject without turning a quick read into a scene
- *  dump; the server caps it again in case the feed grows. */
+/** Lines sent to the model with the one to explain — enough to place a pronoun
+ *  or an unstated subject. The server caps it again. */
 const EXPLAIN_CONTEXT_LINES = 8;
-/** Used to group the feed into sessions before `/api/reader/state` answers,
- *  so the very first paint doesn't show one header for everything. Replaced
- *  the moment the real setting arrives. */
+/** Groups the feed into sessions before `/api/reader/state` answers, so the
+ *  first paint isn't one header over everything. */
 const DEFAULT_SESSION_GAP_SECS = 600;
-/** One backscroll page, matching the server's default so a full page really
- *  is more history rather than a partial one that reads as "nothing left". */
+/** One backscroll page, matching the server's default so a full page really is
+ *  more history rather than one that reads as "nothing left". */
 const HISTORY_PAGE = 200;
 /** How close to the top of the scroller counts as "reaching for more
  *  history" — close enough that the fetch lands before the reader gets there. */
 const HISTORY_TRIGGER_PX = 300;
 /** How many pages the automatic top-up may pull while the `◌ marked` filter is
- *  on, before it gives up on filling the pane. A page is `HISTORY_PAGE` lines
- *  of which the filter keeps perhaps a fifth, so one page usually overflows a
- *  pane on its own and five is the budget for a filter that is keeping very
- *  little — enough to reach a scrollable feed, far short of the whole history. */
+ *  on. Enough to reach a scrollable feed, far short of the whole history. */
 const FILTERED_TOPUP_PAGES = 5;
 
 export function Reader() {
@@ -72,46 +59,37 @@ export function Reader() {
   const [explain, setExplain] = useState(null);
   const [toast, setToast] = useState(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  /** Set once a backscroll page comes back empty — there is nothing older, so
-   *  the trigger stops firing. A ref rather than state: it only ever gates the
-   *  next fetch, and nothing on screen changes when it flips. */
+  /** Set once a backscroll page comes back empty, to stop the trigger firing.
+   *  A ref rather than state: nothing on screen changes when it flips. */
   const historyExhausted = useRef(false);
   const [fontPx, setFontPx] = useState(
     () => Number(localStorage.getItem(FONT_KEY)) || FONT_DEFAULT,
   );
-  // Highlighting is on unless it was turned off, and the browser can paint it.
-  // A browser without the Highlight API isn't offered the toggle at all rather
-  // than being given one that does nothing.
+  // Highlighting is on unless turned off. A browser that cannot paint it isn't
+  // offered the toggle at all.
   const [highlightOn, setHighlightOn] = useState(
     () => localStorage.getItem(HIGHLIGHT_KEY) !== "off",
   );
-  // Off by default and remembered: it is a way of looking back over what has
-  // been read, not a way of reading. Persisted like the font and the tinting
-  // so a reload beside the VN comes back the way it was left.
+  // Off by default and persisted like the font and the tinting, so a reload
+  // beside the VN comes back the way it was left.
   const [markedOnly, setMarkedOnly] = useState(
     () => localStorage.getItem(MARKED_ONLY_KEY) === "on",
   );
-  /** The ids the filter is letting through: every line that has *had* a marked
-   *  word in it since the filter was turned on. It only ever grows while the
-   *  filter is on, and is rebuilt from scratch each time it is turned on again.
+  /** The ids the filter lets through: every line that has *had* a marked word
+   *  since the filter was turned on. Grows only, rebuilt on each turn-on.
    *
-   *  Membership rather than a live predicate, because judging the last marked
-   *  word in a line would otherwise delete that line from under the finger that
-   *  judged it — the feed shifting by a line at the moment of a tap, which is
-   *  the thing the reader is looking at. A judged line staying put, plain, is
-   *  also the report: the mark is gone and the line is still there. Toggling the
-   *  filter off and on is what clears them out. */
+   *  Membership rather than a live predicate, or judging the last marked word in
+   *  a line would delete that line from under the finger that judged it. The
+   *  line staying, unmarked, is also the report. */
   const [keptIds, setKeptIds] = useState(() => new Set());
   const listRef = useRef(null);
   const stick = useRef(true);
-  /** line id → the <p> holding it, for the Ranges the highlights are built
-   *  from. A Range needs the text node itself, so the elements have to be
-   *  reachable outside the render that made them. */
+  /** line id → the <p> holding it. A Range needs the text node itself, so the
+   *  elements have to be reachable outside the render that made them. */
   const lineEls = useRef(new Map());
-  /** The layer the marks are drawn into. Outside Preact's reconciliation on
-   *  purpose: it is decorative, it is rewritten wholesale on every repaint, and
-   *  routing a few hundred absolutely-positioned rectangles through the vdom
-   *  would re-render the feed to move a box. */
+  /** The layer the marks are drawn into. Outside Preact's reconciliation: it is
+   *  decorative and rewritten wholesale, and routing a few hundred positioned
+   *  rectangles through the vdom would re-render the feed to move a box. */
   const marksRef = useRef(null);
   /** The line a backscroll is holding still — `{id, offsetTop}` for the topmost
    *  line on screen when the page was requested. See the effect below. */
@@ -119,18 +97,17 @@ export function Reader() {
   /** The feed's height the last time the bottom was pinned. A reflow moves the
    *  bottom edge without changing any line id, which is what this notices. */
   const pinnedHeight = useRef(0);
-  /** Pages the automatic top-up has spent trying to fill the pane while
-   *  filtering. Reset each time the filter is turned on, since that is a fresh
-   *  question over whatever has since been read. */
+  /** Pages the top-up has spent filling the pane while filtering. Reset on each
+   *  turn-on, which is a fresh question over whatever has since been read. */
   const filteredTopUps = useRef(0);
 
   /** The lines actually on screen. `lines` stays the whole feed whatever the
-   *  filter is doing — judging a word rewrites every occurrence in it, including
-   *  the ones a filter is hiding, and a mark that came back when the filter was
-   *  cleared would read as a write that failed. So the filter is applied at the
-   *  last possible moment, and everything that measures or hit-tests the text
-   *  (`paintMarks`, `spanAtPoint`) is given *this* list rather than `lines`:
-   *  those index into elements, and a hidden line has none. */
+   *  filter does, so a judgement rewrites hidden occurrences too — a mark
+   *  reappearing when the filter comes off would read as a failed write.
+   *
+   *  Everything that measures or hit-tests the text (`paintMarks`,
+   *  `spanAtPoint`) takes *this* list: those index into elements, and a hidden
+   *  line has none. */
   const visible = markedOnly ? lines.filter((l) => keptIds.has(l.id)) : lines;
 
   useEffect(() => {
@@ -157,9 +134,8 @@ export function Reader() {
         .then(setState)
         .catch(() => setState((s) => s ?? { capture_available: false }));
     load();
-    // Polled rather than fetched once: current_work drives the document title
-    // that ends up on the card (below), and pausing from the desktop hotkey
-    // should show here too. Both are cheap reads.
+    // Polled rather than fetched once: current_work drives the document
+    // title that ends up on the card, and a desktop-hotkey pause shows here.
     const t = setInterval(load, STATE_POLL_MS);
     return () => clearInterval(t);
   }, []);
@@ -176,20 +152,14 @@ export function Reader() {
     });
   }, [lines, markedOnly]);
 
-  // A feed shorter than its pane never fires a scroll event, so the trigger
-  // above can't be reached and the sessions above it would be stranded —
-  // which is exactly the case of a sitting that has just started. Pull pages
-  // until there is something to scroll, or there is no more history.
+  // A feed shorter than its pane fires no scroll event, so the trigger above
+  // can never be reached — the case of a sitting that has just started. Pull
+  // pages until there is something to scroll, or there is no more history.
   //
-  // While filtering it runs on a budget rather than not at all, which is what
-  // it did before. Off entirely was the wrong half of the trade: a filtered
-  // feed really is short by construction, so on a sitting that has just started
-  // it could hold a single line — nothing to scroll, and the scroll trigger is
-  // the only other way to ask for history, so the view was stuck there for good
-  // and the filter had to be turned off to escape. The budget keeps what that
-  // rule was protecting: at `FILTERED_TOPUP_PAGES` it stops, so a filter that
-  // admits almost nothing costs a bounded number of pages instead of walking
-  // back through the whole history a hundred lines at a time.
+  // While filtering this runs on a budget rather than not at all. Off entirely,
+  // a filtered feed holding one line could not scroll, and the scroll trigger is
+  // the only other way to ask for history, so the view was stuck until the
+  // filter was turned off. `FILTERED_TOPUP_PAGES` bounds the other side.
   useEffect(() => {
     const el = listRef.current;
     if (!el || loadingHistory || historyExhausted.current) return;
@@ -199,32 +169,25 @@ export function Reader() {
       filteredTopUps.current += 1;
     }
     loadMoreHistory();
-    // `keptIds` belongs here for the same reason the paint needs it: while
-    // filtering it is what actually puts a line on screen, so it — not `lines`
-    // — is what changes the height this decides on.
+    // `keptIds`, not `lines`, is what puts a line on screen while filtering,
+    // so it is what changes the height this decides on.
   }, [lines, keptIds, loadingHistory, fontPx, markedOnly]);
 
-  // Re-pin to the bottom on a new line, and also whenever the explain panel
-  // opens, fills in, or closes — each resizes the lines pane, and without this
-  // the newest line would slip out of view above the panel instead of sitting
-  // right on top of it. Respects a manual scroll-up (stick=false) either way.
+  // Re-pin to the bottom on a new line, and whenever the explain panel opens,
+  // fills or closes — each resizes the pane. Respects a manual scroll-up.
   //
-  // Keyed on the id of the newest line on screen, *not* on `lines`. Judging a
-  // word rebuilds that array without adding anything to it, so depending on it
-  // made every tap re-pin: scroll back a couple of lines — still inside
-  // STICK_SLOP_PX, so still "following along" — tap a word, and the feed jumped
-  // to the bottom, moving the word out from under the finger that had just
-  // judged it. Prepended history is excluded for the same reason: the id at the
-  // bottom has not changed, and `loadMoreHistory` restores the position itself.
+  // Keyed on the id of the newest line on screen, **not** on `lines`: judging a
+  // word rebuilds that array without adding to it, so keyed on `lines` every tap
+  // re-pinned and took the word out from under the finger. Prepended history is
+  // excluded by the same key; `loadMoreHistory` restores the position itself.
   const newestVisibleId = visible.length ? visible[visible.length - 1].id : 0;
   useEffect(() => {
     pinToBottom(true);
   }, [newestVisibleId, explain, explaining, markedOnly]);
 
   /** Put the newest line back on the bottom edge, if the reader is following
-   *  along at all (`stick`). `force` is for the events that mean "the bottom
-   *  moved" outright — a new line, the explain panel opening; everything else
-   *  goes through the height test below. */
+   *  along (`stick`). `force` is for events that moved the bottom outright — a
+   *  new line, the panel opening; everything else takes the height test. */
   function pinToBottom(force) {
     const el = listRef.current;
     if (!el || !stick.current) return;
@@ -233,28 +196,21 @@ export function Reader() {
     pinnedHeight.current = el.scrollHeight;
   }
 
-  // The other half of staying at the bottom: the feed *reflowing* under a
-  // reader who never moved. Nothing above catches that — the pin keys on the
-  // newest line's id, and a reflow changes no id — so the bottom edge simply
-  // drifted out of view and stayed there.
+  // The other half of staying at the bottom: the feed *reflowing* under a reader
+  // who never moved, which an id-keyed pin cannot see. Three things do it on an
+  // ordinary load — the web font landing after first paint (`display=swap`), a
+  // page of history arriving on top, and the pane being resized.
   //
-  // Three things reflow it, and all three happen on an ordinary page load. The
-  // web font lands after first paint (`display=swap`, so every line is measured
-  // twice); the top-up pulls pages of history onto the top; and the pane can be
-  // resized. Cold, with the font arriving late, this left the feed 1500px from
-  // the bottom on open and drifting further with each page that arrived.
-  //
-  // The height test is what makes it safe to depend on `lines`, which the pin
-  // above must not do: judging a word rebuilds that array without changing the
-  // height, so this is a no-op on a tap and the word stays under the finger.
+  // The height test is what makes it safe to depend on `lines` here, which the
+  // pin above must not: judging a word changes no height, so a tap is a no-op
+  // and the word stays under the finger.
   useLayoutEffect(() => {
     pinToBottom(false);
   }, [lines, keptIds, fontPx, markedOnly]);
 
   useEffect(() => {
-    // `display=swap` reflows every line when the font arrives, which is after
-    // the feed has been painted and pinned. Fires once, and resolves
-    // immediately on a warm cache.
+    // `display=swap` reflows every line when the font arrives, after the feed
+    // has been painted and pinned. Resolves immediately on a warm cache.
     if (!document.fonts) return;
     let cancelled = false;
     document.fonts.ready.then(() => {
@@ -265,24 +221,17 @@ export function Reader() {
     };
   }, []);
 
-  // Put the reader's place back after a page of history lands on top of the
-  // feed, by holding one *line* still rather than by adding up heights.
+  // Put the reader's place back after a page of history lands on top, by holding
+  // one *line* still rather than summing heights.
   //
-  // The height sum is what this replaced, and it could not survive the filter.
-  // It ran one frame after the prepend, which is a render too early when the
-  // `◌ marked` filter is on: `keptIds` has not admitted the new lines yet, so
-  // nothing has been added, the delta is zero and `scrollTop` stays at 0. The
-  // lines then appear above the reader a render later — and being pinned at the
-  // very top is a dead end, because a browser fires no scroll event when there
-  // is nowhere further to scroll, so the trigger that pulls the *next* page can
-  // never run again. That is why the filter had to be toggled off and on to
-  // load anything more.
+  // A height sum ran one frame after the prepend, a render too early under the
+  // filter: `keptIds` had not admitted the new lines, the delta was zero, and
+  // `scrollTop` stayed at 0. Pinned at the very top a browser fires no scroll
+  // event, so the trigger for the next page could never run again.
   //
-  // An anchor line has no such deadline. It keys on `keptIds` as well as
-  // `lines`, and re-baselines each time, so it corrects on whichever render
-  // actually moves the line — one for an unfiltered prepend, two for a filtered
-  // one — and a page that admits nothing simply never moves it. Declared above
-  // the paint so the marks are measured against the settled scroll offset.
+  // An anchor line has no deadline. It keys on `keptIds` as well as `lines` and
+  // re-baselines, so it corrects on whichever render actually moves the line.
+  // Declared above the paint, so marks measure against a settled scroll offset.
   useLayoutEffect(() => {
     const el = listRef.current;
     const anchor = historyAnchor.current;
@@ -296,19 +245,15 @@ export function Reader() {
   }, [lines, keptIds]);
 
   // Repaint whenever the text could have moved: a new line, a font change, the
-  // toggle. Layout effect rather than effect — this measures nodes that were
-  // just committed, and a frame with the text drawn but not yet marked is a
-  // flash on every single line.
+  // toggle. A layout effect, not an effect — it measures just-committed nodes,
+  // and a frame with text drawn but unmarked flashes on every line.
   //
-  // `keptIds` belongs in here with the rest, because `visible` is derived from
-  // it and it settles a render *later* than `lines` does. Backscrolling with
-  // the filter on is the case: the prepended page grows `lines`, this repaints
-  // — against the old `keptIds`, so none of the new lines are in `visible` yet
-  // — and then the effect that admits them to the filter adds them to the DOM,
-  // pushing every line already on screen down. Nothing in the old dependency
-  // list changed on that second render, so the marks stayed where the first one
-  // put them, a page-height above the words they belong to, until any other
-  // repaint (a new line, a resize, the words toggle) corrected them.
+  // **Depends on `keptIds`, not only `lines`.** `visible` derives from it and it
+  // settles a render later: on a filtered backscroll the prepended page grew
+  // `lines` and repainted against the old `keptIds`, then admitting those lines
+  // pushed everything on screen down with nothing in the dependency list
+  // changed. Marks sat a page-height off their words until an unrelated repaint
+  // corrected them.
   useLayoutEffect(() => {
     paintMarks(
       visible,
@@ -319,10 +264,9 @@ export function Reader() {
     );
   }, [lines, keptIds, highlightOn, fontPx, markedOnly]);
 
-  // The other way the text reflows: the window, or the split pane beside the
-  // VN, changing width. Nothing re-renders then, so nothing above would fire —
-  // for the marks or for the bottom edge, which a narrower pane pushes down as
-  // the lines wrap.
+  // The other way the text reflows: the window or the split pane changing width.
+  // Nothing re-renders then, so nothing above would fire — for the marks or for
+  // the bottom edge, which a narrower pane pushes down as the lines wrap.
   useLayoutEffect(() => {
     const el = listRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
@@ -440,29 +384,20 @@ export function Reader() {
     });
   }
 
-  /** Judge the word under a tap.
+  /** Judge the word under a tap — the one write the reading view makes.
    *
-   *  The one write the reading view makes to the ledger, and it exists because
-   *  the marks put the question right where the reader already is: the word is
-   *  in front of them, in context, at the moment they know the answer.
+   *  Two states: anything marked becomes `known`, a word already known becomes
+   *  `unknown`. **`new` and `seen` are unreachable by hand**, since they are
+   *  what the ledger says before anyone has judged.
    *
-   *  Two states, and they are the two a reader can answer without leaving the
-   *  line: anything marked becomes known, and a word already known becomes
-   *  unknown. `new` and `seen` are not among them — they are what the ledger
-   *  says *before* anyone has judged, so writing one by hand would be asserting
-   *  that nothing has been asserted. Tapping past a mistake is one more tap.
-   *
-   *  No toast: the mark itself is the report. It changes colour or goes away
-   *  under the finger that asked, which is both faster to read than a line of
-   *  text and impossible to miss — and a failed write is the mark coming back.
-   *
-   *  Optimistic, and applied to every occurrence of the term on screen rather
-   *  than the one tapped — the same word three lines up is the same assertion,
-   *  and leaving it marked would read as a failed write. */
+   *  No toast — the mark is the report: it changes under the finger, and a
+   *  failed write is the mark coming back. Optimistic, and applied to every
+   *  occurrence on screen rather than the one tapped, since the same word three
+   *  lines up carries the same assertion. */
   async function judgeAt(event) {
     if (!highlightOn) return;
-    // A tap that ends a selection is a lookup or an explain-focus, not a
-    // judgement. `isCollapsed` is what tells those apart.
+    // A tap ending a selection is a lookup or an explain-focus, not a
+    // judgement — `isCollapsed` tells them apart.
     const sel = window.getSelection?.();
     if (sel && !sel.isCollapsed) return;
     const hit = spanAtPoint(
@@ -482,9 +417,8 @@ export function Reader() {
         body: { judgements: [{ ...term, status }] },
       });
     } catch {
-      // Put the mark back. The assertion did not land, and a view that shows it
-      // as though it did is worse than any message about it — the mark
-      // returning is the report, in the place the reader is already looking.
+      // Put the mark back: the assertion did not land, and the mark returning
+      // is the report, where the reader is already looking.
       setLines((prev) => withStatus(prev, term, token.status));
     }
   }
@@ -498,9 +432,8 @@ export function Reader() {
   }
 
   /** Send the last few lines to the model for a short read on the newest one.
-   *  A word selected in the feed becomes the focus — captured first thing, so
-   *  the tap that opens this doesn't matter, and cleared afterwards so the next
-   *  explain doesn't reuse a stale one. */
+   *  A selected word becomes the focus, captured first thing so the tap that
+   *  opens this doesn't clear it, and reset afterwards. */
   async function explainLine() {
     const sel = (window.getSelection?.().toString() || "").trim();
     const context = lines.slice(-EXPLAIN_CONTEXT_LINES).map((l) => l.text);
@@ -521,10 +454,9 @@ export function Reader() {
     }
   }
 
-  /** Drop the newest line from every derived figure. One tap per line: the
-   *  feed loses it as it goes, so tapping until the junk is gone needs no
-   *  count in the UI. The id comes from what is on screen rather than the
-   *  server picking "the last one", so a line hooked mid-tap isn't swept up. */
+  /** Drop the newest line from every derived figure. One tap per line, and the
+   *  feed loses it as it goes. The id comes from what is on screen rather than
+   *  the server picking "the last one", so a line hooked mid-tap is safe. */
   async function clearLast() {
     const line = lines[lines.length - 1];
     if (!line || clearing) return;
@@ -536,8 +468,7 @@ export function Reader() {
       });
       if (!r.ids.length) return;
       setLines((prev) => prev.filter((l) => l.id !== line.id));
-      // Consecutive taps accumulate into one undo batch, so clearing five
-      // stray lines is still a single way back.
+      // Consecutive taps accumulate into one undo batch.
       setToast((prev) => {
         const undo = [...((prev && prev.undo) || []), line];
         return { ok: true, undo, text: clearedText(undo.length) };
@@ -557,8 +488,8 @@ export function Reader() {
         method: "POST",
         body: { ids: batch.map((l) => l.id) },
       });
-      // The stream won't resend them — the client is already past their ids —
-      // so they go back in from the batch, in id order.
+      // The stream won't resend them (the client is past their ids), so they
+      // go back in from the batch, in id order.
       setLines((prev) => {
         const byId = new Map(prev.map((l) => [l.id, l]));
         for (const l of batch) byId.set(l.id, l);
@@ -579,8 +510,8 @@ export function Reader() {
     }
   }
 
-  // Sub-strings are assembled here rather than inline: htm collapses the
-  // whitespace where literal text meets an interpolation across a line break.
+  // Assembled here rather than inline: htm collapses the whitespace where
+  // literal text meets an interpolation across a line break.
   const paused = state && state.paused;
   const workTitle = (state && state.current_work) || "";
   const work = workTitle || "no work set";
@@ -603,22 +534,20 @@ export function Reader() {
     ? "Reconnect to Textractor and start recording lines again"
     : "Disconnect from Textractor — no lines are recorded at all while this is off";
   // Built whole rather than split around the focus word — htm collapses the
-  // whitespace where literal text meets an interpolation across a line break.
+  // whitespace at a line break.
   const explainTitle =
     explain && explain.focus
       ? `“${explain.focus}” in the last line`
       : "the last line";
-  // Deliberately loud, and more so than when a pause merely voided the span:
-  // the feed goes silent while paused, so a forgotten pause costs the lines
-  // themselves rather than just their credit. Nothing can recover them.
+  // Deliberately loud: the feed goes silent while paused, so a forgotten pause
+  // costs the lines themselves and nothing can recover them.
   const pausedBanner = "⏸ PAUSED — no lines are being recorded. Tap to resume.";
   const markedOnlyLabel = markedOnly ? "◍ marked" : "◌ marked";
   const markedOnlyTitle = markedOnly
     ? "Showing only lines with a marked word — tap to show every line"
     : "Show only the lines with a word you have not judged known";
-  // Off while filtering: it drops *the newest line*, which the filter may well
-  // be hiding, and a button that discards something not on screen is a button
-  // that clears the wrong line.
+  // Off while filtering: it drops the newest line, which the filter may be
+  // hiding, and that would clear something not on screen.
   const clearTitle = markedOnly
     ? "Show every line first — this drops the newest one, which the filter may be hiding"
     : "Drop the newest line from the stats — lines hooked while finding the route, or a stretch re-read after skipping back";
@@ -738,10 +667,9 @@ export function Reader() {
   `;
 }
 
-/** Render the small slice of Markdown the model emits — paragraphs, `-`/`*`
- *  bullet lists, and `**bold**` / `*italic*` inline — as vnodes. Deliberately
- *  not a CDN parser + innerHTML: that would be more than this needs and open an
- *  XSS seam on model output; this covers exactly what comes back. */
+/** Render the slice of Markdown the model emits — paragraphs, `-`/`*` bullets,
+ *  `**bold**` / `*italic*` — as vnodes. Not a parser plus innerHTML, which would
+ *  open an XSS seam on model output. */
 function renderMarkdown(src) {
   const blocks = (src || "").trim().split(/\n{2,}/);
   return blocks.map((block, i) => {
@@ -777,28 +705,25 @@ function inlineMd(text) {
   return parts;
 }
 
-/** "cleared 3 lines" — built whole rather than split around the count, since htm
- *  collapses the whitespace where literal text meets an interpolation. */
+/** "cleared 3 lines", built whole since htm collapses the whitespace at a line
+ *  break between literal text and an interpolation. */
 function clearedText(n) {
   return `cleared ${n} ${n === 1 ? "line" : "lines"}`;
 }
 
-/** The feed as a flat run of `<p>`s with a header before each sitting — a
- *  gap over `sessionGapSecs` between two consecutive lines starts a new one,
- *  the same rule `stats::derive_sessions` splits sessions on server-side, so
- *  a header here agrees with what the dashboard would call the same sitting.
+/** The feed as a flat run of `<p>`s with a header before each sitting, split on
+ *  the same `sessionGapSecs` rule `stats::derive_sessions` uses, so a header
+ *  here agrees with what the dashboard calls the same sitting.
  *
- *  Grouped and flattened right back rather than kept nested: `paintMarks`,
- *  `spanAtPoint` and `withStatus` all index `lines` directly, and the
- *  underlying `lines` state stays that flat array — only this render pass
- *  needs to know where the sessions divide. */
+ *  Grouped and flattened right back: `paintMarks`, `spanAtPoint` and
+ *  `withStatus` all index `lines` directly, so only this render pass knows
+ *  where the sessions divide. */
 function renderFeed(lines, els, sessionGapSecs) {
   const groups = groupSessions(lines, sessionGapSecs);
   const out = [];
   groups.forEach((g, i) => {
-    // Recomputed every render, so the last group's end time keeps up as its
-    // session is still being read — there is no "closed" flag from the
-    // server, only the next line's absence so far.
+    // Recomputed every render, so the last group's end time keeps up — there
+    // is no "closed" flag, only the next line's absence so far.
     const ongoing = i === groups.length - 1;
     out.push(
       html`<div class="reader-session-header" key=${`h${g.lines[0].id}`}>
@@ -827,20 +752,16 @@ function groupSessions(lines, sessionGapSecs) {
   return groups;
 }
 
-/** "started 14:32" for the sitting still being read — there is no end time
- *  yet, only the last line so far — and "14:32–15:07" for one that closed
- *  because another began after it. Built whole rather than split around the
- *  times, since htm collapses the whitespace where literal text meets an
- *  interpolation across a line break. */
+/** "started 14:32" for the sitting still being read, "14:32–15:07" for one that
+ *  closed. Built whole, since htm collapses the whitespace at a line break. */
 function sessionHeaderLabel(startTs, endTs, ongoing) {
   return ongoing
     ? `started ${fmtTime(startTs)}`
     : `${fmtTime(startTs)}–${fmtTime(endTs)}`;
 }
 
-/** "14:32". Pinned to en-GB rather than the browser's locale, the same way the
- *  sittings table does it: the default locale puts an AM/PM on it, and these
- *  headers sit in a pane kept narrow beside the VN. */
+/** "14:32". Pinned to en-GB like the sittings table: the default locale adds an
+ *  AM/PM, and these headers sit in a pane kept narrow beside the VN. */
 function fmtTime(ts) {
   return new Date(ts * 1000).toLocaleTimeString("en-GB", {
     hour: "2-digit",
@@ -861,9 +782,7 @@ function renderLine(line, els) {
 }
 
 /** Track (or forget) the element holding a line. Preact calls the ref with
- *  `null` as a row leaves, so the map holds exactly the lines currently on
- *  screen — which is now the whole session and whatever history was scrolled
- *  back into, rather than a fixed window of it. */
+ *  `null` as a row leaves, so the map holds exactly what is on screen. */
 function keepLineEl(els, id, el) {
   if (el) els.set(id, el);
   else els.delete(id);
@@ -871,39 +790,34 @@ function keepLineEl(els, id, el) {
 
 /** Whether a line holds a word the feed would tint — the filter's whole rule.
  *
- *  Tested against PAINTED rather than "has any token": every judged word on the
- *  line arrives as a `known` span too, so any-token would keep nearly every line
- *  and the filter would look broken. */
+ *  Tested against PAINTED rather than "has any token": `known` spans are sent
+ *  for every judged word, so any-token would keep nearly every line. */
 function hasMark(line) {
   return (line.tokens || []).some((t) => PAINTED.includes(t.status));
 }
 
-/** Draw the marks: one rounded, padded rectangle behind each word the server
- *  flagged, in a layer of its own underneath the text.
+/** Draw the marks: one rounded, padded rectangle behind each flagged word, in a
+ *  layer underneath the text.
  *
- *  Behind rather than on, and this is the whole design. The text nodes are
- *  never touched — Yomitan scans the same one-text-node-per-line it always did,
- *  which is the invariant this file's header states. But because the marks are
- *  ordinary elements rather than `::highlight()` pseudos, they take a border
- *  radius and horizontal padding, which that API cannot express at all. The
- *  rectangles come from the Ranges' own client rects, so they track the text to
- *  the pixel without the text knowing they exist.
+ *  **Behind rather than on** — the text nodes are never touched, so Yomitan
+ *  scans the same one-text-node-per-line it always did. Being ordinary elements
+ *  rather than `::highlight()` pseudos, the marks take a border radius and
+ *  padding, which that API cannot express. The rectangles come from the Ranges'
+ *  client rects, so they track the text to the pixel.
  *
- *  Positions are measured relative to the scroll *content*, not the viewport,
- *  so the layer scrolls with the lines and nothing has to run on scroll. It
- *  does have to run whenever the text could have reflowed: a new line, the font
- *  size, a resize.
+ *  Measured against the scroll *content*, not the viewport, so the layer scrolls
+ *  with the lines and nothing runs on scroll — only on a reflow.
  *
- *  Every rect is measured before a single node is inserted. Interleaving reads
- *  and writes here would force a layout per mark, on the one path that runs
- *  while a line is being read. */
+ *  Every rect is measured before a node is inserted: interleaving reads and
+ *  writes would force a layout per mark, on the path that runs while a line is
+ *  being read. */
 function paintMarks(lines, els, enabled, listEl, layerEl) {
   if (!listEl || !layerEl) return;
   const boxes = [];
   if (enabled) {
     const base = listEl.getBoundingClientRect();
-    // Viewport → content coordinates. The layer is positioned against the
-    // scroll container's padding box, which is what the scroll offsets undo.
+    // Viewport → content coordinates: the layer is positioned against the
+    // scroll container's padding box, which the scroll offsets undo.
     const dx = listEl.scrollLeft - base.left;
     const dy = listEl.scrollTop - base.top;
     for (const line of lines) {
@@ -912,16 +826,15 @@ function paintMarks(lines, els, enabled, listEl, layerEl) {
       // Only a lone text node is safe to offset into — see `renderLine`.
       if (!node || node.nodeType !== Node.TEXT_NODE) continue;
       for (const t of line.tokens || []) {
-        // The offsets are UTF-16 code units from the server, which is what a
-        // Range indexes in. A span past the end means the text and the tokens
-        // came from different reads of the line; skip it rather than throw.
+        // Offsets are UTF-16 code units, which is what a Range indexes in. A
+        // span past the end means text and tokens came from different reads.
         if (!PAINTED.includes(t.status) || t.start + t.len > node.length)
           continue;
         const range = document.createRange();
         range.setStart(node, t.start);
         range.setEnd(node, t.start + t.len);
-        // One rect per line box: a word broken across a wrap gets a mark on
-        // each fragment rather than one box spanning the gap between them.
+        // One rect per line box, so a wrapped word is marked on each
+        // fragment rather than by one box spanning the gap.
         for (const r of range.getClientRects()) {
           if (!r.width) continue;
           boxes.push({
@@ -935,8 +848,8 @@ function paintMarks(lines, els, enabled, listEl, layerEl) {
       }
     }
   }
-  // One write, after every read. `replaceChildren` also covers the disabled
-  // and unmount cases, where `boxes` is simply empty.
+  // One write after every read. `replaceChildren` also covers the disabled and
+  // unmount cases, where `boxes` is empty.
   layerEl.replaceChildren(
     ...boxes.map((b) => {
       const div = document.createElement("div");
@@ -949,16 +862,13 @@ function paintMarks(lines, els, enabled, listEl, layerEl) {
 
 /** The span under a point, or null if the point isn't on a marked word.
  *
- *  Hit-tested against the text itself — `caretPositionFromPoint` gives the text
- *  node and offset under the finger, and the offsets already on screen say
- *  which word that is. Nothing in the feed is made clickable to achieve it:
- *  an interactive layer over the lines would sit between the reader and the
- *  text Yomitan scans, and a mark that swallowed a long-press would cost a
- *  lookup to gain a judgement.
+ *  Hit-tested against the text with `caretPositionFromPoint`. **Nothing in the
+ *  feed is made clickable**: an interactive layer would sit between the reader
+ *  and the text Yomitan scans, and a mark that swallowed a long-press would cost
+ *  a lookup to gain a judgement.
  *
- *  A tap on an unmarked word — a name, a non-word, anything the ledger will not
- *  hold — finds no span and does nothing, which is the intended silence rather
- *  than a case to report. */
+ *  A tap on anything unmarked finds no span and does nothing, which is the
+ *  intended silence. */
 function spanAtPoint(lines, els, x, y) {
   const caret = caretAt(x, y);
   if (!caret) return null;
@@ -993,9 +903,8 @@ function caretAt(x, y) {
   return null;
 }
 
-/** Every occurrence of one term on screen, restatused. One word is one
- *  assertion: the same term three lines up carries the judgement just made, and
- *  leaving it marked would read as a write that failed. */
+/** Every occurrence of one term on screen, restatused — one word is one
+ *  assertion, and leaving a copy marked would read as a failed write. */
 function withStatus(lines, term, status) {
   return lines.map((line) => {
     if (!line.tokens || !line.tokens.some((t) => sameTerm(t, term)))

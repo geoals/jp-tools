@@ -24,8 +24,6 @@ Cargo workspace for Japanese language learning tools.
   (port 8200)
 - `whisper-service/` — Python FastAPI transcription service for yt-mine
   (port 8100)
-- `spec/` — feature specs and roadmap; `spec/knowledge-db.md` is the current
-  architecture, not a proposal
 - `scripts/start-all.sh` — start/stop/restart/status for the whole stack, or for
   named services (`restart read-stats`); see `--help`
 - `scripts/dev-instance.sh` — run read-stats in isolation (copy of the data,
@@ -41,7 +39,13 @@ Cargo workspace for Japanese language learning tools.
 | `yt-mine.db`    | `mining_jobs`, `mining_sentences`                                                                                  | yt-mine              |
 
 All under `~/.local/share/jp-tools/`. The split is by what the data *is*, not by
-which app wrote it first — `spec/knowledge-db.md` has the reasoning.
+which app wrote it first: anything another tool will ask questions of — what has
+been read, what was looked up, what the dictionaries say, what is known — is
+shared. Everything else is the app's own.
+
+The *schema* for the shared tables is jp-core's, since it has to have one owner,
+but the query helpers still live in read-stats (`db/`) because it is still their
+only caller. They move when a second consumer appears; the tables won't have to.
 
 Two rules for writing to them, both from one "database is locked":
 
@@ -55,6 +59,37 @@ Two rules for writing to them, both from one "database is locked":
 `vocabulary` is the ledger of what is known, one row per `(headword, reading)`.
 Only the reader writes its `status` column, and `new` (never judged) is not
 `unknown` — see `read-stats/CLAUDE.md`, which owns the rules.
+
+## Two architectural rules
+
+**Card authoring splits on whether Yomitan is over the content, and the two
+halves must not be unified.** yt-mine and manga-mine build the card themselves
+through `jp-mine-core`, because a YouTube transcript or an OCR crop has no
+texthooker to hover a word in. VN reading has one, so Yomitan authors the card
+and vn-mine only attaches the media Yomitan cannot reach. Routing VN through
+`jp-mine-core` would throw away the popup; routing yt/manga through Yomitan is
+impossible.
+
+**Term identity is dictionary-gated, which is why `dictionary` and `knowledge`
+are one subsystem in jp-core rather than separable data.** The ledger keys on a
+canonical `(headword, reading)` — the reading is in the key because 空 is そら or
+から and marking one known must not mark the other. `Term::new` is the only way
+to build that key.
+
+Three jobs need the dictionaries, and they apply *different* thresholds, which is
+why `dictionaries.role` exists (`master` / `name` / `reference`) and why the
+ledger stores which dictionaries hold a term rather than one boolean:
+
+- **the wordhood gate** (the highlighter, ingest) — lenient: any dictionary.
+- **the vocabulary scale** ("I know N words") — strict: **master only**.
+- **classification** — a term in a name dictionary but not the master is a name.
+
+**Sankoku is the master dictionary** and its ~82k terms are a real vocabulary
+scale. Jitendex is five times larger and 335k of its terms are absent from
+Sankoku — phrasal expressions, compositional compounds, and every orthographic
+variant of a technical term each get their own headword — so a vocabulary count
+against it would be meaningless. Adding a dictionary should change
+classification, never the denominator.
 
 ## Working here
 

@@ -13,6 +13,7 @@ Monorepo for Japanese language learning tools.
 - **[manga-ocr-service/](manga-ocr-service/)** — Python FastAPI OCR service backing manga-mine.
 - **[scripts/start-all.sh](scripts/start-all.sh)** — start/stop/status for the whole stack in one command.
 
-## Specs
+## Docs
 
-- **[spec/](spec/)** — original pre-implementation design docs. Superseded by the code and each project's own CLAUDE.md/README; kept for historical context on early design decisions. See [spec/index.md](spec/index.md).
+Each project's own CLAUDE.md/README is the documentation; the root CLAUDE.md has
+the workspace-wide architecture.

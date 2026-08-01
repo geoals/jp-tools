@@ -5,9 +5,8 @@
 //! re-encounter panel: "of the words I carded, which ones has the reading
 //! actually shown me again?"
 //!
-//! `spec/knowledge-db.md` drops this table once the `vocabulary` ledger exists
-//! — it is derivable from `lines`, and only survives today because there is no
-//! ledger to derive it into.
+//! **This table should go.** It is derivable from `lines` plus the ledger, and
+//! only survives because that one panel has not been rewritten against them.
 
 use jp_core::knowledge::Knowledge;
 use sqlx::Row;

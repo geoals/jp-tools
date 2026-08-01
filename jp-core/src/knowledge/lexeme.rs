@@ -96,7 +96,7 @@ impl KnownForm {
 ///
 /// `in_master` is the same gate the status counts use: Jitendex's 400k entries
 /// are a phrase index, and letting them into the denominator makes the number
-/// meaningless (`spec/knowledge-db.md`). The reference dictionary is used only
+/// meaningless. The reference dictionary is used only
 /// to *group* those rows, never to admit new ones.
 ///
 /// The join pins `dictionary_id` and matches on `term`, so it rides

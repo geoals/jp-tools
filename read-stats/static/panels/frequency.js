@@ -1,4 +1,4 @@
-// Frequency-threshold triage: spec/cold-start.md's Pass 3, over words the
+// Frequency-threshold triage, over words the
 // reading history has never even produced yet.
 //
 // Deliberately not a swipe UI. `triage.js` judges the ledger's own rows one

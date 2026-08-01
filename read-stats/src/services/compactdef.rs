@@ -4,8 +4,6 @@
 //!
 //! Self-contained like `llm.rs`: it needs its own prompt and is called from the
 //! AnkiConnect proxy after a card is added, not from the reader's explain path.
-//! See `spec/anki-compactdef.md` for the reasoning behind every rule in the
-//! prompt.
 
 use std::sync::LazyLock;
 
@@ -14,10 +12,9 @@ use serde_json::Value;
 use crate::error::AppError;
 use crate::services::tags::{FAMILIARITY_RUBRIC, FLAVOR_RUBRIC};
 
-/// Pinned to Opus 5. The tag-axis experiment (see `spec/anki-compactdef.md` →
-/// "Why no external signals") was run on Opus 4.8 and found no thinking and no
-/// external signals best; that request shape carries over to Opus 5 unchanged.
-/// Opus is preferred over sonnet for the meaning/usage prose.
+/// Pinned to Opus 5. The tag-axis experiment found no thinking and no external
+/// frequency signals to be best, and that request shape carries over unchanged.
+/// Opus is preferred over Sonnet for the meaning/usage prose.
 const MODEL: &str = "claude-opus-5";
 
 /// Built once from the shared tag rubric (`crate::tags`) plus the CompactDef-
@@ -107,7 +104,7 @@ pub async fn compact_def(
 /// English meaning/usage block and a register keyword on a final line; this
 /// trims wrapping quotes/whitespace, drops blank lines, and joins the remaining
 /// lines with `<br>` (plain newlines don't render in Anki's HTML). See
-/// `spec/anki-compactdef.md` for the field format.
+/// the field format.
 ///
 /// Opus-tier models (Opus 5 especially) sometimes echo the prompt's `<meaning>`/
 /// `<usage>` schema placeholders as literal tags; strip them defensively so they

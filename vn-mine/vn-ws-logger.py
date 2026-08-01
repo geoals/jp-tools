@@ -14,8 +14,8 @@ Every logged line is also inserted into the shared knowledge SQLite DB
 (durable, unlike the tmpfs lines.log) so reading time and character counts can
 be derived without any manual tracking. Stats failures never block mining.
 
-Two databases are involved, and the split is jp-core's (see
-spec/knowledge-db.md): `lines` is knowledge, shared with every tool that asks
+Two databases are involved, and the split is jp-core's: `lines` is knowledge,
+shared with every tool that asks
 what has been read, while `settings.current_work` — the title stamped on each
 line — is read-stats' own. The knowledge DB is the connection; read-stats' is
 attached read-only-in-practice for two settings: `current_work` and

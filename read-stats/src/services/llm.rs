@@ -72,10 +72,9 @@ pub async fn explain(
         user.push_str(focus);
     }
 
-    // Thinking off: keeps this interactive helper snappy, and (now that it emits
-    // the two-axis familiarity/flavor tags) avoids the upward familiarity bias
-    // thinking introduces — see `spec/anki-compactdef.md`. Sonnet 5 / Opus 5
-    // otherwise default to adaptive thinking when `thinking` is omitted.
+    // Thinking off: keeps this interactive helper snappy, and avoids the upward
+    // familiarity bias thinking introduces into the two-axis tags. Sonnet 5 and
+    // Opus 5 otherwise default to adaptive thinking when `thinking` is omitted.
     let body = serde_json::json!({
         "model": MODEL,
         "max_tokens": 512,
