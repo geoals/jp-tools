@@ -459,8 +459,7 @@ impl Tokenizer for SudachiTokenizer {
 /// Returns true if the part-of-speech tag represents a content word
 /// (noun, pronoun, verb, adjective, adjectival noun, adverb).
 ///
-/// 代名詞 is a top-level Sudachi tag rather than a subtype of 名詞, so leaving it
-/// out dropped 彼女, 私, 君, これ — ordinary words by any reading of the term.
+/// 代名詞 is a top-level Sudachi tag, not a subtype of 名詞.
 pub fn is_content_word(pos: &str) -> bool {
     matches!(
         pos,
@@ -501,17 +500,12 @@ impl MasterWords {
 
 /// Whether a token is one the ledger counts as a word.
 ///
-/// A content word, or **anything the master dictionary lists under the reading
-/// it was used with**, whatever its part of speech. The scale the ledger feeds
-/// is "how many Sankoku headwords am I familiar with", so a part-of-speech tag
-/// is the wrong thing to refuse on: は, ながら and 彼女 are Sankoku headwords and
-/// a reader is either familiar with them or not. The count cannot be inflated by
-/// admitting them, because [`COUNTS_AS_VOCAB`] takes only master terms —
-/// widening here widens what gets a ledger row, not what gets counted.
+/// A content word, or anything the master dictionary lists under the reading it
+/// was used with. The pair rather than the headword, because 鬼/き and 鬼/おに
+/// are both Sankoku entries.
 ///
-/// The pair test is the whole fence. It admits 達/たち, 御/お, 的/てき, 鬼/き and
-/// refuses げ, ぷ, さん/さーん, 日/じつ, with no stoplist to maintain. The pair,
-/// because 鬼/き and 鬼/おに are both Sankoku entries.
+/// Admitting a word here is not counting it: [`COUNTS_AS_VOCAB`] takes master
+/// terms only.
 ///
 /// [`COUNTS_AS_VOCAB`]: crate::knowledge::vocabulary::COUNTS_AS_VOCAB
 pub fn counts_as_word(t: &Token, master: &MasterWords) -> bool {

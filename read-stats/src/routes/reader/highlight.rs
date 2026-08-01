@@ -145,9 +145,7 @@ struct Candidate {
 /// Why a token carries no status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Excluded {
-    /// Not a content word, and not a master headword either: punctuation, or a
-    /// particle or auxiliary Sankoku does not list. A particle it *does* list is
-    /// vocabulary like any other word.
+    /// Not a content word, and not a master headword either.
     Grammar,
     /// Sudachi's 固有名詞. A cast list is not vocabulary.
     Name,

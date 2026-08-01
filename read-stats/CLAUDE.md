@@ -112,12 +112,8 @@ and a ledger row cannot disagree):
   The verdict is per _term_ over a whole pass, never per occurrence.
 - **Anything the master dictionary lists is a word, whatever its tag.**
   `counts_as_word` admits a content word, or any token whose
-  `(headword, reading)` pair Sankoku lists — so 達/たち, ながら and は all get
-  ledger rows, and げ, ぷ, さん/さーん do not. That pair test is the whole fence,
-  with no stoplist to maintain. The scale is "how many Sankoku headwords am I
-  familiar with", and widening this gate cannot inflate it: `COUNTS_AS_VOCAB`
-  counts master terms only, so this decides what gets a *row*, not what gets
-  counted.
+  `(headword, reading)` pair Sankoku lists. The gate decides what gets a row;
+  `COUNTS_AS_VOCAB` decides what gets counted.
 - **A re-tokenization strands judgements, and the rebuild re-homes them.**
   `carry_stranded_judgements` moves a status to whatever the term is called now,
   never over the target's own assertion.
