@@ -1,40 +1,31 @@
 // Vocabulary triage: turn untriaged terms into assertions.
 //
-// This judges the words already in the ledger, and
-// the first thing in the workspace that writes `status` at all. Everything
-// downstream — the #read highlighter, i+1 filtering, the vocabulary count —
-// reduces to a status lookup, so until this has been run they all read as
+// The first thing in the workspace that writes `status` at all — everything
+// downstream reduces to a status lookup, so until this has run they all read as
 // "nothing is known".
 //
-// It is also Pass 4, which is the shape it takes in
-// the steady state: the batch defaults to words read *since the last sweep*, so
-// after a day or a fortnight of reading a short list appears already ticked and
-// you accept it. The full standing backlog is one toggle away and unchanged —
-// the watermark narrows what is asked about and judges nothing by itself. It
-// moves on submit, not on load, so an interrupted sweep leaves its batch intact
-// rather than silently retiring it.
+// The batch defaults to words read *since the last sweep*, so a day or a
+// fortnight of reading produces a short list already ticked. The standing
+// backlog is one toggle away: the watermark narrows what is asked about and
+// judges nothing itself, and it moves on submit rather than on load, so an
+// interrupted sweep keeps its batch.
 //
-// The interaction is a checked sweep, not a decision per word. A ticked box
-// means known, an unticked one means unknown, and submitting writes both. That
-// is only safe because of what gets ticked *for* you: the server preselects a
-// word only if it was met at least `min_encounters` times AND was never looked
-// up (see jp_core::knowledge::vocabulary::preselects_known). Encounters alone
-// would tick words you skimmed past; the zero-lookup half is what makes the
+// The interaction is a checked sweep, not a decision per word: ticked means
+// known, unticked means unknown, and submitting writes both. That is only safe
+// because of what gets ticked *for* you — the server preselects a word only if
+// it was met at least `min_encounters` times AND was never looked up
+// (`vocabulary::preselects_known`). The zero-lookup half is what makes the
 // default defensible.
 //
 // Two deliberate frictions:
 //
-//   - **The batch is what is on screen.** Submitting judges these rows and no
-//     others. A word further down the queue than this page is left `new`, so a
-//     half-finished pass leaves a queue you can resume rather than a ledger of
-//     guesses.
+//   - **The batch is what is on screen**, so a half-finished pass leaves a
+//     resumable queue rather than a ledger of guesses.
 //   - **The threshold is previewable.** Changing it re-queries rather than
-//     re-filtering locally, so the count you see is the count the server would
-//     act on. It is saved separately, in Settings.
+//     filtering locally, so the count shown is the count the server would act
+//     on. It is saved separately, in Settings.
 //
-// The same rule covers the non-vocabulary tail below: it is a bulk write over
-// rows the queue never shows, so the words go on screen first and the button
-// only appears once they have.
+// The same rule covers the non-vocabulary tail below.
 
 import { html } from "htm/preact";
 import { useEffect, useState } from "preact/hooks";
@@ -282,14 +273,13 @@ export function TriageView({ minEncounters, onJudged }) {
 
 /** What the bulk write would hit, before it hits it.
  *
- *  The words come first and the button second: this is the one action here
- *  that judges rows the reader has not seen, and a count alone ("3,140
- *  blacklisted") is not something anyone can check.
+ *  The words come first and the button second: this is the one action here that
+ *  judges rows the reader has not seen, and a count alone cannot be checked.
  *
- *  A table and not chips, because the encounter count is half the evidence — a
- *  real word wrongly in this set is one with sightings behind it, and chips
- *  bury that. Paged rather than truncated for the same reason: the head of the
- *  list being noise says nothing about the tail. */
+ *  A table rather than chips, because the encounter count is half the evidence —
+ *  a real word wrongly in this set is one with sightings behind it. Paged rather
+ *  than truncated for the same reason: the head being noise says nothing about
+ *  the tail. */
 function NoisePreview({ noise, busy, onPage, onBlacklist, onCancel }) {
   if (!noise.total) {
     return html`<p class="meta-hint">Nothing in the tail — already clear.</p>`;

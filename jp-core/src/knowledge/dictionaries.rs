@@ -2,26 +2,19 @@
 //! imported from Yomitan zips and queried by every tool that needs to know
 //! whether a string is a word.
 //!
-//! ## Roles, and why a term's dictionary matters
+//! Three dictionaries are loaded — Sankoku (~82k terms), Jitendex (~408k) and
+//! NHK (pitch only) — and they **cannot be pooled** into one "is it a word" set,
+//! because they disagree about what a word is: 335k Jitendex terms are absent
+//! from Sankoku, since it gives phrases and every orthographic variant their own
+//! headword where a monolingual dictionary lists them under one.
 //!
-//! Three dictionaries are loaded — Sankoku (三省堂国語辞典, ~82k terms),
-//! Jitendex (~408k) and NHK (pitch only). They cannot be pooled into one "is it
-//! a word" set, because they disagree about what a word *is*: 335,540 Jitendex
-//! terms are absent from Sankoku — phrasal expressions (`ああ見えても`),
-//! compositional compounds (`あいうえお順`), and every orthographic variant of a
-//! technical term each get their own headword. A monolingual dictionary lists
-//! those *under* a headword; Jitendex makes them headwords. So a vocab size
-//! counted against Jitendex means nothing.
+//! Hence [`Role`], and two thresholds over the same data:
 //!
-//! Hence [`Role`], and two different thresholds from the same data:
+//! - **wordhood gate** — lenient: any dictionary will do.
+//! - **vocabulary denominator** — strict: the master only.
 //!
-//! - **wordhood gate** (is this token worth surfacing at all?) — lenient: any
-//!   dictionary will do.
-//! - **vocabulary denominator** ("I know N words") — strict: the master only.
-//!   Sankoku's ~82k ceiling is a real vocabulary scale.
-//!
-//! Adding a dictionary must never move the denominator. That is what the role is
-//! for: a new import is `reference` until someone says otherwise.
+//! Adding a dictionary must never move the denominator, which is what the role
+//! is for: a new import is `reference` until someone says otherwise.
 
 use std::collections::{HashMap, HashSet};
 
@@ -175,11 +168,10 @@ pub async fn backfill_sequences(
 /// The dictionary whose entry ids define lexemes — the one carrying the most
 /// of them.
 ///
-/// Deliberately not the master dictionary. Sankoku is monolingual and
-/// publishes no stable ids, so the question "are these two spellings one
-/// word?" can only be answered by a reference dictionary, even though the
-/// master alone decides what counts as vocabulary. The two roles are
-/// independent and both are needed.
+/// Deliberately not the master dictionary: Sankoku is monolingual and publishes
+/// no stable ids, so only a reference dictionary can answer "are these two
+/// spellings one word?" — even though the master alone decides what counts as
+/// vocabulary. The two roles are independent and both are needed.
 pub async fn lexeme_dictionary(pool: &SqlitePool) -> Result<Option<i64>, sqlx::Error> {
     let row: Option<(i64,)> = sqlx::query_as(
         "SELECT dictionary_id FROM dictionary_entries WHERE sequence IS NOT NULL \
@@ -193,20 +185,16 @@ pub async fn lexeme_dictionary(pool: &SqlitePool) -> Result<Option<i64>, sqlx::E
 /// Every entry id in the lexeme dictionary, mapped to the forms of it that the
 /// **master** dictionary also lists.
 ///
-/// The join is what makes an id-keyed import safe. jiten.moe exports JMdict
-/// entry ids and nothing else: an id names a *word*, but a word is spelt
-/// several ways and the ledger keys on spellings. This resolves one to the
-/// other, and the master join is the vocabulary gate — 長谷川 and JMdict's
-/// multi-word phrases resolve to no master form and so import as nothing.
+/// The join is what makes an id-keyed import safe: an id names a *word*, but a
+/// word is spelt several ways and the ledger keys on spellings. The master join
+/// is the vocabulary gate — names and JMdict's multi-word phrases resolve to no
+/// master form and import as nothing.
 ///
-/// Readings are compared under the kana convention both dictionaries use:
-/// an entry whose headword is already kana stores the reading either as the
-/// headword again or not at all, so both sides are normalized before matching.
-/// Without that, every kana headword failed to join and the import silently
-/// dropped a third of its rows.
+/// **Readings are normalized on both sides before matching**, since an entry
+/// whose headword is already kana stores the reading either as the headword
+/// again or not at all. Without that every kana headword failed to join.
 ///
-/// Returned whole rather than queried per id: an import asks about ~13k ids,
-/// and one scan of the join beats 13k round trips.
+/// Returned whole rather than per id: an import asks about ~13k of them.
 pub async fn master_forms_by_sequence(
     pool: &SqlitePool,
 ) -> Result<HashMap<i64, Vec<(String, String)>>, sqlx::Error> {
@@ -485,16 +473,14 @@ pub async fn master_readings(pool: &SqlitePool, term: &str) -> Result<Vec<String
 
 /// Every reading any loaded dictionary gives this headword.
 ///
-/// The fallback for a term the master does not list. Pass 1 stores an empty
-/// reading when [`master_readings`] comes back empty, which is right for a
-/// kana headword (the ledger's key convention) and wrong for everything else:
-/// 復号 and 冪等性 are real words with real readings that Sankoku simply does
-/// not carry, and keying them on an empty reading either strands the judgement
-/// on a row nothing writes to or duplicates a row the tokenizer already made.
+/// The fallback for a term the master does not list. The Anki import stores an
+/// empty reading when [`master_readings`] comes back empty, which is right for a
+/// kana headword and wrong otherwise — 冪等性 is a real word with a real reading
+/// that Sankoku does not carry, and an empty key either strands its judgement or
+/// duplicates a row the tokenizer already made.
 ///
-/// Deliberately wider than the master gate. This answers "how is it read",
-/// which any dictionary may answer; it does not admit anything into the
-/// vocabulary scale, which only the master and [`super::vocabulary::COUNTS_AS_VOCAB`] decide.
+/// Deliberately wider than the master gate: this answers "how is it read", which
+/// any dictionary may answer. It admits nothing into the vocabulary scale.
 pub async fn any_readings(pool: &SqlitePool, term: &str) -> Result<Vec<String>, sqlx::Error> {
     let rows: Vec<(String,)> = sqlx::query_as(
         "SELECT DISTINCT reading FROM dictionary_entries \
@@ -514,8 +500,8 @@ pub async fn any_readings(pool: &SqlitePool, term: &str) -> Result<Vec<String>, 
 /// master is named in configuration, and a config naming a dictionary that
 /// isn't loaded must not clear the one that is.
 ///
-/// Called at startup rather than at import time so that changing the setting
-/// takes effect on the next run, without re-importing 400k entries.
+/// Called at startup rather than at import time, so changing the setting takes
+/// effect on the next run without re-importing 400k entries.
 pub async fn ensure_master(pool: &SqlitePool, marker: &str) -> Result<Option<i64>, sqlx::Error> {
     if marker.is_empty() {
         return Ok(None);

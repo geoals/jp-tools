@@ -7,16 +7,9 @@
 //
 // Loading it once and passing it down, rather than each panel fetching its own,
 // is deliberate: half the cards are different readings of the same days, and
-// letting them fetch independently would show a stale streak beside a fresh
-// chart for as long as the requests disagreed. **The tabs choose what renders,
-// never what is fetched** — switching tabs must not be able to show two panels
-// disagreeing about the same day.
-//
-// The page used to be twelve cards in one column: today and the last 30 days
-// interleaved, four slices of the same window each with its own hardcoded
-// range, and an action card in the middle of the statistics. It is three tabs
-// now, one per question — how is today going, how is it trending, what am I
-// reading — and the merges live in ./panels/day.js, trends.js and library.js.
+// independent fetches would show a stale streak beside a fresh chart. **The tabs
+// choose what renders, never what is fetched** — switching tabs must not be able
+// to show two panels disagreeing about the same day.
 
 import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
@@ -256,14 +249,13 @@ function App({ view, sub }) {
   `;
 }
 
-/** Which view the URL is asking for. The reader is a separate branch rather
- *  than a section of the dashboard so that opening it unmounts App entirely —
- *  no 60s aggregate polling running behind a reading session.
+/** Which view the URL is asking for. The reader is a separate branch rather than
+ *  a section of the dashboard, so opening it unmounts App entirely — no
+ *  aggregate polling running behind a reading session.
  *
- *  A tab may carry one segment after it (`#library/<title>`), so that opening
- *  a work is a real navigation: back returns to the shelf, and the page can be
- *  linked and reloaded onto the work you were looking at. State held in a
- *  `useState` cannot do either — back would leave the tab entirely. */
+ *  A tab may carry one segment (`#library/<title>`), so opening a work is a real
+ *  navigation: back returns to the shelf and the page can be linked. A `useState`
+ *  could do neither — back would leave the tab entirely. */
 
 function useHashRoute() {
   const [hash, setHash] = useState(() => location.hash);

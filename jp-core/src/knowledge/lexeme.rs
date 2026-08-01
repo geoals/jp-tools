@@ -7,48 +7,31 @@
 //! word, so "I know N words" off a row count overstates N by however many
 //! spellings the reading history contained.
 //!
-//! ## Everything here is derived, nothing is stored
+//! **Everything here is derived and nothing is stored.** There must be no
+//! `redundant` column: a flag written at import time depends on what was already
+//! in the ledger, so Anki-then-jiten and jiten-then-Anki would leave different
+//! databases. Computed at read time it is a pure function of the known forms, so
+//! every import order converges and re-running anything is free.
 //!
-//! There is no `redundant` column and there must not be one. A flag written at
-//! import time depends on what was already in the ledger, so Anki-then-jiten and
-//! jiten-then-Anki would leave different databases. A collapse computed at read
-//! time is a pure function of the known forms: every import order converges, and
-//! re-running anything is free.
+//! A form's lexeme is, **in this order**:
 //!
-//! ## The rule
+//! 1. **For a kana-only form, the lexeme of the kanji forms that read it**, when
+//!    they all agree on one. つらい collapses into 辛い/つらい; おじ collapses
+//!    into 叔父 and 伯父, which share an entry id. そう does not, because 相,
+//!    添う, 沿う and 層 are four lexemes and the adverb is a fifth word.
 //!
-//! A form's lexeme is, in order:
-//!
-//! 1. **For a kana-only form: the lexeme of the kanji forms that read it**,
-//!    when they all agree on one. つらい collapses into 辛い/つらい; おじ
-//!    collapses into 叔父 and 伯父 because *both* carry ent_seq 1607070. そう
-//!    does not collapse, because 相, 添う, 沿う and 層 are four different
-//!    lexemes and the adverb そう is genuinely a fifth word.
-//!
-//!    This runs *before* the form's own entry id, and that order is load-bearing.
-//!    Jitendex lists からい as its own entry (1609860) separately from
-//!    辛い/からい (1365850); taking the id first would count them as two words.
-//!    A kana spelling of a word already known in kanji is redundant whether or
-//!    not the dictionary also lists it alone.
-//!
+//!    Running this *before* the form's own id is load-bearing: Jitendex lists
+//!    からい as its own entry separately from 辛い/からい, and taking the id
+//!    first would count them as two words.
 //! 2. **The form's own entry id**, when the dictionary resolves it to exactly
-//!    one. This is what makes 零れ落ちる and こぼれ落ちる one word (2002270)
-//!    while keeping 辛い/からい and 辛い/つらい apart (1365850 vs 1365860) —
-//!    the homograph case the ledger's key already handles correctly and which
-//!    must survive.
+//!    one — which makes 零れ落ちる and こぼれ落ちる one word while keeping
+//!    辛い/からい and 辛い/つらい apart.
+//! 3. **The form itself**, so a term the reference dictionary does not list
+//!    counts once on its own. Nothing is dropped for being unresolvable.
 //!
-//! 3. **The form itself.** The fallback matters as much as the rule: a term
-//!    the reference dictionary does not list — Sankoku-only vocabulary, a
-//!    multi-word expression, anything Jitendex misses — counts once, on its
-//!    own. Nothing is ever dropped for being unresolvable.
-//!
-//! ## Counting and asking are different questions
-//!
-//! [`known_lexemes`] answers "how many words do I know". [`redundant_forms`]
-//! answers "which rows should triage stop asking about", and it is
-//! deliberately **not** the same set, because redundancy is directional:
-//! knowing 零れ落ちる means こぼれ落ちる teaches you nothing, but knowing
-//! こぼれ落ちる does *not* mean you can read 零れ落ちる. See its doc.
+//! [`known_lexemes`] answers "how many words do I know"; [`redundant_forms`]
+//! answers "which rows should triage stop asking about". Deliberately **not**
+//! the same set — see its doc.
 
 use std::collections::{HashMap, HashSet};
 
@@ -94,15 +77,12 @@ impl KnownForm {
 /// Load every `known` form that counts toward the vocabulary scale, with its
 /// entry ids.
 ///
-/// `in_master` is the same gate the status counts use: Jitendex's 400k entries
-/// are a phrase index, and letting them into the denominator makes the number
-/// meaningless. The reference dictionary is used only
-/// to *group* those rows, never to admit new ones.
+/// `in_master` is the same gate the status counts use. The reference dictionary
+/// only *groups* those rows; it never admits new ones.
 ///
 /// The join pins `dictionary_id` and matches on `term`, so it rides
-/// `idx_dictionary_entries_lookup` as a SEARCH. Check `EXPLAIN QUERY PLAN`
-/// before changing it — the version of this shape that scanned instead held
-/// the write lock for six minutes.
+/// `idx_dictionary_entries_lookup` as a SEARCH. Check `EXPLAIN QUERY PLAN` before
+/// changing it — the shape that scanned held the write lock for six minutes.
 async fn known_forms(k: &Knowledge) -> Result<Vec<KnownForm>, sqlx::Error> {
     let dict = dictionaries::lexeme_dictionary(k.pool()).await?;
 
@@ -217,15 +197,12 @@ pub async fn known_counts(k: &Knowledge) -> Result<LexemeCount, sqlx::Error> {
 
 /// Forms triage should stop offering, because a known form already covers them.
 ///
-/// **Not the same as sharing a lexeme**, and the difference is the whole point:
-/// redundancy runs one direction only. A form is covered by a known form of
-/// the same lexeme when its kanji are a *subset* of that form's kanji —
-/// こぼれ落ちる ⊆ 零れ落ちる, and pure kana ⊆ anything. Knowing the harder
-/// spelling settles the easier one; knowing こぼれ落ちる settles nothing about
-/// whether 零 can be read.
+/// **Not the same as sharing a lexeme**: redundancy runs one direction only. A
+/// form is covered when its kanji are a *subset* of a known form's — こぼれ落ちる
+/// ⊆ 零れ落ちる, and pure kana ⊆ anything. Knowing the harder spelling settles
+/// the easier one; the reverse settles nothing about whether 零 can be read.
 ///
-/// This is what jiten.moe's "redundant" flag encodes, and running it in both
-/// directions would quietly mark unread kanji spellings known.
+/// Running it both ways would quietly mark unread kanji spellings known.
 pub async fn redundant_forms(k: &Knowledge) -> Result<HashSet<Term>, sqlx::Error> {
     let known = resolve(k).await?;
 

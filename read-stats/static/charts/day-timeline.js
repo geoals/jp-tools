@@ -87,19 +87,15 @@ function smoothBuckets(buckets, win) {
 }
 
 /**
- * Seconds genuinely lost to looking words up, given a window's clean and
- * lookup halves.
+ * Seconds genuinely lost to looking words up.
  *
  * A gap holding a lookup holds the line's reading too, so the whole gap is not
- * dictionary time. Price those characters at the window's uninterrupted pace
- * and subtract: on 2026-07-20 that turned "31 min looking words up" into 21.5,
- * the other 9 being reading that would have happened regardless.
+ * dictionary time: price those characters at the window's uninterrupted pace and
+ * subtract.
  *
- * With no clean gaps in the window there is no pace to price them at, so the
- * whole of the lookup gaps is returned — knowingly an overstatement, since some
- * of it was still reading. That is the one window where the correction above
- * can't be applied, and it only arises when smoothing is tight enough for a
- * window to be nothing but lookups.
+ * With no clean gaps there is no pace to price them at, so the whole of the
+ * lookup gaps is returned — knowingly an overstatement, and only reachable when
+ * smoothing is tight enough for a window to be nothing but lookups.
  */
 
 function lookupOverhead(cleanChars, cleanSecs, lookupChars, lookupSecs) {
@@ -134,17 +130,14 @@ function tickSpacing(spanSecs) {
  * One day's reading, minute by minute: speed above, lookup and mining rate
  * below, on a shared clock axis.
  *
- * Two panels rather than one overlay on purpose. Chars/hour runs in the
- * thousands and events/hour in the tens, so putting them on one plot would need
- * two y-scales — and where those two scales line up is a choice, not a fact, so
- * the picture would imply a correlation the data never stated. Stacked on a
- * shared x-axis, a dip in speed and a spike in lookups sit in the same vertical
- * slice and the comparison stays the reader's to make.
+ * Two panels rather than one overlay: chars/hour runs in the thousands and
+ * events/hour in the tens, and where two y-scales line up is a choice, not a
+ * fact. Stacked on a shared x-axis, a speed dip and a lookup spike sit in the
+ * same vertical slice and the comparison stays the reader's.
  *
- * Drag across either panel to zoom to that span; double-click, or the button in
- * the legend, restores the day. Both y-axes and the summary line below rescale
- * to the selection, which is the point of it — a morning and an evening session
- * on one axis compress each other into flat lines.
+ * Drag across either panel to zoom; double-click or the legend button restores
+ * the day. Both y-axes and the summary rescale to the selection — a morning and
+ * an evening session on one axis compress each other into flat lines.
  */
 
 export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {

@@ -19,15 +19,13 @@ pub struct DictionaryEntry {
     pub reading: String,
     pub definitions: Vec<String>,
     pub score: i64,
-    /// The dictionary's own entry id, when it has one — Yomitan term-bank
-    /// field 6. For Jitendex this is JMdict's `ent_seq`, and it is the only
-    /// thing in the workspace that says two *spellings* are one *word*:
-    /// 零れ落ちる and こぼれ落ちる share 2002270, while 辛い/からい and
-    /// 辛い/つらい correctly do not (1365850 vs 1365860).
+    /// The dictionary's own entry id (Yomitan term-bank field 6). For Jitendex
+    /// this is JMdict's `ent_seq`, the only thing in the workspace that says two
+    /// *spellings* are one *word*: 零れ落ちる and こぼれ落ちる share 2002270,
+    /// while 辛い/からい and 辛い/つらい correctly do not.
     ///
-    /// `None` for dictionaries that publish no ids — Sankoku, being
-    /// monolingual, has none, which is why the master dictionary cannot be
-    /// the one asked this question.
+    /// `None` for dictionaries publishing no ids — Sankoku has none, which is
+    /// why the master cannot be the one asked this question.
     pub sequence: Option<i64>,
 }
 
@@ -621,18 +619,15 @@ impl Dictionary {
     /// for them, resolving each zip from the `source_path` it was imported
     /// under.
     ///
-    /// Standalone rather than folded into [`Dictionary::load_or_import`]
-    /// because read-stats — the app that owns the vocabulary ledger and is the
-    /// only one that needs lexemes — never calls it: it reads the dictionary
-    /// cache out of the database directly. Hanging the backfill off the import
-    /// path would mean the ids appeared only when yt-mine or manga-mine
+    /// Standalone rather than folded into [`Dictionary::load_or_import`], because
+    /// read-stats — which owns the ledger and is the only caller that needs
+    /// lexemes — reads the dictionary cache from the database directly. Hung off
+    /// the import path, the ids would appear only when yt-mine or manga-mine
     /// happened to boot.
     ///
-    /// Idempotent, and safe to run at startup: each dictionary is marked
-    /// checked whether or not it yielded anything, so a dictionary that
-    /// publishes no ids (Sankoku) is parsed once and never again. A zip that
-    /// has since moved is skipped without being marked, so it is retried if it
-    /// comes back.
+    /// Idempotent and safe at startup: each dictionary is marked checked whether
+    /// or not it yielded anything, so one publishing no ids is parsed once. A zip
+    /// that has moved is skipped *without* being marked, so it is retried.
     pub async fn backfill_sequences(pool: &sqlx::SqlitePool) -> Result<u64, DictionaryError> {
         use crate::knowledge::dictionaries as db;
 
