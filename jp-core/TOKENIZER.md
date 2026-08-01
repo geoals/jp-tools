@@ -79,9 +79,16 @@ impossible onset.
 - **味/み** — Sudachi normalises the nominalising suffix み of 哀しみ onto the
   homographic 味, and 味/み *is* a listed pair. Structurally valid, semantically
   wrong.
-- **人気/ひとけ** — the reading preference below rewrites it to にんき, which is
+- **人気/ひとけ** — the reading preference above rewrites it to にんき, which is
   wrong in 人気のない道. It is the one case where the correction is known to cost
   something, against ~1,100 tokens it fixes.
+- **何** — bare 何 comes out ナン every time: 1,000 occurrences over 17k lines,
+  not one of them ナニ, where roughly three quarters (何を, 何が, 何も, 何？)
+  should be. Not fixable here, and not the general defect it looks like —
+  Sudachi resolves context-dependent readings correctly for most words (時 is
+  トキ 315 and ジ 57, 様 is サマ 215 and ヨウ 110). It simply never selects a
+  bare 何/ナニ path, so there is no analysis to prefer, only a rule one could
+  hand-write — which is what §3 is for.
 
 ### 2. Mimetics and OOV kana shred
 
@@ -96,6 +103,15 @@ The identities Sankoku does not list are now dominated by cast lists and place
 names (エマ, アリサ, 羽咲) that the 固有名詞 majority verdict did not catch, plus
 text that is not Japanese at all — engine markup and stray latin letters in the
 `lines` table. Neither is a tokenizer defect.
+
+### 4. Where a correction to the analyzer belongs
+
+Two defects here — the mimetic gap and 何 — are Sudachi producing an analysis no
+logic downstream can repair, because the reading or the segmentation it needs is
+one it never emits. The mechanism for that is a **Sudachi user dictionary**: data
+in the analyzer, where the cost model still lets context decide, rather than
+Japanese grammar hand-written into `tokenize.rs` one word at a time. Nothing here
+does that yet; it needs a user-dic CSV, a compile step and a rebuild hook.
 
 ## Worth investigating: Yomitan/Nazeka-style deinflection
 
