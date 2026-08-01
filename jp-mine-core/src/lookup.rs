@@ -86,6 +86,7 @@ mod tests {
                 pos: "名詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                inflected: false,
             },
             Token {
                 surface: "に".into(),
@@ -94,6 +95,7 @@ mod tests {
                 pos: "助詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                inflected: false,
             },
             Token {
                 surface: "行く".into(),
@@ -102,6 +104,7 @@ mod tests {
                 pos: "動詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                inflected: false,
             },
         ];
         assert_eq!(
@@ -120,6 +123,7 @@ mod tests {
                 pos: "動詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                inflected: false,
             },
             Token {
                 surface: "た".into(),
@@ -128,6 +132,7 @@ mod tests {
                 pos: "助動詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                inflected: false,
             },
         ];
         assert_eq!(
@@ -145,6 +150,7 @@ mod tests {
             pos: "名詞".into(),
             proper_noun: false,
             subsidiary: false,
+            inflected: false,
         }];
         assert_eq!(bold_target_in_sentence(&tokens, "別の語"), None);
     }
@@ -159,6 +165,7 @@ mod tests {
                 pos: "動詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                inflected: false,
             },
             Token {
                 surface: "て".into(),
@@ -167,6 +174,7 @@ mod tests {
                 pos: "助詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                inflected: false,
             },
             Token {
                 surface: "食べ".into(),
@@ -175,6 +183,7 @@ mod tests {
                 pos: "動詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                inflected: false,
             },
             Token {
                 surface: "た".into(),
@@ -183,6 +192,7 @@ mod tests {
                 pos: "助動詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                inflected: false,
             },
         ];
         assert_eq!(

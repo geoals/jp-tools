@@ -49,7 +49,10 @@ async fn main() {
         }
     }
 
-    let master = dictionaries::master(pool).await.unwrap().expect("no master");
+    let master = dictionaries::master(pool)
+        .await
+        .unwrap()
+        .expect("no master");
     let jitendex = named("Jitendex").await;
     let prefs = dictionaries::preferred_readings(pool, master.id, jitendex.id, bccwj.id)
         .await

@@ -38,6 +38,15 @@ pub struct Token {
     /// headwords, separate from the kanji verb, so the identity ladder can send
     /// them there instead of to 見る and 居る.
     pub subsidiary: bool,
+    /// Whether the surface is a *stem* rather than the word itself — 続い for
+    /// 続く, 許せ for 許す, なれ for 慣れる.
+    ///
+    /// The one thing that stops a stem being mistaken for a word. Japanese has
+    /// a listed word for a great many two-kana strings, so any rule that matches
+    /// a surface against the dictionary will keep finding them: 続い + て spells
+    /// the conjunction 続いて, 許せ is Sankoku's imperative entry, なれ reads as
+    /// 汝. None of those is what the text said.
+    pub inflected: bool,
 }
 
 #[cfg_attr(any(test, feature = "test-support"), mockall::automock)]
@@ -328,12 +337,18 @@ impl SudachiTokenizer {
             .collect();
         let term = if content && self.lexicon.contains(&written) {
             Some(written)
-        } else if self.lexicon.contains(&surfaces) {
+        } else if run.iter().all(|t| !t.inflected) && self.lexicon.contains(&surfaces) {
             // The expression join, and the one place function words are allowed
             // in: それどころか is a Sankoku headword whose parts are two
-            // particles. The join is safe because what it produces must itself
-            // be a listed headword — the dictionary decides wordhood, not the
-            // tags of the pieces.
+            // particles. What it produces must itself be a listed headword — the
+            // dictionary decides wordhood, not the tags of the pieces.
+            //
+            // **No inflected part.** This one glues surfaces together, so a stem
+            // would be glued in as if it were a word: 続い + て spells the
+            // conjunction 続いて and そう + な(だ) spells the hearsay そうな, and
+            // neither is what the sentence said. It is also what made the rule
+            // look arbitrary — 開いて stayed split only because Sankoku happens
+            // not to list it.
             Some(surfaces.clone())
         } else if self.reading_join_admitted(run, head, content) {
             let read: String = head
@@ -375,6 +390,7 @@ impl SudachiTokenizer {
                 pos: last.pos.clone(),
                 proper_noun: false,
                 subsidiary: false,
+                inflected: false,
             },
         })
     }
@@ -528,7 +544,13 @@ impl SudachiTokenizer {
         }
         candidates.push(sudachi());
         candidates.push((m.dictionary_form().to_string(), lemma_reading.clone()));
-        candidates.push((surface.clone(), m.reading_form().to_string()));
+        // Only when the surface *is* the word. An inflected surface is a stem,
+        // and a stem that happens to be listed is a different word: 許せ is an
+        // entry of its own, and 許せない is not it.
+        let uninflected = *surface == *m.dictionary_form();
+        if uninflected {
+            candidates.push((surface.clone(), m.reading_form().to_string()));
+        }
 
         if let Some((term, reading)) = candidates
             .iter()
@@ -558,14 +580,21 @@ impl SudachiTokenizer {
         // Only the reading is left to go on: うかがう is a word Sankoku has, but
         // only under 伺う and 窺う.
         //
-        // **Hiragana surfaces only.** A reading is the weakest signal there is
-        // and everything else in the language is homophonous with something:
-        // katakana turned エマ into 絵馬 and トン into 頓, and Sudachi reads a
-        // stray latin letter or digit aloud, so g became グラム 14,314 times and
-        // 4 became 四. A word written in hiragana is the one case where the
-        // reading *is* how it was written.
-        if surface.chars().all(crate::text::kana::is_hiragana) {
-            let spoken = crate::text::kana::to_hiragana(&surface);
+        // Asked of the **lemma**, never the surface. A surface may be a stem, and
+        // a stem's sound is another word's: なれ for 慣れる reads as 汝. The
+        // lemma's reading is a whole word's reading by construction, which is
+        // what makes this safe to ask on an inflected token at all.
+        //
+        // **Words written in kana only.** A reading is the weakest signal there
+        // is and everything is homophonous with something: katakana turned エマ
+        // into 絵馬, and Sudachi reads a stray latin letter aloud, so g became
+        // グラム 14,314 times and 4 became 四. A word written in hiragana is the
+        // one case where the reading *is* how it was written.
+        if m.dictionary_form()
+            .chars()
+            .all(crate::text::kana::is_hiragana)
+        {
+            let spoken = crate::text::kana::to_hiragana(&lemma_reading);
             if let Some(term) = self.headword_for_reading(&spoken) {
                 return (term.clone(), spoken);
             }
@@ -639,6 +668,7 @@ impl Tokenizer for SudachiTokenizer {
                 pos: m.part_of_speech()[0].clone(),
                 proper_noun: subclass == "固有名詞",
                 subsidiary,
+                inflected: *m.surface() != *m.dictionary_form(),
             }
         };
 
@@ -841,6 +871,7 @@ mod tests {
             pos: pos.to_string(),
             proper_noun: false,
             subsidiary: false,
+            inflected: false,
         }
     }
 

@@ -50,6 +50,7 @@ impl Tokenizer for FakeTokenizer {
                     // classification.
                     proper_noun: false,
                     subsidiary: false,
+                    inflected: false,
                 }
             })
             .collect())
