@@ -52,19 +52,27 @@ export function TrendsCard({ days, targetMins, todayDate }) {
       : "—";
   const daysReadLabel = `${daysRead}/${win.length}`;
 
-  // Per day of the range, not per day read — a week with two days off is a
-  // slower week, and dividing by `daysRead` would hide exactly that. The
+  // Today is still being read, so averaging it in reports a slump that is only
+  // the clock. Every other tile counts it — a total of what has happened is
+  // right either way.
+  const done = win.filter((d) => d.date !== todayDate);
+  const doneChars = done.reduce((a, d) => a + d.chars, 0);
+  const doneSecs = done.reduce((a, d) => a + d.active_secs, 0);
+  const doneRead = done.filter((d) => d.active_secs > 0).length;
+
+  // Divided by every day, not by the days read: a week with two days off is a
+  // slower week, and dividing by `doneRead` would hide exactly that. The
   // per-day-read figure is worth having too, so it goes in the tooltip.
-  const perDay =
-    metric === "minutes"
-      ? fmtMins(secs / win.length)
-      : `${Math.round(chars / win.length).toLocaleString("en")}`;
-  const perDayRead =
-    daysRead === 0
-      ? "no reading in this range"
-      : metric === "minutes"
-        ? `${fmtMins(secs / daysRead)} per day you read`
-        : `${Math.round(chars / daysRead).toLocaleString("en")} chars per day you read`;
+  const perDay = !done.length
+    ? "—"
+    : metric === "minutes"
+      ? fmtMins(doneSecs / done.length)
+      : Math.round(doneChars / done.length).toLocaleString("en");
+  const perDayRead = !doneRead
+    ? `Over ${done.length} full days, today excluded.`
+    : metric === "minutes"
+      ? `Over ${done.length} full days, today excluded. ${fmtMins(doneSecs / doneRead)} per day you read.`
+      : `Over ${done.length} full days, today excluded. ${Math.round(doneChars / doneRead).toLocaleString("en")} chars per day you read.`;
 
   // Minutes and characters get one chart with a switch rather than two charts,
   // because they are the same question — how much reading happened — asked in
