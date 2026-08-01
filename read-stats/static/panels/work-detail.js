@@ -191,10 +191,6 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
             />`
           : html`<p class="chart-empty">No reading days recorded.</p>`
       }
-      <p class="chart-note">
-        This work's own reading days, in order — days it was not touched are not
-        drawn.
-      </p>
     </div>
 
     <${GaveCard}
@@ -256,13 +252,6 @@ function GaveCard({ mined, minedCount, taught, taughtCount, days, firstRead }) {
             ></span>`;
           })}
         </div>`
-      }
-      ${
-        perDay.length > 1 &&
-        html`<p class="chart-note">
-          Cards added per reading day. The rate falling as a work goes on is the
-          work getting easier.
-        </p>`
       }
 
       <${TermList}
@@ -335,11 +324,6 @@ function VocabCard({ vocab, unknown, distinctive }) {
           <div class="value">${vocab.new_types.toLocaleString("en")}</div>
         </div>
       </div>
-      <p class="chart-note">
-        Both figures, because they answer different questions and sit far apart:
-        the words a work repeats are the ones you already know. Only words a
-        dictionary recognizes are counted.
-      </p>
 
       <${TermList}
         title="Unknown, commonest here first"
@@ -364,7 +348,9 @@ function TermList({ title, note, terms }) {
   if (!terms || !terms.length) return null;
   return html`
     <div class="term-list">
-      <div class="word-list-label">${title}</div>
+      <div class="word-list-label" title=${note.replace(/\s+/g, " ").trim()}>
+        ${title}
+      </div>
       <div class="word-chips">
         ${terms.map((t) => {
           const reading =
@@ -379,7 +365,6 @@ function TermList({ title, note, terms }) {
           </span>`;
         })}
       </div>
-      <p class="chart-note">${note}</p>
     </div>
   `;
 }
@@ -432,11 +417,6 @@ function ProseCard({ prose, corpus, workChars }) {
         </div>`
       }
     </div>
-    <p class="chart-note">
-      Measured against everything else you have read, because a length on its
-      own says nothing. Sentence lengths exclude punctuation, like every other
-      character count here.
-    </p>
   </div>`;
 }
 

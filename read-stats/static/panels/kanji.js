@@ -8,17 +8,21 @@
 // One payload feeds all of it (see routes/kanji.rs). Everything below is a
 // re-slice in JS, which is what keeps the grid and the grade meters from
 // disagreeing about a kanji met while the page was open.
+//
+// It is fetched here rather than in the dashboard's shared poll: the derivation
+// walks every line ever read, and no other panel needs the result.
 
 import { html } from "htm/preact";
-import { useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
+import { api } from "../api.js";
 import { KanjiDiscoveryChart } from "../charts.js";
 import { SegmentedControl } from "../components/controls.js";
 
 const SORTS = [
-  { value: "count", label: "yours" },
-  { value: "bccwj", label: "BCCWJ" },
-  { value: "grade", label: "grade" },
-  { value: "recent", label: "newest" },
+  { value: "count", label: "most read" },
+  { value: "bccwj", label: "commonest in Japanese" },
+  { value: "grade", label: "school grade" },
+  { value: "recent", label: "newest to you" },
 ];
 
 /** Grade 8 is the whole secondary-school half of the jōyō set, and 0 is
@@ -34,7 +38,17 @@ const GRADE_LABEL = {
   0: "non-jōyō",
 };
 
-export function KanjiView({ kanji }) {
+export function KanjiView() {
+  const [kanji, setKanji] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    api("/api/kanji")
+      .then(setKanji)
+      .catch((e) => setError(e.message));
+  }, []);
+
+  if (error) return html`<p class="chart-empty">Failed to load: ${error}</p>`;
   if (!kanji) return html`<p class="chart-empty">Loading…</p>`;
   if (!kanji.kanji.length) {
     return html`
@@ -110,13 +124,10 @@ function tint(count, max) {
 
 function GridCard({ rows, solidAt }) {
   const [sort, setSort] = useState("count");
-  const [onlyUnmined, setOnlyUnmined] = useState(false);
   const [picked, setPicked] = useState(null);
 
   const max = rows[0].count;
   const shown = useMemo(() => {
-    let list = rows;
-    if (onlyUnmined) list = list.filter((r) => !r.mined);
     const by = {
       // Ungraded kanji sort last rather than first: 0 means "no grade", not
       // "easiest".
@@ -129,36 +140,26 @@ function GridCard({ rows, solidAt }) {
       recent: (a, b) => b.first_ts - a.first_ts,
       count: (a, b) => b.count - a.count,
     }[sort];
-    return [...list].sort(by);
-  }, [rows, sort, onlyUnmined]);
+    return [...rows].sort(by);
+  }, [rows, sort]);
 
   const detail = picked && shown.find((r) => r.kanji === picked);
+  const countLine = `${shown.length.toLocaleString("en")} kanji`;
 
   return html`
     <div class="card">
       <div class="card-head">
         <h2>Every kanji you have read</h2>
-        <div class="card-controls">
-          <${SegmentedControl}
-            value=${sort}
-            options=${SORTS}
-            onChange=${setSort}
-            label="Sort the kanji grid"
-          />
-        </div>
+        <span class="kanji-count">${countLine}</span>
       </div>
-      <div class="card-controls kanji-filters">
-        <button
-          type="button"
-          class=${onlyUnmined ? "toggle-btn toggle-on" : "toggle-btn"}
-          aria-pressed=${onlyUnmined}
-          onClick=${() => setOnlyUnmined(!onlyUnmined)}
-        >
-          no card yet
-        </button>
-        <span class="kanji-count"
-          >${shown.length.toLocaleString("en")} shown</span
-        >
+      <div class="card-controls kanji-sort">
+        <span class="kanji-sort-label" id="kanji-sort-label">Order by</span>
+        <${SegmentedControl}
+          value=${sort}
+          options=${SORTS}
+          onChange=${setSort}
+          label="Order the kanji grid by"
+        />
       </div>
 
       <div class="kanji-grid">
@@ -168,7 +169,8 @@ function GridCard({ rows, solidAt }) {
           if (r.kanji === picked) classes.push("kanji-picked");
           if (r.count >= solidAt) classes.push("kanji-solid");
           const rank = r.bccwj_rank ? `BCCWJ #${r.bccwj_rank}` : "not in BCCWJ";
-          const title = `${r.kanji} · read ${r.count}× · ${rank}`;
+          const card = r.mined ? " · on a card" : "";
+          const title = `${r.kanji} · read ${r.count}× · ${rank}${card}`;
           return html`
             <button
               type="button"
@@ -199,9 +201,6 @@ function GridLegend() {
           ></span>`,
       )}
       <span class="legend-item legend-static">rarely → constantly read</span>
-      <span class="legend-item legend-static">
-        <span class="legend-swatch kanji-swatch kanji-mined"></span>on a card
-      </span>
     </div>
   `;
 }
@@ -284,6 +283,18 @@ function GradeCard({ grades, solidAt }) {
             </div>
           `;
         })}
+        ${
+          // No grade teaches these, so there is no denominator to draw against.
+          other &&
+          html`<div
+            class="compare-row"
+            title="Jinmeiyō names and the hyōgai the writing reaches for — no grade teaches them, so there is nothing to draw a bar against."
+          >
+            <span class="compare-name">non-jōyō</span>
+            <span class="compare-track"></span>
+            <span class="compare-value">${other.met.toLocaleString("en")}</span>
+          </div>`
+        }
       </div>
       <div class="chart-legend kanji-legend">
         <span class="legend-item legend-static">
@@ -298,14 +309,6 @@ function GradeCard({ grades, solidAt }) {
           >met at least once
         </span>
       </div>
-      ${
-        other &&
-        html`<p class="chart-note">
-          Plus ${other.met.toLocaleString("en")} kanji no school grade teaches —
-          jinmeiyō names and the hyōgai the writing reaches for. There is no
-          denominator for those, which is why they get a count and not a bar.
-        </p>`
-      }
     </div>
   `;
 }

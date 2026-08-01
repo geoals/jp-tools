@@ -211,10 +211,16 @@ add to when the question is "does the SQL select what the derivation assumes".
   interpolate it whole.
 - The dashboard polls once and passes the result down — half the cards are
   different readings of the same days. **Tabs choose what renders, never what is
-  fetched.**
+  fetched.** `/api/kanji` is the one exception, and only because no other panel
+  reads it: it walks every line ever read, so the kanji tab fetches it itself
+  rather than holding up the first paint of a page not showing it.
 - Five tabs, one per question: **Today** (`current-reading.js` over `day.js`),
   **Trends** (one range selector over every chart), **Library**, **Kanji**,
-  **Vocab**. Plus `#read` and `#tokenize`, reached from the header.
+  **Vocab**. `#settings` and `#tokenize` are reached from ⚙ and render inside
+  the shell like any panel; `#read` is its own route and unmounts the dashboard.
+- **Pause capture appears only where reading does** — in `#read`, and under ⚙
+  beside the settings. A live switch next to numbers that only report was read
+  as a filter.
 - **Library has two levels.** The shelf lists works as cards; opening one
   replaces the tab with `work-detail.js` over `GET /api/works/detail`, keyed by
   title. A work with no reading behind it does not appear. Logged articles
@@ -240,6 +246,9 @@ add to when the question is "does the SQL select what the derivation assumes".
   **on submit, never on load**; only for a
   request that asked (`advance_sweep`); and it is a filter and nothing else —
   `scoped=0` still reaches every ready row.
+- **A rule the UI needs is a tooltip, not a paragraph.** Prose that explains
+  what a number means goes in `title=` on the heading or tile it explains. Text
+  on the page itself carries data — a count, a range, a date.
 - **Status colour is one scale, in HSL, in `base.css`.** Hue names the status
   (211 blue `new` / 276 violet `seen` / 28 amber `unknown`), lightness says how
   loudly, and the dark ramp mirrors the light one. Both places that show a

@@ -265,11 +265,6 @@ function StatusSummary({ vocab, onImported }) {
           })}
         </tbody>
       </table>
-      <div class="meta-hint">
-        <strong>vocabulary</strong> counts only terms the master dictionary
-        lists — the rest are phrases, names and reading noise, which belong in
-        the ledger but not in a vocabulary figure.
-      </div>
     </div>
   `;
 }

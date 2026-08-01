@@ -1,8 +1,7 @@
 // `#tokenize` — paste a line, see what the pipeline made of it.
 //
-// A page of its own rather than a tab, for the same reason `#read` is one: it
-// needs none of the dashboard's poll, and it is opened to answer a question
-// about the tokenizer, not about the reading.
+// Reached from ⚙ rather than from a tab: it asks about the tokenizer, not about
+// the reading. Renders inside the dashboard shell, so the header stays put.
 //
 // It shows the same answer twice, because they are two different questions.
 // The text at the top is tinted exactly as the feed tints it — the check that
@@ -49,12 +48,8 @@ export function TokenizeView() {
 
   return html`
     <div class="tokenize-page">
-      <header class="tokenize-header">
-        <h1>tokenize</h1>
-        <a class="pause-btn" href="#today">← dashboard</a>
-      </header>
-
       <form class="card tokenize-form" onSubmit=${submit}>
+        <h2>tokenize</h2>
         <textarea
           rows="3"
           placeholder="Paste Japanese text"

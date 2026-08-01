@@ -89,10 +89,11 @@ export function PromotionView({ onPromoted }) {
   return html`
     <div class="card">
       <h2>count as vocabulary</h2>
-      <p class="meta-hint">
-        ${heading}. Mined ones are cards you made; the rest were read at least
-        ${data.min_encounters} times. Promoting says it is a word, not that you
-        know it — it never changes a status.
+      <p
+        class="meta-hint"
+        title="Promoting says it is a word, not that you know it — it never changes a status. Mined ones are cards you made; the rest were read at least the triage floor's many times."
+      >
+        ${heading}
       </p>
       <div class="triage-actions">
         <span class="meta-hint">${chosen}</span>

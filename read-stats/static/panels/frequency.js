@@ -112,13 +112,11 @@ export function FrequencyView({ maxFreqRank, onCommitted }) {
 
   return html`
     <div class="card">
-      <h2>frequency triage</h2>
-      <p class="meta-hint">
-        Words this common are marked known in one sweep, on the assumption
-        that a word inside the threshold is one you already have. Words with
-        more than one dictionary reading are left for ordinary triage instead
-        of guessed at.
-      </p>
+      <h2
+        title="Words this common are marked known in one sweep. Words with more than one dictionary reading are left for ordinary triage instead of guessed at."
+      >
+        frequency triage
+      </h2>
       <label class="triage-floor">
         known up to BCCWJ rank
         <input

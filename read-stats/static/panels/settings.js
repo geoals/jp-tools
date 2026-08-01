@@ -156,12 +156,11 @@ export function SettingsView({ settings, onSaved }) {
 
   return html`
     <div class="card">
-      <h2>Settings</h2>
-      <p class="meta-hint">
-        Thresholds are applied at query time, not at capture time — every one of
-        these re-reads the whole history under the new value, so a change is
-        reversible and never edits a stored number.
-      </p>
+      <h2
+        title="Thresholds are applied at query time, not at capture time — every one of these re-reads the whole history under the new value, so a change is reversible and never edits a stored number."
+      >
+        Settings
+      </h2>
       <form onSubmit=${save}>
         ${GROUPS.map(
           (group) => html`
@@ -216,6 +215,20 @@ export function SettingsView({ settings, onSaved }) {
           <p class="settings-hint">
             Stored on this device only, so one device can read dark while
             another stays light. “system” follows the OS setting as it changes.
+          </p>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <h3>Tools</h3>
+        <div class="settings-row">
+          <label>Tokenizer</label>
+          <div class="settings-input">
+            <a class="pause-btn" href="#tokenize">🔤 tokenize a line</a>
+          </div>
+          <p class="settings-hint">
+            Paste a line and see what the pipeline made of it — the tint the
+            reading view would paint, and one row per token.
           </p>
         </div>
       </div>

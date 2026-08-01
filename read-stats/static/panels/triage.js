@@ -160,12 +160,11 @@ export function TriageView({ minEncounters, onJudged }) {
         />
         show everything ready, not just since the last sweep
       </label>
-      <p class="meta-hint">
-        Ticked means known. Only words never looked up are ticked for you —
-        needing the dictionary once is enough to leave a word unticked.
-        Accepting writes both verdicts for the rows below and nothing else:
-        unticked means unknown, which is the snooze that keeps a word out of
-        every later batch until you read it a lot more.
+      <p
+        class="meta-hint"
+        title="Only words you have never looked up are ticked for you. Accepting writes both verdicts for the rows below: unticked means unknown, which keeps a word out of later batches until you read it a lot more."
+      >
+        Ticked means known.
       </p>
     </div>
 
@@ -248,12 +247,11 @@ export function TriageView({ minEncounters, onJudged }) {
     }
 
     <div class="card">
-      <h2>the non-vocabulary tail</h2>
-      <p class="meta-hint">
-        Rows no loaded dictionary recognises as a word — tokenizer noise like
-        っっ and あああ. The queue above never offers them; blacklisting clears
-        them out so the untriaged count means "vocabulary still to judge".
-      </p>
+      <h2
+        title="Rows no loaded dictionary recognises as a word — tokenizer noise like っっ and あああ. The queue above never offers them; blacklisting clears them out so the untriaged count means 'vocabulary still to judge'."
+      >
+        the non-vocabulary tail
+      </h2>
       ${
         noise === null
           ? html`<button class="ghost" onClick=${() => showNoise(0)}>

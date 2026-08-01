@@ -210,6 +210,17 @@ cmd_browser() {
   grep -qF "vocabulary" "$WORK/dom-vocab.html" || die "vocab tab is missing: vocabulary"
   say "vocab tab renders ($(wc -c <"$WORK/dom-vocab.html") bytes)"
 
+  # Settings and tokenize: reached from ⚙ rather than from a tab, and both draw
+  # inside the shell, so the header has to come with them.
+  for view in settings tokenize; do
+    "$CHROME" --headless --disable-gpu --no-sandbox --dump-dom --virtual-time-budget=15000 \
+      "http://127.0.0.1:$PORT/#$view" >"$WORK/dom-$view.html" 2>>"$WORK/console.log"
+    for want in "read-stats" "pause capture" "$view"; do
+      grep -qF "$want" "$WORK/dom-$view.html" || die "$view view is missing: $want"
+    done
+    say "$view view renders ($(wc -c <"$WORK/dom-$view.html") bytes)"
+  done
+
   # The library tab: the shelf, and one work's own page behind it. The detail
   # panel is reached only by clicking a card, so a bad import there renders an
   # empty tab while every JSON endpoint still passes — the same trap the kanji

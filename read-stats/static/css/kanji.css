@@ -42,12 +42,6 @@
   outline: 2px solid var(--series-1);
   outline-offset: -2px;
 }
-/* Solid kanji carry weight as well as tint — at the top of the ramp the
-   alpha steps get hard to tell apart, and "read it without stopping" deserves
-   to be readable at a glance. */
-.kanji-solid {
-  font-weight: 600;
-}
 /* The ring for a kanji a card's target word contains. Rare by construction,
    which is what lets it mean something at a glance across two thousand
    chips. */
@@ -59,9 +53,14 @@
   outline-offset: -2px;
 }
 
-.kanji-filters {
+.kanji-sort {
+  margin-top: 8px;
   margin-bottom: 4px;
   align-items: center;
+}
+.kanji-sort-label {
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 .kanji-count {
   color: var(--muted);

@@ -614,11 +614,6 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
           ${`${scopeLabel}: ${Math.round(dayEffective).toLocaleString("en")} chars/h as read, ${Math.round(dayRaw).toLocaleString("en")} without lookups — a lookup tax of ${Math.round(dayRaw - dayEffective).toLocaleString("en")} chars/h (${Math.round(((dayRaw - dayEffective) / dayRaw) * 100)}%).`}
           ${" "}
           ${`Lookups cost about ${Math.round(dayOverhead / 60)} min: ${Math.round(totLookup / 60)} min sat in gaps holding one, but ${Math.round((totLookup - dayOverhead) / 60)} min of that was reading the line itself.`}
-          ${" "}
-          <span class="tooltip-sub">
-            A lookup running past the 30s afk cap is only ever charged 30s, so
-            this is a slight floor.
-          </span>
         </p>
       `
     }

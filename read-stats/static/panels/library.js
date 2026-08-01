@@ -114,9 +114,11 @@ export function LibraryView({
                 onSaved();
               }}
             />`
-          : html`<div class="meta-hint">
-              For reading the line stream never saw — a physical book, or a VN
-              read before this existed. Everything else is tracked already.
+          : html`<div
+              class="meta-hint"
+              title="For reading the line stream never saw — a physical book, or a VN read before this existed."
+            >
+              For reading that wasn't hooked.
             </div>`
       }
     </div>

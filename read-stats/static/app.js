@@ -10,6 +10,10 @@
 // independent fetches would show a stale streak beside a fresh chart. **The tabs
 // choose what renders, never what is fetched** — switching tabs must not be able
 // to show two panels disagreeing about the same day.
+//
+// `/api/kanji` is the exception: no other panel reads it, so nothing can
+// disagree with it, and it is slower than the rest of the poll put together.
+// The kanji tab fetches it itself.
 
 import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
@@ -47,14 +51,13 @@ function App({ view, sub }) {
   const [sessions, setSessions] = useState(null);
   const [anki, setAnki] = useState(null);
   const [lookups, setLookups] = useState(null);
-  const [kanji, setKanji] = useState(null);
   const [vocab, setVocab] = useState(null);
   const [ankiBusy, setAnkiBusy] = useState(false);
   const [error, setError] = useState(null);
 
   async function load() {
     try {
-      const [s, d, w, cfg, sess, ank, lk, kj, vc] = await Promise.all([
+      const [s, d, w, cfg, sess, ank, lk, vc] = await Promise.all([
         api("/api/summary"),
         api("/api/days?days=60"),
         api("/api/works"),
@@ -62,7 +65,6 @@ function App({ view, sub }) {
         api("/api/sessions"),
         api("/api/anki/summary"),
         api("/api/lookups/summary"),
-        api("/api/kanji"),
         api("/api/vocab/summary"),
       ]);
       setSummary(s);
@@ -72,7 +74,6 @@ function App({ view, sub }) {
       setSessions(sess);
       setAnki(ank);
       setLookups(lk);
-      setKanji(kj);
       setVocab(vc);
       setError(null);
     } catch (err) {
@@ -119,7 +120,10 @@ function App({ view, sub }) {
     }
   }
 
+  // Reached from ⚙, not from a tab, but rendered in the shell like any panel.
   const isSettings = view === "settings";
+  const isTokenize = view === "tokenize";
+  const offTab = isSettings || isTokenize;
   const tab = TABS.some((t) => t.id === view) ? view : "today";
 
   // The periodic sweep's trigger is "after a day of reading", which is a thing
@@ -141,9 +145,9 @@ function App({ view, sub }) {
           (t) => html`
             <a
               key=${t.id}
-              class=${`tab${!isSettings && tab === t.id ? " tab-on" : ""}`}
+              class=${`tab${!offTab && tab === t.id ? " tab-on" : ""}`}
               href=${`#${t.id}`}
-              aria-current=${!isSettings && tab === t.id ? "page" : null}
+              aria-current=${!offTab && tab === t.id ? "page" : null}
               >${t.label}</a
             >
           `,
@@ -152,32 +156,29 @@ function App({ view, sub }) {
       <div class="header-right">
         <a
           class="pause-btn"
-          href="#tokenize"
-          title="Run text through the reading view's tokenizer"
-        >
-          🔤 tokenize
-        </a>
-        <a
-          class="pause-btn"
           href="#read"
           title="Live line feed + explain button"
         >
           📖 read
         </a>
         <a
-          class=${`pause-btn${isSettings ? " paused" : ""}`}
-          href=${isSettings ? "#today" : "#settings"}
-          title="Goal, thresholds and theme"
+          class=${`pause-btn${offTab ? " paused" : ""}`}
+          href=${offTab ? "#today" : "#settings"}
+          title="Goal, thresholds, theme and the tokenizer"
         >
           ⚙
         </a>
-        <button
-          class="pause-btn ${summary.paused ? "paused" : ""}"
-          onClick=${togglePause}
-          title="Stop capture at the source — the logger closes its Textractor connection, so no lines are recorded at all"
-        >
-          ${summary.paused ? "▶ resume capture" : "⏸ pause capture"}
-        </button>
+        ${
+          // Capture belongs where reading happens: `#read` has its own, and ⚙.
+          offTab &&
+          html`<button
+            class="pause-btn ${summary.paused ? "paused" : ""}"
+            onClick=${togglePause}
+            title="Stop capture at the source — the logger closes its Textractor connection, so no lines are recorded at all"
+          >
+            ${summary.paused ? "▶ resume capture" : "⏸ pause capture"}
+          </button>`
+        }
         <span class="streak"
           >streak <strong>${summary.streak.current}</strong> days
           ${
@@ -190,13 +191,15 @@ function App({ view, sub }) {
     </header>
     ${
       summary.paused &&
-      html`<div class="paused-banner">
-        Capture paused — the logger is disconnected from Textractor and no lines
-        are being recorded. Resume when you're reading again.
+      html`<div
+        class="paused-banner"
+        title="The logger is disconnected from Textractor, so nothing enters the line stream at all — this is capture, not accounting."
+      >
+        ⏸ Capture paused — no lines are being recorded.
       </div>`
     }
     ${
-      !isSettings &&
+      !offTab &&
       tab === "today" &&
       sweepLine &&
       html`<div class="sweep-nudge">
@@ -205,7 +208,9 @@ function App({ view, sub }) {
       </div>`
     }
     ${
-      isSettings
+      isTokenize
+        ? html`<${TokenizeView} />`
+        : isSettings
         ? html`<${SettingsView} settings=${settings} onSaved=${load} />`
         : tab === "trends"
           ? html`<${TrendsCard}
@@ -214,7 +219,7 @@ function App({ view, sub }) {
               todayDate=${summary.today.date}
             />`
           : tab === "kanji"
-            ? html`<${KanjiView} kanji=${kanji} />`
+            ? html`<${KanjiView} />`
             : tab === "vocab"
               ? html`<${VocabView}
                   vocab=${vocab}
@@ -270,9 +275,6 @@ function useHashRoute() {
 function Root() {
   const hash = useHashRoute();
   if (hash === "#read") return html`<${Reader} />`;
-  // Its own route, not a tab: it shares none of the dashboard's poll, and it
-  // asks about the tokenizer rather than about the reading.
-  if (hash === "#tokenize") return html`<${TokenizeView} />`;
   // Titles are percent-encoded, and encodeURIComponent escapes "/" too, so
   // splitting on it can never cut a title in half.
   const [view, ...rest] = hash.replace(/^#/, "").split("/");

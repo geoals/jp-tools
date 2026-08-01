@@ -90,7 +90,8 @@ export function KanjiDiscoveryChart({ days }) {
             />
           `;
         })}
-        <path d=${linePath} class="trend-line" stroke="var(--series-2)" />
+        ${/* style, not stroke=: .trend-line's CSS beats the attribute. */ ""}
+        <path d=${linePath} class="trend-line" style="stroke:var(--series-2)" />
         <text
           x=${W - m.right + 4}
           y=${yLine(days[days.length - 1].cumulative) + 3}
