@@ -400,7 +400,7 @@ pub async fn vocab_anki_import(
     }
 
     let imported =
-        vocabulary::set_status_each(&state.knowledge, &judgements, now_ts(), "jiten").await?;
+        vocabulary::set_status_each(&state.knowledge, &judgements, now_ts(), "anki").await?;
     Ok(Json(json!({
         "imported": imported,
         "ambiguous_skipped": ambiguous_skipped,

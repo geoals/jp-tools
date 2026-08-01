@@ -27,9 +27,10 @@ CREATE TABLE IF NOT EXISTS vocabulary_events (
     -- the next import.
     counted  INTEGER NOT NULL,
 
-    -- Which pass made the assertion: 'triage', 'reader', 'jiten', 'seed',
-    -- 'blacklist', 'cold-start'. Informational — carried from
-    -- `vocabulary.status_source` by the trigger below.
+    -- Which pass made the assertion: 'assert' (a single reader judgement),
+    -- 'triage', 'anki', 'frequency', 'seed' (jiten), 'blacklist', 'carry'.
+    -- Informational — carried from `vocabulary.status_source` by the trigger
+    -- below.
     source   TEXT,
 
     -- How the word had been met at the moment of the judgement. Point-in-time
