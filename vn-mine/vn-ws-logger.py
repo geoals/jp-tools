@@ -180,14 +180,20 @@ CREATE TABLE IF NOT EXISTS stats.settings (
 
 
 class StatsSink:
-    """Best-effort writer into the read-stats DB; disables itself after
-    repeated errors rather than ever interfering with mining."""
+    """Best-effort writer into the read-stats DB; never interferes with mining.
 
-    MAX_ERRORS = 5
+    A write that fails goes to `pending` and is retried on the next line rather
+    than dropped. The failure this exists for is a batch job elsewhere holding
+    the single SQLite write lock for longer than `busy_timeout`: transient, but
+    it once ran the whole session's lines into the ground because the sink gave
+    up permanently after a handful of errors.
+    """
+
+    MAX_PENDING = 2000
 
     def __init__(self):
         self.db = None
-        self.errors = 0
+        self.pending = []
         if os.environ.get("JP_TOOLS_STATS_DISABLE"):
             return
         try:
@@ -232,32 +238,52 @@ class StatsSink:
             log(f"pause flag unreadable ({e}) — continuing to capture")
             return False
 
-    def add(self, ts, text):
-        if self.db is None:
-            return
+    def current_work(self):
+        """Title set via the dashboard's "now reading" field; read per line so a
+        change applies immediately without restarting the daemon."""
         try:
-            chars = len(NOT_COUNTED.sub("", text))
-            # Title set via the dashboard's "now reading" field; read per line
-            # so a change applies immediately without restarting the daemon.
             row = self.db.execute(
                 "SELECT value FROM stats.settings WHERE key = 'current_work'"
             ).fetchone()
-            work = row[0] if row and row[0] else None
-            # clean_line() already dropped UI, skip-through and runaway captures,
-            # so everything reaching here is real dialogue: insert not discarded.
-            # The discarded column stays for the reader's manual clear button.
-            self.db.execute(
+            return row[0] if row and row[0] else None
+        except sqlite3.Error:
+            return None
+
+    def add(self, ts, text):
+        if self.db is None:
+            return
+        chars = len(NOT_COUNTED.sub("", text))
+        # clean_line() already dropped UI, skip-through and runaway captures, so
+        # everything reaching here is real dialogue: insert not discarded. The
+        # discarded column stays for the reader's manual clear button.
+        self.pending.append((ts, chars, text, self.current_work()))
+        # Under a lock held for minutes this keeps the newest lines; the oldest
+        # are the ones already in lines.log the longest, so they stay
+        # recoverable from there.
+        del self.pending[: -self.MAX_PENDING]
+        self.flush()
+
+    def flush(self):
+        if not self.pending:
+            return
+        stuck = len(self.pending) > 1
+        try:
+            self.db.execute("BEGIN IMMEDIATE")
+            self.db.executemany(
                 "INSERT INTO lines (ts, chars, text, source, work, discarded)"
                 " VALUES (?, ?, ?, 'vn', ?, 0)",
-                (ts, chars, text, work),
+                self.pending,
             )
-            self.errors = 0
+            self.db.execute("COMMIT")
         except sqlite3.Error as e:
-            self.errors += 1
-            log(f"stats insert failed ({e})")
-            if self.errors >= self.MAX_ERRORS:
-                log("stats sink disabled after repeated errors")
-                self.db = None
+            if self.db.in_transaction:
+                self.db.rollback()
+            if not stuck:
+                log(f"stats insert failed ({e}) — holding lines for retry")
+            return
+        if stuck:
+            log(f"stats sink recovered, wrote {len(self.pending)} held lines")
+        self.pending.clear()
 
 
 def log(msg):

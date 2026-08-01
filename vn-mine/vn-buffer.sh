@@ -30,6 +30,10 @@ run)
 
   mkdir -p "$SEGDIR"
   rm -f "$SEGDIR"/seg*.wav
+  # Rotate rather than truncate: this log is the only copy of a line between
+  # the hook and the DB insert, so a restart to recover a wedged sink must not
+  # destroy exactly the lines it is being restarted to recover.
+  [ -s "$LINES_LOG" ] && mv -f "$LINES_LOG" "$LINES_LOG.prev"
   : >"$LINES_LOG"
 
   SINK="${VN_SINK:-$(pactl get-default-sink)}"
