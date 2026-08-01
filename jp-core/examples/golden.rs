@@ -129,9 +129,24 @@ async fn main() {
     prefs.sort();
     std::fs::write(out.join("preferences.tsv"), prefs.concat()).unwrap();
 
+    let conjugatable: HashSet<String> = dictionaries::master_conjugatable(pool)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|t| lexicon.contains(t))
+        .collect();
+    let mut rows: Vec<&String> = conjugatable.iter().collect();
+    rows.sort();
+    std::fs::write(
+        out.join("conjugatable.txt"),
+        rows.iter().map(|t| format!("{t}\n")).collect::<String>(),
+    )
+    .unwrap();
+
     // The snapshot itself, produced by the same code the test will run.
     let dict_path = Path::new(&args[3]);
-    let snapshot = jp_core::golden::snapshot(dict_path, &corpus, &master, ranks, all_prefs);
+    let snapshot =
+        jp_core::golden::snapshot(dict_path, &corpus, &master, ranks, all_prefs, conjugatable);
     std::fs::write(out.join("identities.txt"), snapshot).unwrap();
     eprintln!(
         "wrote {} lines, {} master entries to {}",

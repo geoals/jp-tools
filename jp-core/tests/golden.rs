@@ -15,7 +15,7 @@
 //! an obstacle. `cargo run --example golden -p jp-core --features test-support`
 //! rewrites the fixture once the change is the one you meant.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use jp_core::knowledge::dictionaries::PreferredReading;
@@ -64,8 +64,20 @@ fn the_identities_a_corpus_yields_have_not_moved() {
         })
         .collect();
 
-    let produced =
-        jp_core::golden::snapshot(Path::new(&dict_path), &corpus, &master, ranks, preferences);
+    let conjugatable: HashSet<String> = include_str!("golden/conjugatable.txt")
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(str::to_string)
+        .collect();
+
+    let produced = jp_core::golden::snapshot(
+        Path::new(&dict_path),
+        &corpus,
+        &master,
+        ranks,
+        preferences,
+        conjugatable,
+    );
     let expected = include_str!("golden/identities.txt");
     if produced == expected {
         return;

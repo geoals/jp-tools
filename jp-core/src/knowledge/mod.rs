@@ -118,6 +118,23 @@ impl Knowledge {
             .execute(&self.0)
             .await?;
         }
+        // `dictionary_entries` predates reading the word class off the term
+        // bank. Existing rows keep an empty `rules` until the dictionary is
+        // re-imported, which reads as "not known to be conjugatable" — the same
+        // answer as a dictionary that publishes no rules at all.
+        if !has_column(&self.0, "dictionary_entries", "rules").await? {
+            sqlx::raw_sql(
+                "ALTER TABLE dictionary_entries ADD COLUMN rules TEXT NOT NULL DEFAULT ''",
+            )
+            .execute(&self.0)
+            .await?;
+            // The entry-id backfill re-reads the term banks and now carries the
+            // word class with it, so clearing its flag is all it takes to fill
+            // the new column — one pass, on the next start.
+            sqlx::raw_sql("UPDATE dictionaries SET seq_checked = 0")
+                .execute(&self.0)
+                .await?;
+        }
         // The frequency table predates caring which *reading* was counted, and
         // the Yomitan parser dropped it. Existing rows keep an empty reading
         // until the dictionary is re-imported; every reader treats that as

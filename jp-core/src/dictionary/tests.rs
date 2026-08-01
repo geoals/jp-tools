@@ -240,6 +240,9 @@ fn parse_entry_from_8_element_array() {
     assert_eq!(entry.reading, "たべる");
     assert_eq!(entry.score, 100);
     assert_eq!(entry.definitions, vec!["to eat", "to consume"]);
+    // Field 3: the dictionary's own word class, which is what separates a lemma
+    // an inflected token may be filed under from a listed form that is not one.
+    assert_eq!(entry.rules, "v1");
 }
 
 #[test]
@@ -269,6 +272,7 @@ async fn dictionary_lookup_exact_match() {
             definitions: vec!["to eat".into()],
             score: 100,
             sequence: None,
+            rules: String::new(),
         },
         DictionaryEntry {
             term: "食べる".into(),
@@ -276,6 +280,7 @@ async fn dictionary_lookup_exact_match() {
             definitions: vec!["to consume".into()],
             score: 50,
             sequence: None,
+            rules: String::new(),
         },
     ];
     let dict = Dictionary::from_entries(entries);

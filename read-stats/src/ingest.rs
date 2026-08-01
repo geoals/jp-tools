@@ -261,6 +261,13 @@ pub(crate) async fn preferred_readings(
     Ok(dictionaries::preferred_readings(pool, master.id, jitendex.id, bccwj.id).await?)
 }
 
+/// The master headwords that conjugate, so an inflected token cannot be filed
+/// under an entry that does not. Empty until the dictionaries have been re-read
+/// for their word classes, which leaves the tokenizer on its structural rule.
+pub(crate) async fn conjugatable(state: &AppState) -> Result<HashSet<String>, AppError> {
+    Ok(dictionaries::master_conjugatable(state.knowledge.pool()).await?)
+}
+
 pub(crate) async fn validation_headwords(state: &AppState) -> Result<HashSet<String>, AppError> {
     Ok(db::fetch_anki_notes(&state.knowledge)
         .await?
@@ -312,6 +319,7 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
     let readings = master_readings(state).await?;
     let ranks = frequency_ranks(state, &readings).await?;
     let preferred = preferred_readings(state).await?;
+    let conjugatable = conjugatable(state).await?;
     let dict_path = state.sudachi_dict_path.clone();
 
     let n_lines = lines.len();
@@ -322,7 +330,8 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
             .with_lexicon(lexicon.clone())
             .with_master_readings(&readings)
             .with_frequency(ranks)
-            .with_preferred_readings(preferred);
+            .with_preferred_readings(preferred)
+            .with_conjugatable(conjugatable);
         let mut harvest = Harvest::new(MasterWords::new(lexicon, &readings));
         for line in &lines {
             let date = stats::date_key(line.ts, rollover, tz).to_string();
@@ -395,6 +404,7 @@ pub async fn ingest_new_sessions(state: &AppState) -> Result<IngestOutcome, AppE
     let readings = master_readings(state).await?;
     let ranks = frequency_ranks(state, &readings).await?;
     let preferred = preferred_readings(state).await?;
+    let conjugatable = conjugatable(state).await?;
     let dict_path = state.sudachi_dict_path.clone();
 
     let n_sessions = sessions.len();
@@ -404,7 +414,8 @@ pub async fn ingest_new_sessions(state: &AppState) -> Result<IngestOutcome, AppE
             .with_lexicon(lexicon.clone())
             .with_master_readings(&readings)
             .with_frequency(ranks)
-            .with_preferred_readings(preferred);
+            .with_preferred_readings(preferred)
+            .with_conjugatable(conjugatable);
         let mut harvest = Harvest::new(MasterWords::new(lexicon, &readings));
         for s in &sessions {
             let date = stats::date_key(s.start_ts, rollover, tz).to_string();

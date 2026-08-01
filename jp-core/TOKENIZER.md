@@ -35,9 +35,35 @@ Around that sit three passes:
   weak signal and stays fenced to verb runs and kanji-headed compounds; joining
   never arbitrates an ambiguous reading.
 
+Two rules keep a *form* from being mistaken for a word, which is what every
+matching rule here keeps rediscovering — Japanese lists a word for a great many
+short kana strings, so 続い + て spells the conjunction 続いて and 許せ is an entry
+of its own:
+
+- **structural** — a surface that is not its own dictionary form is a stem, and
+  a stem is neither an identity nor a part of a surface join.
+- **the dictionary's word class** — Yomitan term-bank field 3, which Sankoku
+  fills in: 許す is `v5`, 許せ is nothing. An inflected token's identity has to be
+  an entry that conjugates. Kana entries are exempt, since the auxiliaries (みる,
+  いる, なる) carry no tag either.
+
+The second is currently redundant — it changes no identity over the whole read
+corpus that the first does not already fix — and is kept as the one that states
+the actual reason, so a future rule cannot quietly rediscover 許せ.
+
 `counts_as_word` then gates what reaches the ledger: a content word, or any
 token whose `(headword, reading)` pair Sankoku lists — and never a token with an
 impossible onset.
+
+## The regression net
+
+`tests/golden.rs` runs 250 real sentences through the tokenizer and snapshots the
+identities the ledger would get, fixtures beside it so it never reads a live
+database. It is the only thing here that shows a rule's whole blast radius rather
+than the cases someone thought of, and it has already caught a change that looked
+right and flooded the output with glued expressions (じゃない, として, ように).
+
+Read its diff; do not regenerate past it.
 
 ## What works
 

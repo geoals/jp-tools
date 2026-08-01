@@ -22,6 +22,7 @@ pub fn tokenizer(
     master: &[(String, String)],
     ranks: HashMap<String, i64>,
     preferences: HashMap<String, PreferredReading>,
+    conjugatable: HashSet<String>,
 ) -> SudachiTokenizer {
     let lexicon: HashSet<String> = master.iter().map(|(t, _)| t.clone()).collect();
     // A non-empty deck is what puts it on the C→B→A path that production runs.
@@ -31,6 +32,7 @@ pub fn tokenizer(
         .with_master_readings(master)
         .with_frequency(ranks)
         .with_preferred_readings(preferences)
+        .with_conjugatable(conjugatable)
 }
 
 /// One block per line: the sentence, then the identities the ledger would get
@@ -42,8 +44,9 @@ pub fn snapshot(
     master: &[(String, String)],
     ranks: HashMap<String, i64>,
     preferences: HashMap<String, PreferredReading>,
+    conjugatable: HashSet<String>,
 ) -> String {
-    let tk = tokenizer(dict_path, master, ranks, preferences);
+    let tk = tokenizer(dict_path, master, ranks, preferences, conjugatable);
     let lexicon: HashSet<String> = master.iter().map(|(t, _)| t.clone()).collect();
     let words = MasterWords::new(lexicon, master);
 

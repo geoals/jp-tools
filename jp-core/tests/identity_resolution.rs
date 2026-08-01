@@ -55,6 +55,30 @@ fn preferences() -> HashMap<String, PreferredReading> {
     .collect()
 }
 
+/// The master headwords Sankoku tags as conjugatable (Yomitan field 3). 許す has
+/// a `v5`; 許せ, おいた and 汝 are headwords with none.
+fn conjugatable() -> HashSet<String> {
+    [
+        "許す",
+        "慣れる",
+        "続く",
+        "開く",
+        "置く",
+        "知る",
+        "行く",
+        "食べる",
+        "待つ",
+        "押す",
+        "言う",
+        "笑う",
+        "見る",
+        "振り返る",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
 fn setup() -> (SudachiTokenizer, MasterWords) {
     let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
         .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
@@ -67,7 +91,8 @@ fn setup() -> (SudachiTokenizer, MasterWords) {
         .with_lexicon(lexicon.clone())
         .with_master_readings(&entries)
         .with_frequency(ranks())
-        .with_preferred_readings(preferences());
+        .with_preferred_readings(preferences())
+        .with_conjugatable(conjugatable());
     (tokenizer, MasterWords::new(lexicon, &entries))
 }
 
@@ -315,5 +340,57 @@ fn a_word_with_two_current_readings_keeps_sudachis_choice() {
         identity_of(&tokens_of(&tk, "何を言っているんだ"), "何"),
         pair("何", "なん"),
         "Sudachi's reading, not the preferred one"
+    );
+}
+
+/// A form is a form *of* something, so a stem must never be filed under a listed
+/// word that cannot be inflected. Every one of these is a Sankoku headword, and
+/// none of them is what the sentence said.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_stem_is_never_filed_under_a_word_that_does_not_conjugate() {
+    let (tk, _) = setup();
+    for (text, forbidden) in [
+        ("許せない", "許せ"),
+        ("やっておいた", "おいた"),
+        ("もうなれた", "汝"),
+        ("扉が開いて、続いて音がした", "続いて"),
+        ("そうなんだ", "そうな"),
+    ] {
+        let bases: Vec<String> = tokens_of(&tk, text)
+            .into_iter()
+            .map(|t| t.base_form)
+            .collect();
+        assert!(
+            !bases.contains(&forbidden.to_string()),
+            "{text} must not yield {forbidden}: {bases:?}"
+        );
+    }
+}
+
+/// The same grammar has to give the same answer. 開いて and 続いて differ only in
+/// whether Sankoku happens to list the string, which is not a fact about the
+/// sentence.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn the_same_construction_is_analysed_the_same_way() {
+    let (tk, _) = setup();
+    let bases: Vec<String> = tokens_of(&tk, "扉が開いて、続いて音がした")
+        .into_iter()
+        .map(|t| t.base_form)
+        .collect();
+    assert!(bases.contains(&"開く".to_string()), "{bases:?}");
+    assert!(bases.contains(&"続く".to_string()), "{bases:?}");
+}
+
+/// The repair, not just the refusal: なれ is a form of 慣れる, which conjugates,
+/// so it is reached through the lemma's reading rather than the stem's.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn an_inflected_kana_verb_reaches_its_kanji_lemma() {
+    let (tk, _) = setup();
+    assert_eq!(
+        identity_of(&tokens_of(&tk, "もうなれた"), "なれ"),
+        pair("慣れる", "なれる")
     );
 }

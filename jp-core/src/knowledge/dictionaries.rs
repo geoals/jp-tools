@@ -57,6 +57,22 @@ pub async fn master_entries(pool: &SqlitePool) -> Result<Vec<(String, String)>, 
     .await
 }
 
+/// The master headwords the dictionary itself calls conjugatable lemmas.
+///
+/// The only thing that separates 許す from 許せ, or 慣れる from 汝: all four are
+/// Sankoku headwords, and an inflected verb can only ever *be* one of the two
+/// that conjugate. See `SudachiTokenizer::with_conjugatable`.
+pub async fn master_conjugatable(pool: &SqlitePool) -> Result<HashSet<String>, sqlx::Error> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT DISTINCT de.term FROM dictionary_entries de \
+         JOIN dictionaries d ON d.id = de.dictionary_id \
+         WHERE d.role = 'master' AND de.rules != ''",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(term,)| term).collect())
+}
+
 pub async fn find_dictionary(
     pool: &SqlitePool,
     source_path: &str,
@@ -92,7 +108,7 @@ pub async fn import_dictionary(
         let definitions_json =
             serde_json::to_string(&entry.definitions).unwrap_or_else(|_| "[]".into());
         sqlx::query(
-            "INSERT INTO dictionary_entries (dictionary_id, term, reading, score, definitions_json, sequence) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO dictionary_entries (dictionary_id, term, reading, score, definitions_json, sequence, rules) VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(dict_id)
         .bind(&entry.term)
@@ -100,6 +116,7 @@ pub async fn import_dictionary(
         .bind(entry.score)
         .bind(&definitions_json)
         .bind(entry.sequence)
+        .bind(&entry.rules)
         .execute(&mut *tx)
         .await?;
     }
@@ -131,11 +148,15 @@ pub async fn needs_sequence_backfill(
     Ok(checked == 0)
 }
 
-/// Attach entry ids to a dictionary cached before `sequence` existed.
+/// Attach entry ids and word classes to a dictionary cached before those
+/// columns existed.
 ///
 /// Matched on `(term, reading)` — the same pair the entries were stored
 /// under, so this is a straight update and never invents a row. Marks the
 /// dictionary checked either way.
+///
+/// One pass for both because both come off the same term bank, and re-reading a
+/// 400k-entry zip twice to learn two things about the same row is waste.
 pub async fn backfill_sequences(
     pool: &SqlitePool,
     dictionary_id: i64,
@@ -144,12 +165,16 @@ pub async fn backfill_sequences(
     let mut tx = pool.begin().await?;
     let mut updated = 0;
     for entry in entries {
-        let Some(seq) = entry.sequence else { continue };
+        if entry.sequence.is_none() && entry.rules.is_empty() {
+            continue;
+        }
         updated += sqlx::query(
-            "UPDATE dictionary_entries SET sequence = ? \
-             WHERE dictionary_id = ? AND term = ? AND reading = ?",
+            "UPDATE dictionary_entries \
+                SET sequence = COALESCE(?, sequence), rules = ? \
+              WHERE dictionary_id = ? AND term = ? AND reading = ?",
         )
-        .bind(seq)
+        .bind(entry.sequence)
+        .bind(&entry.rules)
         .bind(dictionary_id)
         .bind(&entry.term)
         .bind(&entry.reading)
@@ -235,7 +260,7 @@ pub async fn lookup_dictionary_entries(
     term: &str,
 ) -> Result<Vec<DictionaryEntry>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT term, reading, score, definitions_json, sequence FROM dictionary_entries WHERE dictionary_id = ? AND term = ?",
+        "SELECT term, reading, score, definitions_json, sequence, rules FROM dictionary_entries WHERE dictionary_id = ? AND term = ?",
     )
     .bind(dictionary_id)
     .bind(term)
@@ -253,6 +278,7 @@ pub async fn lookup_dictionary_entries(
                 score: r.get("score"),
                 definitions,
                 sequence: r.get("sequence"),
+                rules: r.get("rules"),
             }
         })
         .collect())

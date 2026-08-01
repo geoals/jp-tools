@@ -78,12 +78,22 @@ fn main() {
         })
         .collect();
 
+    let conjugatable: HashSet<String> = args
+        .iter()
+        .position(|a| a == "--conjugatable")
+        .map(|i| std::fs::read_to_string(&args[i + 1]).unwrap())
+        .iter()
+        .flat_map(|s| s.lines())
+        .map(str::to_string)
+        .collect();
+
     let tokenizer = SudachiTokenizer::new(dict_path, anki)
         .unwrap()
         .with_lexicon(lexicon.clone())
         .with_master_readings(&entries)
         .with_frequency(ranks)
-        .with_preferred_readings(prefer);
+        .with_preferred_readings(prefer)
+        .with_conjugatable(conjugatable);
     let master = MasterWords::new(lexicon, &entries);
 
     let Some(corpus) = corpus else {

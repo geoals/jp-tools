@@ -27,6 +27,14 @@ pub struct DictionaryEntry {
     /// `None` for dictionaries publishing no ids — Sankoku has none, which is
     /// why the master cannot be the one asked this question.
     pub sequence: Option<i64>,
+    /// Yomitan's deinflection rules (term-bank field 3): `v5`, `v1`, `adj-i`,
+    /// or empty.
+    ///
+    /// Read as **whether the dictionary calls this entry a conjugatable lemma**,
+    /// which is the only thing that can tell 許す (`v5`) from 許せ (empty) — both
+    /// are Sankoku headwords, and only one of them is what 許せない is a form of.
+    /// Sankoku fills it in properly.
+    pub rules: String,
 }
 
 /// Pitch accent data for a single reading of a term.
@@ -153,6 +161,7 @@ fn parse_entry(arr: &[Value], images: &HashMap<String, String>) -> Option<Dictio
     }
     let term = arr[0].as_str()?.to_string();
     let reading = arr[1].as_str().unwrap_or("").to_string();
+    let rules = arr[3].as_str().unwrap_or("").to_string();
     let score = arr[4].as_i64().unwrap_or(0);
     let definitions = parse_definitions(&arr[5], images);
     // Field 6 is the entry id. Yomitan's own schema allows a string here, and
@@ -165,6 +174,7 @@ fn parse_entry(arr: &[Value], images: &HashMap<String, String>) -> Option<Dictio
         definitions,
         score,
         sequence,
+        rules,
     })
 }
 

@@ -84,6 +84,9 @@ pub struct SudachiTokenizer {
     /// The reading to believe for a headword the master lists several ways,
     /// where Sudachi's choice is not to be trusted. Empty leaves it to Sudachi.
     preferred: HashMap<String, crate::knowledge::dictionaries::PreferredReading>,
+    /// Master headwords the dictionary calls conjugatable lemmas. Empty means
+    /// the question cannot be asked, and the structural rule stands alone.
+    conjugatable: HashSet<String>,
     /// Readings of headwords re-tokenized standalone, for the ladder's last
     /// repair step. It fires rarely, but on words that recur forever.
     rederived: Mutex<HashMap<String, String>>,
@@ -111,6 +114,7 @@ impl SudachiTokenizer {
             pairs: HashSet::new(),
             frequency: HashMap::new(),
             preferred: HashMap::new(),
+            conjugatable: HashSet::new(),
             rederived: Mutex::new(HashMap::new()),
         })
     }
@@ -157,6 +161,34 @@ impl SudachiTokenizer {
     pub fn with_frequency(mut self, ranks: HashMap<String, i64>) -> Self {
         self.frequency = ranks;
         self
+    }
+
+    /// Teach it which master headwords are conjugatable lemmas, so an inflected
+    /// token cannot be filed under an entry that does not conjugate.
+    ///
+    /// Sankoku tags this on every entry (Yomitan term-bank field 3) and it is the
+    /// only thing that separates 許す from 許せ: both are headwords, only one is
+    /// what 許せない is a form of. Without it the tokenizer has to guess from
+    /// structure alone, which cannot tell a stem that is listed from a lemma
+    /// that is listed.
+    pub fn with_conjugatable(mut self, terms: HashSet<String>) -> Self {
+        self.conjugatable = terms;
+        self
+    }
+
+    /// Whether this identity is one an *inflected* token may be filed under.
+    ///
+    /// A form like 許せ or 続い is a form **of** something, so the entry it lands
+    /// on has to be a word that conjugates. 許せ, おいた, 汝 and 続いて are all
+    /// listed, and none of them conjugates — which is exactly why matching a
+    /// surface against the headword set kept finding them.
+    ///
+    /// Kana headwords are exempt: the auxiliaries Sankoku lists as みる, いる,
+    /// なる carry no rules tag and are still what an inflected い or なら is.
+    fn conjugatable_lemma(&self, term: &str) -> bool {
+        self.conjugatable.is_empty()
+            || self.conjugatable.contains(term)
+            || crate::text::kana::is_all_kana(term)
     }
 
     /// Teach it which reading to believe where Sudachi's cost model is known to
@@ -343,12 +375,16 @@ impl SudachiTokenizer {
             // particles. What it produces must itself be a listed headword — the
             // dictionary decides wordhood, not the tags of the pieces.
             //
-            // **No inflected part.** This one glues surfaces together, so a stem
-            // would be glued in as if it were a word: 続い + て spells the
-            // conjunction 続いて and そう + な(だ) spells the hearsay そうな, and
-            // neither is what the sentence said. It is also what made the rule
-            // look arbitrary — 開いて stayed split only because Sankoku happens
-            // not to list it.
+            // **No inflected part**, and here the word class cannot stand in for
+            // that rule: the entries this would produce — じゃない, として,
+            // ように, しまった — are kana, and kana entries have to be exempt from
+            // the conjugatable check for the auxiliaries' sake (みる, いる, なる
+            // carry no rules tag either). So the structural rule holds this path:
+            // a surface concatenation may not glue in a stem. Otherwise 続い + て
+            // spells the conjunction 続いて and そう + な(だ) the hearsay そうな,
+            // neither of which is what the sentence said — and it is what made
+            // the rule look arbitrary, 開いて staying split only because Sankoku
+            // happens not to list it.
             Some(surfaces.clone())
         } else if self.reading_join_admitted(run, head, content) {
             let read: String = head
@@ -550,6 +586,13 @@ impl SudachiTokenizer {
         let uninflected = *surface == *m.dictionary_form();
         if uninflected {
             candidates.push((surface.clone(), m.reading_form().to_string()));
+        }
+        // A form is a form *of* something. When the surface is inflected, every
+        // candidate has to be an entry that conjugates — 許せ, おいた and 汝 are
+        // all listed words, and none of them is what 許せない, やっておいた or
+        // なれた is a form of.
+        if !uninflected {
+            candidates.retain(|(term, _)| self.conjugatable_lemma(term));
         }
 
         if let Some((term, reading)) = candidates

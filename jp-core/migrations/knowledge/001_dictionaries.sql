@@ -15,7 +15,11 @@ CREATE TABLE IF NOT EXISTS dictionary_entries (
     term TEXT NOT NULL,
     reading TEXT NOT NULL DEFAULT '',
     score INTEGER NOT NULL DEFAULT 0,
-    definitions_json TEXT NOT NULL
+    definitions_json TEXT NOT NULL,
+    -- Yomitan's deinflection rules (v5, v1, adj-i, or empty): whether the
+    -- dictionary calls this entry a conjugatable lemma. 許す has it, 許せ does
+    -- not, and both are headwords.
+    rules TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_dictionary_entries_lookup ON dictionary_entries(dictionary_id, term);

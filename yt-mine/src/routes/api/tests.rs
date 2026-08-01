@@ -215,6 +215,7 @@ async fn preview_returns_json() {
         definitions: vec!["to eat".into()],
         score: 100,
         sequence: None,
+        rules: String::new(),
     }]);
     dict.set_pitch(vec![(
         "食べる".into(),
