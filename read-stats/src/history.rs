@@ -321,8 +321,11 @@ impl History {
     /// The *latest* work read that day that cleared a real share of its
     /// characters: latest rather than heaviest, so a mid-day switch onto a new
     /// VN still shows; the share floor stops a brief end-of-day peek at another
-    /// VN flipping the day. Manual sessions join in, so a day of physical-book
-    /// reading names the book.
+    /// VN flipping the day.
+    ///
+    /// Hooked lines only. A logged book or article has no measured duration, so
+    /// it is not in the speed series the marker annotates — naming a day after
+    /// one drew a divider across a line it had not moved.
     pub fn dominant_work_days(&self) -> BTreeMap<NaiveDate, String> {
         // Per day, each work's total chars and the latest timestamp it was read at.
         let mut per_day: BTreeMap<NaiveDate, BTreeMap<String, (i64, f64)>> = BTreeMap::new();
@@ -339,14 +342,6 @@ impl History {
         };
         for (line, work) in self.lines.iter().zip(&self.line_works) {
             tally(work.as_deref(), line.ts, line.chars);
-        }
-        for s in &self.manual {
-            // Articles name the day as "Articles" rather than as one headline.
-            tally(
-                stats::work_key(&s.source, s.work.as_deref()).as_deref(),
-                s.start_ts,
-                s.chars,
-            );
         }
 
         per_day

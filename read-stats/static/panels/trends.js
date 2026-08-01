@@ -52,6 +52,20 @@ export function TrendsCard({ days, targetMins, todayDate }) {
       : "—";
   const daysReadLabel = `${daysRead}/${win.length}`;
 
+  // Per day of the range, not per day read — a week with two days off is a
+  // slower week, and dividing by `daysRead` would hide exactly that. The
+  // per-day-read figure is worth having too, so it goes in the tooltip.
+  const perDay =
+    metric === "minutes"
+      ? fmtMins(secs / win.length)
+      : `${Math.round(chars / win.length).toLocaleString("en")}`;
+  const perDayRead =
+    daysRead === 0
+      ? "no reading in this range"
+      : metric === "minutes"
+        ? `${fmtMins(secs / daysRead)} per day you read`
+        : `${Math.round(chars / daysRead).toLocaleString("en")} chars per day you read`;
+
   // Minutes and characters get one chart with a switch rather than two charts,
   // because they are the same question — how much reading happened — asked in
   // the two units it has. They are deliberately never overlaid: that would need
@@ -59,6 +73,7 @@ export function TrendsCard({ days, targetMins, todayDate }) {
   // fact. Reading speed is exactly the relationship between them, and it has
   // its own panel below.
   const barsTitle = metric === "minutes" ? "Daily minutes" : "Daily characters";
+  const perDayLabel = metric === "minutes" ? "avg/day" : "avg chars/day";
 
   return html`
     <div class="card">
@@ -84,6 +99,10 @@ export function TrendsCard({ days, targetMins, todayDate }) {
         <div class="tile">
           <div class="label">days read</div>
           <div class="value">${daysReadLabel}</div>
+        </div>
+        <div class="tile" title=${perDayRead}>
+          <div class="label">${perDayLabel}</div>
+          <div class="value">${perDay}</div>
         </div>
         <div class="tile">
           <div class="label">avg speed</div>
