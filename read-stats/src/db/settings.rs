@@ -20,10 +20,8 @@ pub struct Settings {
     pub day_rollover_hour: i64,
     /// Daily reading target, in minutes — the one goal the meter draws.
     pub goal_target_mins: i64,
-    /// Minutes a day needs before it extends the streak. Deliberately separate
-    /// from the target: the streak asks "did you show up", the target asks
-    /// "did you do the day's work", and one number cannot answer both without
-    /// making a short day either free or worthless.
+    /// Minutes a day needs to extend the streak. Separate from the target: the
+    /// streak asks "did you show up", the target asks "did you do the work".
     pub streak_min_mins: i64,
     /// Estimated characters per physical page (bunkobon default).
     pub chars_per_page: f64,
@@ -37,24 +35,19 @@ pub struct Settings {
     /// VN_WINDOW so it screenshots the VN by id rather than whatever has
     /// focus. Empty = capture the focused window (the old behaviour).
     pub vn_window: String,
-    /// How many times a word must have been met before vocabulary triage
-    /// offers it, and defaults it to `known`. The default is only reached by
-    /// words never looked up, which is what lets it sit this low: an
-    /// encounter count says "met often", a zero lookup count says "and never
-    /// needed help with it", and the two together are the evidence. See
+    /// How many times a word must have been met before triage offers it, and
+    /// defaults it to `known`. It can sit this low because the default is only
+    /// reached by words never looked up — see
     /// `jp_core::knowledge::vocabulary::preselects_known`.
     pub triage_min_encounters: i64,
     /// Highest BCCWJ frequency rank frequency-triage will mark `known` in one
-    /// sweep. Persisted so the threshold survives across visits, same as
-    /// `triage_min_encounters`. Default 6000: a rough top of "words I
-    /// probably know just from being common," left for the reader to widen
-    /// once they've seen where the unknown rate actually starts climbing.
+    /// sweep, persisted across visits. Default 6000, a rough top of "common
+    /// enough that I probably know it", for the reader to widen.
     pub triage_max_freq_rank: i64,
     /// Capture is suspended: vn-ws-logger.py closes its Textractor WebSocket
-    /// and stays disconnected while this is set, so nothing reaches the line
-    /// stream at all. This replaced the old `pauses` interval log — excluding
-    /// spans after the fact meant the raw stream still filled up with text the
-    /// reader had explicitly said wasn't reading.
+    /// while this is set, so nothing reaches the line stream at all. Stopping
+    /// the source beats the old interval log, which left the raw stream full of
+    /// text the reader had said was not reading.
     pub capture_paused: bool,
 }
 

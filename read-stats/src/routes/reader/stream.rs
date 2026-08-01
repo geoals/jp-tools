@@ -14,16 +14,11 @@ use super::highlight;
 use crate::app::AppState;
 use crate::db;
 
-/// How often the stream checks for new lines, which is the whole of the
-/// pipeline's controllable latency: vn-ws-logger.py commits in autocommit mode
-/// the moment Textractor hooks a line, and the LAN hop is sub-millisecond. A
-/// poll of N ms therefore costs a uniform 0..N delay — 250ms measured a mean of
-/// 108ms, which reads as perceptibly behind the voice.
-///
-/// 30ms puts the mean at ~15ms, below the threshold where the line looks like
-/// it lags the VN. The cost is ~33 queries/sec per connected reader, each an
-/// index seek past the end of `lines` returning nothing — WAL readers don't
-/// block the logger's writes, so this is not a contention risk either.
+/// How often the stream checks for new lines — the whole of the pipeline's
+/// controllable latency, since the logger commits the moment Textractor hooks a
+/// line. A poll of N ms costs a uniform 0..N delay, and at 250ms the feed read
+/// as perceptibly behind the voice. 30ms costs ~33 queries/sec per reader, each
+/// an index seek past the end of `lines`; WAL readers don't block the writer.
 const POLL_INTERVAL: Duration = Duration::from_millis(30);
 
 /// Cap on a single catch-up batch, so a client resuming after hours away
@@ -33,16 +28,10 @@ const MAX_BATCH: i64 = 500;
 
 /// Floor on the opening batch, so a feed does not open on a handful of lines.
 ///
-/// The sitting in progress is what the view wants to open on, but a sitting
-/// that has just started — or one picked up again after a break — is a few
-/// lines, and the reader then waits on a backscroll before there is anything to
-/// look back over. Below this, the opening batch reaches past the session
-/// boundary into what came before it, which the feed already knows how to show:
-/// it groups by the same gap rule and puts a header on each sitting.
-///
-/// 200 is one backscroll page (`HISTORY_PAGE` in reader.js) — enough that a
-/// short sitting opens with the reading around it, and the same size the view
-/// would have fetched anyway the moment it was scrolled.
+/// The view wants to open on the sitting in progress, but a sitting that has
+/// just started is a few lines. Below this the batch reaches past the session
+/// boundary into what came before, which the feed already groups and headers.
+/// 200 is one backscroll page (`HISTORY_PAGE` in reader.js).
 const MIN_OPENING_LINES: i64 = 200;
 
 #[derive(Deserialize)]
@@ -158,17 +147,14 @@ async fn opening_batch(
 /// A line as the reading view receives it: the row, plus where its unknown
 /// words sit.
 ///
-/// Flattened over [`db::ReaderLine`] rather than nested, so the client keeps
-/// reading `line.text` and `line.id` exactly as it did — `tokens` is an
+/// Flattened over [`db::ReaderLine`] rather than nested: `tokens` is an
 /// addition to the event, not a new shape for it.
 #[derive(serde::Serialize)]
 struct LineEvent<'a> {
     #[serde(flatten)]
     line: &'a db::ReaderLine,
-    /// Empty whenever the pipeline could not answer — no dictionary, a
-    /// tokenizer failure, a database blip. The line still arrives; it simply
-    /// arrives untinted, which is what the view did before highlighting
-    /// existed.
+    /// Empty whenever the pipeline could not answer. The line still arrives,
+    /// just untinted.
     tokens: Vec<highlight::Span>,
 }
 

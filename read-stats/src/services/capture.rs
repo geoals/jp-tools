@@ -4,10 +4,9 @@
 //! on the machine running the VN. This module is the boundary: build the
 //! environment the script expects, run it, parse the one JSON object it prints.
 //!
-//! Two callers, and the difference matters for presence accounting: the
-//! reader's mine button (a deliberate action, which marks presence itself) and
-//! the AnkiConnect proxy's auto-capture on card add (which relies on the
-//! Yomitan lookup that must have preceded the add).
+//! Two callers: the reader's mine button, which marks presence itself, and the
+//! proxy's auto-capture on card add, which relies on the Yomitan lookup that
+//! must have preceded it.
 
 use std::time::Duration;
 
@@ -24,17 +23,14 @@ const CAPTURE_TIMEOUT: Duration = Duration::from_secs(90);
 
 /// What the capture is *for*, when the caller knows more than "capture now".
 ///
-/// The reader's mine button knows neither field: it fires the instant it is
-/// pressed, against whatever line is current, and attaches to whatever note was
-/// added last — which is what pressing it means. The card-add path knows both,
-/// and has to say so, because by the time the script runs the reader may well
-/// have moved on. See `Target::anchor_ts`.
+/// The mine button knows neither field — it fires against whatever line is
+/// current and attaches to the last note added, which is what pressing it
+/// means. The card-add path knows both and has to say so, because by the time
+/// the script runs the reader may have moved on.
 #[derive(Default)]
 pub struct Target {
-    /// Epoch seconds to resolve "the current line" as of. The capture is
-    /// anchored on the newest line at *this* instant rather than at the instant
-    /// the script gets to look, so reading on while the capture works cannot
-    /// pull the audio window and the screenshot onto the following line.
+    /// Epoch seconds to resolve "the current line" as of, so reading on while
+    /// the capture works cannot pull the audio window onto the next line.
     pub anchor_ts: Option<f64>,
     /// The note to attach to, when the caller created it and knows its id.
     /// Without one the script falls back to the most recently added note, which

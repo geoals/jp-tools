@@ -1,12 +1,9 @@
-//! `/api/vocab/*` — the knowledge ledger's status endpoints.
+//! `/api/vocab/*` — the knowledge ledger's status endpoints. The ledger itself
+//! is `jp_core::knowledge::vocabulary`.
 //!
-//! Reads, the rebuild, and the triage pass that fills `status`
-//! (`spec/cold-start.md` Pass 2, over terms already in the ledger). The ledger
-//! itself is `jp_core::knowledge::vocabulary`.
-//!
-//! The one rule these handlers exist to keep: **`status` is only ever written
-//! from a request the reader made.** No sync touches it, so the ledger cannot
-//! demote a word behind their back and an encounter count cannot promote one.
+//! The rule these handlers exist to keep: **`status` is only ever written from a
+//! request the reader made.** No sync touches it, so the ledger cannot demote a
+//! word behind their back and an encounter count cannot promote one.
 
 use std::net::SocketAddr;
 
@@ -26,28 +23,22 @@ use crate::clock::now_ts;
 use crate::db;
 use crate::error::AppError;
 
-/// Rows per queue page. A batch big enough to be worth one sweep of attention
-/// and small enough that submitting it is not a big commitment.
+/// Rows per queue page — one sweep of attention.
 const QUEUE_LIMIT: i64 = 200;
 
-/// Rows per page of the non-vocabulary tail. A screenful, not a sample: the
-/// whole set is reachable by paging.
+/// Rows per page of the non-vocabulary tail. The whole set is reachable by
+/// paging.
 const NON_WORD_PAGE: i64 = 100;
 
-/// Rows per page of frequency-triage candidates. Larger than the non-word
-/// page: every homograph is filtered out before paging (`frequency_queue`),
-/// so every row on screen is one the "mark known" button can actually act
-/// on, and a bigger page means fewer round trips through a threshold that
-/// can hold thousands of committable words.
+/// Rows per page of frequency-triage candidates. Large because homographs are
+/// filtered out before paging, so every row is one the button can act on.
 const FREQUENCY_PAGE: i64 = 500;
 
-/// What the ledger currently holds, by status — the numbers the seed page and
-/// the vocabulary-size figure are built on.
+/// What the ledger holds, by status.
 ///
 /// `in_master` is the vocabulary scale: a term counts toward "I know N words"
-/// only if the master dictionary lists it, because Jitendex's 400k entries are
-/// a phrase index and would make the number meaningless
-/// (`spec/knowledge-db.md`).
+/// only if the master dictionary lists it. Jitendex's 400k entries are a phrase
+/// index and would make the number meaningless.
 pub async fn vocab_summary(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     let counts = vocabulary::status_counts(&state.knowledge).await?;
     let by_status: Vec<Value> = counts
@@ -61,26 +52,20 @@ pub async fn vocab_summary(State(state): State<AppState>) -> Result<Json<Value>,
         .map(|c| c.in_master)
         .sum();
 
-    // `known_in_master` counts ledger *rows*; `known_words` counts words.
-    // They differ by spelling alone — alternate kanji forms of one entry, and
-    // kana spellings of words known in kanji — so the second is the honest
-    // "I know N words" figure and the first is what fills the queue.
+    // `known_in_master` counts ledger *rows*, `known_words` counts words —
+    // they differ by spelling alone, so the second is the honest "I know N
+    // words" figure and the first is what fills the queue.
     let words = lexeme::known_lexemes(&state.knowledge).await?;
 
-    // The unjudged bucket, split into the two states it actually contains.
-    // `status = 'new'` means "never judged", which is orthogonal to whether the
-    // word was ever met — so reporting the whole bucket as `new` mislabels
-    // almost all of it. `ready` shares the triage floor, so the tile and the
-    // queue cannot disagree about what counts as met.
+    // `status = 'new'` means "never judged", which says nothing about whether
+    // the word was met, so the bucket is split into both states. `ready` shares
+    // the triage floor, so the tile and the queue agree on what counts as met.
     let settings = db::load_settings(&state.local).await?;
     let unjudged =
         vocabulary::unjudged_counts(&state.knowledge, settings.triage_min_encounters).await?;
 
-    // The sweep's own figure, beside the standing one: "N ready since 21 Jul"
-    // is the number the trigger ("after a day of reading") actually asks for,
-    // and `ready` cannot shrink as a sweep is worked through unscoped. Taken
-    // from `triage_pending` rather than recomputed, so the tile and the batch
-    // on the next tab cannot disagree.
+    // The sweep's own figure beside the standing one. From `triage_pending`
+    // rather than recomputed, so the tile and the next tab's batch agree.
     let since = sweep_watermark(&state).await?;
     let ready_since =
         vocabulary::triage_pending(&state.knowledge, settings.triage_min_encounters, since)
@@ -107,26 +92,19 @@ pub struct QueueParams {
     /// Overrides the `triage_min_encounters` setting for one request, so the UI
     /// can preview what a threshold change does before saving it.
     min_encounters: Option<i64>,
-    /// Scope the batch to what has been read since the last sweep. The default
-    /// — see [`SWEEP_WATERMARK_KEY`]. `scoped=0` asks for the whole backlog.
-    ///
-    /// Taken as a string because a query parameter *is* one: `serde`'s `bool`
-    /// accepts only `true`/`false`, so `scoped=0` would 400 rather than mean
-    /// what it plainly says.
+    /// Scope the batch to what has been read since the last sweep (the
+    /// default); `scoped=0` asks for the whole backlog. A string because
+    /// `serde`'s `bool` accepts only `true`/`false` and would 400 on `0`.
     scoped: Option<String>,
 }
 
 /// When the last sweep was submitted, as an epoch timestamp in
 /// `read-stats.db`'s settings.
 ///
-/// Internal bookkeeping, so it lives outside `SETTING_KEYS` and the settings
-/// API refuses to write it — the same shape as the ingest watermarks. A
-/// timestamp rather than a `lines.id` because the column it is compared
-/// against is `vocabulary.last_seen`, which is a timestamp; storing an id
-/// would mean a join per query to convert one into the other.
-///
-/// Absent means "never swept", which reads as the whole backlog rather than as
-/// an empty batch — a first sweep must not be empty.
+/// Internal bookkeeping, so it sits outside `SETTING_KEYS` and the settings API
+/// refuses to write it. A timestamp rather than a `lines.id` because it is
+/// compared against `vocabulary.last_seen`. Absent means "never swept", which
+/// reads as the whole backlog — a first sweep must not be empty.
 const SWEEP_WATERMARK_KEY: &str = "sweep_through_ts";
 
 async fn sweep_watermark(state: &AppState) -> Result<Option<f64>, AppError> {
@@ -137,16 +115,13 @@ async fn sweep_watermark(state: &AppState) -> Result<Option<f64>, AppError> {
 
 /// The triage queue: untriaged vocabulary to judge, most-encountered first.
 ///
-/// `preselect` is computed here rather than in the client. It is the rule the
-/// whole seeding pass rests on, it has to be testable without a browser, and a
-/// client-side copy would mean the threshold actually applied was recorded
-/// nowhere.
+/// `preselect` is computed here, not in the client — it decides what gets
+/// written, so it has to be testable without a browser.
 ///
-/// By default this is the *periodic sweep*: the
-/// batch is scoped to terms read since the last submit, so a fortnight's
-/// reading produces a short list rather than the whole standing backlog. The
-/// scoping is a filter and nothing more — it judges nothing, retires nothing,
-/// and `scoped=0` still reaches every ready row.
+/// By default the batch is scoped to terms read since the last submit, so a
+/// fortnight's reading produces a short list rather than the standing backlog.
+/// The scoping is a filter and nothing more: it judges nothing, retires
+/// nothing, and `scoped=0` still reaches every ready row.
 pub async fn vocab_queue(
     State(state): State<AppState>,
     Query(params): Query<QueueParams>,
@@ -201,24 +176,20 @@ pub struct Judgement {
 #[derive(Deserialize)]
 pub struct JudgeRequest {
     judgements: Vec<Judgement>,
-    /// Move the sweep watermark up to now, so the next batch is what the
-    /// reading turns up *after* this one. Sent by the sweep and by nothing
-    /// else: a one-off judgement made from an unscoped list must not retire a
-    /// batch nobody looked at.
+    /// Move the sweep watermark to now, so the next batch is what the reading
+    /// turns up after this one. Sent by the sweep and nothing else: a one-off
+    /// judgement must not retire a batch nobody looked at.
     #[serde(default)]
     advance_sweep: bool,
 }
 
 /// Write a batch of judgements — the triage submit.
 ///
-/// Statuses are parsed strictly rather than through `Status::parse`, which
-/// falls back to `new`. Here that fallback would be a silent data loss: a typo
-/// in one row would quietly un-judge it while the response claimed the batch
-/// landed.
+/// Statuses are parsed strictly rather than through `Status::parse`, whose
+/// fallback to `new` would silently un-judge a row with a typo in it.
 ///
-/// The sweep watermark advances **after** the write and only on the sweep's
-/// own request. On submit, not on load: an interrupted sweep must leave its
-/// batch where it was rather than lose it to a page that was never answered.
+/// The sweep watermark advances **after** the write and only on the sweep's own
+/// request — on submit, not on load, or an interrupted sweep loses its batch.
 pub async fn vocab_judge(
     State(state): State<AppState>,
     Json(req): Json<JudgeRequest>,
@@ -249,14 +220,12 @@ pub async fn vocab_judge(
 
 /// Re-home every judgement the rebuild stranded.
 ///
-/// A stranded row is one the reader judged and the ingest no longer produces —
-/// after the move to normalized headwords, いっぱい and あげる became 一杯 and
-/// 上げる. The tokenizer says what each old key is called now: if that name is
-/// in the ledger, the judgement moves onto it.
+/// A stranded row is one the reader judged that the ingest no longer produces —
+/// いっぱい became 一杯 when headwords were normalized. The tokenizer says what
+/// each old key is called now, and the judgement moves onto that row.
 ///
-/// The tokenizer is the authority rather than a string rule, and a row it
-/// cannot resolve to a single token is left alone — a stranded judgement is
-/// harmless, and a misplaced one is not.
+/// A row the tokenizer cannot resolve to a single token is left alone: a
+/// stranded judgement is harmless, a misplaced one is not.
 async fn carry_stranded_judgements(state: &AppState) -> Result<usize, AppError> {
     let stranded = vocabulary::stranded_judgements(&state.knowledge).await?;
     if stranded.is_empty() {
@@ -297,11 +266,9 @@ async fn carry_stranded_judgements(state: &AppState) -> Result<usize, AppError> 
 
 /// What `blacklist-non-words` would blacklist, before it does.
 ///
-/// The action is a bulk write over rows the queue never shows, so without this
-/// the reader is asked to approve a predicate they have never seen the output
-/// of. Same `WHERE`, commonest first, and paged rather than truncated: a
-/// preview that only ever shows the head cannot answer whether the tail is
-/// safe, which is the question.
+/// It is a bulk write over rows the queue never shows, so the reader would
+/// otherwise be approving a predicate blind. Same `WHERE`, commonest first, and
+/// paged rather than truncated — the tail is the part in question.
 pub async fn vocab_non_words(
     State(state): State<AppState>,
     Query(params): Query<PageParams>,
@@ -344,20 +311,15 @@ pub async fn vocab_blacklist_non_words(
     Ok(Json(json!({ "blacklisted": n })))
 }
 
-/// Import the Anki review pile as `known` (`spec/cold-start.md` Pass 1).
+/// Import the Anki review pile as `known`.
 ///
-/// Reader-triggered only, like `vocab_judge` and `vocab_blacklist_non_words` —
-/// never folded into `anki_refresh`'s recurring snapshot, which must never
-/// write `status`. "Reviewing" (`-is:new -is:learn`) is the gate: a card still
-/// in Anki's new/learning queues is a word explicitly not yet had, so those
-/// notes are left untouched rather than imported as anything.
+/// Reader-triggered only — never folded into `anki_refresh`'s recurring
+/// snapshot, which must never write `status`. `-is:new -is:learn` is the gate:
+/// a card still in Anki's new/learning queues is a word not yet had.
 ///
-/// Anki has no reading beside the vocab field, so each term is resolved
-/// against the master dictionary the same way frequency triage resolves one:
-/// zero matches isn't master vocabulary (stored with an empty reading, same as
-/// any kana-only term); more than one is a homograph, skipped and counted
-/// rather than guessed at — few enough of those to leave for ordinary
-/// encounter-based triage to sort out later.
+/// Anki carries no reading beside the vocab field, so each term is resolved
+/// against the master dictionary: no match stores an empty reading, and a
+/// homograph is skipped and counted rather than guessed at.
 pub async fn vocab_anki_import(
     State(state): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -407,12 +369,10 @@ pub async fn vocab_anki_import(
     })))
 }
 
-/// jiten.moe's JSON export: a list of cards keyed by JMdict entry id.
+/// jiten.moe's JSON export: cards keyed by JMdict entry id.
 ///
-/// Only `w` is read. The status field (`s`) is deliberately ignored — every
-/// card in the export is imported as `known`, by the reader's instruction:
-/// jiten's own maturity grades are its scheduler's business, not an assertion
-/// about what is known.
+/// Only `w` is read. The status field `s` is ignored and every card imports as
+/// `known` — jiten's maturity grades are its scheduler's business.
 #[derive(Deserialize)]
 pub struct JitenExport {
     cards: Vec<JitenCard>,
@@ -424,23 +384,18 @@ pub struct JitenCard {
     w: i64,
 }
 
-/// Pass 5: seed the ledger from a jiten.moe export.
+/// Seed the ledger from a jiten.moe export.
 ///
-/// The only source so far that names *words* rather than spellings. Passes 1
-/// and 3 both had to infer a reading from a bare headword and skip whatever
-/// came back ambiguous — 73 and 159 terms respectively. This one carries
-/// JMdict entry ids, so 辛い/つらい is marked and 辛い/からい is not, without
-/// anything being guessed. There is no ambiguous-skipped count here because
-/// there is no ambiguity.
+/// The only source that names *words* rather than spellings: it carries JMdict
+/// entry ids, so 辛い/つらい is marked and 辛い/からい is not, with nothing
+/// guessed. Hence no ambiguous-skipped count — there is no ambiguity.
 ///
-/// An id fans out to every spelling of it the **master** dictionary lists, and
-/// that fan-out is safe only because counting collapses back:
-/// `jp_core::knowledge::lexeme` reports こちら and こっち as one word, so
-/// marking both cannot inflate the vocabulary figure. What the fan-out buys is
-/// that triage stops asking about each spelling separately.
+/// An id fans out to every spelling the **master** dictionary lists. That is
+/// safe because counting collapses back — `lexeme` reports こちら and こっち as
+/// one word — and it stops triage asking about each spelling separately.
 ///
-/// Import order does not matter and re-running is free: `status` is set, never
-/// cleared, and counts are left alone (`set_status_each`).
+/// Order does not matter and re-running is free: `status` is set, never
+/// cleared, and counts are left alone.
 pub async fn vocab_jiten_import(
     State(state): State<AppState>,
     Json(export): Json<JitenExport>,
@@ -467,11 +422,9 @@ pub async fn vocab_jiten_import(
     let judgements: Vec<(Term, Status)> = terms.into_iter().map(|t| (t, Status::Known)).collect();
     let marked = vocabulary::seed_status_each(&state.knowledge, &judgements, now_ts()).await?;
 
-    // Most of what this just wrote are rows that did not exist a moment ago —
-    // words never met in any reading — and a fresh row's dictionary flags are
-    // all zero until something fills them. Without this the vocabulary scale
-    // ignores the entire import: `in_master` is what the count gates on, and
-    // 6,255 freshly seeded words sat outside it.
+    // Most of these rows did not exist a moment ago, and a fresh row's
+    // dictionary flags are zero until something fills them. Without this the
+    // vocabulary scale, which gates on `in_master`, ignores the whole import.
     vocabulary::refresh_dictionary_flags(&state.knowledge).await?;
 
     info!(
@@ -491,24 +444,21 @@ pub async fn vocab_jiten_import(
     })))
 }
 
-/// How many encounters make a non-master term worth asking about, when no
-/// card exists for it. Low, because the two sources are asymmetric: a mined
-/// term is already the reader's own claim, while a read one has only the
-/// tokenizer's word for it, and the queue would fill with noise at 1.
+/// How many encounters make a non-master term worth asking about when no card
+/// exists for it. A mined term is already the reader's own claim; a read one has
+/// only the tokenizer's word for it, and at 1 the queue fills with noise.
 const PROMOTION_MIN_ENCOUNTERS: i64 = 5;
 
-/// Rows per page of promotion candidates. Small — this is a judgement per
-/// row, not a sweep.
+/// Rows per page of promotion candidates. Small: a judgement per row, not a
+/// sweep.
 const PROMOTION_PAGE: i64 = 200;
 
-/// The escape hatch's queue: terms the master dictionary does not list, but
-/// which the reader has either mined or read repeatedly.
+/// The escape hatch's queue: terms the master dictionary does not list but the
+/// reader has mined or read repeatedly.
 ///
-/// Sankoku carries no 冪等性, no 可用性, and no stem of either, so no
+/// Sankoku carries no 冪等性 or 可用性, nor a stem of either, so no
 /// decomposition rule reaches them; JMdict would admit them along with every
-/// idiom and orthographic variant. So the reader decides, one term at a time —
-/// and mining is what surfaces the term, since every reading-based queue gates
-/// on the vocabulary predicate and can never offer a non-master word.
+/// idiom and orthographic variant. So the reader decides one term at a time.
 pub async fn vocab_promotion_queue(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     let rows = vocabulary::promotion_candidates(
         &state.knowledge,
@@ -557,9 +507,8 @@ pub struct TermRef {
 
 /// Count these terms as vocabulary, or stop counting them.
 ///
-/// Never touches `status`: promoting 冪等性 asserts it is a word, not that it
-/// is known, and for anything still in this queue those have different
-/// answers.
+/// Never touches `status`: promoting 冪等性 asserts it is a word, not that it is
+/// known.
 pub async fn vocab_promote(
     State(state): State<AppState>,
     Json(req): Json<PromoteRequest>,
@@ -574,11 +523,10 @@ pub async fn vocab_promote(
     Ok(Json(json!({ "changed": changed })))
 }
 
-/// Repair the empty-reading rows Pass 1 created for kanji headwords.
+/// Repair the empty-reading rows the Anki import creates for kanji headwords.
 ///
-/// Reader-triggered rather than automatic: it merges and deletes rows, and a
-/// destructive repair should happen when someone asked for it. Idempotent, so
-/// running it twice is harmless.
+/// Reader-triggered rather than automatic, because it merges and deletes rows.
+/// Idempotent.
 pub async fn vocab_repair_empty_readings(
     State(state): State<AppState>,
 ) -> Result<Json<Value>, AppError> {
@@ -598,8 +546,7 @@ pub async fn vocab_repair_empty_readings(
 }
 
 /// How many BCCWJ terms at or under a rank threshold are unjudged master
-/// vocabulary — the cheap count a threshold slider previews against before
-/// paging through the actual list.
+/// vocabulary — the cheap count the threshold slider previews against.
 pub async fn vocab_frequency_summary(
     State(state): State<AppState>,
     Query(params): Query<FrequencyParams>,
@@ -625,15 +572,12 @@ pub struct FrequencyParams {
     offset: Option<i64>,
 }
 
-/// A page of frequency-triage candidates — the preview `frequency-commit`
-/// would act on, shown before it does (same rule as `vocab_non_words`).
+/// A page of frequency-triage candidates — what `frequency-commit` would act
+/// on, shown first, the same rule as `vocab_non_words`.
 ///
-/// Homographs are never on this list — `vocabulary::frequency_queue` excludes
-/// them at the query, not just at display, so every row here is one the
-/// commit button can actually write and paging never spends a slot on a row
-/// the reader has to skip past for nothing. `ambiguous` is still reported, as
-/// a total from `frequency_pending`, for the one line that says how many
-/// words are being left out and why.
+/// Homographs are excluded at the query rather than at display, so every row is
+/// one the commit button can write. `ambiguous` is still reported, for the line
+/// that says how many words are being left out and why.
 pub async fn vocab_frequency_queue(
     State(state): State<AppState>,
     Query(params): Query<FrequencyParams>,
@@ -672,18 +616,13 @@ pub struct FrequencyCommitRequest {
 }
 
 /// Mark every committable term at or under `max_rank` `known`, in one sweep.
+/// The threshold persists into `triage_max_freq_rank`.
 ///
-/// The bulk-commit half of Pass 3: a threshold and a click, not a swipe per
-/// word. Persists the threshold into `triage_max_freq_rank` so the next visit
-/// remembers it, same as the triage floor does.
-///
-/// `frequency_queue` already excludes homographs and already-judged rows
-/// (`FREQUENCY_FILTER`'s `status != 'new'` guard — which is also why a word
-/// the reader clicked "not known" on while previewing does not come back
-/// here: `vocab_judge` already gave it a status), so there is nothing left to
-/// resolve or skip at this layer. `ambiguous_skipped` comes from
-/// `frequency_pending` rather than being counted here, since it names the
-/// same set either way and a second count could only drift from it.
+/// `frequency_queue` already excludes homographs and already-judged rows, so
+/// nothing is left to resolve here — including a word the reader declined while
+/// previewing, which `vocab_judge` has already given a status.
+/// `ambiguous_skipped` comes from `frequency_pending` rather than being counted
+/// again, since a second count could only drift from it.
 pub async fn vocab_frequency_commit(
     State(state): State<AppState>,
     Json(req): Json<FrequencyCommitRequest>,
@@ -710,10 +649,8 @@ pub async fn vocab_frequency_commit(
 }
 
 /// The two dictionary ids frequency triage joins against — BCCWJ (by title,
-/// since it carries no distinguishing role) and the master dictionary.
-/// Neither existing is a configuration problem, not a request one: both are
-/// loaded once at startup, so a missing one means the wrong deployment rather
-/// than a retryable condition.
+/// since it carries no role) and the master dictionary. Both load at startup,
+/// so a missing one is a deployment problem, not a retryable request error.
 async fn frequency_dictionaries(state: &AppState) -> Result<(i64, i64), AppError> {
     let bccwj = dictionaries::by_title(state.knowledge.pool(), "BCCWJ")
         .await?
@@ -726,26 +663,22 @@ async fn frequency_dictionaries(state: &AppState) -> Result<(i64, i64), AppError
 
 /// Rebuild the ledger's counts from the whole reading history.
 ///
-/// Zeroes the aggregates, rewinds only the ledger's watermarks, and re-runs
-/// both ingests — `word_days` is untouched, because its own watermarks stay
-/// where they were. Assertions survive: `status` is not a count.
+/// Zeroes the aggregates, rewinds only the ledger's watermarks, and re-runs both
+/// ingests; `word_days` is untouched because its own watermarks stay put.
+/// Assertions survive — `status` is not a count.
 ///
-/// This exists because the ledger arrived years into a line history that was
-/// already being tokenized for something else. It stays afterwards as the
-/// repair path for a re-tokenization (a Sudachi upgrade, a change to what
-/// counts as a content word), which is a thing that will happen again.
+/// This is the repair path for a re-tokenization: a Sudachi upgrade, or a change
+/// to what counts as a content word.
 pub async fn vocab_rebuild(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     crate::ingest::reset_vocabulary(&state).await?;
     let lines = crate::ingest::ingest_new_lines(&state).await?;
     let sessions = crate::ingest::ingest_new_sessions(&state).await?;
     let mined = crate::ingest::sync_vocabulary(&state).await?;
-    // A re-tokenization moves words between keys, and an assertion left on the
-    // old one is a judgement the reader made about a word that now lives
-    // elsewhere. Carry it before pruning, or the next step deletes the answer.
+    // A re-tokenization moves words between keys. Carry the judgements before
+    // pruning, or the next step deletes them.
     let carried = carry_stranded_judgements(&state).await?;
-    // Anything the re-ingest did not touch is no longer in the reading — a
-    // proper noun now that names are excluded, or a term the tokenizer splits
-    // differently than it used to. Judged rows and mined rows are spared.
+    // Anything the re-ingest did not touch is no longer in the reading. Judged
+    // and mined rows are spared.
     let pruned = vocabulary::prune_untouched(&state.knowledge).await?;
 
     Ok(Json(json!({

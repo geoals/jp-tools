@@ -1,30 +1,26 @@
 //! What each word in a hooked line is worth knowing about — the spans the
 //! reading view tints.
 //!
-//! The ledger's own Sudachi pipeline ([`crate::ingest`]) runs over the line as
-//! it streams, and each content word is looked up in `vocabulary`. What comes
-//! back is *offsets*, not markup: the client paints them, so the line stays one
-//! text node and Yomitan's DOM scan sees what it always saw. That is why this
-//! returns ranges.
+//! Ingest's Sudachi pipeline runs over the line as it streams and each content
+//! word is looked up in `vocabulary`. What comes back is **offsets, not
+//! markup**: the client paints them, so the line stays one text node and
+//! Yomitan's DOM scan sees what it always saw.
 //!
-//! Two things get no span at all, and a third gets one that is not drawn:
+//! Two things get no span, and a third gets one that is not drawn:
 //!
-//! - **Known words**, by [`VocabRow::is_known`] — asserted known *or* mined —
-//!   are sent but never painted. The absence of a mark is the signal. They are
-//!   sent because a span is also the region a tap judges, so a word just marked
-//!   known has to stay tappable to be taken back.
-//! - **Names.** Sudachi's 固有名詞 flag, same as ingest. A VN's cast would
+//! - **Known words** ([`VocabRow::is_known`] — asserted known *or* mined) are
+//!   sent but never painted; the absence of a mark is the signal. Sent because a
+//!   span is also the region a tap judges, so a word just marked known has to
+//!   stay tappable to be taken back.
+//! - **Names** (Sudachi's 固有名詞, same as ingest) — a VN's cast would
 //!   otherwise be the loudest thing on every line.
-//! - **Non-words** — tokenizer noise and anything no dictionary lists. For a
-//!   term the ledger has, that is [`VocabRow::is_word`]'s lenient test; for one
-//!   it does not, the master headword set. The ledger cannot be the only
-//!   authority: a word hooked ten seconds ago has no row yet, and the
-//!   never-before-seen word is what this feature exists to point at.
+//! - **Non-words**: tokenizer noise, and anything no dictionary lists. The
+//!   ledger answers for a term it has a row for, the master headword set for one
+//!   it does not — a word hooked ten seconds ago has no row yet, and that word
+//!   is what this feature exists to point at.
 //!
-//! The status the rest becomes is not `vocabulary.status` verbatim: the ledger's
-//! `new` covers both "met fifty times, never judged" and "never met at all", and
-//! those are the two worth telling apart. [`Tier`] splits them on
-//! `encounter_count`.
+//! [`Tier`] splits the ledger's `new` on `encounter_count`, since it covers both
+//! "met fifty times, never judged" and "never met at all".
 
 use std::collections::HashSet;
 
@@ -35,16 +31,10 @@ use jp_core::tokenize::{MasterWords, SudachiTokenizer, Tokenizer, counts_as_word
 /// The encounter count at or below which a word is called `new` rather than
 /// `seen`.
 ///
-/// The `#vocab` tab draws the same line at zero (`unjudged_counts`); the two
-/// differ because there the question is asked of a settled ledger, here of a
-/// line hooked a moment ago.
-///
-/// One, not zero: ingest may already have credited *this* occurrence by the time
-/// the line is drawn (the sweep runs on a timer, the line arrives on a 30ms
-/// poll), so a first sighting reads as 0 or 1 depending on an unobservable race.
-/// Erring toward `new` is the harmless side — the strongest tint on a word met
-/// twice costs a glance, while demoting a first sighting loses the one event
-/// worth marking.
+/// One rather than the `#vocab` tab's zero: ingest may already have credited
+/// *this* occurrence by the time the line is drawn, so a first sighting reads as
+/// 0 or 1 depending on a race. Erring toward `new` is the harmless side —
+/// demoting a first sighting loses the one event worth marking.
 const NEW_MAX_ENCOUNTERS: i64 = 1;
 
 /// One word's span, in UTF-16 code units from the start of the text — what a
@@ -54,9 +44,8 @@ const NEW_MAX_ENCOUNTERS: i64 = 1;
 pub struct Span {
     pub start: usize,
     pub len: usize,
-    /// `new`, `seen`, `unknown` or `known`. The string the mark's class is
-    /// built from, so adding a status is a Rust change and a CSS rule and
-    /// nothing in between.
+    /// `new`, `seen`, `unknown` or `known` — the mark's CSS class is built from
+    /// it, so adding a status is a Rust change and a CSS rule.
     pub status: &'static str,
     /// The ledger key this word judges, so a tap on it can write a status
     /// without a round trip to ask what it is called. It is the *term's*
@@ -65,13 +54,11 @@ pub struct Span {
     pub reading: String,
 }
 
-/// What a word is to the reader, and the rule that assigns it.
+/// What a word is to the reader.
 ///
-/// `Known` is here but is not drawn: a span is also the region a tap judges,
-/// and a word marked known has to stay tappable to be taken back. So the three
-/// visible tiers and the invisible one are one enum, and the client decides
-/// which of them gets a colour — the alternative is a word that can be judged
-/// exactly once and never revisited.
+/// `Known` is here but not drawn: a span is also the region a tap judges, so a
+/// known word stays tappable to be taken back. The client decides which tiers
+/// get a colour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Tier {
     /// Never judged, and never (or barely) met.
@@ -96,20 +83,16 @@ impl Tier {
 }
 
 /// The Sudachi pipeline plus the dictionary sets it needs, built once and
-/// shared by every streaming reader.
-///
-/// Loading the dictionary costs far more than tokenizing a line does, which is
-/// why [`crate::ingest`] builds one per pass over the whole history rather
-/// than one per line. Here the passes are single lines arriving all evening,
-/// so the load has to happen off to one side and be kept.
+/// shared by every streaming reader — the dictionary load costs far more than
+/// tokenizing a line, and here the lines arrive one at a time all evening.
 pub struct Highlighter {
     tokenizer: SudachiTokenizer,
     /// The master dictionary's headwords — the wordhood test for a term the
     /// ledger has no row for yet.
     lexicon: HashSet<String>,
-    /// The same dictionary keyed by `(headword, reading)`, for the affix half
-    /// of the wordhood gate. Ingest asks it the identical question, which is
-    /// what keeps a tint and a ledger row from disagreeing about 達.
+    /// The same dictionary keyed by `(headword, reading)`, for the affix half of
+    /// the wordhood gate. Ingest asks the identical question, which keeps a tint
+    /// and a ledger row from disagreeing about 達.
     master: MasterWords,
 }
 
@@ -146,10 +129,9 @@ impl Highlighter {
 
 /// One token of the pipeline's output, placed in the line.
 ///
-/// Not every candidate becomes a [`Span`]: a particle or a name is located all
-/// the same, because `#tokenize` shows the whole token stream and "what did the
-/// pipeline drop, and why" is the question that page exists to answer. The feed
-/// filters them out; nothing else here does.
+/// Not every candidate becomes a [`Span`], but a particle or a name is located
+/// all the same: `#tokenize` shows the whole token stream, including what the
+/// pipeline dropped and why. Only the feed filters them out.
 #[derive(Debug, Clone)]
 struct Candidate {
     term: Term,
@@ -160,8 +142,7 @@ struct Candidate {
     content: bool,
 }
 
-/// Why a token carries no status — the same three exclusions this module's
-/// header lists, told apart.
+/// Why a token carries no status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Excluded {
     /// Not a content word at all: a particle, an auxiliary, punctuation.
@@ -195,10 +176,9 @@ pub struct Analyzed {
     pub headword: String,
     /// **The reading the tokenizer produced**, never another row's.
     ///
-    /// This is the field `#tokenize` exists to show, so the "judged under one
-    /// reading is judged" substitution must not reach it: the suffix 鬼 in
-    /// 殺人鬼 is read き, and reporting it as おに because 鬼/おに is marked
-    /// known would be the page misreporting its own subject. Where that rule
+    /// The "judged under one reading is judged" substitution must not reach
+    /// this field: 鬼 in 殺人鬼 is read き, and reporting it as おに because
+    /// 鬼/おに is marked known would misreport the tokenizer. Where that rule
     /// fired, `judged_as` says so instead.
     pub reading: String,
     /// The reading of the row that actually carries the assertion, when the
@@ -218,14 +198,14 @@ pub struct Analyzed {
 
 /// Pair each token with where it sits in the line.
 ///
-/// Sudachi's tokens carry no offsets, and `decompose`/`recompose` regroup
-/// surfaces without ever altering one — which is what makes a single forward
-/// cursor a sound way to recover them. A surface not found ahead of the cursor
-/// means that assumption broke: the token is dropped rather than guessed at,
-/// because a tint on the wrong word is worse than no tint.
+/// Sudachi's tokens carry no offsets, but `decompose`/`recompose` regroup
+/// surfaces without altering one, so a single forward cursor recovers them. A
+/// surface not found ahead of the cursor means that assumption broke, and the
+/// token is dropped rather than guessed at — a tint on the wrong word is worse
+/// than no tint.
 ///
-/// Free-standing and pure so the offset arithmetic — the part that silently
-/// produces a plausible wrong answer — is testable without a dictionary.
+/// Free-standing and pure, so the offset arithmetic is testable without a
+/// dictionary.
 fn locate(
     text: &str,
     tokens: Vec<jp_core::tokenize::Token>,
@@ -269,24 +249,18 @@ fn locate(
     out
 }
 
-/// The process-wide [`Highlighter`], built on first use.
+/// The process-wide [`Highlighter`], built on first use rather than at startup —
+/// the dictionary load is seconds of CPU and `#read` is one tab of six.
 ///
-/// Not built at startup: the dictionary load is seconds of CPU, `#read` is one
-/// tab out of six, and a dashboard that took that long to answer its first
-/// request to serve a page nobody opened would be a poor trade. The cost lands
-/// on the first line of the first session instead, where it is one lazy paint.
-///
-/// It is also never rebuilt, which is the honest limitation: importing a
-/// dictionary changes the lexicon this was built from, and the reader picks
-/// that up on the next restart. Ingest builds its own each pass, so nothing
-/// *stored* is stale — only the tints, until read-stats is restarted.
+/// Never rebuilt, which is the limitation: importing a dictionary changes the
+/// tints only after a restart. Ingest builds its own each pass, so nothing
+/// *stored* goes stale.
 pub type Shared = std::sync::Arc<tokio::sync::OnceCell<std::sync::Arc<Highlighter>>>;
 
 /// The shared highlighter, building it if this is the first line to need it.
 ///
-/// `None` when it could not be built — a missing Sudachi dictionary, an
-/// unreadable one. The reader then streams untinted, which is what it did
-/// before this existed. A failure is not memoized: the next line tries again.
+/// `None` when it could not be built (a missing or unreadable Sudachi
+/// dictionary); the reader then streams untinted. A failure is not memoized.
 pub async fn shared(state: &crate::app::AppState) -> Option<std::sync::Arc<Highlighter>> {
     let cell = state.highlighter.clone();
     let built: Result<&std::sync::Arc<Highlighter>, crate::error::AppError> = cell
@@ -347,12 +321,12 @@ pub async fn spans(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Span> {
         .collect()
 }
 
-/// Every token in `text`, classified — the feed's spans and the tokens it drops
-/// in one list, in reading order.
+/// Every token in `text`, classified — the feed's spans and the tokens it drops,
+/// in reading order.
 ///
-/// This is what `#tokenize` renders, and it is deliberately the *same* call the
-/// feed makes: a page for testing the pipeline that ran a second pipeline would
-/// answer a question nobody asked. [`spans`] is this, filtered.
+/// What `#tokenize` renders, and deliberately the *same* call the feed makes: a
+/// page for testing the pipeline must not run a second one. [`spans`] is this,
+/// filtered.
 pub async fn analyze(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Analyzed> {
     let candidates = h.candidates(text);
     if candidates.is_empty() {
@@ -374,12 +348,10 @@ pub async fn analyze(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Analyzed
             return Vec::new();
         }
     };
-    // Judged under *one* reading is judged, full stop — `work_terms::IS_KNOWN`
-    // and the triage queue both already say so, and a mark is a question, so it
-    // has to obey the same rule. Sudachi gives an inflected form the reading of
-    // that form (通れ → the headword 通る with the reading とおれる), so without
-    // this the reading view marks a word the reader marked known, under a
-    // spelling they never chose and cannot see.
+    // Judged under one reading is judged, the same rule `work_terms::IS_KNOWN`
+    // and the triage queue apply. Sudachi gives an inflected form the reading of
+    // that form (通れ → 通る/とおれる), so without this the feed marks a word
+    // the reader marked known, under a spelling they never chose.
     let headwords: Vec<String> = terms.iter().map(|t| t.headword.clone()).collect();
     let known = match vocabulary::known_readings(k, &headwords).await {
         Ok(known) => known,

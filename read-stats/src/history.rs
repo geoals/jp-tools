@@ -1,23 +1,15 @@
-//! The reading history, loaded once per request.
+//! The reading history, loaded once per request: the line stream, the evidence
+//! the reader was present, and the settings that price it.
 //!
-//! Every dashboard endpoint needs the same three things — the line stream, the
-//! evidence that the reader was present, and the settings that price it — and
-//! each of them used to fetch that itself.
-//! `/api/summary` alone ran the full-history line query three times and derived
-//! the reading pace twice, because `day_maps`, `focus_days` and `lookup_days`
-//! were written independently and each opened with the same six lines of setup.
+//! The point is not only the one query. **Pace and presence are properties of
+//! the reader, not of a request** — while each endpoint derived its own, the
+//! dashboard measured pace over all history and the day timeline over one day,
+//! so the same day reported different active minutes depending on the page. One
+//! place decides now, and endpoints can only ask it questions.
 //!
-//! Loading it once is the smaller half of the point. The larger half is that
-//! **pace and presence are properties of the reader, not of a request**: while
-//! each endpoint derived its own, the dashboard measured pace over all history
-//! and the day timeline over one day, so the same day reported different active
-//! minutes depending on which page you were looking at. There is now one place
-//! that decides, and endpoints can only ask it questions.
-//!
-//! Windowed endpoints (a day's timeline, a day's sessions) slice these vectors
-//! rather than re-querying, and they keep the padded windows they always used
-//! — a session straddling the rollover still derives against its real
-//! neighbours.
+//! Windowed endpoints slice these vectors rather than re-querying, keeping the
+//! padded windows they always used so a session straddling the rollover still
+//! derives against its real neighbours.
 
 use std::collections::BTreeMap;
 
@@ -39,13 +31,12 @@ pub struct History {
     /// keyed against the same boundary.
     pub tz: i64,
     pub today: NaiveDate,
-    /// The whole line stream, oldest first. Discarded lines are already gone —
-    /// filtered in SQL — and nothing else is excluded: capture stops at the
-    /// source now, so a line that exists is a line that counts.
+    /// The whole line stream, oldest first. Discarded lines are filtered out in
+    /// SQL and nothing else is excluded — capture stops at the source, so a line
+    /// that exists is a line that counts.
     pub lines: Vec<LineEvent>,
-    /// Work title for each entry of [`Self::lines`] — same order, same length.
-    /// Kept alongside rather than inside `LineEvent` so the derivations stay
-    /// `Copy` and never carry a string they don't look at.
+    /// Work title per entry of [`Self::lines`] — same order, same length. Kept
+    /// alongside rather than inside `LineEvent` so the derivations stay `Copy`.
     pub line_works: Vec<Option<String>>,
     /// Yomitan lookup timestamps, sorted.
     pub lookups: Vec<f64>,
@@ -63,9 +54,9 @@ pub struct History {
     pub effective_pace: Option<f64>,
 }
 
-/// How far back [`History::effective_pace`] looks. Recent enough to be the
-/// speed the untimed reading actually happened at, long enough to average over
-/// hard days and easy ones.
+/// How far back [`History::effective_pace`] looks — recent enough to be the
+/// speed the untimed reading happened at, long enough to average over hard days
+/// and easy ones.
 const EFFECTIVE_PACE_DAYS: f64 = 30.0;
 
 impl History {
@@ -117,20 +108,15 @@ impl History {
         })
     }
 
-    /// How long a manually logged session took, and whether that is a measured
-    /// number or an estimate.
+    /// How long a manually logged session took, and whether that is measured or
+    /// estimated.
     ///
-    /// A logged session may carry no duration at all: a book or an article is
-    /// read without a stopwatch, and requiring a minute count only produces
-    /// invented ones. When `end_ts` is absent the time is derived from the
-    /// characters at the reader's own recent effective pace — the same "derive
-    /// it, don't store it" rule the rest of the dashboard follows, so the
-    /// estimate improves as the measured pace does.
+    /// A book is read without a stopwatch, so when `end_ts` is absent the time
+    /// is derived from the characters at the reader's own recent effective pace.
+    /// The estimate improves as the measured pace does.
     ///
-    /// Zero when there is no pace to divide by yet. That is deliberately not a
-    /// guess: with no measured reading behind it, any duration here would be a
-    /// number nobody could account for, and it would land in the goal meter and
-    /// the streak.
+    /// Zero when there is no pace to divide by yet, deliberately rather than a
+    /// guess — any duration here would land in the goal meter and the streak.
     pub fn duration_of(&self, s: &db::ManualSession) -> (f64, bool) {
         match s.end_ts {
             Some(end) => ((end - s.start_ts).max(0.0), false),
@@ -147,13 +133,8 @@ impl History {
         Presence::new(&self.marks, self.pace, self.settings.afk_secs)
     }
 
-    /// Lines in `[from, to)`. The slice is already sorted by timestamp, so this
-    /// is two binary searches.
-    ///
-    /// Note that the speech/prose classification on these events came from
-    /// scanning the *whole* stream (bracket depth carries across lines), not
-    /// from a scan starting at `from` — which is the more correct of the two,
-    /// and in any case windowed callers only read `ts` and `chars`.
+    /// Lines in `[from, to)`. The slice is sorted by timestamp, so this is two
+    /// binary searches.
     pub fn lines_in(&self, from: f64, to: f64) -> &[LineEvent] {
         let lo = self.lines.partition_point(|l| l.ts < from);
         let hi = self.lines.partition_point(|l| l.ts < to);
@@ -220,19 +201,14 @@ impl History {
         (vn, manual)
     }
 
-    /// Per-day totals over reading whose duration was actually *measured* —
-    /// the line stream, plus manual sessions that were logged with minutes.
+    /// Per-day totals over reading whose duration was actually *measured* — the
+    /// line stream, plus manual sessions logged with minutes.
     ///
-    /// This is the denominator every chars/hour figure divides by, and the
-    /// reason it exists is circularity: an estimated session's duration is
-    /// derived from the reader's own pace, so it reports that pace back
-    /// exactly. Feeding it into a speed chart would make the chart partly
-    /// measure its own output — every untimed article logged would pull the
-    /// curve toward the mean and flatten the real variation it exists to show.
-    ///
-    /// Totals, goals and streaks deliberately do *not* use this: an estimated
-    /// session's time is the best available answer to "how long was spent
-    /// reading", and it is only speed it cannot honestly speak to.
+    /// The denominator every chars/hour figure divides by. It exists because of
+    /// circularity: an estimated session's duration comes from the reader's own
+    /// pace, so feeding it to a speed chart makes the chart measure its own
+    /// output. Totals, goals and streaks deliberately do *not* use this —
+    /// speed is the only question an estimate cannot answer honestly.
     pub fn measured_days(&self) -> BTreeMap<NaiveDate, DayBucket> {
         let mut out = stats::aggregate_line_days(
             &self.lines,
@@ -300,11 +276,10 @@ impl History {
 
     /// Only the lines stamped with `work`, for scoping a summary to one VN.
     ///
-    /// Realistic interleaving is session-level or coarser, so the gaps that
-    /// bridge two of this work's lines across an interlude in another exceed
-    /// `session_gap_secs` and are dropped — the same per-work handling the rest
-    /// of the app relies on. (Line-by-line alternation inside one sitting would
-    /// leak, but nobody reads two VNs that way.)
+    /// Interleaving is session-level or coarser in practice, so a gap bridging
+    /// two of this work's lines across an interlude in another exceeds
+    /// `session_gap_secs` and is dropped. Line-by-line alternation inside one
+    /// sitting would leak, but nobody reads two VNs that way.
     pub fn lines_of_work(&self, work: &str) -> Vec<LineEvent> {
         self.lines
             .iter()
@@ -316,16 +291,13 @@ impl History {
 
     /// Which work was being read at `ts`, if any.
     ///
-    /// The same test the lookup guard applies at the write
-    /// (`ankiproxy::record`): an event belongs to the reading only if a line
-    /// arrived within `session_gap_secs` of it. Here it decides *whose*
-    /// reading — the nearest line in either direction names the work, because
-    /// a card added a few seconds after the last line of a sitting is still
-    /// that sitting's.
+    /// The same test `ankiproxy::record` applies at the write: an event belongs
+    /// to the reading only if a line arrived within `session_gap_secs`. The
+    /// nearest line in either direction names the work, since a card added just
+    /// after a sitting's last line is still that sitting's.
     ///
-    /// `None` when nothing was on screen: a card added while no VN was hooked
-    /// is unattributed rather than guessed at, which is the honest answer and
-    /// keeps a work from claiming mining that happened somewhere else.
+    /// `None` when nothing was on screen, rather than a guess — that keeps a
+    /// work from claiming mining that happened somewhere else.
     pub fn work_at(&self, ts: f64) -> Option<&str> {
         let gap = self.settings.session_gap_secs;
         let i = self.lines.partition_point(|l| l.ts < ts);
@@ -343,14 +315,14 @@ impl History {
             .flatten()
     }
 
-    /// The work that best represents each day's reading, so the trend charts can
-    /// mark where reading moved from one VN to another and a speed step reads as
-    /// a switch rather than a regression. Picks the *latest* work read that day
-    /// that cleared a real share of the day's characters — latest-not-dominant
-    /// so a mid-day switch onto a new VN still shows even while a heavier
-    /// earlier work out-charactered it, and the share floor keeps a brief
-    /// end-of-day peek at another VN from flipping the day. Manual sessions join
-    /// in too — a day of physical-book reading names the book.
+    /// The work that best represents each day's reading, so a speed step on the
+    /// trend charts reads as a switch rather than a regression.
+    ///
+    /// The *latest* work read that day that cleared a real share of its
+    /// characters: latest rather than heaviest, so a mid-day switch onto a new
+    /// VN still shows; the share floor stops a brief end-of-day peek at another
+    /// VN flipping the day. Manual sessions join in, so a day of physical-book
+    /// reading names the book.
     pub fn dominant_work_days(&self) -> BTreeMap<NaiveDate, String> {
         // Per day, each work's total chars and the latest timestamp it was read at.
         let mut per_day: BTreeMap<NaiveDate, BTreeMap<String, (i64, f64)>> = BTreeMap::new();

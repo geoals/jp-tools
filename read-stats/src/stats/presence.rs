@@ -1,40 +1,34 @@
-//! How much of each inter-line gap counts as reading.
+//! How much of each inter-line gap counts as reading — the rule every aggregate
+//! in [`crate::stats`] credits time through.
 //!
-//! The rule every aggregate in [`crate::stats`] credits time through. It is one
-//! module so there can only be one: while the focus metric ran on the old flat
-//! cap and the day totals ran on this, the two disagreed about the same
-//! afternoon — a 90-second sentence worked through with four lookups was
-//! "reading" to one and "lost focus" to the other.
+//! One module so there can only be one rule. When the focus metric ran on the
+//! old flat cap and the day totals ran on this, a sentence worked through with
+//! four lookups was "reading" to one and "lost focus" to the other.
 
 use super::line::LineEvent;
 
 /// How much of each inter-line gap counts as reading.
 ///
-/// The gap after a line is time spent reading it, but not all of it is
-/// necessarily yours — you may have walked away mid-line. The old answer was a
-/// flat cap, `min(gap, afk_secs)`: right for a 35-second gap, fiction for a
-/// seven-minute one, and it charged both the same half-minute. That inflated
-/// active time by 22 minutes on 2026-07-19 and deflated that day's speed by 11%.
+/// The gap after a line is time spent reading it, but you may have walked away
+/// mid-line. A flat `min(gap, afk_secs)` charged a seven-minute absence the same
+/// half-minute as a 35-second pause, inventing reading that never happened.
 ///
-/// So credit what can be shown. A lookup or a mined card at time `t` proves you
-/// were at the keyboard at `t`; past the last such proof, the line is worth what
-/// it takes to read at your uninterrupted pace. The rest is absence and earns
-/// nothing.
+/// So credit what can be shown: a lookup or a mined card at time `t` proves you
+/// were at the keyboard at `t`, and past the last such proof the line is worth
+/// what it takes to read at your uninterrupted pace. The rest earns nothing.
 pub struct Presence<'a> {
     /// Sorted proofs of presence — lookup and card timestamps, merged.
     marks: &'a [f64],
-    /// Chars per second over gaps that needed no adjustment in the first place.
-    /// `None` when the stream is too sparse to establish one, in which case
-    /// every line falls back to the flat cap.
+    /// Chars per second over gaps that needed no adjustment. `None` when the
+    /// stream is too sparse, in which case every line falls back to the cap.
     pace: Option<f64>,
     afk_secs: f64,
 }
 
 impl<'a> Presence<'a> {
-    /// `marks` must be sorted. `pace` comes from [`measure_pace`], passed in so
-    /// every endpoint prices absence against the same window. Deriving it from
-    /// whatever slice a request fetched made the dashboard (all history) and the
-    /// timeline (one day) disagree about the same day.
+    /// `marks` must be sorted. `pace` comes from [`measure_pace`] and is passed
+    /// in so every endpoint prices absence against the same window — deriving it
+    /// per request made the dashboard and the timeline disagree about a day.
     pub fn new(marks: &'a [f64], pace: Option<f64>, afk_secs: f64) -> Self {
         Self {
             marks,
@@ -45,23 +39,18 @@ impl<'a> Presence<'a> {
 
     /// Credit for the `gap` seconds following `line`. Never exceeds the gap.
     ///
-    /// A gap inside the cap is credited whole. Most reading lives here, and it
-    /// must pass through untouched: pricing every gap at what its line was
-    /// "worth" would clip each above-average gap to average while leaving the
-    /// below-average ones alone — a systematic shortening dressed as a
-    /// correction. It cost 2026-07-19 42 minutes when only 18 were absence.
+    /// A gap inside the cap is credited whole, and must be: pricing every gap
+    /// at what its line was "worth" clips the above-average ones to average and
+    /// leaves the rest, shortening a day by a quarter while calling it a fix.
     ///
-    /// Past the cap the two cases diverge:
+    /// Past the cap, two cases:
     ///
-    /// *Evidence in the gap.* The clock restarts at the last proof of presence
-    /// and runs a fresh `afk_secs`. A lookup is not instantaneous — reading the
-    /// definition comes *after* the event fires — so the grace is the same one
-    /// any line gets. That stops a 45-second dictionary detour being truncated
-    /// to a flat 30.
-    ///
-    /// *Nothing in the gap.* Only the line itself is claimed, at your
-    /// uninterrupted pace. A 15-character line earns about four seconds whether
-    /// the gap ran 35 seconds or seven minutes.
+    /// - **Evidence in the gap** — the clock restarts at the last proof and runs
+    ///   a fresh `afk_secs`. Reading a definition happens *after* the lookup
+    ///   fires, so a 45-second detour is credited 45, not truncated to 30.
+    /// - **Nothing in the gap** — only the line itself is claimed, at your
+    ///   uninterrupted pace. A 15-character line earns about four seconds
+    ///   whether the gap ran 35 seconds or seven minutes.
     pub fn credit(&self, line: &LineEvent, gap: f64) -> f64 {
         if gap <= self.afk_secs {
             return gap;
@@ -87,14 +76,12 @@ impl<'a> Presence<'a> {
     }
 }
 
-/// Reading pace in chars per second, measured over evidence-free gaps at or
-/// under the cap, so it never depends on the credit it goes on to compute.
-/// `None` when the stream is too sparse, which makes every line fall back to the
-/// flat cap.
+/// Reading pace in chars per second, over evidence-free gaps at or under the
+/// cap so it never depends on the credit it computes. `None` when the stream is
+/// too sparse.
 ///
-/// Feed it the *whole* history, not a request's slice: pace is a property of the
-/// reader, and pricing one day's absence against that day's own pace makes two
-/// views of the same day disagree.
+/// Feed it the *whole* history, not a request's slice — pace is a property of
+/// the reader.
 pub fn measure_pace(lines: &[LineEvent], marks: &[f64], afk_secs: f64) -> Option<f64> {
     let (mut chars, mut secs) = (0i64, 0.0);
     for (k, line) in lines.iter().enumerate() {
@@ -114,19 +101,16 @@ pub fn measure_pace(lines: &[LineEvent], marks: &[f64], afk_secs: f64) -> Option
 /// Below an hour the ratio is one sitting's worth of noise.
 const EFFECTIVE_PACE_FLOOR_SECS: f64 = 3600.0;
 
-/// Chars per second *including* everything reading actually costs — the gaps
-/// spent in a dictionary, the re-reads, the pauses short enough to still be
-/// reading. Total characters over total credited time.
+/// Chars per second *including* what reading costs — dictionary gaps, re-reads,
+/// short pauses. Total characters over total credited time.
 ///
-/// Not [`measure_pace`], which measures the opposite quantity — how fast text
-/// goes by when nothing interrupts. That one prices a *gap*, so it must exclude
-/// the interruptions it is deciding about. This one answers "how long did that
-/// take me" and has to include them; the raw figure would understate every
-/// estimated session by whatever the lookups cost.
+/// The opposite quantity to [`measure_pace`], which asks how fast text goes by
+/// when nothing interrupts. That one prices a gap, so it excludes the
+/// interruptions; this one answers "how long did that take me" and includes
+/// them, or it would understate every estimated session by the lookup cost.
 ///
-/// `since_ts` bounds it to recent reading: this estimates untimed sessions being
-/// logged *now*, and a year-old speed is not the speed they were read at. `None`
-/// when the window holds less than [`EFFECTIVE_PACE_FLOOR_SECS`] of reading.
+/// `since_ts` bounds it to recent reading, since it estimates sessions logged
+/// *now*. `None` below [`EFFECTIVE_PACE_FLOOR_SECS`] of reading in the window.
 pub fn measure_effective_pace(
     lines: &[LineEvent],
     presence: &Presence,

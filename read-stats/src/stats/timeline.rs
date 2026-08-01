@@ -24,20 +24,18 @@ pub struct Bucket {
     /// drawing a slope through a dinner break.
     pub session: usize,
     pub chars: i64,
-    /// Characters whose *own* gap contained no lookup — i.e. read at
-    /// uninterrupted pace. Pairs with `active_secs - lookup_secs`.
+    /// Characters whose *own* gap contained no lookup — read at uninterrupted
+    /// pace. Pairs with `active_secs - lookup_secs`.
     ///
-    /// Speed on the text itself has to drop both sides together. Dividing all
-    /// `chars` by non-lookup time only would credit characters read *during* a
-    /// lookup to the time that remains, and in a dense lookup burst the
-    /// denominator collapses while the numerator doesn't — which reported
-    /// 30k chars/h for reading that was actually running at 12k.
+    /// **Both sides have to drop together.** Dividing all `chars` by non-lookup
+    /// time credits characters read *during* a lookup to the time that remains,
+    /// and in a dense burst the denominator collapses while the numerator does
+    /// not — it reported 30k chars/h for reading running at 12k.
     pub clean_chars: i64,
-    /// Characters whose own gap *did* contain a lookup. With `clean_chars`
-    /// these price the reading embedded in lookup gaps: a gap holds both the
-    /// line's reading and the dictionary detour, so charging the whole gap to
-    /// "looking words up" overstates it by whatever that line would have cost
-    /// at clean pace.
+    /// Characters whose own gap *did* contain a lookup. With `clean_chars` these
+    /// price the reading embedded in lookup gaps — a gap holds both the line's
+    /// reading and the detour, so charging it whole to "looking words up"
+    /// overstates the tax.
     pub lookup_chars: i64,
     pub active_secs: f64,
     /// The part of `active_secs` spent inside a gap that contained a Yomitan

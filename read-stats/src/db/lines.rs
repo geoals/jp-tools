@@ -4,16 +4,14 @@
 //! only ever reads and flags. Nothing is deleted: a line that shouldn't count
 //! gets `discarded = 1` and every read filters it out.
 //!
-//! The four shapes exist because the callers genuinely need different columns:
+//! Four shapes, because the callers need different columns and fetching them
+//! all would drag every line's text through the per-day aggregates:
 //!
 //! - [`ReaderLine`] — id + text, for the reading view's live feed.
 //! - [`WorkedLine`] / [`crate::stats::LineEvent`] — time + chars, for the
 //!   derivations.
 //! - [`crate::stats::WorkLine`] — time + chars + work, for per-VN totals.
 //! - [`IngestLine`] — id + text, for tokenizing into `word_days`.
-//!
-//! Fetching all columns for all of them would be simpler and would also mean
-//! dragging every line's text through the per-day aggregates.
 
 use jp_core::knowledge::Knowledge;
 use sqlx::Row;
@@ -62,15 +60,13 @@ pub async fn fetch_recent_lines(k: &Knowledge, limit: i64) -> Result<Vec<ReaderL
     Ok(lines)
 }
 
-/// Flag lines as not-reading (`discarded = 1`) or put them back. Every read of
-/// the stream filters the flag out, so this is how a line stops counting
-/// without leaving the raw table — the same reason pauses don't delete either.
+/// Flag lines as not-reading (`discarded = 1`) or put them back — how a line
+/// stops counting without leaving the raw table.
 ///
 /// Ids come from the client rather than being a "last N" computed here: the
-/// reader is clearing the lines it has on screen, and a line hooked between
-/// the tap and the request must not be swept up with them.
-///
-/// Returns the ids actually changed, which is what the undo button re-sends.
+/// reader is clearing what is on screen, and a line hooked between the tap and
+/// the request must not be swept up with it. Returns the ids actually changed,
+/// which is what undo re-sends.
 pub async fn set_lines_discarded(
     k: &Knowledge,
     ids: &[i64],
@@ -111,14 +107,12 @@ pub async fn max_line_id(k: &Knowledge) -> Result<i64, sqlx::Error> {
     Ok(row.get("max_id"))
 }
 
-/// Every line of the sitting still in progress, oldest first — what a reader
-/// opening the page gets, so the view starts with the whole session in front of
-/// them rather than a fixed tail of it.
+/// Every line of the sitting still in progress, oldest first.
 ///
-/// The boundary is the same one `stats::derive_sessions` splits on: walking
-/// back from the newest line, the first gap over `session_gap_secs` ends it.
-/// Derived here rather than read from a sessions table because there is no such
-/// table — a session is a shape the line stream is read in, never a stored row.
+/// The boundary is the one `stats::derive_sessions` splits on: walking back from
+/// the newest line, the first gap over `session_gap_secs` ends it. Derived here
+/// because there is no sessions table — a session is a shape the line stream is
+/// read in, never a stored row.
 ///
 /// `max` bounds it regardless, so a marathon sitting cannot hand a browser an
 /// unbounded first paint; the reader scrolls back for anything past it exactly

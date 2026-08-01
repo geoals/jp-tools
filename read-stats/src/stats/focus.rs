@@ -1,10 +1,9 @@
 //! How *continuous* the reading was, as opposed to how much of it there was.
 //!
-//! Two hours in one unbroken stretch and two hours in twelve interrupted
-//! fragments are the same number of minutes and not the same afternoon. Active
-//! time alone cannot tell them apart, because the AFK cap is precisely what
-//! hides fragmentation — so this keeps the uncapped wall-clock span beside the
-//! credited time and reports the ratio.
+//! Two hours unbroken and two hours in twelve fragments are the same number of
+//! minutes and not the same afternoon. Active time cannot tell them apart —
+//! the AFK cap is exactly what hides fragmentation — so this keeps the uncapped
+//! wall-clock span beside the credited time and reports the ratio.
 
 use std::collections::BTreeMap;
 
@@ -23,11 +22,9 @@ pub const INTERRUPTION_SECS: f64 = 60.0;
 /// How continuous the reading was, as opposed to how much of it there was.
 #[derive(Debug, Default, Clone, Copy, Serialize)]
 pub struct FocusDay {
-    /// Gap time credited as reading, by the same `Presence` rule everything
-    /// else uses. It has to be the same rule: while this was a flat cap and the
-    /// rest was not, a 90-second sentence worked through with four lookups
-    /// showed up as 60 seconds of lost focus, which is the metric punishing you
-    /// for using a dictionary.
+    /// Gap time credited as reading, by the same `Presence` rule as everything
+    /// else — while this ran on a flat cap and the rest did not, a sentence
+    /// worked through with four lookups read as a minute of lost focus.
     pub active_secs: f64,
     /// Wall-clock time inside sessions — every gap, uncapped.
     pub span_secs: f64,
@@ -45,12 +42,9 @@ impl FocusDay {
     }
 }
 
-/// Per-day focus from the raw line stream. Deliberately *not* derived from the
-/// capped active time alone: the afk cap is exactly what hides fragmentation,
-/// so this keeps the uncapped span beside it and reports the ratio.
-///
-/// Gaps over `session_gap_secs` are excluded — that's leaving, not being
-/// distracted, and it already ends the session.
+/// Per-day focus from the raw line stream. Gaps over `session_gap_secs` are
+/// excluded — that is leaving, not being distracted, and it already ends the
+/// session.
 pub fn aggregate_focus_days(
     lines: &[LineEvent],
     presence: &Presence,

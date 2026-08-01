@@ -26,9 +26,9 @@ use crate::db;
 /// (adding notes, media, version probes) is forwarded without counting.
 const LOOKUP_ACTIONS: &[&str] = &["findNotes", "canAddNotes", "canAddNotesWithErrorDetail"];
 
-/// Window over which repeated requests for the same term collapse into one
-/// lookup. Covers the burst a single popup emits without merging a genuine
-/// re-lookup of the same word later in the same sentence.
+/// Window over which repeated requests for one term collapse into a single
+/// lookup — long enough for a popup's burst, short enough not to merge a real
+/// re-lookup later in the same sentence.
 const DEDUPE_SECS: f64 = 3.0;
 
 fn now_ts() -> f64 {
@@ -39,9 +39,8 @@ fn now_ts() -> f64 {
 }
 
 /// CORS headers for the browser-extension origin Yomitan calls from. Upstream
-/// AnkiConnect's own CORS headers are deliberately not forwarded: it allows
-/// only the origins in its `webCorsOriginList`, and this proxy is reachable
-/// only on the local network anyway.
+/// AnkiConnect's own are not forwarded — it allows only the origins in its
+/// `webCorsOriginList`, and this proxy is local-network only.
 fn cors_headers() -> HeaderMap {
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -63,12 +62,9 @@ pub async fn preflight() -> Response {
     (StatusCode::NO_CONTENT, cors_headers()).into_response()
 }
 
-/// Pull the looked-up term out of an AnkiConnect request body.
-///
-/// Yomitan expresses the duplicate check two ways depending on version and
-/// settings — a search query (`findNotes`) or full candidate notes
-/// (`canAddNotes`) — so both shapes are tried. `vocab_field` is the note field
-/// holding the dictionary form (JP_TOOLS_ANKI_FIELD_VOCAB).
+/// Pull the looked-up term out of an AnkiConnect request body. Yomitan
+/// expresses the duplicate check either as a search query (`findNotes`) or as
+/// full candidate notes (`canAddNotes`), so both shapes are tried.
 pub fn extract_term(body: &Value, vocab_field: &str) -> Option<String> {
     let params = body.get("params")?;
 
@@ -95,9 +91,9 @@ pub fn extract_term(body: &Value, vocab_field: &str) -> Option<String> {
     None
 }
 
-/// Read the value of `<field>:` out of an Anki search query. Anki escapes `"`
-/// and `*` in the value with a backslash; unescaping keeps the recorded term
-/// equal to the word as it appears on the card.
+/// Read the value of `<field>:` out of an Anki search query. Anki backslash-
+/// escapes `"` and `*`; unescaping keeps the recorded term equal to the word as
+/// it appears on the card.
 fn term_from_query(query: &str, field: &str) -> Option<String> {
     let start = query.find(&format!("{field}:"))? + field.len() + 1;
     let rest = &query[start..];
@@ -190,27 +186,21 @@ fn new_note_id(resp_bytes: &Bytes) -> Option<i64> {
 }
 
 /// Fire vn-capture for audio + picture and write CompactDef onto a freshly
-/// added note. All best-effort: any failure is logged, never surfaced — the
+/// added note. Best-effort: any failure is logged, never surfaced, since the
 /// card already exists and is usable without either.
 ///
-/// The capture must not queue behind an LLM call, and the two Anki writes must
-/// not overlap — which is why this is neither sequential nor fully parallel.
+/// **Nothing may be awaited in front of the capture.** A screenshot shows the
+/// screen as it is when taken, so anything ahead of it puts the *next* line on
+/// the card. (`anchor_ts` pins the audio window; the picture has no such
+/// recourse.) But making CompactDef wait for the capture only moved the delay
+/// onto CompactDef, which then landed ten seconds after the add.
 ///
-/// The capture is what the timing bug was about: a screenshot can only show the
-/// screen as it is when it is taken, so anything ahead of it puts the *next*
-/// line on the card. (`anchor_ts` pins the audio window whenever the script
-/// runs; the picture has no such recourse.) But making CompactDef wait for the
-/// capture just moved the cost onto CompactDef, which then landed ten seconds
-/// after the add rather than four.
+/// So the LLM call runs *alongside* the capture with its write afterwards. The
+/// two `updateNoteFields` stay strictly ordered — two concurrent writes to one
+/// note are untested and there is nothing to gain by starting.
 ///
-/// So the LLM call runs *alongside* the capture and its result is written
-/// afterwards. Overlapping the waiting while leaving the two `updateNoteFields`
-/// strictly ordered is what gets both properties; two concurrent writes to one
-/// note have not been tested and there is nothing to gain by starting.
-///
-/// Whether both halves landed is the one thing worth reporting out loud, since
-/// all of this happens behind a browser tab nobody is looking at — hence the
-/// chime at the end, and only when nothing failed.
+/// All of this happens behind a tab nobody is watching, so the chime at the end
+/// is the only report, and it plays only when nothing failed.
 async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_ts: f64) {
     // CompactDef: only when a target field and an API key are configured.
     let fields = req.pointer("/params/note/fields");
@@ -329,21 +319,15 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_t
 
 /// Record a lookup, but only one made while a VN was actually being read.
 ///
-/// Yomitan is pointed at this proxy from the browser, not from the VN, so it
-/// fires for anything looked up anywhere — an article, a tweet, a forum post.
-/// Those are real lookups, but they are not *this* reading, and admitting them
-/// puts a term the VN never contained into the per-work funnel, inflates the
-/// day's lookup count and the per-1000-character rate, and adds to the
-/// numerator of every kanji lookup rate while the line stream adds nothing to
-/// the denominator. The kanji tab's red ring is the sharpest case: it compares
-/// lookups against encounters, and an encounter that happened in a browser is
-/// invisible to it.
+/// Yomitan is pointed here from the browser, so it fires for anything looked up
+/// anywhere — an article, a tweet. Those are real lookups but not *this*
+/// reading, and admitting them puts terms the VN never contained into the
+/// per-work funnel and into the numerator of every rate whose denominator the
+/// line stream cannot see.
 ///
-/// The test is a line in the last `session_gap_secs` — the same threshold that
-/// decides where a reading session ends everywhere else, so "inside a session"
-/// means one thing in this crate. It falls out of this that a paused capture
-/// stops lookups too, once the pause outlasts the gap: no lines arrive while
-/// `capture_paused` is set, so nothing is recent any more.
+/// The test is a line within `session_gap_secs`, the same threshold that ends a
+/// session everywhere else. It follows that a pause outlasting that gap stops
+/// lookups too, since no lines arrive while `capture_paused` is set.
 async fn record(state: &AppState, term: &str) {
     let settings = match db::load_settings(&state.local).await {
         Ok(s) => s,
@@ -385,10 +369,9 @@ async fn record(state: &AppState, term: &str) {
     }
 }
 
-/// Forward the request to AnkiConnect and return `(status, response bytes)` so
-/// the caller can both relay it unchanged and inspect it. On a transport error
-/// the ready-made error `Response` is returned in `Err` for the caller to pass
-/// straight through.
+/// Forward to AnkiConnect and return `(status, response bytes)`, so the caller
+/// can relay it unchanged and inspect it. A transport error comes back as a
+/// ready-made `Response` in `Err`, to pass straight through.
 async fn forward(state: &AppState, body: Bytes) -> Result<(StatusCode, Bytes), Response> {
     let resp = state
         .http

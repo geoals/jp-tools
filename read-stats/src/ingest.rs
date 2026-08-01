@@ -1,32 +1,21 @@
-//! Incremental tokenization of everything read, into the two things a token is
-//! worth keeping for.
+//! Incremental tokenization of everything read. Runs on Anki refresh; one pass
+//! over the text fills three sinks:
 //!
-//! Runs on Anki refresh. One pass over the text produces all three:
+//! - **`word_days`** — per-day content-word counts, behind the kanji grid, the
+//!   discovery curve and every coverage figure.
+//! - **the `vocabulary` ledger** — `(headword, reading)` rows with running
+//!   encounter counts, which `#read`'s highlighter looks status up in.
+//! - **`work_terms`** — the same terms counted per work, so a work's page can
+//!   say how much of it you already know.
 //!
-//! - **`word_days`** — per-day content-word counts, which the kanji grid, the
-//!   discovery curve and every coverage figure are derived from.
-//! - **the `vocabulary` ledger** — `(headword, reading)` rows carrying running
-//!   encounter counts, which the `#read` highlighter and i+1 marking look
-//!   status up in. See `spec/knowledge-db.md`.
-//! - **`work_terms`** — the same terms, counted per work, which is what lets a
-//!   work's own page say how much of it you already know.
+//! Tokenization uses the mined vocab as Sudachi validation headwords, so a mined
+//! compound found whole in Mode C stays whole and matches its card.
 //!
-//! Tokenization uses the mined vocab as Sudachi validation headwords: a mined
-//! compound found whole in Mode C stays whole (so it matches its card),
-//! anything unrecognized splits down to finer modes.
-//!
-//! ## A watermark per sink per stream, not one
-//!
-//! Each sink tracks its own last-processed id. That is what makes the ledger
-//! backfillable: it arrived years into a line history, so it has to be filled
-//! from text `word_days` already counted, and one shared watermark would force a
-//! choice between an empty ledger and double-counted days. Separate, resetting
-//! the ledger's re-tokenizes everything and writes only the rows behind.
-//!
-//! Every sink is additive and none is idempotent, so the rule is absolute:
-//! **a row is written to a sink only when its id is past that sink's
-//! watermark.** `work_terms` arrived last and is backfilled the same way the
-//! ledger was.
+//! **Each sink has its own watermark per stream, and a row is written to a sink
+//! only when its id is past *that sink's* mark.** The sinks are additive and not
+//! idempotent, so one shared watermark would force a choice between an empty
+//! ledger and double-counted days. Separate, resetting one re-tokenizes
+//! everything and writes only the rows that sink is behind on.
 
 use std::collections::{HashMap, HashSet};
 
@@ -41,9 +30,8 @@ use crate::error::AppError;
 use crate::stats;
 
 const WATERMARK_KEY: &str = "tokenized_through_line_id";
-/// Sessions get a watermark of their own rather than sharing the line one:
-/// they are a separate id space, and a session logged today can carry text
-/// read long before the newest line.
+/// Sessions get their own watermark: a separate id space, and a session logged
+/// today can carry text read long before the newest line.
 const SESSION_WATERMARK_KEY: &str = "tokenized_through_session_id";
 /// The ledger's own pair, for the reason in the module doc.
 const VOCAB_LINE_WATERMARK_KEY: &str = "vocab_through_line_id";
@@ -78,25 +66,21 @@ impl IngestOutcome {
     }
 }
 
-/// Both sinks, accumulated over one tokenization pass.
-///
-/// Kept together so the tokenizer runs once: loading the Sudachi dictionary
-/// costs more than tokenizing a day's lines, and the ledger backfill is a pass
-/// over the whole history.
+/// All three sinks, accumulated over one tokenization pass — kept together so
+/// the tokenizer, whose dictionary load costs more than the tokenizing, runs
+/// once.
 struct Harvest {
-    /// The master dictionary, for the affix half of the wordhood gate — see
-    /// [`jp_core::tokenize::counts_as_word`]. Held here rather than passed per
-    /// token because all three sinks take the same tokens and must agree about
-    /// which of them are words.
+    /// The master dictionary, for the affix half of the wordhood gate
+    /// ([`jp_core::tokenize::counts_as_word`]). Held here because all three
+    /// sinks take the same tokens and must agree about which are words.
     master: MasterWords,
     /// `(lemma, day) → count`
     days: HashMap<(String, String), i64>,
     /// `term → (pos, count, first_ts, last_ts)`
     terms: HashMap<Term, (Option<String>, i64, f64, f64)>,
-    /// `term → (occurrences Sudachi called a proper noun, occurrences seen)`.
-    /// Counted for every occurrence that reaches the term stage, independently
-    /// of which sinks are behind, so the verdict never depends on a watermark.
-    /// See [`Harvest::is_name`].
+    /// `term → (occurrences Sudachi called a proper noun, occurrences seen)`,
+    /// counted independently of which sinks are behind so the verdict never
+    /// depends on a watermark. See [`Harvest::is_name`].
     proper: HashMap<Term, (i64, i64)>,
     /// `(term, work) → count`
     works: HashMap<(Term, String), i64>,
@@ -116,10 +100,9 @@ impl Harvest {
 
 /// Which sinks a piece of text is behind on, and what work it belongs to.
 ///
-/// One struct rather than three positional bools: `add(t, date, ts, true,
-/// false, true)` is unreadable at the call site and a swapped pair would
-/// silently write to the wrong sink, which no test would catch — both sinks
-/// take the same tokens.
+/// A struct rather than three positional bools, because a swapped pair would
+/// write to the wrong sink and no test would catch it — the sinks take the same
+/// tokens.
 #[derive(Clone, Copy)]
 struct Sinks<'a> {
     days: bool,
@@ -165,24 +148,17 @@ impl Harvest {
         }
     }
 
-    /// Whether a term is a name, decided over the whole pass rather than per
-    /// occurrence.
+    /// Whether a term is a name, decided over the whole pass by majority
+    /// rather than per occurrence.
     ///
-    /// A name is not vocabulary — a VN's cast were the top of every per-work
-    /// "unknown words" list (ノア×194, レイア×191), which is a cast list
-    /// wearing a study plan's clothes. But Sudachi tags a given surface as
-    /// 固有名詞 only some of the time: filtering occurrence by occurrence left
-    /// ノア with 79 of its 194, which is worse than either answer.
+    /// A name is not vocabulary — a VN's cast topped every per-work "unknown
+    /// words" list. But Sudachi tags a surface 固有名詞 only some of the time,
+    /// so filtering occurrence by occurrence kept 79 of ノア's 194. A majority
+    /// drops ノア whole while keeping words merely *usable* as names: 空 and 光
+    /// are tagged once in a hundred sightings and stay vocabulary.
     ///
-    /// So the term is judged by its own occurrences: a majority settles it.
-    /// That drops ノア whole while keeping words that are merely *usable* as
-    /// names — 空 or 光 are tagged 固有名詞 once in a hundred sightings and stay
-    /// vocabulary, which they are.
-    ///
-    /// Names are dropped from the ledger and the per-work sink and kept in
-    /// `word_days`: that sink asks what text you were exposed to, and a name on
-    /// the page is text you read. A rebuild re-derives all of it, so this is
-    /// reversible if it ever needs to be.
+    /// Names leave the ledger and the per-work sink but stay in `word_days`,
+    /// which asks what text you were exposed to.
     fn is_name(&self, term: &Term) -> bool {
         let (proper, total) = self.proper.get(term).copied().unwrap_or((0, 0));
         proper * 2 > total
@@ -350,15 +326,12 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
 
 /// The same pass over manually logged sessions that carry their text.
 ///
-/// A session's words all land on the day its `start_ts` falls in — one date
-/// for the whole row. There are no per-line timestamps to spread them over,
-/// which is the same reason `content` lives on the session row instead of
-/// being expanded into `lines`.
+/// A session's words all land on the day its `start_ts` falls in: there are no
+/// per-line timestamps to spread them over.
 ///
 /// Reading an article genuinely re-shows you a word, so these counts belong in
-/// `word_days` and in the ledger beside the hooked ones. This is deliberately
-/// *not* true of the lookup rates, which stay over hooked reading only — see
-/// `stats::rate` and `stats::kanji`.
+/// `word_days` and the ledger beside the hooked ones. Deliberately *not* true of
+/// the lookup rates, which stay over hooked reading only (`stats::rate`).
 pub async fn ingest_new_sessions(state: &AppState) -> Result<IngestOutcome, AppError> {
     let day_mark = watermark(state, SESSION_WATERMARK_KEY).await?;
     let vocab_mark = watermark(state, VOCAB_SESSION_WATERMARK_KEY).await?;
@@ -439,15 +412,12 @@ pub async fn ingest_new_sessions(state: &AppState) -> Result<IngestOutcome, AppE
     })
 }
 
-/// Rewind the ledger's watermarks so the next ingest re-reads the whole
-/// history into `vocabulary`, without touching `word_days`.
+/// Rewind the ledger's watermarks so the next ingest re-reads the whole history
+/// into `vocabulary`, without touching `word_days`.
 ///
-/// This is the backfill: the ledger was added long after the line stream
-/// started, and its counts are only true if the text that predates it is
-/// tokenized too. Safe to run more than once — the ledger rows are recreated
-/// from scratch, not added to, so a second run gives the same numbers as the
-/// first. `status` survives it: the reset clears counts, and an assertion is
-/// not a count.
+/// Safe to run more than once: rows are recreated from scratch rather than added
+/// to, so a second run gives the same numbers. `status` survives — the reset
+/// clears counts, and an assertion is not a count.
 pub async fn reset_vocabulary(state: &AppState) -> Result<(), AppError> {
     sqlx::query("UPDATE vocabulary SET encounter_count = 0, first_seen = NULL, last_seen = NULL")
         .execute(state.knowledge.pool())
