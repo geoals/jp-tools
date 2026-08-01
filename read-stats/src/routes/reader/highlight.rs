@@ -454,6 +454,7 @@ mod tests {
             reading: String::new(),
             pos: pos.to_string(),
             proper_noun: false,
+            subsidiary: false,
         }
     }
 

@@ -345,6 +345,34 @@ pub async fn lookup_frequency(
     Ok(row.0)
 }
 
+/// The same rank, for many terms at once.
+///
+/// The tokenizer needs this to break a reading that names several headwords
+/// (うかがう is 伺う and 窺う), and it needs it *before* it starts, so the ranks
+/// are fetched in one pass rather than a query per token. Terms with no entry
+/// are simply absent — the caller then refuses to arbitrate.
+pub async fn frequency_ranks(
+    pool: &SqlitePool,
+    dictionary_id: i64,
+    terms: &[String],
+) -> Result<HashMap<String, i64>, sqlx::Error> {
+    let mut ranks = HashMap::new();
+    // SQLite's variable limit is 32k on recent builds and 999 on older ones.
+    for chunk in terms.chunks(900) {
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let sql = format!(
+            "SELECT term, MIN(frequency) FROM dictionary_frequency
+             WHERE dictionary_id = ? AND term IN ({placeholders}) GROUP BY term"
+        );
+        let mut q = sqlx::query_as::<_, (String, i64)>(&sql).bind(dictionary_id);
+        for term in chunk {
+            q = q.bind(term);
+        }
+        ranks.extend(q.fetch_all(pool).await?);
+    }
+    Ok(ranks)
+}
+
 /// Check whether any frequency entries exist for a dictionary.
 pub async fn has_frequency_entries(
     pool: &SqlitePool,

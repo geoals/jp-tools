@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use sudachi::analysis::stateless_tokenizer::DictionaryAccess;
 use sudachi::analysis::stateless_tokenizer::StatelessTokenizer;
@@ -31,6 +31,13 @@ pub struct Token {
     /// Kept because a name is not vocabulary: a VN's cast are the commonest
     /// "unknown words" in it and learning them is not learning Japanese.
     pub proper_noun: bool,
+    /// Whether Sudachi calls this 非自立可能 — a word that can be the auxiliary
+    /// half of a compound predicate (て**みる**, て**いた**, なければ**なら**ない).
+    ///
+    /// Kept because Sankoku lists those auxiliary senses as their own kana
+    /// headwords, separate from the kanji verb, so the identity ladder can send
+    /// them there instead of to 見る and 居る.
+    pub subsidiary: bool,
 }
 
 #[cfg_attr(any(test, feature = "test-support"), mockall::automock)]
@@ -50,13 +57,24 @@ pub struct SudachiTokenizer {
     /// Words the master dictionary lists, for [`SudachiTokenizer::decompose`].
     /// Empty disables it.
     lexicon: HashSet<String>,
-    /// Master headword, keyed by its reading — for the kana half of
-    /// [`SudachiTokenizer::recompose`]. Only readings that name exactly one
-    /// headword are in here. Empty disables reading-matched recomposition.
-    by_reading: HashMap<String, String>,
+    /// Master headwords, keyed by their reading. A reading naming several
+    /// headwords keeps all of them: joining still refuses to guess, but
+    /// [`SudachiTokenizer::resolve_identity`] may arbitrate by frequency.
+    /// Empty disables reading-matched recomposition.
+    by_reading: HashMap<String, Vec<String>>,
     /// A master headword's own reading, so a recomposed token carries the
     /// reading the ledger will key it on rather than one built from parts.
     term_reading: HashMap<String, String>,
+    /// The master's `(headword, reading)` pairs — the thing an identity has to
+    /// be one of. Same key shape as [`MasterWords`], which is the consumer of
+    /// the identities this produces.
+    pairs: HashSet<(String, String)>,
+    /// BCCWJ rank per headword, to break a reading that names several. Empty
+    /// refuses to arbitrate.
+    frequency: HashMap<String, i64>,
+    /// Readings of headwords re-tokenized standalone, for the ladder's last
+    /// repair step. It fires rarely, but on words that recur forever.
+    rederived: Mutex<HashMap<String, String>>,
 }
 
 impl SudachiTokenizer {
@@ -78,6 +96,9 @@ impl SudachiTokenizer {
             lexicon: HashSet::new(),
             by_reading: HashMap::new(),
             term_reading: HashMap::new(),
+            pairs: HashSet::new(),
+            frequency: HashMap::new(),
+            rederived: Mutex::new(HashMap::new()),
         })
     }
 
@@ -91,53 +112,65 @@ impl SudachiTokenizer {
     /// Teach it how the master dictionary *reads* its headwords, enabling the
     /// kana half of [`SudachiTokenizer::recompose`].
     ///
-    /// Separate from [`with_lexicon`](Self::with_lexicon) because it is the
-    /// weaker signal. A reading naming more than one headword is dropped rather
-    /// than arbitrated — おこす is both 起こす and 興す, and merging two tokens
+    /// This is also what supplies the master's `(headword, reading)` pairs, so
+    /// [`resolve_identity`](Self::resolve_identity) can check an identity
+    /// against the dictionary rather than assembling one from two authorities.
+    ///
+    /// Separate from [`with_lexicon`](Self::with_lexicon) because as a *join*
+    /// signal it is the weaker one. A reading naming more than one headword is
+    /// never joined on — おこす is both 起こす and 興す, and merging two tokens
     /// into a guess is worse than leaving them apart.
     pub fn with_master_readings(mut self, entries: &[(String, String)]) -> Self {
-        let mut ambiguous: HashSet<String> = HashSet::new();
         for (term, reading) in entries {
             if reading.is_empty() {
                 continue;
             }
             let reading = crate::text::kana::to_hiragana(reading);
+            self.pairs.insert((term.clone(), reading.clone()));
             self.term_reading
                 .entry(term.clone())
                 .or_insert_with(|| reading.clone());
-            match self.by_reading.get(&reading) {
-                Some(seen) if seen != term => {
-                    ambiguous.insert(reading);
-                }
-                Some(_) => {}
-                None => {
-                    self.by_reading.insert(reading, term.clone());
-                }
+            let terms = self.by_reading.entry(reading).or_default();
+            if !terms.contains(term) {
+                terms.push(term.clone());
             }
-        }
-        for reading in ambiguous {
-            self.by_reading.remove(&reading);
         }
         self
     }
 
-    /// Which spelling of a word to store: the one the master dictionary uses.
-    ///
-    /// Sudachi normalizes to *its* orthography and the two dictionaries do not
-    /// always agree: する normalizes to 為る, which Sankoku does not list, which
-    /// put the commonest verb in the language outside the triage queue.
-    ///
-    /// **Where they disagree the master dictionary wins**, being the one that
-    /// decides what counts as vocabulary. Where it lists neither spelling,
-    /// normalization stands — it is still the better canonicaliser.
-    fn written_form(&self, normalized: &str, dictionary: &str) -> String {
-        if self.lexicon.is_empty() || self.lexicon.contains(normalized) {
-            return normalized.to_string();
+    /// Teach it how common each master headword is, so a reading naming several
+    /// of them can still yield an identity. See the ladder's reading fallback in
+    /// [`resolve_identity`](Self::resolve_identity).
+    pub fn with_frequency(mut self, ranks: HashMap<String, i64>) -> Self {
+        self.frequency = ranks;
+        self
+    }
+
+    /// Does the master dictionary list this identity? Same rule as
+    /// [`MasterWords::lists`] — a kana headword stores no reading, so it matches
+    /// on the headword alone.
+    fn lists(&self, headword: &str, reading: &str) -> bool {
+        if crate::text::kana::is_all_kana(headword) {
+            return self.lexicon.contains(headword);
         }
-        if self.lexicon.contains(dictionary) {
-            return dictionary.to_string();
+        self.pairs.contains(&(
+            headword.to_string(),
+            crate::text::kana::to_hiragana(reading),
+        ))
+    }
+
+    /// The headword a reading names, arbitrated by frequency when it names
+    /// several. No rank for any candidate — refuse rather than guess blind.
+    fn headword_for_reading(&self, reading: &str) -> Option<&String> {
+        let terms = self.by_reading.get(reading)?;
+        match terms.as_slice() {
+            [one] => Some(one),
+            many => many
+                .iter()
+                .filter_map(|t| self.frequency.get(t).map(|r| (r, t)))
+                .min_by_key(|(r, _)| **r)
+                .map(|(_, t)| t),
         }
-        normalized.to_string()
     }
 
     /// Split a compound no dictionary lists into parts that one does.
@@ -243,34 +276,41 @@ impl SudachiTokenizer {
     /// One candidate run, joined or refused. See [`recompose`](Self::recompose)
     /// for the rules; this is only their transcription.
     fn join_run(&self, run: &[Token]) -> Option<Joined> {
-        if run
-            .iter()
-            .any(|t| t.surface.is_empty() || t.proper_noun || !is_content_word(&t.pos))
-        {
+        if run.iter().any(|t| t.surface.is_empty() || t.proper_noun) {
             return None;
         }
         let (last, head) = run.split_last()?;
+        let content = run.iter().all(|t| is_content_word(&t.pos));
+        let surfaces: String = run.iter().map(|t| t.surface.as_str()).collect();
 
         let written: String = head
             .iter()
             .map(|t| t.surface.as_str())
             .chain(std::iter::once(last.base_form.as_str()))
             .collect();
-        let term = if self.lexicon.contains(&written) {
+        let term = if content && self.lexicon.contains(&written) {
             Some(written)
-        } else if run.iter().all(|t| t.pos == "動詞")
-            && head
-                .iter()
-                .all(|t| crate::text::kana::is_all_kana(&t.surface))
-        {
+        } else if self.lexicon.contains(&surfaces) {
+            // The expression join, and the one place function words are allowed
+            // in: それどころか is a Sankoku headword whose parts are two
+            // particles. The join is safe because what it produces must itself
+            // be a listed headword — the dictionary decides wordhood, not the
+            // tags of the pieces.
+            Some(surfaces.clone())
+        } else if self.reading_join_admitted(run, head, content) {
             let read: String = head
                 .iter()
-                .map(|t| crate::text::kana::to_hiragana(&t.surface))
+                .map(spoken_form)
                 .chain(std::iter::once(crate::text::kana::to_hiragana(
                     &last.reading,
                 )))
                 .collect();
-            self.by_reading.get(&read).cloned()
+            // A join is a merge of two tokens; unlike an identity it may not be
+            // arbitrated by frequency, so an ambiguous reading names nothing.
+            match self.by_reading.get(&read).map(Vec::as_slice) {
+                Some([one]) => Some(one.clone()),
+                _ => None,
+            }
         } else {
             None
         }?;
@@ -278,20 +318,52 @@ impl SudachiTokenizer {
         if term.chars().count() < 3 {
             return None;
         }
+        let reading = self
+            .term_reading
+            .get(&term)
+            .cloned()
+            .unwrap_or_else(|| last.reading.clone());
+        // The joined token is an identity like any other and has to be one the
+        // master lists; a join that produces something else is a bad join.
+        if !self.pairs.is_empty() && !self.lists(&term, &reading) {
+            return None;
+        }
         Some(Joined {
             parts: run.len(),
             token: Token {
-                surface: run.iter().map(|t| t.surface.as_str()).collect(),
-                reading: self
-                    .term_reading
-                    .get(&term)
-                    .cloned()
-                    .unwrap_or_else(|| last.reading.clone()),
+                surface: surfaces,
+                reading,
                 base_form: term,
                 pos: last.pos.clone(),
                 proper_noun: false,
+                subsidiary: false,
             },
         })
+    }
+
+    /// Whether a run may be joined on its reading alone — the weak signal, and
+    /// the one that invents words when it is let loose.
+    ///
+    /// Two admissions, both narrow:
+    ///
+    /// - **verb + verb, kana heads** — しゃくり + あげる → 噦り上げる.
+    /// - **a kanji in the head** — 綺麗 + ごと → きれいごと → 綺麗事. The
+    ///   disasters that fenced this off (そう + する → 相する, こと + し → 今年)
+    ///   are all-kana runs, which this does not admit. A 接尾辞 is allowed here
+    ///   and nowhere else: it is the usual second half of such a compound.
+    fn reading_join_admitted(&self, run: &[Token], head: &[Token], content: bool) -> bool {
+        let kana_heads = || {
+            head.iter()
+                .all(|t| crate::text::kana::is_all_kana(&t.surface))
+        };
+        if content && run.iter().all(|t| t.pos == "動詞") && kana_heads() {
+            return true;
+        }
+        let joinable = |t: &Token| is_content_word(&t.pos) || t.pos == "接尾辞";
+        run.iter().all(joinable)
+            && head
+                .iter()
+                .any(|t| t.surface.chars().any(crate::text::kanji::is_kanji))
     }
 }
 
@@ -299,6 +371,40 @@ impl SudachiTokenizer {
 /// covers 申し訳ない and もう一度; beyond that the candidates stop being
 /// compounds and start being phrases, which a vocabulary ledger does not want.
 const MAX_COMPOUND_PARTS: usize = 3;
+
+/// The headwords that share a reading with another headword — the only ones
+/// [`SudachiTokenizer::with_frequency`] can ever be asked about, so the only
+/// ones worth fetching ranks for.
+pub fn ambiguous_headwords(entries: &[(String, String)]) -> Vec<String> {
+    let mut by_reading: HashMap<String, Vec<&String>> = HashMap::new();
+    for (term, reading) in entries {
+        if reading.is_empty() {
+            continue;
+        }
+        let terms = by_reading
+            .entry(crate::text::kana::to_hiragana(reading))
+            .or_default();
+        if !terms.contains(&term) {
+            terms.push(term);
+        }
+    }
+    let mut out: HashSet<String> = HashSet::new();
+    for terms in by_reading.into_values().filter(|t| t.len() > 1) {
+        out.extend(terms.into_iter().cloned());
+    }
+    out.into_iter().collect()
+}
+
+/// How a token part sounds inside a compound: as written when it is kana, by
+/// its reading when it is not. Uninflected heads read the same either way, and
+/// only heads reach this.
+fn spoken_form(t: &Token) -> String {
+    if crate::text::kana::is_all_kana(&t.surface) {
+        crate::text::kana::to_hiragana(&t.surface)
+    } else {
+        crate::text::kana::to_hiragana(&t.reading)
+    }
+}
 
 /// A joined run, and how many tokens it consumed.
 struct Joined {
@@ -339,18 +445,160 @@ impl SudachiTokenizer {
             .map(|wi| wi.reading_form().to_string())
             .unwrap_or_else(|_| surface_reading())
     }
+
+    /// The `(headword, reading)` the ledger will key this morpheme on.
+    ///
+    /// The pair has to be one the master dictionary actually lists, **checked as
+    /// a pair**. Choosing the spelling and the reading independently — a
+    /// spelling validated against the headword set, a reading taken from
+    /// Sudachi's lemma — is what produced (行く, いける), (一寸, ちょっと) and
+    /// (私達, わたし): identities no dictionary has, so no amount of reading them
+    /// ever moved the vocabulary scale.
+    ///
+    /// So: try candidates in order, take the first the master lists. They run
+    /// from the most canonical spelling to the most surface-faithful one, so the
+    /// common case (Sudachi and Sankoku agree) is settled by the first lookup and
+    /// orthography folding — いう/言う as one row — is preserved.
+    ///
+    /// Nothing validates: keep Sudachi's own answer. The token then sits off the
+    /// master scale exactly as it does today.
+    fn resolve_identity<T: DictionaryAccess>(
+        &self,
+        m: &Morpheme<'_, T>,
+        subsidiary: bool,
+    ) -> (String, String) {
+        let lemma_reading = self.dictionary_form_reading(m);
+        let surface = m.surface().to_string();
+        let sudachi = || (m.normalized_form().to_string(), lemma_reading.clone());
+
+        // A shred, not a word — and normalisation will happily "repair" it into
+        // one (んっと → うんと). It gets no candidates at all.
+        if has_impossible_onset(&surface) {
+            return (surface, m.reading_form().to_string());
+        }
+        if self.pairs.is_empty() && self.lexicon.is_empty() {
+            return sudachi();
+        }
+
+        let mut candidates: Vec<(String, String)> = Vec::with_capacity(4);
+        // Sankoku lists the auxiliary senses (みる, いる, なる, おく, しまう,
+        // くる) as their own kana headwords, and Sudachi's dictionary form keeps
+        // the surface's orthography — so this is that headword exactly. A
+        // subsidiary written in kanji (見てみる's first 見る) has none of this.
+        if subsidiary && crate::text::kana::is_all_kana(m.dictionary_form()) {
+            candidates.push((m.dictionary_form().to_string(), lemma_reading.clone()));
+        }
+        candidates.push(sudachi());
+        candidates.push((m.dictionary_form().to_string(), lemma_reading.clone()));
+        candidates.push((surface.clone(), m.reading_form().to_string()));
+
+        if let Some(hit) = candidates
+            .iter()
+            .find(|(term, reading)| self.lists(term, reading))
+        {
+            return hit.clone();
+        }
+
+        // The spelling is right and only the reading is wrong: Sudachi
+        // normalizes a potential form to its base verb but keeps the potential's
+        // reading, giving (行く, いける). Ask it what that spelling reads as on
+        // its own.
+        for (term, _) in &candidates {
+            if !self.lexicon.contains(term) {
+                continue;
+            }
+            if let Some(reading) = self.rederive_reading(term)
+                && self.lists(term, &reading)
+            {
+                return (term.clone(), reading);
+            }
+        }
+
+        // Only the reading is left to go on: うかがう is a word Sankoku has, but
+        // only under 伺う and 窺う.
+        //
+        // **Hiragana surfaces only.** A reading is the weakest signal there is
+        // and everything else in the language is homophonous with something:
+        // katakana turned エマ into 絵馬 and トン into 頓, and Sudachi reads a
+        // stray latin letter or digit aloud, so g became グラム 14,314 times and
+        // 4 became 四. A word written in hiragana is the one case where the
+        // reading *is* how it was written.
+        if surface.chars().all(crate::text::kana::is_hiragana) {
+            let spoken = crate::text::kana::to_hiragana(&surface);
+            if let Some(term) = self.headword_for_reading(&spoken) {
+                return (term.clone(), spoken);
+            }
+        }
+
+        sudachi()
+    }
+
+    /// What a headword reads as when tokenized alone, cached forever.
+    fn rederive_reading(&self, term: &str) -> Option<String> {
+        if let Some(hit) = self.rederived.lock().ok()?.get(term) {
+            return Some(hit.clone());
+        }
+        let tokenizer = StatelessTokenizer::new(&self.dict);
+        let morphemes = tokenizer.tokenize(term, Mode::C, false).ok()?;
+        let reading = match morphemes.iter().collect::<Vec<_>>().as_slice() {
+            [m] if m.dictionary_form() == term => self.dictionary_form_reading(m),
+            _ => return None,
+        };
+        self.rederived
+            .lock()
+            .ok()?
+            .insert(term.to_string(), reading.clone());
+        Some(reading)
+    }
+}
+
+/// No Japanese word begins with っ, ん or a small kana — a token that does is a
+/// shred off an out-of-vocabulary path, not a word.
+///
+/// Sankoku does list っ, and its sightings were all shreds; that is the point.
+pub fn has_impossible_onset(surface: &str) -> bool {
+    matches!(
+        surface.chars().next(),
+        Some(
+            'っ' | 'ん'
+                | 'ゃ'
+                | 'ゅ'
+                | 'ょ'
+                | 'ぁ'
+                | 'ぃ'
+                | 'ぅ'
+                | 'ぇ'
+                | 'ぉ'
+                | 'ッ'
+                | 'ン'
+                | 'ャ'
+                | 'ュ'
+                | 'ョ'
+                | 'ァ'
+                | 'ィ'
+                | 'ゥ'
+                | 'ェ'
+                | 'ォ'
+        )
+    )
 }
 
 impl Tokenizer for SudachiTokenizer {
     fn tokenize(&self, text: &str) -> Result<Vec<Token>, TokenizeError> {
         let tokenizer = StatelessTokenizer::new(&self.dict);
-        let to_token = |m: sudachi::prelude::Morpheme<'_, _>| Token {
-            surface: m.surface().to_string(),
-            base_form: self.written_form(m.normalized_form(), m.dictionary_form()),
-            reading: self.dictionary_form_reading(&m),
-            pos: m.part_of_speech()[0].clone(),
+        let to_token = |m: sudachi::prelude::Morpheme<'_, _>| {
             // [0] is the top-level class, [1] the subclass: 名詞,固有名詞,人名.
-            proper_noun: m.part_of_speech().get(1).is_some_and(|p| p == "固有名詞"),
+            let subclass = m.part_of_speech().get(1).cloned().unwrap_or_default();
+            let subsidiary = subclass == "非自立可能";
+            let (base_form, reading) = self.resolve_identity(&m, subsidiary);
+            Token {
+                surface: m.surface().to_string(),
+                base_form,
+                reading,
+                pos: m.part_of_speech()[0].clone(),
+                proper_noun: subclass == "固有名詞",
+                subsidiary,
+            }
         };
 
         if self.headwords.is_empty() {
@@ -509,6 +757,9 @@ impl MasterWords {
 ///
 /// [`COUNTS_AS_VOCAB`]: crate::knowledge::vocabulary::COUNTS_AS_VOCAB
 pub fn counts_as_word(t: &Token, master: &MasterWords) -> bool {
+    if has_impossible_onset(&t.surface) {
+        return false;
+    }
     is_content_word(&t.pos) || master.lists(&t.base_form, &t.reading)
 }
 
@@ -548,6 +799,7 @@ mod tests {
             reading: reading.to_string(),
             pos: pos.to_string(),
             proper_noun: false,
+            subsidiary: false,
         }
     }
 

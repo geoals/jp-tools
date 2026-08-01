@@ -221,6 +221,26 @@ pub(crate) async fn master_readings(state: &AppState) -> Result<Vec<(String, Str
     Ok(jp_core::knowledge::dictionaries::master_entries(state.knowledge.pool()).await?)
 }
 
+/// BCCWJ ranks for the master headwords that share a reading with another one,
+/// so the tokenizer can name a word written in kana (うかがう → 伺う over 窺う).
+///
+/// Only those headwords, and fetched here rather than inside the tokenizer:
+/// tokenization runs in `spawn_blocking`, which has no runtime to query from.
+///
+/// BCCWJ not being loaded is not an error — the tokenizer then leaves ambiguous
+/// readings unresolved, which is what it did before.
+pub(crate) async fn frequency_ranks(
+    state: &AppState,
+    readings: &[(String, String)],
+) -> Result<HashMap<String, i64>, AppError> {
+    let pool = state.knowledge.pool();
+    let Some(bccwj) = jp_core::knowledge::dictionaries::by_title(pool, "BCCWJ").await? else {
+        return Ok(HashMap::new());
+    };
+    let terms = jp_core::tokenize::ambiguous_headwords(readings);
+    Ok(jp_core::knowledge::dictionaries::frequency_ranks(pool, bccwj.id, &terms).await?)
+}
+
 pub(crate) async fn validation_headwords(state: &AppState) -> Result<HashSet<String>, AppError> {
     Ok(db::fetch_anki_notes(&state.knowledge)
         .await?
@@ -270,6 +290,7 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
     let vocab = validation_headwords(state).await?;
     let lexicon = master_lexicon(state).await?;
     let readings = master_readings(state).await?;
+    let ranks = frequency_ranks(state, &readings).await?;
     let dict_path = state.sudachi_dict_path.clone();
 
     let n_lines = lines.len();
@@ -278,7 +299,8 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
         let tokenizer = SudachiTokenizer::new(&dict_path, vocab)
             .map_err(|e| AppError::Upstream(format!("sudachi: {e}")))?
             .with_lexicon(lexicon.clone())
-            .with_master_readings(&readings);
+            .with_master_readings(&readings)
+            .with_frequency(ranks);
         let mut harvest = Harvest::new(MasterWords::new(lexicon, &readings));
         for line in &lines {
             let date = stats::date_key(line.ts, rollover, tz).to_string();
@@ -349,6 +371,7 @@ pub async fn ingest_new_sessions(state: &AppState) -> Result<IngestOutcome, AppE
     let vocab = validation_headwords(state).await?;
     let lexicon = master_lexicon(state).await?;
     let readings = master_readings(state).await?;
+    let ranks = frequency_ranks(state, &readings).await?;
     let dict_path = state.sudachi_dict_path.clone();
 
     let n_sessions = sessions.len();
@@ -356,7 +379,8 @@ pub async fn ingest_new_sessions(state: &AppState) -> Result<IngestOutcome, AppE
         let tokenizer = SudachiTokenizer::new(&dict_path, vocab)
             .map_err(|e| AppError::Upstream(format!("sudachi: {e}")))?
             .with_lexicon(lexicon.clone())
-            .with_master_readings(&readings);
+            .with_master_readings(&readings)
+            .with_frequency(ranks);
         let mut harvest = Harvest::new(MasterWords::new(lexicon, &readings));
         for s in &sessions {
             let date = stats::date_key(s.start_ts, rollover, tz).to_string();
@@ -456,6 +480,7 @@ mod tests {
             reading: reading.to_string(),
             pos: "名詞".to_string(),
             proper_noun: proper,
+            subsidiary: false,
         }
     }
 

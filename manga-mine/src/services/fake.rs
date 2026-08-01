@@ -49,6 +49,7 @@ impl Tokenizer for FakeTokenizer {
                     // asks, and a stub that invented one would be inventing a
                     // classification.
                     proper_noun: false,
+                    subsidiary: false,
                 }
             })
             .collect())
