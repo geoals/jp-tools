@@ -1,235 +1,157 @@
 # read-stats
 
 Automatic daily reading tracker: characters read and active reading time,
-derived from the raw line stream `vn-mine/vn-ws-logger.py` already captures —
-no manual copying, no counters to reset. Dashboard with a goal meter, a streak,
-a daily bar chart in minutes or characters, a chars/hour trend, a lookups/h vs
-cards/h trend, and a minute-resolution *Day detail* view that prices the lookup
-tax against reading speed.
+derived from the raw line stream `vn-mine/vn-ws-logger.py` already captures — no
+manual copying, no counters to reset. Plus `#read`, the live line feed read
+beside the running VN, where Yomitan does its lookups and mining.
+
+`CLAUDE.md` has the architecture and the invariants; this file is the reference:
+what the thing does, how to set it up, the endpoints and the config.
 
 ## How it works
 
-- **Ingestion is passive.** `vn-ws-logger.py` (running under the `vn-buffer`
-  systemd unit) inserts every hooked line — timestamp, char count, text — into
-  the shared `~/.local/share/jp-tools/knowledge.db`. The web service only reads
-  that table, so stats are captured whenever you read, whether or not the
+- **Ingestion is passive.** `vn-ws-logger.py` (under the `vn-buffer` systemd
+  unit) inserts every hooked line — timestamp, char count, text — into the shared
+  `knowledge.db`. Stats are captured whenever you read, whether or not the
   dashboard is running.
+- **Characters are counted like texthooker-ui does** (`jp_core::text::chars`,
+  mirrored in `vn-ws-logger.py`): an allowlist of kana, kanji, radicals and
+  alphanumerics, so punctuation doesn't inflate chars/h. Startup recomputes
+  `lines.chars` for any row that disagrees.
+- **Everything is derived at query time**, so thresholds are tunable after the
+  fact: a gap credits reading time up to `afk_secs` (30), a gap over
+  `session_gap_secs` (600) closes the session, and days roll over at
+  `day_rollover_hour` (04:00) so late-night reading counts to the evening.
 
-  Two databases are in play: `knowledge.db` holds what was read (`lines`,
-  `works`, `manual_sessions`, `anki_notes`, `word_days`, `lookups`) plus the
-  dictionary cache, and is jp-core's; `read-stats.db` holds this app's own
-  state (`settings`, `reader_marks`, `work_covers`). The root CLAUDE.md has why
-  the line falls there.
-- **Characters are counted like texthooker-ui does**
-  (`jp_core::text::chars`, mirrored
-  in `vn-ws-logger.py`): an allowlist of kana, kanji, radicals and
-  alphanumerics, so punctuation and brackets don't inflate chars/h. Startup
-  recomputes `lines.chars` for any row that disagrees, so a change to the rule
-  (or a logger still running an older one) is corrected on the next restart.
-- **Everything is derived at query time** from raw line events, so thresholds
-  are tunable after the fact:
-  - a gap between lines credits reading time, capped at `afk_secs` (30). Set
-    from the measured gap distribution rather than by feel: gaps containing a
-    Yomitan lookup cluster at 10–32s (median 24s, p90 32s) while gaps without
-    one have a p90 of 9s, so 30 keeps a real lookup whole and truncates the
-    tail where a lookup became a distraction. At 20 the majority of lookups
-    were being clipped, inflating chars/h by ~6%;
-  - a gap over `session_gap_secs` (600) closes the session;
-  - days roll over at `day_rollover_hour` (04:00) — late-night reading counts
-    toward the evening's day.
+  The 30 comes from the measured gap distribution rather than from feel: gaps
+  containing a lookup cluster at 10–32s (median 24, p90 32) while gaps without
+  one have a p90 of 9. At 20 the majority of lookups were being clipped,
+  inflating chars/h by ~6%.
 - **Yomitan lookups are counted by proxying AnkiConnect**
-  (`routes/ankiproxy.rs`).
-  Yomitan checks Anki for duplicates every time it shows a definition popup, so
-  with its server address pointed at `/anki-proxy` each popup becomes a row in
-  `lookups`. Requests are forwarded to the real AnkiConnect byte-for-byte, so
-  mining is unaffected; a lookup is recorded before forwarding, so it still
-  counts when Anki is closed. Repeated requests for the same term within 3s
-  collapse into one lookup (a single popup fires several). See *Counting
-  lookups* below.
+  (`routes/ankiproxy.rs`). Yomitan checks Anki for duplicates on every definition
+  popup, so with its server address pointed at `/anki-proxy` each popup becomes a
+  row in `lookups`. Requests are forwarded byte-for-byte, so mining is
+  unaffected, and a lookup is recorded before forwarding, so it counts even with
+  Anki closed. Repeats of the same term within 3s collapse into one. See
+  *Counting lookups*.
 - **Focus measures how continuous the reading was**, not how much of it there
-  was (`stats::focus`). Credited time hides fragmentation by
-  design, so focus keeps the *uncapped* span beside it and reports
-  `active / span`. 100% means every gap was reading; 60% means two fifths of
-  your at-desk time went somewhere else. Gaps over `session_gap_secs` are
-  excluded (that's leaving, not being distracted); a gap over 60s counts as an
-  interruption and breaks the longest-stretch run **only if nothing in it proves
-  you were there**. Needs the line stream, so manually logged sessions have no
-  focus figure.
+  was (`stats::focus`): credited time hides fragmentation, so focus keeps the
+  *uncapped* span beside it and reports `active / span`. Gaps over
+  `session_gap_secs` are excluded (that is leaving, not being distracted), and a
+  gap over 60s counts as an interruption only if nothing in it proves you were
+  there. Manual sessions have no focus figure.
+- **Pause capture** (`POST /api/capture/pause`, or the dashboard and `#read`
+  buttons) stops the *source*: `settings.capture_paused` is polled by
+  vn-ws-logger.py, which closes its Textractor WebSocket while it is set. Nothing
+  is recorded and nothing can be recovered — which is why the reading view says
+  so in red across the top.
+- **Clear last line** (`✕ clear last` on `#read`) is the retroactive version: it
+  flags the newest line `discarded` and every read filters it out. It covers the
+  two things a pause is always remembered too late for — the junk Textractor
+  hooks while you are still finding the route, and a stretch re-read after
+  skipping back. One tap per line, and consecutive taps accumulate into one undo,
+  offered on the toast for 15s. Nothing is deleted; a clear can be undone past
+  the toast with `UPDATE lines SET discarded = 0 WHERE id = ?`.
 
-  Both halves use the same `Presence` rule as the rest of the app. A metric
-  that counts using a dictionary as losing focus is measuring the wrong thing.
-- **Pause capture** (`POST /api/capture/pause` toggle, dashboard or `#read`
-  button) for skipping scenes / replaying read text. This stops the *source*:
-  it sets `settings.capture_paused`, which vn-ws-logger.py polls and answers by
-  closing its Textractor WebSocket, so no line is recorded at all while it is
-  set. Nothing is filtered afterwards, and nothing can be recovered — a
-  forgotten pause costs the lines themselves, which is why the reading view
-  says so in red across the top.
+  Clearing widens the gap around what it removed, which is the point: with the
+  junk gone the surrounding span has no evidence in it, so the *time* stops being
+  credited along with the characters.
 
-  It used to be an interval log (`pauses`) that every read filtered. That was
-  the wrong half: the raw stream still filled with text the reader had said was
-  not reading, and every query paid to remove it again. The old table is
-  retired on startup, its lines flagged `discarded`.
-- **Clear last line** (`✕ clear last` on `#read`) is the retroactive version:
-  it flags the newest line `discarded`, and every read of the stream
-  filters that out. It covers the two things pause is always remembered too
-  late for — the handful of lines Textractor hooks while you are still finding
-  the route, which are otherwise enough to open a session, and a stretch
-  re-read after skipping back, which would otherwise be counted a second time.
-
-  One tap per line, and the line leaves the feed as it goes, so tapping until
-  the junk is gone needs no count in the UI. The ids come from what is on
-  screen rather than the server picking "the last one", so a line hooked
-  between the tap and the request isn't swept up with them. Consecutive taps
-  accumulate into one undo, offered on the toast for 15s.
-
-  Nothing is deleted — the flag is soft, because the raw stream is what lets
-  every threshold here stay tunable after the fact. A clear can be undone past the toast with
-  `UPDATE lines SET discarded = 0 WHERE id = ?`.
-
-  Clearing widens the gap around what it removed, and that is the point: with
-  the junk lines gone the surrounding span has no evidence in it, so the
-  *time* stops being credited along with the characters. For a re-read stretch
-  that means the minutes spent skimming already-read text stop counting too,
-  which is the right call — it was re-reading, not reading.
-
-  One caveat: `word_days` is **not** rewound. If tokenization already ran over
-  a cleared line (it runs on Anki refresh, so usually it hasn't) its lemma
-  counts stay, very slightly inflating the re-encounter card. Everything else —
-  chars, time, speed and focus — is derived fresh and correct.
+  One caveat: `word_days` is **not** rewound, so if tokenization already ran over
+  a cleared line its counts stay, very slightly inflating the re-encounter card.
+  Everything else is derived fresh.
 - **Manual sessions** cover everything without a line stream: physical books
-  (pages × `chars_per_page`, default 550 ≈ bunkobon), manga, or imported
-  history. Logged from the dashboard form or `POST /api/sessions`.
-- **Work metadata** turns per-work totals into progress. A work row (keyed by
-  the exact title stamped on lines/sessions) carries a `total_chars` count
-  pasted manually from the VN's jpdb page (jpdb has no public API) and
-  optionally a cover: pass a VNDB id once and the cover is fetched from
-  `api.vndb.org/kana`, cached next to the DB in `covers/`, served at
-  `/covers/` — nothing else from VNDB is stored. The currently-reading card
-  shows cover, char-based progress bar, this VN's own reading speed, hours left
-  at that speed, and a projected finish date. The finish date is decomposed:
-  **this work's speed × your daily active hours**, the hours taken from the
-  trailing 7 complete days (clipped to `pace_start_date`, for coming back from a
-  break). Speed is a property of the VN and daily hours a property of you, so a
-  fresh harder VN no longer inherits an easier one's chars/day. Under 10 minutes
-  into a work it falls back to the cross-work chars/day until it can gauge the
-  work's own speed. A **finished** work shows its real started/finished dates
-  instead of a projection. The Library lists every work's own chars/h so they
-  compare directly, and the speed chart marks where reading switched VNs.
+  (pages × `chars_per_page`, default 550 ≈ bunkobon), manga, imported history.
+  Logged from the dashboard form or `POST /api/sessions`.
+- **Work metadata** turns per-work totals into progress. A work row (keyed by the
+  title stamped on lines and sessions) carries a `total_chars` count pasted from
+  the VN's jpdb page and optionally a cover: pass a VNDB id once and the art is
+  fetched from `api.vndb.org/kana`, cached in `covers/` and served at `/covers/`.
+  The currently-reading card shows progress, this VN's own speed, hours left and
+  a projected finish date.
 
-- **Anki integration (read-only).** On dashboard load (or the refresh button)
-  the server probes for AnkiConnect — the dashboard client's IP first (for a
-  device running AnkiconnectAndroid), then `JP_TOOLS_ANKI_URL` — and snapshots the
-  mined deck's `VocabKanji` fields into `anki_notes`. Note ids double as
-  creation timestamps, giving **cards per session** (cards added inside each
-  session's timespan, cards/h) with no extra bookkeeping. New raw lines are
-  tokenized incrementally (jp-core Sudachi, mined vocab as validation
-  headwords) into per-day lemma counts (`word_days`), which power the
-  **re-encounter card**: how many mined words you've since met again in real
-  reading, this week's most-met words, and mined-but-never-re-encountered
-  words. `word_days` is deck-independent, so words mined later still match
-  past reading.
+  The finish date is **this work's speed × your daily active hours**, the hours
+  taken from the trailing 7 complete days (clipped to `pace_start_date`). Speed
+  is a property of the VN and daily hours a property of you, so a fresh harder VN
+  does not inherit an easier one's chars/day. Under 10 minutes in it falls back
+  to the cross-work rate. A finished work shows its real dates instead.
+- **Anki integration is read-only.** On dashboard load (or the ↻ button) the
+  server probes for AnkiConnect — the client's own IP first, for a phone running
+  AnkiconnectAndroid, then `JP_TOOLS_ANKI_URL` — and snapshots the deck's
+  `VocabKanji` fields into `anki_notes`. Note ids double as creation timestamps,
+  which gives cards-per-session for free. New lines are tokenized into per-day
+  lemma counts (`word_days`), which power the **re-encounter card**: how many
+  mined words the reading has since shown you again.
 
 ## The reading view (`/#read`)
 
-`#read` is a live feed of the lines Textractor hooks, read beside the VN while
-it runs — the lines stay visible and selectable, so there is no reaching into
-the game window for a lookup. The setup:
+A live feed of the lines Textractor hooks, read beside the VN while it runs — the
+lines stay visible and selectable, so there is no reaching into the game window
+for a lookup. Served over the LAN and Tailscale too, so a phone beside the screen
+works the same way.
 
-- **Yomitan** scans the lines. Point its *Server address* at
-  `/anki-proxy` so lookups are counted and cards land in Anki.
-- **✕ clear last** drops the newest hooked line from the stats — see *Clear
-  last line* above. Deliberately narrow and quiet; every press is undoable.
-- **Mining has no button.** Adding a card in Yomitan goes through
-  `/anki-proxy`, and the proxy runs `vn-mine/vn-capture.sh` itself once Anki
-  accepts the note — so the voiceline audio and a screenshot attach to every
-  mine without a second deliberate tap. A button would only have been a manual
-  way to redo what already happened.
-  **whisper-service is optional here:** it only narrows the clip to the single
-  mined sentence within a multi-sentence line. When it's down the capture still
-  works — the clip is attached VAD-trimmed — and the reader bar shows a muted
-  **✂ off** hint (from `trim_available` in `/api/reader/state`, probed each
-  poll) so you know the sentence trim isn't running.
-- **ℹ explain last line** sends the newest line (with the previous few for context) to the
-  Anthropic API and shows a short read on it — a natural rendering plus any
-  nuance or grammar a plain translation misses. **Select a word in the line
-  first** and the explanation is centred on that word instead; the selection is
-  read the instant the button is tapped, so opening the panel doesn't clear it.
-  For a light lookup while reading, not a full translation — the reply is capped
-  at a few sentences and the model defaults to `claude-haiku-4-5`
-  (`JP_TOOLS_LLM_MODEL`). The button is only shown enabled when
-  `JP_TOOLS_ANTHROPIC_API_KEY` is set. The panel stays up (scrolling internally)
-  until dismissed, so it can sit open while looking back over the line.
+- **Yomitan** scans the lines. Point its *Server address* at `/anki-proxy` so
+  lookups are counted and cards land in Anki.
+- **Mining has no button.** Yomitan's `addNote` goes through `/anki-proxy`, and
+  the proxy runs `vn-mine/vn-capture.sh` once Anki accepts the note, so audio and
+  a screenshot attach to every mine. whisper-service is *optional* here — it only
+  narrows the clip to the mined sentence within a multi-sentence line. When it is
+  down the VAD-trimmed clip is attached instead and the bar shows a muted **✂
+  off** hint.
+- **✕ clear last** drops the newest hooked line from the stats.
+- **ℹ explain last line** sends the newest line, with a few before it for
+  context, to the Anthropic API and shows a short read on it. **Select a word
+  first** and the explanation centres on that word; the selection is read the
+  instant the button is tapped. Capped at a few sentences, on
+  `claude-haiku-4-5` by default (`JP_TOOLS_LLM_MODEL`), and only enabled when
+  `JP_TOOLS_ANTHROPIC_API_KEY` is set.
+- **Tapping a word judges it** — see CLAUDE.md for the rules.
 
-While the reader is open the **page title is set to `current_work`**, not
-"read-stats". Yomitan's `{document-title}` marker is what fills the note's
-Document field, so the tab title is what a mined card records as its source —
-it has to be the VN. `current_work` is re-read every 20s, so switching works on
-the dashboard takes effect without reloading the reader. If no work is set the
-title is left alone, and cards will be stamped "read-stats" — set the work
-first.
+While the reader is open the **page title is set to `current_work`**, because
+Yomitan's `{document-title}` marker fills the note's Document field — so the tab
+title is what a mined card records as its source. Re-read every 20s. If no work
+is set, cards get stamped "read-stats"; set the work first.
 
-Cards must land in the collection on the machine running the VN, because that is
-what `vn-capture.sh` attaches media to — so the proxy forwards to
-`JP_TOOLS_ANKI_URL` unconditionally, deliberately *not* preferring the
-requesting client the way manga-mine's export does.
+Cards must land in the collection on the machine running the VN, since that is
+what `vn-capture.sh` attaches media to, so the proxy forwards to
+`JP_TOOLS_ANKI_URL` unconditionally rather than preferring the requesting client
+the way manga-mine's export does. The 5-minute ring-buffer limit applies either
+way: mine before advancing.
 
-The server listens on the LAN (and over Tailscale), so `#read` works from
-another device — a phone beside the screen — as well as from a browser on the
-machine itself. That second case is why `vn_window` exists: the screenshot has
-to name the VN's window rather than follow focus, which is the browser's.
-
-The 5-minute ring-buffer limit applies either way: mine before advancing.
-
-The line feed is read from the `lines` table that `vn-ws-logger.py` already
-writes, not from Textractor's WebSocket — its plugin can crash Textractor when a
-client disconnects abortively, so a second WS client would be a risk for nothing.
+The feed reads the `lines` table rather than opening a second Textractor
+WebSocket, whose plugin can crash the game on an abortive client disconnect.
 
 ## The dashboard
 
-Five tabs, one per question, all fed by the same single poll — the tabs choose
-what renders, never what is fetched, so two of them can't disagree about a day.
+Five tabs, one per question, all fed by one poll — the tabs choose what renders,
+never what is fetched, so two of them cannot disagree about a day.
 
-- **Today** (`#today`) — Currently reading first: which VN, how far in, and what
-  it projects. Under it the day itself — the goal meter, the day's totals, its
-  intra-day curve and its sittings, all following one date. The date nav steps
-  the whole card, so "yesterday" is the same card rather than a different one;
-  the totals come from the already-loaded `/api/days` window, so stepping costs
-  one timeline fetch and nothing else.
-- **Trends** (`#trends`) — one range (7/30/60d) over the summary tiles, the
-  daily bars, the speed panel and the lookup/card-rate panel. The two line
-  panels are stacked on a shared x-position rather than merged, for the same
-  reason the day timeline keeps two panels: chars/hour and events/hour can't
-  share a y-axis honestly. Stacked, a speed dip and a lookup spike on the same
-  day line up vertically, which is the lookup-tax argument in one glance.
-- **Library** (`#library`) — the works, the vocabulary funnel (lookups and Anki
-  re-encounters, toggled), and the manual log form. The log form is an *action*,
-  so it is a disclosure at the bottom rather than a permanent card.
-- **Kanji** (`#kanji`) — every kanji ever read, tinted by encounter count, with
-  grade coverage and a discovery curve.
-- **Vocab** (`#vocab`) — the ledger's status counts and the triage sweep that
-  fills them.
+- **Today** — what you are reading and how far in, then the day itself: goal
+  meter, totals, intra-day curve and sittings, all following one date.
+- **Trends** — one range (7/30/60d) over the summary tiles, daily bars, the speed
+  panel and the lookup/card-rate panel.
+- **Library** — the works (shelf → per-work page), the vocabulary funnel, and the
+  manual log form.
+- **Kanji** — every kanji ever read, tinted by encounter count, with grade
+  coverage and a discovery curve.
+- **Vocab** — the ledger's status counts and the triage sweep that fills them.
 
 ## Settings (`/#settings`)
 
-Everything that used to be a constant, with the reason it exists written under
-it. Two kinds of thing, and the split is deliberate:
+Two kinds of thing, and the split is deliberate:
 
-- **server settings** — rows in `settings`, applied at *query* time. The goal
-  (daily target, streak minimum) and the derivation thresholds (gap cap,
-  session break, day rollover, chars per page). Because nothing is baked into a
-  stored number, changing one re-reads the whole history under the new value:
-  raise the gap cap and every hour you have ever read is re-priced, and lowering
-  it again puts them back.
-- **this browser** — the theme (system / light / dark), in `localStorage` and
-  applied as `data-theme` on `<html>`. Not a row anywhere: a device reading in
-  a dark room should not have to agree with the one that isn't. Stamped by a
-  small blocking script in `spa.html` before first paint, so a dark device
-  doesn't flash light on load.
+- **server settings** — rows in `settings`, applied at *query* time: the goal
+  (daily target, streak minimum) and the derivation thresholds (gap cap, session
+  break, day rollover, chars per page). Nothing is baked into a stored number, so
+  changing one re-reads the whole history under the new value — raise the gap cap
+  and every hour you have ever read is re-priced, lower it and they go back.
+- **this browser** — the theme, in `localStorage` and applied as `data-theme` on
+  `<html>`. Stamped by a blocking script in `spa.html` before first paint, so a
+  dark device doesn't flash light on load.
 
-The current work and the VN capture window are deliberately *not* here — both
-are per-work workflow rather than configuration, and they live beside the work
-they describe (Currently reading, Library).
+The current work and the VN capture window are deliberately *not* here: both are
+per-work workflow rather than configuration, and they live beside the work they
+describe.
 
 ## Run
 
@@ -278,7 +200,7 @@ separate systemd user unit: `systemctl --user start vn-buffer`.
 - `POST /api/lines/discard` — `{ids: [...]}` (max 500), flags those lines
   `discarded` so every derived figure drops them; returns the ids actually
   changed, which is what undo re-sends. `POST /api/lines/undiscard` is the
-  inverse. See *Clear last line*
+  inverse. See *How it works* → clear last line
 - `GET  /api/reader/state` — `{paused, current_work, capture_available,
   explain_available, trim_available}`. `trim_available` is a live probe of
   whisper-service (`JP_TOOLS_WHISPER_URL`, 800 ms timeout) — false lights the
@@ -339,7 +261,7 @@ run the server with `RUST_LOG=read_stats=debug` and look for
 ### What lookups turn into
 
 The *Lookups* card classifies each distinct looked-up term by comparing the
-card's creation time (the Anki note id is epoch ms) against the term's first
+card's creation time (an Anki note id is epoch ms) against the term's first
 lookup:
 
 - **became cards** — a card was made at or after the lookup; the lookup stuck.
@@ -349,128 +271,81 @@ lookup:
   tagged with its outcome. An unmined repeat is a mining candidate; a carded
   repeat is a card that isn't working.
 
-Counts are over distinct terms, not lookup events, so a word looked up five
-times before being mined counts once and can't inflate the rate. All of it joins
-`lookups.term` to `anki_notes.vocab`, and `anki_notes` is a **snapshot** — run
-`POST /api/anki/refresh` (or the dashboard's ↻) first or anything mined since
-the last refresh reads as "never carded".
+Counts are over distinct terms, not lookup events, so a word looked up five times
+before being mined counts once. All of it joins `lookups.term` to
+`anki_notes.vocab`, and `anki_notes` is a **snapshot** — refresh first, or
+anything mined since the last one reads as "never carded".
 
-`lookups/1k` in the recent-days table is lookups per 1000 characters: the
-unknown-word rate, suppressed below 500 chars/day where the ratio is mostly
-noise. The *Lookups & cards* chart plots lookups/h against mined cards/h — both
-are events per hour, so they share one y-axis and either can be toggled off from
-the legend. Days under 10 minutes read are omitted: the per-hour denominator is
-too small to mean anything. Minutes read deliberately stays in its own chart
-rather than being overlaid here, since a second y-scale would imply a
-correlation the data doesn't contain.
+`lookups/1k` is lookups per 1000 characters: the unknown-word rate, suppressed
+below 500 chars/day where the ratio is mostly noise. The *Lookups & cards* chart
+plots lookups/h against cards/h — both events per hour, so they share a y-axis.
+Days under 10 minutes are omitted. Minutes read stays in its own chart, since a
+second y-scale would imply a correlation the data doesn't contain.
 
 ### Day detail
 
-The *Day detail* card zooms one day down to the minute: reading speed on top,
-lookups/h and cards/h below, on a shared clock axis. A slider sets the smoothing
-window (1–45 min) and a date picker walks back through history.
+One day down to the minute: reading speed on top, lookups/h and cards/h below, on
+a shared clock axis. A slider sets the smoothing window (1–45 min) and a date
+picker walks back through history.
 
-**The speed panel carries two lines.** *As read* is `(clean_chars +
-lookup_chars) / active_secs` — what actually happened. *Lookups removed* is
-`clean_chars / (active_secs − lookup_secs)`: reading speed over the gaps that
-contained no lookup. Both are rates over characters that have seconds
-attributed to them, which is why the numerator isn't plain `chars`: a session's
-trailing line has no gap after it and so cost no credited time, and leaving it
-in one side of the comparison only would understate the tax. The shaded
-gap between them is the **lookup tax**, read straight off the chars/hour axis,
-with the whole-day figure stated in words below the chart.
+**The speed panel carries two lines.** *As read* is
+`(clean_chars + lookup_chars) / active_secs` — what actually happened. *Lookups
+removed* is `clean_chars / (active_secs − lookup_secs)`: speed over the gaps that
+held no lookup. Both are rates over characters that have seconds attributed to
+them, which is why the numerator isn't plain `chars`. The shaded gap between them
+is the **lookup tax**, with the whole-day figure stated below the chart.
 
-**Both sides of that ratio have to drop together.** A line's characters were
-read across the gap that follows it, so when that gap held a lookup the
-characters leave the numerator along with their seconds (`clean_chars` exists
-for exactly this). Dividing *all* chars by only the non-lookup seconds instead
-credits characters read during a lookup to the time that remains — and in a
-dense lookup burst the denominator collapses while the numerator doesn't. That
-bug reported 30k chars/h for reading that was really running at 12k;
-`raw_speed_cannot_explode_in_a_lookup_burst` pins it.
-
-A gap counts as lookup time when a `lookups` row falls inside it. The
-separation is sharp enough to trust: over 2026-07-20's 1220 in-session gaps,
-those holding a lookup ran a median 21.3s against 3.1s for those that didn't.
-
-The classification is all-or-nothing per gap, which **biases the tax upward**:
-a long gap catches a lookup and is billed whole even when the dictionary wasn't
-the reason it was long. Treat the figure as good to a couple of points, not to
-the decimal.
+A gap counts as lookup time when a `lookups` row falls inside it — a separation
+sharp enough to trust, at a median 21.3s against 3.1s for gaps without one. It is
+all-or-nothing per gap, which biases the tax upward: a long gap catches a lookup
+and is billed whole even when the dictionary wasn't why it was long. Good to a
+couple of points, not to the decimal.
 
 **Time lost to lookups is not the same as time inside lookup gaps.** Such a gap
-holds the line's reading *and* the dictionary detour, so the note under the
-chart prices the characters in those gaps (`lookup_chars`) at the window's
-uninterrupted pace and subtracts. On 2026-07-20: 30.8 min sat in lookup gaps,
-9.2 min of it was reading that would have happened anyway, leaving **21.5 min
-of real lookup overhead** — a median 14.1s per gap, at 1.3 lookups per gap. The
-chars/h tax is unaffected by this correction, being a ratio of rates that
-already accounts for characters read during lookups.
+holds the line's reading *and* the detour, so the note under the chart prices the
+characters in those gaps at the window's uninterrupted pace and subtracts.
+
+The two panels are stacked rather than overlaid because chars/hour runs in the
+thousands and events/hour in the tens, and where two y-scales line up is a
+choice, not a fact. The **⇕ overlay shape** toggle does draw the rate curves into
+the speed panel for timing comparison, each normalised to its own max — which
+makes co-movement obvious and amplitude meaningless, so magnitude stays with the
+lower panel and the tooltip.
+
+Bucketing places a gap's credit in the interval *after* its line
+(`[ts, ts + min(gap, afk)]`) rather than in the following line's bucket, so a
+line's characters and the seconds they cost land together. At day granularity
+that is invisible; at one minute it is the difference between a curve and noise.
+Totals are unaffected (`bucket_totals_match_session_totals`).
+
+Lookups and cards outside every session are dropped from the buckets — with no
+reading time around them there is no per-hour rate they belong to — so the card's
+event counts can sit a little under the `/api/days` totals.
 
 ### What counts as being there
 
-A gap inside `afk_secs` is credited whole — that is ordinary reading and none of
-it is in doubt. Past the cap, the question is whether you were still at the
-keyboard, and the answer comes from evidence rather than a flat rate:
+A gap inside `afk_secs` is credited whole — ordinary reading, none of it in
+doubt. Past the cap the question is whether you were still at the keyboard, and
+the answer comes from evidence rather than a flat rate:
 
-- **A lookup, a mined card, or a #read engagement action in the gap** proves you
-  were present when it fired, so the clock restarts there and runs a fresh
-  `afk_secs`. A lookup is not instantaneous — reading the definition happens
-  *after* the event — so a 45-second detour is credited 45, not truncated to 30
-  the way the old flat cap did it.
+- **A lookup, a mined card, or a `#read` engagement action in the gap** proves
+  you were present when it fired, so the clock restarts there and runs a fresh
+  `afk_secs`. Reading a definition happens *after* the event, so a 45-second
+  detour is credited 45, not truncated to 30.
 
-  The engagement action is the reader's **ℹ explain last line** button, recorded
-  as a `reader_mark` when tapped (see *The reading view*). It fills the one
-  gap the other two signals leave: reading an explanation is real presence the
-  line stream has no other trace of. Kept in its own table, not `lookups`, so it
-  credits *time* without touching the lookups/h or unknown-word-rate metrics.
-  Mining needs no mark — a note id is already a timestamp, so a mined card is
-  presence by construction. The *suppress* actions — **clear** and **pause
-  capture** — deliberately leave no mark: they exist to stop counting a span, so
-  crediting presence for them would undo their own purpose.
-- **Nothing in the gap** means only the line itself can be claimed, priced at
-  your uninterrupted pace. A 15-character line earns about four seconds whether
-  you were gone 35 seconds or seven minutes.
+  The engagement action is the **ℹ explain** button, recorded as a `reader_mark`.
+  It fills the one gap the other two leave: reading an explanation is real
+  presence the line stream has no other trace of. Kept in its own table so it
+  credits *time* without touching the lookup rates. The *suppress* actions —
+  clear and pause — deliberately leave no mark, since crediting presence for them
+  would undo their own purpose.
+- **Nothing in the gap** means only the line itself is claimed, priced at your
+  uninterrupted pace. A 15-character line earns about four seconds whether you
+  were gone 35 seconds or seven minutes.
 
-This replaced a flat cap that paid a blanket 30 seconds into *every* over-cap
-gap, which both invented reading that never happened and sheared off real
-lookup detours.
-
-Pace comes from `stats::measure_pace` over **all history**, never the slice a
-request happened to fetch — it is a property of the reader, and deriving it
-per-endpoint made the dashboard and the timeline disagree about the same day.
-
-Two guards: sub-cap gaps are never repriced
-(`ordinary_gaps_are_never_repriced`), since pricing each gap at what its line
-was "worth" would clip every above-average gap and shorten a day by a quarter;
-and a stream too sparse to establish a pace falls back to the flat cap.
-
-The upshot is that you never have to think about the afk timer — walking away
-costs nothing and is never credited, so pausing capture is about keeping junk
-out of the stream, not about protecting the numbers.
-
-Two panels rather than one overlay, because chars/hour runs in the thousands and
-events/hour in the tens: one plot would need two y-scales, and where two scales
-line up is a choice, not a fact. Stacked on a shared x-axis with a shared
-crosshair, a speed dip and a lookup spike land in the same vertical slice and
-the comparison stays the reader's. The **⇕ overlay shape** toggle does draw the
-rate curves into the speed panel for timing comparison, each normalised 0→its
-own max by a fixed rule — which makes co-movement obvious and amplitude
-meaningless, so magnitude stays with the lower panel and the tooltip, both of
-which report real per-hour values.
-
-Bucketing places time differently from the per-day aggregates, on purpose. A
-gap's credit goes to the interval *after* its line (`[ts, ts + min(gap, afk)]`)
-rather than to the following line's bucket, because the gap after a line is the
-time spent reading that line — that is what puts a line's characters and the
-seconds they cost in the same bucket. At day granularity the difference is
-invisible; at one minute it is the difference between a speed curve and noise.
-Totals are unaffected either way (`bucket_totals_match_session_totals`).
-
-Lookups and cards falling outside every session are dropped from the buckets —
-with no reading time around them there is no per-hour rate they belong to — so
-the card's event counts can sit a little under the day totals on
-`/api/days`.
+The upshot is that you never have to think about the afk timer: walking away
+costs nothing and is never credited, so pausing capture is about keeping junk out
+of the stream, not about protecting the numbers.
 
 ### Importing spreadsheet history
 
