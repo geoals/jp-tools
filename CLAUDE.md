@@ -107,3 +107,20 @@ classification, never the denominator.
   ```js
   const age = `snapshot ${mins} min ago`; // then: <span>${age}</span>
   ```
+
+## Comments and docs
+
+Code explains itself through structure and naming. A well-named function,
+variable or module needs no sentence under it, and splitting something up
+explains it better than a paragraph does. Never restate what the code says.
+
+Comment when something is done a particular way for a reason you cannot see in
+the code: a workaround, an ordering that matters, a constraint from elsewhere,
+an obvious-looking alternative that is wrong. Say **why**, not what. No
+non-obvious why, no comment.
+
+A short doc comment on a module or a public type is fine — what it is for, how
+it fits. Not a tour of its contents.
+
+All prose here — comments, doc comments, README, this file — is plain simple
+English, as short as it can be. One pass to say the thing, then stop.
