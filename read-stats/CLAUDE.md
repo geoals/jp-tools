@@ -126,6 +126,12 @@ The reading view:
   the report, and a failed write is the mark coming back. It is hit-tested with
   `caretPositionFromPoint`, and **nothing in the feed is made clickable**: an
   interactive layer would sit between the reader and the text Yomitan scans.
+- **The live badge reports the writer, not the connection.** vn-ws-logger.py
+  publishes `settings.vn_logger_heartbeat` (its Textractor WS state and its
+  unwritten backlog) and the SSE stream republishes a verdict every 2s. The
+  badge was once the `EventSource` alone, which sat on "live" through three
+  hours of capturing nothing: this stream is healthy whenever read-stats is up,
+  and knows nothing about the two hops in front of it.
 - **Marks are drawn, never markup.** `routes/reader/highlight.rs` sends offsets
   per line and `paintMarks` draws a rectangle per word into a layer _behind_ the
   text. Yomitan scans this DOM, so one text node per line is a constraint.

@@ -53,6 +53,7 @@ const FILTERED_TOPUP_PAGES = 5;
 export function Reader() {
   const [lines, setLines] = useState([]);
   const [live, setLive] = useState(false);
+  const [capture, setCapture] = useState(null);
   const [state, setState] = useState(null);
   const [clearing, setClearing] = useState(false);
   const [explaining, setExplaining] = useState(false);
@@ -116,6 +117,10 @@ export function Reader() {
     const es = new EventSource("/api/lines/stream");
     es.onopen = () => setLive(true);
     es.onerror = () => setLive(false);
+    // The badge reports the *capture pipeline*, not this connection — the SSE
+    // stream stays healthy while the logger is detached from Textractor or
+    // cannot write, which is the outage worth interrupting reading for.
+    es.addEventListener("status", (ev) => setCapture(JSON.parse(ev.data)));
     es.onmessage = (ev) => {
       const line = JSON.parse(ev.data);
       setLines((prev) => {
@@ -515,16 +520,38 @@ export function Reader() {
   const paused = state && state.paused;
   const workTitle = (state && state.current_work) || "";
   const work = workTitle || "no work set";
-  const liveLabel = live ? "live" : "reconnecting…";
+  // The page's own connection first: while it is down, the last status we hold
+  // is stale and reporting it would be a guess.
+  const captureState = live ? (capture ? capture.capture : "…") : "offline";
+  const CAPTURE_BADGE = {
+    live: ["live", "Lines are being hooked and recorded"],
+    stalled: [
+      "writer stuck",
+      "Textractor is hooked, but the logger cannot write to the database — lines are held in memory and will land when it clears",
+    ],
+    unhooked: [
+      "not hooked",
+      "The logger is running but Textractor is not attached — nothing is being captured",
+    ],
+    down: [
+      "logger down",
+      "vn-ws-logger is not running — nothing is being captured. Restart it: systemctl --user restart vn-buffer",
+    ],
+    paused: ["paused", "Capture is paused — nothing is being recorded"],
+    offline: ["reconnecting…", "Not connected — is read-stats reachable?"],
+    "…": ["checking…", "Waiting for the logger's first heartbeat"],
+  };
+  const [liveLabel, liveTitle] = CAPTURE_BADGE[captureState];
+  const capturing = captureState === "live";
   const explainLabel = explaining ? "explaining…" : "ℹ explain last line";
   const pauseLabel = paused ? "▶ resume capture" : "⏸ pause capture";
   const clearLabel = clearing ? "…" : "✕ clear last";
   const emptyLabel =
     markedOnly && lines.length
       ? "No marked words in the lines loaded — scroll up for more, or show every line."
-      : live
+      : capturing
         ? "Waiting for the next hooked line…"
-        : "Not connected — is read-stats reachable?";
+        : liveTitle;
   const explainOff = state && state.explain_available === false;
   // Quality-only: mining still works, so this is a quiet hint, not a disable.
   const trimOff = state && state.trim_available === false;
@@ -561,7 +588,9 @@ export function Reader() {
       <div class="reader-bar">
         <a class="reader-back" href="#" title="Back to the dashboard">←</a>
         <span class="reader-work">${work}</span>
-        <span class="reader-live ${live ? "on" : "off"}">${liveLabel}</span>
+        <span class="reader-live ${capturing ? "on" : "off"}" title=${liveTitle}
+          >${liveLabel}</span
+        >
         ${
           trimOff &&
           html`<span class="reader-trimoff" title=${trimTitle}>✂ off</span>`

@@ -35,6 +35,7 @@ Env:
   JP_TOOLS_STATS_DISABLE      set to 1 to skip the stats sink entirely
 """
 import asyncio
+import json
 import os
 import re
 import signal
@@ -55,6 +56,10 @@ WS_URL = os.environ.get("VN_WS_URL", "ws://localhost:6677")
 # and one localhost socket.
 PAUSE_POLL_SECS = 2.0
 RECONNECT_SECS = 2.0
+
+# Heartbeat cadence. `#read` calls the logger down at three missed beats, so
+# this also sets how fast a dead logger is noticed.
+HEARTBEAT_SECS = 2.0
 
 # only Japanese text marks a voiceline; ignore stray latin/punctuation hooks
 JP = re.compile(r"[぀-ヿ一-鿿]")
@@ -220,6 +225,26 @@ class StatsSink:
             log(f"stats sink unavailable ({e}) — reading stats disabled")
             self.db = None
 
+    def heartbeat(self, ws_up):
+        """Publish what only this process knows: that it is alive, whether
+        Textractor is actually attached, and whether its writes are landing.
+
+        `#read`'s live badge is otherwise the browser's own SSE connection,
+        which stays perfectly healthy while nothing at all is being captured.
+        """
+        if self.db is None:
+            return
+        beat = {"ts": time.time(), "ws": bool(ws_up), "pending": len(self.pending)}
+        try:
+            self.db.execute(
+                "INSERT INTO stats.settings (key, value)"
+                " VALUES ('vn_logger_heartbeat', ?)"
+                " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (json.dumps(beat),),
+            )
+        except sqlite3.Error:
+            pass  # a heartbeat that cannot be written is itself the outage
+
     def capture_paused(self):
         """Whether the dashboard has capture switched off.
 
@@ -360,6 +385,16 @@ async def pump(out, stats, state):
             await asyncio.sleep(RECONNECT_SECS)
 
 
+async def beat(stats, state):
+    """Heartbeat, and the retry that does not depend on a next line arriving —
+    a sink that failed on the session's last line would otherwise hold it until
+    reading resumed."""
+    while True:
+        stats.flush()
+        stats.heartbeat(state["ws"] is not None)
+        await asyncio.sleep(HEARTBEAT_SECS)
+
+
 async def run(out, stats):
     # On SIGTERM/SIGINT, send the server a proper close frame before exiting:
     # an abortive disconnect (plain process kill) can crash Textractor's
@@ -371,14 +406,16 @@ async def run(out, stats):
 
     state = {"ws": None}
     pump_task = asyncio.create_task(pump(out, stats, state))
+    beat_task = asyncio.create_task(beat(stats, state))
     stop_task = asyncio.create_task(stop.wait())
     await asyncio.wait({pump_task, stop_task}, return_when=asyncio.FIRST_COMPLETED)
 
-    pump_task.cancel()
-    try:
-        await pump_task
-    except asyncio.CancelledError:
-        pass
+    for task in (pump_task, beat_task):
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
     ws = state["ws"]
     if ws is not None:
         try:

@@ -21,6 +21,12 @@ use crate::db;
 /// an index seek past the end of `lines`; WAL readers don't block the writer.
 const POLL_INTERVAL: Duration = Duration::from_millis(30);
 
+/// How often the capture pipeline's health is republished to the client. The
+/// feed's own liveness says nothing about it: this stream stays perfectly
+/// healthy while the logger is disconnected from Textractor or unable to write,
+/// which is exactly the failure a reader beside the VN needs to be told about.
+const STATUS_INTERVAL: Duration = Duration::from_secs(2);
+
 /// Cap on a single catch-up batch, so a client resuming after hours away
 /// doesn't pull the whole history in one go. Also the ceiling on the opening
 /// session (see below), for the same reason.
@@ -93,6 +99,8 @@ pub async fn lines_stream(
             },
         };
 
+        let mut next_status = tokio::time::Instant::now();
+
         loop {
             match db::fetch_lines_after_id(&state.knowledge, last_id, MAX_BATCH).await {
                 Ok(lines) => {
@@ -104,6 +112,10 @@ pub async fn lines_stream(
                 // A transient DB error must not end the stream — the client
                 // would reconnect into the same error anyway.
                 Err(e) => warn!(error = %e, "reader poll failed"),
+            }
+            if tokio::time::Instant::now() >= next_status {
+                next_status = tokio::time::Instant::now() + STATUS_INTERVAL;
+                yield Ok(status_event(capture_status(&state).await));
             }
             tokio::time::sleep(POLL_INTERVAL).await;
         }
@@ -142,6 +154,73 @@ async fn opening_batch(
         return Ok(session);
     };
     db::fetch_recent_lines(&state.knowledge, n).await
+}
+
+/// What vn-ws-logger.py last said about itself, as `settings.vn_logger_heartbeat`.
+#[derive(serde::Deserialize)]
+struct Heartbeat {
+    ts: f64,
+    /// Textractor's WebSocket is attached.
+    ws: bool,
+    /// Lines written but not yet accepted by the database.
+    pending: i64,
+}
+
+/// The capture pipeline's health, as the reading view receives it.
+///
+/// One verdict rather than the raw heartbeat: the page shows a single badge,
+/// and which of these outranks which is a decision that belongs with the rule,
+/// not in the template.
+#[derive(serde::Serialize)]
+struct CaptureStatus {
+    /// `live`, `stalled`, `unhooked`, `down` or `paused`.
+    capture: &'static str,
+    /// Seconds since the last heartbeat, for the tooltip. `None` when the
+    /// logger has never run against this database.
+    age_secs: Option<f64>,
+    pending: i64,
+}
+
+/// A logger that has missed this many beats is not running. Three rather than
+/// one, so a slow write or a scheduling hiccup doesn't flap the badge.
+const MISSED_BEATS: f64 = 3.0;
+const HEARTBEAT_SECS: f64 = 2.0;
+
+async fn capture_status(state: &AppState) -> CaptureStatus {
+    let raw = db::get_setting_raw(&state.local, "vn_logger_heartbeat")
+        .await
+        .unwrap_or_else(|e| {
+            warn!(error = %e, "capture status: heartbeat unreadable");
+            None
+        });
+    let beat = raw.as_deref().and_then(|v| serde_json::from_str::<Heartbeat>(v).ok());
+
+    let Some(beat) = beat else {
+        return CaptureStatus { capture: "down", age_secs: None, pending: 0 };
+    };
+    let age = crate::clock::now_ts() - beat.ts;
+    // Paused outranks unhooked because a paused logger disconnects on purpose:
+    // reporting that as a fault would train the reader to ignore the badge.
+    let capture = if age > HEARTBEAT_SECS * MISSED_BEATS {
+        "down"
+    } else if beat.pending > 0 {
+        "stalled"
+    } else if !beat.ws {
+        match db::load_settings(&state.local).await {
+            Ok(s) if s.capture_paused => "paused",
+            _ => "unhooked",
+        }
+    } else {
+        "live"
+    };
+    CaptureStatus { capture, age_secs: Some(age), pending: beat.pending }
+}
+
+fn status_event(status: CaptureStatus) -> Event {
+    Event::default()
+        .event("status")
+        .json_data(status)
+        .unwrap_or_else(|_| Event::default().comment("unserializable status"))
 }
 
 /// A line as the reading view receives it: the row, plus where its unknown
