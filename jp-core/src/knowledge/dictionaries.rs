@@ -162,31 +162,40 @@ pub async fn backfill_sequences(
     dictionary_id: i64,
     entries: &[DictionaryEntry],
 ) -> Result<u64, sqlx::Error> {
-    let mut tx = pool.begin().await?;
     let mut updated = 0;
-    for entry in entries {
-        if entry.sequence.is_none() && entry.rules.is_empty() {
-            continue;
+    // Committed in batches, not as one transaction over every entry. SQLite has
+    // one write lock per database: a single pass over a 400k-entry dictionary
+    // holds it for minutes, which is long enough to fail a line being captured
+    // from a live reading session — and long enough to lose the lock and roll
+    // the whole thing back, as it did.
+    for chunk in entries.chunks(2000) {
+        let mut tx = pool.begin().await?;
+        for entry in chunk {
+            if entry.sequence.is_none() && entry.rules.is_empty() {
+                continue;
+            }
+            updated += sqlx::query(
+                "UPDATE dictionary_entries \
+                    SET sequence = COALESCE(?, sequence), rules = ? \
+                  WHERE dictionary_id = ? AND term = ? AND reading = ?",
+            )
+            .bind(entry.sequence)
+            .bind(&entry.rules)
+            .bind(dictionary_id)
+            .bind(&entry.term)
+            .bind(&entry.reading)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
         }
-        updated += sqlx::query(
-            "UPDATE dictionary_entries \
-                SET sequence = COALESCE(?, sequence), rules = ? \
-              WHERE dictionary_id = ? AND term = ? AND reading = ?",
-        )
-        .bind(entry.sequence)
-        .bind(&entry.rules)
-        .bind(dictionary_id)
-        .bind(&entry.term)
-        .bind(&entry.reading)
-        .execute(&mut *tx)
-        .await?
-        .rows_affected();
+        tx.commit().await?;
     }
+    // Last, and only once the rows are in: an interrupted run leaves the flag
+    // clear and is simply retried.
     sqlx::query("UPDATE dictionaries SET seq_checked = 1 WHERE id = ?")
         .bind(dictionary_id)
-        .execute(&mut *tx)
+        .execute(pool)
         .await?;
-    tx.commit().await?;
     Ok(updated)
 }
 

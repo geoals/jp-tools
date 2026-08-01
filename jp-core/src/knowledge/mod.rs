@@ -131,7 +131,13 @@ impl Knowledge {
             // The entry-id backfill re-reads the term banks and now carries the
             // word class with it, so clearing its flag is all it takes to fill
             // the new column — one pass, on the next start.
-            sqlx::raw_sql("UPDATE dictionaries SET seq_checked = 0")
+            //
+            // **The master only.** It is the only dictionary anything asks about
+            // word classes, and re-reading the others buys nothing while costing
+            // a 425k-row pass over Jitendex that lost the write lock to a live
+            // reading session and rolled back — which it would then retry on
+            // every start, forever.
+            sqlx::raw_sql("UPDATE dictionaries SET seq_checked = 0 WHERE role = 'master'")
                 .execute(&self.0)
                 .await?;
         }
