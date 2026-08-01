@@ -142,7 +142,7 @@ async fn sweep_watermark(state: &AppState) -> Result<Option<f64>, AppError> {
 /// client-side copy would mean the threshold actually applied was recorded
 /// nowhere.
 ///
-/// By default this is the *periodic sweep* (`spec/periodic-sweep.md`): the
+/// By default this is the *periodic sweep*: the
 /// batch is scoped to terms read since the last submit, so a fortnight's
 /// reading produces a short list rather than the whole standing backlog. The
 /// scoping is a filter and nothing more — it judges nothing, retires nothing,

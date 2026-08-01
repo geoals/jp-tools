@@ -1,7 +1,7 @@
 # Sentence Mining from Physical Manga
 
 > **Status: MVP 1 shipped; design still accurate (checked 2026-07-27).** Unlike
-> `spec/sentence-mining-yt.md`, this one held up — the architecture, the ADRs and
+> yt-mine's original plan, this one held up — the architecture, the ADRs and
 > the crate split all describe what was actually built. `jp-mine-core` exists
 > with `lookup.rs` + `export.rs` + `config.rs`; `manga-mine` is a stateless Axum
 > + Preact app whose routes match MVP 1 line for line (`/api/queue`,

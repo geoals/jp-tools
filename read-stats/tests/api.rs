@@ -1084,7 +1084,7 @@ async fn triage_writes_both_verdicts_and_leaves_the_rest_new() {
     assert_eq!(q["pending"], 1);
 }
 
-/// The periodic sweep (`spec/periodic-sweep.md`): a batch scoped to what has
+/// The periodic sweep: a batch scoped to what has
 /// been read since the last one, a watermark that moves on submit and not on
 /// load, and a backlog that is always still reachable.
 #[tokio::test]

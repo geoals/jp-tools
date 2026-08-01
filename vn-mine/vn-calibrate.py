@@ -26,7 +26,7 @@ the log; `--collect` writes one TSV, default
 `~/.local/share/jp-tools/vn-onset-calibration.tsv`, and is resumable — stop and
 restart it across sessions and it keeps accumulating.
 
-See `spec/vn-audio-attribution.md` for what the numbers are for.
+See vn-mine/README.md for what the numbers are for.
 """
 
 import os

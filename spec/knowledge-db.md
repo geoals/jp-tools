@@ -235,7 +235,7 @@ dimension that feed it. Everything here is dictionary-gated or joins the ledger.
   knowledge state. It landed after the split that made it safe: article lookups
   are never captured, so article characters feed every **exposure** count and no
   **cost** count — `stats/kanji.rs` carries `metered_count` beside `count` for
-  that. See `spec/manual-session-content.md`. *Done 2026-07-26.*
+  that. *Done 2026-07-26.*
 
 **read-stats writes into the shared DB** (line ingestion, the highlighter's
 status reads). It is not a pure reader.

@@ -17,6 +17,13 @@ Jobs run as background `tokio::spawn` tasks. Frontend polls via JSON API.
 - **Preact + htm + signals from CDN** — no build step, ES module imports from esm.sh with pinned versions
 - **JSON API + SPA shell** — `/api/*` returns JSON, `/` and `/{video_id}` serve the SPA shell
 
+## Not built
+
+Smart filtering — frequency thresholds, i+1 sentence selection, dimming
+sentences whose words are all known. It would filter against the
+`vocabulary` ledger in `knowledge.db` (owned by read-stats), which yt-mine
+does not read today.
+
 ## Tokenization & Dictionary
 
 Provided by `jp-core` crate. See `jp-core/` for details.

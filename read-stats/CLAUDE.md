@@ -161,8 +161,25 @@ Mining:
 - **The chime is the only report a mine gets.** `services::chime::mine_complete`
   plays only when the capture reported `ok` *and* the CompactDef write verified.
   Keep it that strict: silence is the signal to check the log.
+- **The audio window's next-line bound is a hard cut, and that is a known
+  defect.** When the next line is unvoiced the previous voice legitimately
+  plays past its timestamp and the clip is truncated. It shipped that way
+  because a truncated clip of the right line beats a whole clip of the wrong
+  one; `vn-mine/vn-calibrate.py` is the tool that would replace the rule, and
+  it needs a real session's data first.
 - **Note ids are epoch milliseconds**, so they double as card creation times.
 - **Only engagement actions leave `reader_marks`.** Explain does; clear does not.
+
+## Not built
+
+Per-work **difficulty**, two measures side by side: *text difficulty* (share of
+tokens outside the frequency core, share of non-jōyō kanji, mean sentence
+length) which stays put as the reader improves, against *measured cost*
+(lookups/1k and chars/hour vs baseline) which moves. Plotting every work one
+against the other puts engagement in the residual — a work read faster than its
+prose predicts. Neither figure exists for a work with no reading behind it.
+
+Also unbuilt: i+1 marking, and a "read often, never carded" list on `#kanji`.
 
 ## Working on it
 
@@ -230,8 +247,8 @@ add to when the question is "does the SQL select what the derivation assumes".
   `unknown` on submit, so a one-signal default would write wrong assertions in
   bulk. The rule lives server-side because it decides what gets written.
 - **The sweep is scoped to what has been read since the last one.**
-  `sweep_through_ts` is compared against `vocabulary.last_seen`
-  (`spec/periodic-sweep.md`). It moves **on submit, never on load**; only for a
+  `sweep_through_ts` is compared against `vocabulary.last_seen`. It moves
+  **on submit, never on load**; only for a
   request that asked (`advance_sweep`); and it is a filter and nothing else —
   `scoped=0` still reaches every ready row.
 - **Status colour is one scale, in HSL, in `base.css`.** Hue names the status

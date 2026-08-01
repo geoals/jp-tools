@@ -48,8 +48,14 @@ silero-VAD finds where the speech ends.
   line in the ring's last ~5 minutes against the speech VAD finds, and reports
   how closely a voiceline's onset tracks the hook and how well the line's mora
   count predicts its duration. Those two spreads are what a stricter capture
-  rule would have to be built on; run it **during reading** (idle on a menu
-  gives a loud ring and no speech), and see `spec/vn-audio-attribution.md`.
+  rule would have to be built on; run it **during reading** — idle on a menu
+  gives a loud ring and no speech.
+
+  Two traps it has already fallen into, so don't reintroduce them: letting
+  every line search independently (unvoiced lines then claim the next line's
+  voice and invent rates like 131 morae/s — the tell is duplicate `dur` on
+  neighbouring rows), and selecting the sample by `|onset| < 1.0` before
+  reporting that onsets fall within 1.0.
 - `vn-record.sh` / `vn-screenshot.sh` — older replay-based scripts (press
   right-arrow to replay, record 8s). Still work for VNs with a replay key.
 

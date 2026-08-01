@@ -685,8 +685,7 @@ const UNJUDGED_HEADWORD: &str = "NOT EXISTS (SELECT 1 FROM vocabulary o \
 /// threshold* since the mark — so a word declined last time comes back the
 /// next time it is read rather than staying gone until it is read a lot more.
 /// `word_days` could answer it exactly, at the cost of a per-term aggregate on
-/// every load; that trade is only worth making if the batches come out noisy
-/// (`spec/periodic-sweep.md`).
+/// every load; that trade is only worth making if the batches come out noisy.
 const MET_SINCE: &str = "AND COALESCE(last_seen, 0) > ?";
 
 /// The queue's filter, shared by [`triage_queue`] and [`triage_pending`] so a

@@ -245,8 +245,7 @@ and hand homographs to a human.
    one.
 4. **Pass 4** is then nearly free: its query is the same predicate the triage
    preselect already uses, so it is a re-run of an existing screen rather than
-   new logic. Specced in full as `spec/periodic-sweep.md` (2026-07-29) — the
-   only new state it needs is a since-last-sweep watermark.
+   new logic. The only new state it needs is a since-last-sweep watermark.
 
 ## The lexeme layer (built 2026-07-29)
 

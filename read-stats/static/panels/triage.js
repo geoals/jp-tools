@@ -6,7 +6,7 @@
 // reduces to a status lookup, so until this has been run they all read as
 // "nothing is known".
 //
-// It is also spec/periodic-sweep.md's Pass 4, which is the shape it takes in
+// It is also Pass 4, which is the shape it takes in
 // the steady state: the batch defaults to words read *since the last sweep*, so
 // after a day or a fortnight of reading a short list appears already ticked and
 // you accept it. The full standing backlog is one toggle away and unchanged —
