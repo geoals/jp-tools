@@ -19,6 +19,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use jp_core::knowledge::dictionaries;
 use jp_core::knowledge::vocabulary::{Encounter, Term};
 use jp_core::knowledge::work_terms::WorkEncounter;
 use jp_core::tokenize::{MasterWords, SudachiTokenizer, Token, Tokenizer, counts_as_word};
@@ -241,6 +242,25 @@ pub(crate) async fn frequency_ranks(
     Ok(jp_core::knowledge::dictionaries::frequency_ranks(pool, bccwj.id, &terms).await?)
 }
 
+/// Which reading to believe where Sudachi's is not the word's living one — the
+/// 私/わたくし problem. Needs all three dictionaries: Sankoku says which readings
+/// exist, Jitendex which are current, BCCWJ which of the current ones is
+/// commonest. Any of them missing means no preferences and Sudachi's answer
+/// stands.
+pub(crate) async fn preferred_readings(
+    state: &AppState,
+) -> Result<HashMap<String, dictionaries::PreferredReading>, AppError> {
+    let pool = state.knowledge.pool();
+    let (Some(master), Some(jitendex), Some(bccwj)) = (
+        dictionaries::master(pool).await?,
+        dictionaries::by_title(pool, "Jitendex").await?,
+        dictionaries::by_title(pool, "BCCWJ").await?,
+    ) else {
+        return Ok(HashMap::new());
+    };
+    Ok(dictionaries::preferred_readings(pool, master.id, jitendex.id, bccwj.id).await?)
+}
+
 pub(crate) async fn validation_headwords(state: &AppState) -> Result<HashSet<String>, AppError> {
     Ok(db::fetch_anki_notes(&state.knowledge)
         .await?
@@ -291,6 +311,7 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
     let lexicon = master_lexicon(state).await?;
     let readings = master_readings(state).await?;
     let ranks = frequency_ranks(state, &readings).await?;
+    let preferred = preferred_readings(state).await?;
     let dict_path = state.sudachi_dict_path.clone();
 
     let n_lines = lines.len();
@@ -300,7 +321,8 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
             .map_err(|e| AppError::Upstream(format!("sudachi: {e}")))?
             .with_lexicon(lexicon.clone())
             .with_master_readings(&readings)
-            .with_frequency(ranks);
+            .with_frequency(ranks)
+            .with_preferred_readings(preferred);
         let mut harvest = Harvest::new(MasterWords::new(lexicon, &readings));
         for line in &lines {
             let date = stats::date_key(line.ts, rollover, tz).to_string();
@@ -372,6 +394,7 @@ pub async fn ingest_new_sessions(state: &AppState) -> Result<IngestOutcome, AppE
     let lexicon = master_lexicon(state).await?;
     let readings = master_readings(state).await?;
     let ranks = frequency_ranks(state, &readings).await?;
+    let preferred = preferred_readings(state).await?;
     let dict_path = state.sudachi_dict_path.clone();
 
     let n_sessions = sessions.len();
@@ -380,7 +403,8 @@ pub async fn ingest_new_sessions(state: &AppState) -> Result<IngestOutcome, AppE
             .map_err(|e| AppError::Upstream(format!("sudachi: {e}")))?
             .with_lexicon(lexicon.clone())
             .with_master_readings(&readings)
-            .with_frequency(ranks);
+            .with_frequency(ranks)
+            .with_preferred_readings(preferred);
         let mut harvest = Harvest::new(MasterWords::new(lexicon, &readings));
         for s in &sessions {
             let date = stats::date_key(s.start_ts, rollover, tz).to_string();

@@ -36,6 +36,15 @@ pub struct PitchEntry {
     pub positions: Vec<u32>,
 }
 
+/// One corpus rank, for a term as read a particular way.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FreqEntry {
+    pub term: String,
+    /// Empty when the frequency dictionary gives none.
+    pub reading: String,
+    pub rank: i64,
+}
+
 /// Storage backend for dictionary data.
 /// Production uses `Sqlite` for lazy per-term lookups (no upfront loading).
 /// Tests use `InMemory` so they don't need a database.
@@ -43,8 +52,10 @@ enum DictionaryStorage {
     InMemory {
         entries: HashMap<String, Vec<DictionaryEntry>>,
         pitch: HashMap<String, Vec<PitchEntry>>,
-        /// Best (lowest) frequency rank per term.
-        freq: HashMap<String, i64>,
+        /// Every rank as the source gave it, reading included; the lookup
+        /// takes the minimum. Not collapsed per term, or importing to SQLite
+        /// would throw the readings away on the way through.
+        freq: Vec<FreqEntry>,
     },
     Sqlite {
         pool: SqlitePool,
@@ -101,7 +112,9 @@ impl Dictionary {
     /// Look up the best (lowest) frequency rank by exact headword match.
     pub async fn lookup_frequency(&self, term: &str) -> Option<i64> {
         match &self.storage {
-            DictionaryStorage::InMemory { freq, .. } => freq.get(term).copied(),
+            DictionaryStorage::InMemory { freq, .. } => {
+                freq.iter().filter(|e| e.term == term).map(|e| e.rank).min()
+            }
             DictionaryStorage::Sqlite { pool, dict_id } => {
                 crate::knowledge::dictionaries::lookup_frequency(pool, *dict_id, term)
                     .await
@@ -367,7 +380,12 @@ fn parse_pitch_entry(value: &Value) -> Option<(String, PitchEntry)> {
 /// Parse frequency entries from a Yomitan `term_meta_bank_*.json` string.
 /// Each entry is a 3-element array: `[term, "freq", <data>]`.
 /// Non-freq entries (e.g. "pitch") are skipped, as are malformed entries.
-pub fn parse_freq_bank(json: &str) -> Result<Vec<(String, i64)>, DictionaryError> {
+///
+/// The reading comes back with the rank, empty when the source gives none. A
+/// corpus counts readings apart — BCCWJ has 私 twice, once per reading — and
+/// which one it counted is the difference between a rank that means something
+/// and one averaged over homographs.
+pub fn parse_freq_bank(json: &str) -> Result<Vec<FreqEntry>, DictionaryError> {
     let value: Value =
         serde_json::from_str(json).map_err(|e| DictionaryError::Load(e.to_string()))?;
     let arr = value
@@ -377,7 +395,7 @@ pub fn parse_freq_bank(json: &str) -> Result<Vec<(String, i64)>, DictionaryError
     Ok(arr.iter().filter_map(|v| parse_freq_entry(v)).collect())
 }
 
-fn parse_freq_entry(value: &Value) -> Option<(String, i64)> {
+fn parse_freq_entry(value: &Value) -> Option<FreqEntry> {
     let arr = value.as_array()?;
     if arr.len() < 3 {
         return None;
@@ -388,7 +406,15 @@ fn parse_freq_entry(value: &Value) -> Option<(String, i64)> {
         return None;
     }
     let rank = freq_value(&arr[2])?;
-    Some((term.to_string(), rank))
+    let reading = arr[2]
+        .get("reading")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    Some(FreqEntry {
+        term: term.to_string(),
+        reading: reading.to_string(),
+        rank,
+    })
 }
 
 /// Extract the numeric rank from a Yomitan freq data value. Handles the
@@ -480,7 +506,7 @@ impl Dictionary {
     #[allow(clippy::type_complexity)]
     fn load_meta_from_zip(
         path: &Path,
-    ) -> Result<(Vec<(String, PitchEntry)>, Vec<(String, i64)>), DictionaryError> {
+    ) -> Result<(Vec<(String, PitchEntry)>, Vec<FreqEntry>), DictionaryError> {
         let file = std::fs::File::open(path).map_err(|e| {
             DictionaryError::Load(format!("failed to open {}: {e}", path.display()))
         })?;
@@ -542,7 +568,7 @@ impl Dictionary {
         }
 
         let mut all_pitch: Vec<(String, PitchEntry)> = Vec::new();
-        let mut all_freq: Vec<(String, i64)> = Vec::new();
+        let mut all_freq: Vec<FreqEntry> = Vec::new();
         for name in &meta_bank_names {
             let contents = read_zip_entry(&mut archive, name)?;
             all_pitch.extend(parse_pitch_bank(&contents)?);
@@ -581,17 +607,11 @@ impl Dictionary {
     /// Populate frequency data from a list of `(term, rank)` pairs, keeping
     /// the lowest (most common) rank per term.
     /// Only valid for `InMemory`-backed dictionaries (used during zip parsing and tests).
-    pub fn set_freq(&mut self, entries: Vec<(String, i64)>) {
+    pub fn set_freq(&mut self, entries: Vec<FreqEntry>) {
         let DictionaryStorage::InMemory { ref mut freq, .. } = self.storage else {
             panic!("set_freq called on Sqlite-backed dictionary");
         };
-        let mut map: HashMap<String, i64> = HashMap::new();
-        for (term, rank) in entries {
-            map.entry(term)
-                .and_modify(|r| *r = (*r).min(rank))
-                .or_insert(rank);
-        }
-        *freq = map;
+        *freq = entries;
     }
 
     /// Build a dictionary from a list of parsed entries.
@@ -610,7 +630,7 @@ impl Dictionary {
             storage: DictionaryStorage::InMemory {
                 entries: map,
                 pitch: HashMap::new(),
-                freq: HashMap::new(),
+                freq: Vec::new(),
             },
         }
     }
@@ -708,10 +728,7 @@ impl Dictionary {
             .iter()
             .flat_map(|(term, entries)| entries.iter().map(move |e| (term.clone(), e.clone())))
             .collect();
-        let freq_vec: Vec<(String, i64)> = freq
-            .iter()
-            .map(|(term, rank)| (term.clone(), *rank))
-            .collect();
+        let freq_vec = freq.clone();
         let dict_id = db::import_dictionary(pool, &dict.title, &path_str, &entries_vec).await?;
 
         if !pitch_vec.is_empty() {

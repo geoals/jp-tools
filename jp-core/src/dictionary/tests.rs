@@ -1,6 +1,14 @@
 use super::html::{camel_to_kebab, html_escape, render_style, structured_content_to_html};
 use super::*;
 
+fn freq(term: &str, reading: &str, rank: i64) -> FreqEntry {
+    FreqEntry {
+        term: term.to_string(),
+        reading: reading.to_string(),
+        rank,
+    }
+}
+
 // --- format_furigana ---
 
 #[test]
@@ -91,9 +99,9 @@ fn parse_freq_bank_bccwj_format() {
     assert_eq!(
         entries,
         vec![
-            ("言う".to_string(), 18),
-            ("言う".to_string(), 24),
-            ("言う".to_string(), 318),
+            freq("言う", "いう", 18),
+            freq("言う", "いう", 24),
+            freq("言う", "ゆう", 318),
         ]
     );
 }
@@ -110,10 +118,10 @@ fn parse_freq_bank_format_variants() {
     assert_eq!(
         entries,
         vec![
-            ("語一".to_string(), 42),
-            ("語二".to_string(), 43),
-            ("語三".to_string(), 44),
-            ("語四".to_string(), 45),
+            freq("語一", "", 42),
+            freq("語二", "", 43),
+            freq("語三", "", 44),
+            freq("語四", "ごし", 45),
         ]
     );
 }
@@ -127,16 +135,16 @@ fn parse_freq_bank_skips_pitch_and_malformed_entries() {
         ["良い", "freq", 7]
     ]"#;
     let entries = parse_freq_bank(json).unwrap();
-    assert_eq!(entries, vec![("良い".to_string(), 7)]);
+    assert_eq!(entries, vec![freq("良い", "", 7)]);
 }
 
 #[tokio::test]
 async fn lookup_frequency_returns_min_rank_per_term() {
     let mut dict = Dictionary::from_entries(vec![]);
     dict.set_freq(vec![
-        ("言う".to_string(), 24),
-        ("言う".to_string(), 18),
-        ("言う".to_string(), 318),
+        freq("言う", "いう", 24),
+        freq("言う", "いう", 18),
+        freq("言う", "ゆう", 318),
     ]);
     assert_eq!(dict.lookup_frequency("言う").await, Some(18));
     assert_eq!(dict.lookup_frequency("missing").await, None);

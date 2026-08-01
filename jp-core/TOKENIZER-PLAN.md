@@ -212,17 +212,34 @@ and statuses may exist on identities that stop being produced (居る/いる vs
 new いる). Rebuilding encounters is safe and derived; migrating statuses needs
 a mapping table of moved identities. Scope it only when asked.
 
-## Stage 7 — deferred: reading-aware frequency (the 私 problem)
+## Stage 7 — done, but not as planned: the 私 problem
 
-Not part of this rewrite; recorded so it is not lost. (私, わたくし) is a
-listed pair, so no amount of pair validation touches it — Sudachi's cost model
-just prefers the wrong reading. Fix: add a `reading` column to
-`dictionary_frequency`, stop dropping the reading in `parse_frequency_banks`,
-re-import the BCCWJ zip (the `needs_freq` backfill path in
-`dictionary/mod.rs` re-fires if the table is emptied for that dictionary),
-then add a ladder step: when the validated pair's headword has multiple master
-readings and the (headword, other-reading) is decisively more frequent, prefer
-it. Decide the threshold with data, not here.
+The plan was to add a `reading` column to `dictionary_frequency`, re-import
+BCCWJ, and prefer the (headword, other-reading) that is decisively more
+frequent. **The premise was wrong.** BCCWJ is annotated with the same UniDic
+Sudachi uses, and ranks 私/わたくし at 47 against 私/わたし at 182 — asking it
+would have confirmed the error rather than fixed it.
+
+What works is Jitendex's `score`, which is JMdict's priority tagging: editorial,
+independent of UniDic, and it scores わたし 200 against わたくし 0. So:
+
+- The reading column and the parser change happened anyway (`FreqEntry`), but
+  BCCWJ's job is only to break ties between readings that are *equally* current
+  — 私 is also あたし at 200, and the corpus says わたし is the commoner of the
+  two.
+- `dictionaries::preferred_readings` derives, per headword, a preferred reading
+  and the set of readings not to touch. `POPULARITY_TIER = 150` was chosen
+  against the corpus, not guessed: one tier (100) also rewrote 街/まち and
+  身体/からだ, which score 99 and are plainly real readings.
+- A negative score is JMdict tagging the *spelling* (居る/いる is -101 because
+  いる is usually written in kana), so a reading scored negative is never
+  corrected away — believing it inverted 居る to おる.
+- The correction applies only when the **surface is bare kanji**. Kana in the
+  text is the text's own answer, not Sudachi's guess.
+
+Measured over the `lines` corpus: 1,091 tokens move, 796 of them 私 → わたし, the
+rest bare kanji Sudachi gave on-readings (所/ショ → ところ, 者/シャ → もの,
+薬/ヤク → くすり). Known cost: 人気/ひとけ becomes にんき.
 
 ## Test matrix
 

@@ -118,6 +118,17 @@ impl Knowledge {
             .execute(&self.0)
             .await?;
         }
+        // The frequency table predates caring which *reading* was counted, and
+        // the Yomitan parser dropped it. Existing rows keep an empty reading
+        // until the dictionary is re-imported; every reader treats that as
+        // "unknown reading" rather than as a reading.
+        if !has_column(&self.0, "dictionary_frequency", "reading").await? {
+            sqlx::raw_sql(
+                "ALTER TABLE dictionary_frequency ADD COLUMN reading TEXT NOT NULL DEFAULT ''",
+            )
+            .execute(&self.0)
+            .await?;
+        }
         // `works` predates the per-work capture window.
         if !has_column(&self.0, "works", "vn_window").await? {
             sqlx::raw_sql("ALTER TABLE works ADD COLUMN vn_window TEXT")

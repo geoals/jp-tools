@@ -72,6 +72,9 @@ pub struct SudachiTokenizer {
     /// BCCWJ rank per headword, to break a reading that names several. Empty
     /// refuses to arbitrate.
     frequency: HashMap<String, i64>,
+    /// The reading to believe for a headword the master lists several ways,
+    /// where Sudachi's choice is not to be trusted. Empty leaves it to Sudachi.
+    preferred: HashMap<String, crate::knowledge::dictionaries::PreferredReading>,
     /// Readings of headwords re-tokenized standalone, for the ladder's last
     /// repair step. It fires rarely, but on words that recur forever.
     rederived: Mutex<HashMap<String, String>>,
@@ -98,6 +101,7 @@ impl SudachiTokenizer {
             term_reading: HashMap::new(),
             pairs: HashSet::new(),
             frequency: HashMap::new(),
+            preferred: HashMap::new(),
             rederived: Mutex::new(HashMap::new()),
         })
     }
@@ -144,6 +148,40 @@ impl SudachiTokenizer {
     pub fn with_frequency(mut self, ranks: HashMap<String, i64>) -> Self {
         self.frequency = ranks;
         self
+    }
+
+    /// Teach it which reading to believe where Sudachi's cost model is known to
+    /// pick a dead one. See [`preferred_reading`](Self::preferred_reading) and
+    /// `knowledge::dictionaries::preferred_readings`, which decides the map.
+    pub fn with_preferred_readings(
+        mut self,
+        readings: HashMap<String, crate::knowledge::dictionaries::PreferredReading>,
+    ) -> Self {
+        self.preferred = readings;
+        self
+    }
+
+    /// Correct a validated pair whose reading is one the language has moved off.
+    ///
+    /// This is the one place a *listed* pair is overruled, so it is deliberately
+    /// hard to reach. Both 私/わたし and 私/わたくし are Sankoku pairs and every
+    /// bare 私 came out わたくし, which is how 893 encounters landed on a reading
+    /// almost nothing in a visual novel is.
+    ///
+    /// **The surface must be all kanji.** That is what makes the reading a guess
+    /// worth overruling: when the text writes あたくし or わたし in kana, the
+    /// reading is not Sudachi's opinion but the text's, and it stands.
+    fn preferred_reading(&self, term: &str, reading: &str, surface: &str) -> Option<String> {
+        if surface.is_empty() || !surface.chars().all(crate::text::kanji::is_kanji) {
+            return None;
+        }
+        let pref = self.preferred.get(term)?;
+        let reading = crate::text::kana::to_hiragana(reading);
+        if pref.acceptable.contains(&reading) || pref.preferred == reading {
+            return None;
+        }
+        self.lists(term, &pref.preferred)
+            .then(|| pref.preferred.clone())
     }
 
     /// Does the master dictionary list this identity? Same rule as
@@ -492,11 +530,14 @@ impl SudachiTokenizer {
         candidates.push((m.dictionary_form().to_string(), lemma_reading.clone()));
         candidates.push((surface.clone(), m.reading_form().to_string()));
 
-        if let Some(hit) = candidates
+        if let Some((term, reading)) = candidates
             .iter()
             .find(|(term, reading)| self.lists(term, reading))
         {
-            return hit.clone();
+            let reading = self
+                .preferred_reading(term, reading, &surface)
+                .unwrap_or_else(|| reading.clone());
+            return (term.clone(), reading);
         }
 
         // The spelling is right and only the reading is wrong: Sudachi

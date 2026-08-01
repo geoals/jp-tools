@@ -18,7 +18,10 @@ ledger keys on — `(base_form, reading)` — is chosen **as a pair**, by
 The ladder, in order: the kana lemma of a subsidiary; Sudachi's normalisation;
 its dictionary form; the surface; a re-derived reading (the spelling tokenized
 alone, which repairs a potential form's reading); and last, for a hiragana
-surface only, the headword its reading names.
+surface only, the headword its reading names. The winning pair's *reading* is
+then corrected where Sudachi is known to guess a dead one — see
+`dictionaries::preferred_readings`, which is the only thing here allowed to
+overrule a listed pair.
 
 Around that sit three passes:
 
@@ -56,6 +59,11 @@ impossible onset.
   いた credits いる and not 居る.
 - **Expressions rejoin across function words** when the joined surface is itself
   a headword: それどころか, じゃない, として.
+- **A guessed reading can be overruled by the dictionaries.** Both 私/わたし and
+  私/わたくし are listed pairs and Sudachi read every bare 私 as わたくし; the
+  ledger had 893 encounters on a reading almost nothing in a visual novel is. It
+  now reads わたし. Only where the surface is bare kanji — when the text spells
+  わたくし out in kana, that is not a guess and it stands.
 - **Shreds do not count.** No word begins with っ, ん or a small kana, so a token
   that does is refused — including the 750 sightings of っ and every っ-initial
   fragment off an OOV mimetic path.
@@ -64,23 +72,16 @@ impossible onset.
 
 ### 1. Homographs the reading cannot separate
 
-- **私** — Sudachi's lowest-cost entry for a bare 私 is わたくし, in every context
-  tried except 私たち. Both 私/わたし and 私/わたくし are listed pairs, so pair
-  validation cannot touch it. The ledger holds 804 encounters under わたくし
-  against 122 under わたし. Fixing it needs *reading-aware* frequency, which
-  needs a reading column on `dictionary_frequency` — the Yomitan parser sees the
-  reading and drops it.
 - **うかがう** — 伺う and 窺う are distinct words sharing a reading, and nothing
-  in the sentence says which. It is now resolved by BCCWJ rank, so 隙をうかがう
-  is credited to 伺う and is sometimes wrong. Deliberate: wrong-but-adjacent
-  beats never counted.
+  in the sentence says which. It is resolved by BCCWJ rank, so 隙をうかがう is
+  credited to 伺う and is sometimes wrong. Deliberate: wrong-but-adjacent beats
+  never counted.
 - **味/み** — Sudachi normalises the nominalising suffix み of 哀しみ onto the
   homographic 味, and 味/み *is* a listed pair. Structurally valid, semantically
   wrong.
-
-Word frequency does exist for this: `dictionary_frequency` holds 886k BCCWJ rows
-(私=47, 伺う=1886, 窺う=2831). It has no reading column, which is exactly what
-私 would need.
+- **人気/ひとけ** — the reading preference below rewrites it to にんき, which is
+  wrong in 人気のない道. It is the one case where the correction is known to cost
+  something, against ~1,100 tokens it fixes.
 
 ### 2. Mimetics and OOV kana shred
 
@@ -106,6 +107,7 @@ dictionary is the only arbiter.
 
 The defects it would have addressed were the ones where the *statistical* choice
 overrode the dictionary, and the identity ladder addresses those by letting the
-dictionary refuse Sudachi's answer instead. What is left (私's cost model) it
-would not fix either, and it gives up the part-of-speech tags and the lattice
-that make decomposition and the name filter work at all.
+dictionary refuse Sudachi's answer instead. It gives up the part-of-speech tags
+and the lattice that make decomposition and the name filter work at all, and it
+would not have helped with 私 — a deinflector has no opinion about which of two
+listed readings a bare kanji has either.

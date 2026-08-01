@@ -310,17 +310,21 @@ pub async fn lookup_pitch_entries(
 pub async fn insert_frequency_entries(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     dictionary_id: i64,
-    entries: &[(String, i64)],
+    entries: &[crate::dictionary::FreqEntry],
 ) -> Result<(), sqlx::Error> {
-    // 300 rows × 3 binds = 900 variables, safely under SQLite's limit
-    for chunk in entries.chunks(300) {
-        let placeholders = vec!["(?, ?, ?)"; chunk.len()].join(",");
+    // 225 rows × 4 binds = 900 variables, safely under SQLite's limit
+    for chunk in entries.chunks(225) {
+        let placeholders = vec!["(?, ?, ?, ?)"; chunk.len()].join(",");
         let sql = format!(
-            "INSERT INTO dictionary_frequency (dictionary_id, term, frequency) VALUES {placeholders}"
+            "INSERT INTO dictionary_frequency (dictionary_id, term, reading, frequency) VALUES {placeholders}"
         );
         let mut query = sqlx::query(&sql);
-        for (term, freq) in chunk {
-            query = query.bind(dictionary_id).bind(term).bind(freq);
+        for e in chunk {
+            query = query
+                .bind(dictionary_id)
+                .bind(&e.term)
+                .bind(&e.reading)
+                .bind(e.rank);
         }
         query.execute(&mut **tx).await?;
     }
@@ -371,6 +375,126 @@ pub async fn frequency_ranks(
         ranks.extend(q.fetch_all(pool).await?);
     }
     Ok(ranks)
+}
+
+/// How much less popular a reading has to be than the best one before it is
+/// treated as the wrong reading rather than a rarer one.
+///
+/// JMdict's priority scores land on tiers: about 200 (tagged common), about 99
+/// (tagged in one list), 0 (untagged), negative (tagged rare or irregular). 150
+/// means **only a reading JMdict does not tag at all may be overruled** — one
+/// whole tier is not enough, because 街/まち and 身体/からだ score 99 against
+/// their 200 and are plainly real readings. 私/わたくし scores 0 against
+/// わたし's 200 and is the case this exists for.
+///
+/// Equal or near-equal readings were never candidates anyway: 何 is なに and なん
+/// at 200 each, 一日 is いちにち 200 and ついたち 199.
+const POPULARITY_TIER: i64 = 150;
+
+/// Which reading to believe for a headword the master lists several ways.
+///
+/// Sudachi's cost model is the wrong authority for this and cannot be argued
+/// with: it reads a bare 私 as わたくし in every context tried, and both
+/// 私/わたし and 私/わたくし are listed pairs, so no amount of validating the
+/// pair moves it.
+///
+/// Corpus frequency cannot settle it either — BCCWJ is annotated with the same
+/// UniDic that Sudachi uses, and duly ranks わたくし (47) ahead of わたし (182).
+/// Asking it would confirm the error.
+///
+/// So the popularity dictionary decides *which* readings are current, being
+/// editorially tagged and derived from neither: it scores わたし 200 and
+/// わたくし 0. Where several readings are equally current (私 is also あたし at
+/// 200) the corpus breaks the tie, which is the one job its ranks are good for.
+///
+/// Returns, per headword: the reading to prefer, and the readings near enough to
+/// the top that they are simply how the word is also read — `acceptable`, which
+/// the caller must leave alone.
+pub async fn preferred_readings(
+    pool: &SqlitePool,
+    master_id: i64,
+    popularity_id: i64,
+    corpus_id: i64,
+) -> Result<HashMap<String, PreferredReading>, sqlx::Error> {
+    let rows: Vec<(String, String, i64, Option<i64>)> = sqlx::query_as(
+        "SELECT m.term, m.reading, \
+                COALESCE(MAX(p.score), -9999), \
+                (SELECT MIN(f.frequency) FROM dictionary_frequency f \
+                  WHERE f.dictionary_id = ? AND f.term = m.term AND f.reading = m.reading) \
+           FROM dictionary_entries m \
+           LEFT JOIN dictionary_entries p \
+             ON p.dictionary_id = ? AND p.term = m.term AND p.reading = m.reading \
+          WHERE m.dictionary_id = ? AND m.reading <> '' \
+          GROUP BY m.term, m.reading",
+    )
+    .bind(corpus_id)
+    .bind(popularity_id)
+    .bind(master_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut by_term: HashMap<String, Vec<(String, i64, Option<i64>)>> = HashMap::new();
+    for (term, reading, score, rank) in rows {
+        by_term
+            .entry(term)
+            .or_default()
+            .push((reading, score, rank));
+    }
+
+    let mut out = HashMap::new();
+    for (term, readings) in by_term {
+        if readings.len() < 2 {
+            continue;
+        }
+        let best = readings.iter().map(|(_, s, _)| *s).max().unwrap_or(0);
+        // Nothing here is tagged common, so there is no living reading to
+        // correct *to* — only a least-bad one. 何時 is scored なんどき 0 and
+        // いつ -101, and preferring なんどき would be the reverse of the truth.
+        if best < POPULARITY_TIER {
+            continue;
+        }
+        // A negative score is a tag about the *spelling*, not the reading:
+        // JMdict scores 居る/いる at -101 because いる is usually written in kana
+        // at all, while 居る/おる sits at 200. Reading that as "おる is the living
+        // reading of 居る" inverts the truth, so a reading tagged this way is
+        // left alone rather than judged.
+        let acceptable: HashSet<String> = readings
+            .iter()
+            .filter(|(_, s, _)| *s < 0 || best - s < POPULARITY_TIER)
+            .map(|(r, _, _)| r.clone())
+            .collect();
+        // Every reading is current — 何 is なに and なん and the sentence says
+        // which. Nothing to prefer.
+        if acceptable.len() == readings.len() {
+            continue;
+        }
+        let Some(preferred) = readings
+            .iter()
+            .filter(|(r, _, _)| acceptable.contains(r))
+            // Unranked sorts last: a reading the corpus never saw is not the one
+            // to rewrite a word to.
+            .min_by_key(|(_, _, rank)| rank.unwrap_or(i64::MAX))
+            .map(|(r, _, _)| r.clone())
+        else {
+            continue;
+        };
+        out.insert(
+            term,
+            PreferredReading {
+                preferred,
+                acceptable,
+            },
+        );
+    }
+    Ok(out)
+}
+
+/// See [`preferred_readings`].
+#[derive(Debug, Clone)]
+pub struct PreferredReading {
+    pub preferred: String,
+    /// Readings that need no correcting, the preferred one included.
+    pub acceptable: HashSet<String>,
 }
 
 /// Check whether any frequency entries exist for a dictionary.
@@ -696,5 +820,147 @@ mod tests {
 
         let map = master_forms_by_sequence(k.pool()).await.unwrap();
         assert!(map.get(&2082430).is_none(), "a name imports as nothing");
+    }
+
+    /// Sets up Sankoku (master, id 1), Jitendex (popularity, id 2) and BCCWJ
+    /// (corpus, id 3) with one term's worth of rows.
+    async fn with_readings(
+        master: &[(&str, &str)],
+        popularity: &[(&str, &str, i64)],
+        corpus: &[(&str, &str, i64)],
+    ) -> Knowledge {
+        let k = with_dicts(&[
+            ("Sankoku", "/x/sankoku.zip"),
+            ("Jitendex", "/x/jitendex.zip"),
+            ("BCCWJ", "/x/bccwj.zip"),
+        ])
+        .await;
+        set_role(k.pool(), 1, Role::Master).await.unwrap();
+        for (term, reading) in master {
+            sqlx::query(
+                "INSERT INTO dictionary_entries (dictionary_id, term, reading, definitions_json) \
+                 VALUES (1, ?, ?, '[]')",
+            )
+            .bind(term)
+            .bind(reading)
+            .execute(k.pool())
+            .await
+            .unwrap();
+        }
+        for (term, reading, score) in popularity {
+            sqlx::query(
+                "INSERT INTO dictionary_entries (dictionary_id, term, reading, score, definitions_json) \
+                 VALUES (2, ?, ?, ?, '[]')",
+            )
+            .bind(term)
+            .bind(reading)
+            .bind(score)
+            .execute(k.pool())
+            .await
+            .unwrap();
+        }
+        for (term, reading, rank) in corpus {
+            sqlx::query(
+                "INSERT INTO dictionary_frequency (dictionary_id, term, reading, frequency) \
+                 VALUES (3, ?, ?, ?)",
+            )
+            .bind(term)
+            .bind(reading)
+            .bind(rank)
+            .execute(k.pool())
+            .await
+            .unwrap();
+        }
+        k
+    }
+
+    /// The case this exists for. Sudachi reads a bare 私 as わたくし and the
+    /// corpus agrees with it, being annotated with the same UniDic — so only the
+    /// popularity tags can say otherwise, and the corpus is left to break the
+    /// tie between the two readings that are current.
+    #[tokio::test]
+    async fn a_dead_reading_is_corrected_to_the_living_one() {
+        let k = with_readings(
+            &[("私", "わたし"), ("私", "わたくし"), ("私", "あたし")],
+            &[
+                ("私", "わたし", 200),
+                ("私", "あたし", 200),
+                ("私", "わたくし", 0),
+            ],
+            &[
+                ("私", "わたし", 182),
+                ("私", "あたし", 678),
+                ("私", "わたくし", 47),
+            ],
+        )
+        .await;
+
+        let prefs = preferred_readings(k.pool(), 1, 2, 3).await.unwrap();
+        let p = prefs.get("私").expect("私 needs a preferred reading");
+        assert_eq!(
+            p.preferred, "わたし",
+            "the commonest of the current readings"
+        );
+        assert!(
+            p.acceptable.contains("あたし"),
+            "also current, so not corrected"
+        );
+        assert!(!p.acceptable.contains("わたくし"));
+    }
+
+    /// Two readings the language uses side by side. The sentence decides, and
+    /// nothing here may overrule it.
+    #[tokio::test]
+    async fn readings_that_are_both_current_get_no_preference() {
+        let k = with_readings(
+            &[("何", "なに"), ("何", "なん")],
+            &[("何", "なに", 200), ("何", "なん", 200)],
+            &[("何", "なに", 30), ("何", "なん", 40)],
+        )
+        .await;
+        assert!(
+            preferred_readings(k.pool(), 1, 2, 3)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    /// A negative score is JMdict saying the *spelling* is unusual — 居る is
+    /// usually written いる in kana — not that the reading is dead. Believing it
+    /// would rewrite every kanji 居る to おる.
+    #[tokio::test]
+    async fn a_reading_tagged_odd_is_left_alone_rather_than_corrected() {
+        let k = with_readings(
+            &[("居る", "いる"), ("居る", "おる")],
+            &[("居る", "いる", -101), ("居る", "おる", 200)],
+            &[("居る", "いる", 13), ("居る", "おる", 107)],
+        )
+        .await;
+        let prefs = preferred_readings(k.pool(), 1, 2, 3).await.unwrap();
+        assert!(
+            prefs
+                .get("居る")
+                .is_none_or(|p| p.acceptable.contains("いる")),
+            "いる must never be corrected away"
+        );
+    }
+
+    /// Nothing is tagged common, so there is no reading to correct *to*: 何時 is
+    /// なんどき at 0 and いつ at -101, and preferring なんどき inverts the truth.
+    #[tokio::test]
+    async fn a_headword_with_no_common_reading_gets_no_preference() {
+        let k = with_readings(
+            &[("何時", "いつ"), ("何時", "なんどき")],
+            &[("何時", "いつ", -101), ("何時", "なんどき", 0)],
+            &[("何時", "いつ", 200), ("何時", "なんどき", 9000)],
+        )
+        .await;
+        assert!(
+            preferred_readings(k.pool(), 1, 2, 3)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 }

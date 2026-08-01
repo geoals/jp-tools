@@ -11,6 +11,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+use jp_core::knowledge::dictionaries::PreferredReading;
 use jp_core::text::kana::to_hiragana;
 use jp_core::tokenize::{MasterWords, SudachiTokenizer, Token, Tokenizer, counts_as_word};
 
@@ -34,6 +35,26 @@ fn ranks() -> HashMap<String, i64> {
         .collect()
 }
 
+/// What `dictionaries::preferred_readings` derives for these words from
+/// Jitendex and BCCWJ; that derivation has its own tests.
+fn preferences() -> HashMap<String, PreferredReading> {
+    [
+        ("私", "わたし", vec!["わたし", "あたし", "あたくし"]),
+        ("何", "なに", vec!["なに", "なん"]),
+    ]
+    .into_iter()
+    .map(|(term, preferred, acceptable)| {
+        (
+            term.to_string(),
+            PreferredReading {
+                preferred: preferred.to_string(),
+                acceptable: acceptable.into_iter().map(|s| s.to_string()).collect(),
+            },
+        )
+    })
+    .collect()
+}
+
 fn setup() -> (SudachiTokenizer, MasterWords) {
     let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
         .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
@@ -45,7 +66,8 @@ fn setup() -> (SudachiTokenizer, MasterWords) {
         .unwrap()
         .with_lexicon(lexicon.clone())
         .with_master_readings(&entries)
-        .with_frequency(ranks());
+        .with_frequency(ranks())
+        .with_preferred_readings(preferences());
     (tokenizer, MasterWords::new(lexicon, &entries))
 }
 
@@ -248,4 +270,50 @@ fn the_existing_behaviour_is_unchanged() {
     // A name is neither split nor joined into anything.
     let tokens = tokens_of(&tk, "東京で本を読む");
     assert!(tokens.iter().any(|t| t.surface == "東京" && t.proper_noun));
+}
+
+/// Sudachi reads a bare 私 as わたくし in every context tried, and (私, わたくし)
+/// is a listed pair, so nothing about validating the pair can reach it. The
+/// popularity tags can: わたし is current and わたくし is not.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_bare_kanji_read_as_a_dead_reading_is_corrected() {
+    let (tk, _) = setup();
+    for text in ["私なら行けるはずだ", "私は知らない", "私が行く"] {
+        assert_eq!(
+            identity_of(&tokens_of(&tk, text), "私"),
+            pair("私", "わたし"),
+            "in {text}"
+        );
+    }
+}
+
+/// The correction is only for a reading Sudachi *guessed*. When the text spells
+/// the word out, the reading is the text's and stands — わたくし written in kana
+/// is わたくし, whatever the tags say about it.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_reading_the_text_spelled_out_is_never_corrected() {
+    let (tk, _) = setup();
+    let tokens = tokens_of(&tk, "わたくしが行きます");
+    let t = tokens.first().expect("a token");
+    assert_eq!(
+        to_hiragana(&t.reading),
+        "わたくし",
+        "the text wrote it: {tokens:?}"
+    );
+}
+
+/// Both readings of 何 are current, so the sentence decides and the tokenizer
+/// must not. なに is the *preferred* reading here and なん still has to survive
+/// — being acceptable is what protects it.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_word_with_two_current_readings_keeps_sudachis_choice() {
+    let (tk, _) = setup();
+    assert_eq!(
+        identity_of(&tokens_of(&tk, "何を言っているんだ"), "何"),
+        pair("何", "なん"),
+        "Sudachi's reading, not the preferred one"
+    );
 }

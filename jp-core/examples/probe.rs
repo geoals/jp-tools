@@ -14,6 +14,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+use jp_core::knowledge::dictionaries::PreferredReading;
 use jp_core::tokenize::{
     MasterWords, SudachiTokenizer, Tokenizer, ambiguous_headwords, counts_as_word,
 };
@@ -54,11 +55,35 @@ fn main() {
         })
         .collect();
 
+    // As dumped by the `preferences` example: term, preferred, acceptable list.
+    let prefer_tsv = args
+        .iter()
+        .position(|a| a == "--prefer")
+        .map(|i| std::fs::read_to_string(&args[i + 1]).unwrap());
+    let prefer: HashMap<String, PreferredReading> = prefer_tsv
+        .iter()
+        .flat_map(|s| s.lines())
+        .filter_map(|l| {
+            let mut it = l.split('\t');
+            let term = it.next()?.to_string();
+            let preferred = it.next()?.to_string();
+            let acceptable = it.next()?.split(',').map(|s| s.to_string()).collect();
+            Some((
+                term,
+                PreferredReading {
+                    preferred,
+                    acceptable,
+                },
+            ))
+        })
+        .collect();
+
     let tokenizer = SudachiTokenizer::new(dict_path, anki)
         .unwrap()
         .with_lexicon(lexicon.clone())
         .with_master_readings(&entries)
-        .with_frequency(ranks);
+        .with_frequency(ranks)
+        .with_preferred_readings(prefer);
     let master = MasterWords::new(lexicon, &entries);
 
     let Some(corpus) = corpus else {
