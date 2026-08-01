@@ -1,14 +1,8 @@
 //! The vocabulary ledger — what I know, one row per term.
 //!
 //! Every other table in `knowledge.db` records an event; this one records a
-//! state. It is the convergence layer of `spec/knowledge-db.md`'s second axis:
-//! the `#read` highlighter, i+1 sentence marking and "how many unknown words
-//! are in this video" all reduce to a status lookup here, which is why the
-//! counts are stored on the row rather than derived per query.
-//!
-//! ## Who writes what
-//!
-//! Three writers, deliberately separated by who owns the fact:
+//! state. Counts live on the row rather than being derived per query because
+//! the highlighter looks one up per token, per line, as it streams.
 //!
 //! | fact | writer | shape |
 //! |---|---|---|
@@ -18,14 +12,10 @@
 //! | dictionary flags | [`refresh_dictionary_flags`] | wholesale |
 //! | **status** | the reader, via [`set_status`] | never by a sync |
 //!
-//! The wholesale three are recomputed rather than incremented because each
-//! mirrors a table that already owns the truth — the same reasoning that makes
-//! `anki_notes` a replaced snapshot. Only encounters are incremental, because
-//! their source (`lines`) is append-only and re-tokenizing all of it on every
-//! Anki refresh would be minutes of CPU for no new information.
-//!
-//! `status` is touched by none of them. It holds assertions and nothing else,
-//! so a resync can never demote a word the reader marked known.
+//! The wholesale three mirror a table that already owns the truth. Encounters
+//! are incremental because re-tokenizing all of `lines` on every Anki refresh
+//! would be minutes of CPU. `status` is assertions only —
+//! `spec/knowledge-db.md`.
 
 use std::collections::HashMap;
 
@@ -818,9 +808,9 @@ pub async fn seed_status_each(
     Ok(n)
 }
 
-/// `source` labels the pass in the history log — `triage`, `jiten`,
-/// `frequency`. It is informational; it never affects what is written to
-/// `vocabulary` itself.
+/// `source` labels the pass in the history log — `triage`, `anki`,
+/// `frequency`; [`seed_status_each`] writes `seed` for the jiten import. It is
+/// informational; it never affects what is written to `vocabulary` itself.
 pub async fn set_status_each(
     k: &Knowledge,
     judgements: &[(Term, Status)],

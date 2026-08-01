@@ -1,21 +1,19 @@
 //! The lexeme layer — which of the ledger's rows are the same *word*.
 //!
-//! `vocabulary` keys on `(headword, reading)`, which is an orthographic
-//! **form**, not a word. That is the right key for the ledger: the tokenizer
-//! emits forms, and 零れ落ちる having forty encounters while こぼれ落ちる has
-//! two is real information worth keeping apart. But it is the wrong unit to
-//! *count*. Three rows for 叔父, 伯父 and おじ are one word, and reporting
-//! "I know N words" off a row count overstates N by however many spellings
-//! the reading history happened to contain.
+//! `vocabulary` keys on `(headword, reading)` — an orthographic **form**, not a
+//! word. That is the right key for the ledger: the tokenizer emits forms, and
+//! 零れ落ちる at forty encounters vs こぼれ落ちる at two is real information. But
+//! it is the wrong unit to *count*. Three rows for 叔父, 伯父 and おじ are one
+//! word, so "I know N words" off a row count overstates N by however many
+//! spellings the reading history contained.
 //!
 //! ## Everything here is derived, nothing is stored
 //!
-//! There is no `redundant` column and there must not be one. A flag written
-//! at import time is a function of whatever happened to already be in the
-//! ledger, so importing Anki before jiten.moe and jiten.moe before Anki would
-//! leave different databases. A collapse computed at read time is a pure
-//! function of the set of known forms: every import order converges on the
-//! same answer, and re-running anything is free.
+//! There is no `redundant` column and there must not be one. A flag written at
+//! import time depends on what was already in the ledger, so Anki-then-jiten and
+//! jiten-then-Anki would leave different databases. A collapse computed at read
+//! time is a pure function of the known forms: every import order converges, and
+//! re-running anything is free.
 //!
 //! ## The rule
 //!

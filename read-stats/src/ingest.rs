@@ -12,17 +12,16 @@
 //!   work's own page say how much of it you already know.
 //!
 //! Tokenization uses the mined vocab as Sudachi validation headwords: a mined
-//! compound found whole in Mode C is kept whole (so it matches its card),
-//! anything unrecognized is split down to finer modes.
+//! compound found whole in Mode C stays whole (so it matches its card),
+//! anything unrecognized splits down to finer modes.
 //!
 //! ## A watermark per sink per stream, not one
 //!
 //! Each sink tracks its own last-processed id. That is what makes the ledger
-//! backfillable: the ledger arrived years into a line history, so it has to be
-//! filled from text `word_days` already counted, and a single shared watermark
-//! would force a choice between an empty ledger and double-counted days. With
-//! the watermarks separate, resetting only the ledger's re-tokenizes everything
-//! and writes only the rows that are behind.
+//! backfillable: it arrived years into a line history, so it has to be filled
+//! from text `word_days` already counted, and one shared watermark would force a
+//! choice between an empty ledger and double-counted days. Separate, resetting
+//! the ledger's re-tokenizes everything and writes only the rows behind.
 //!
 //! Every sink is additive and none is idempotent, so the rule is absolute:
 //! **a row is written to a sink only when its id is past that sink's

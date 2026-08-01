@@ -1,36 +1,16 @@
 //! `knowledge.db` — the shared database, and the handle that opens it.
 //!
-//! One file, owned by jp-core, holding everything that is *about the language
-//! and what has been read* rather than about one app's workflow:
+//! Holds what is about the language and what has been read, rather than about
+//! one app's workflow. CLAUDE.md lists the contents; `spec/knowledge-db.md` has
+//! the reasoning.
 //!
-//! - the dictionary cache ([`dictionaries`]) — terms, readings, pitch, frequency
-//! - the reading record — `works`, `lines`, `manual_sessions`, `anki_notes`,
-//!   `word_days`, `lookups`
-//! - the knowledge ledger ([`vocabulary`]) — one row per term: what I know,
-//!   what I have met, and how often
+//! One file because term identity is dictionary-gated — "is this a word", "what
+//! is its `(headword, reading)`", "is it a name" — and every count is keyed on
+//! that answer. Split in two, the ledger could not join what it is keyed on.
 //!
-//! These belong together because term identity is **dictionary-gated**: "is this
-//! token a word", "what is its canonical `(headword, reading)`", and "is it a
-//! name rather than vocabulary" are all questions only the dictionaries can
-//! answer, and every count worth keeping is keyed on the answer. Splitting them
-//! into two files would mean the ledger could never join what it is keyed on.
-//! See `spec/knowledge-db.md`.
-//!
-//! ## Who writes what
-//!
-//! read-stats writes the reading tables (line ingest, lookup capture, work
-//! metadata) — it is not a pure reader, and saying so is the point of putting
-//! them here rather than pretending they are private. yt-mine and manga-mine
-//! read the dictionary tables. vn-mine's logger appends to `lines` directly.
-//!
-//! ## Where the queries live
-//!
-//! [`dictionaries`] is here because three tools call it. The reading tables are
-//! defined here (the schema is shared, so it needs one owner) but queried from
-//! read-stats, which is still their only consumer — moving those helpers up
-//! before a second caller exists would be inventing an interface with no one to
-//! test it against. When kotodex or the `#read` highlighter needs them, they
-//! move, and the tables will not have to.
+//! [`dictionaries`] lives here because three tools call it. The reading tables
+//! are defined here (shared schema needs one owner) but queried from read-stats,
+//! their only consumer so far.
 
 pub mod dictionaries;
 pub mod lexeme;

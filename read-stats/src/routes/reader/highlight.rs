@@ -1,33 +1,30 @@
 //! What each word in a hooked line is worth knowing about — the spans the
 //! reading view tints.
 //!
-//! The same Sudachi pipeline the ledger is built from ([`crate::ingest`]) runs
-//! over the line as it streams, and each content word it produces is looked up
-//! in `vocabulary`. What comes back is a list of *offsets*, not markup: the
-//! client paints them with the CSS Custom Highlight API, so the line stays one
-//! text node and Yomitan's DOM scan sees exactly what it saw before this
-//! existed. That constraint is the whole reason this returns ranges.
+//! The ledger's own Sudachi pipeline ([`crate::ingest`]) runs over the line as
+//! it streams, and each content word is looked up in `vocabulary`. What comes
+//! back is *offsets*, not markup: the client paints them, so the line stays one
+//! text node and Yomitan's DOM scan sees what it always saw. That is why this
+//! returns ranges.
 //!
 //! Two things get no span at all, and a third gets one that is not drawn:
 //!
-//! - **Known words**, by [`VocabRow::is_known`]'s rule — asserted known *or*
-//!   mined — are sent but never painted. A line where every word you have is
-//!   marked is a line you cannot read; the absence of a mark is the signal. They
-//!   are sent because a span is also the region a tap judges, and a word just
-//!   marked known has to stay tappable to be taken back.
+//! - **Known words**, by [`VocabRow::is_known`] — asserted known *or* mined —
+//!   are sent but never painted. The absence of a mark is the signal. They are
+//!   sent because a span is also the region a tap judges, so a word just marked
+//!   known has to stay tappable to be taken back.
 //! - **Names.** Sudachi's 固有名詞 flag, same as ingest. A VN's cast would
-//!   otherwise be the loudest thing on every line and learning them is not
-//!   learning Japanese.
+//!   otherwise be the loudest thing on every line.
 //! - **Non-words** — tokenizer noise and anything no dictionary lists. For a
-//!   term the ledger already has, that is [`VocabRow::is_word`]'s lenient test;
-//!   for one it does not, the master headword set. The ledger cannot be the
-//!   only authority here: a word hooked ten seconds ago has no row yet, and
-//!   the never-before-seen word is the one this feature exists to point at.
+//!   term the ledger has, that is [`VocabRow::is_word`]'s lenient test; for one
+//!   it does not, the master headword set. The ledger cannot be the only
+//!   authority: a word hooked ten seconds ago has no row yet, and the
+//!   never-before-seen word is what this feature exists to point at.
 //!
-//! The status the rest becomes is not `vocabulary.status` verbatim — the
-//! ledger's `new` covers both "you have met this fifty times and never judged
-//! it" and "you have never met this at all", and those are the two the reader
-//! most wants told apart. [`Tier`] splits them on `encounter_count`.
+//! The status the rest becomes is not `vocabulary.status` verbatim: the ledger's
+//! `new` covers both "met fifty times, never judged" and "never met at all", and
+//! those are the two worth telling apart. [`Tier`] splits them on
+//! `encounter_count`.
 
 use std::collections::HashSet;
 
@@ -38,22 +35,21 @@ use jp_core::tokenize::{MasterWords, SudachiTokenizer, Tokenizer, counts_as_word
 /// The encounter count at or below which a word is called `new` rather than
 /// `seen`.
 ///
-/// The `#vocab` tab draws the same line at zero (`unjudged_counts`), and the
-/// two differ on purpose. There the question is asked of a settled ledger; here
-/// it is asked of a line hooked a moment ago.
+/// The `#vocab` tab draws the same line at zero (`unjudged_counts`); the two
+/// differ because there the question is asked of a settled ledger, here of a
+/// line hooked a moment ago.
 ///
-/// One, not zero: ingest may already have credited *this* occurrence by the
-/// time the line is drawn (the sweep runs on a timer, the line arrives on a
-/// 30ms poll), so a genuinely first sighting reads as either 0 or 1 depending
-/// on a race nobody can observe. Erring toward `new` is the harmless side —
-/// the strongest tint on a word met exactly twice costs a glance, while
-/// demoting a first sighting to `seen` loses the one event worth marking.
+/// One, not zero: ingest may already have credited *this* occurrence by the time
+/// the line is drawn (the sweep runs on a timer, the line arrives on a 30ms
+/// poll), so a first sighting reads as 0 or 1 depending on an unobservable race.
+/// Erring toward `new` is the harmless side — the strongest tint on a word met
+/// twice costs a glance, while demoting a first sighting loses the one event
+/// worth marking.
 const NEW_MAX_ENCOUNTERS: i64 = 1;
 
-/// One word's span in the line, in UTF-16 code units from the start of the
-/// text — the unit a JavaScript string is indexed in, and therefore the one a
-/// `Range` offset must be. Counting `char`s here would put every highlight
-/// after the line's first surrogate pair one unit to the left.
+/// One word's span, in UTF-16 code units from the start of the text — what a
+/// JavaScript `Range` offset is indexed in. Counting `char`s would put every
+/// highlight after the line's first surrogate pair one unit to the left.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Span {
     pub start: usize,

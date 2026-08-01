@@ -50,50 +50,50 @@ on a vocab triage submit (2026-07-27):
   four at zero — a write landing on one of those fails instantly instead of
   waiting. `journal_mode` persists in the file, which is what hid this.
 
-The split between the files is by what the data *is*, not by which app wrote
-it first: anything other tools will ask questions of — what has been read, what
-has been looked up, what the dictionaries say, what is known — is shared.
-`spec/knowledge-db.md` has the reasoning.
+The split is by what the data *is*, not by which app wrote it first: anything
+other tools will ask questions of — what has been read, looked up, what the
+dictionaries say, what is known — is shared. `spec/knowledge-db.md` has the
+reasoning.
 
-`vocabulary` is the newest of those and the one everything planned depends on:
-one row per `(headword, reading)`, carrying the reader's asserted `status`, a
-`mined` flag mirrored from Anki, and running encounter/lookup counts. Two rules
-about it are worth knowing before touching any of it:
+`vocabulary` is the ledger: one row per `(headword, reading)` with the reader's
+asserted `status`, a `mined` flag mirrored from Anki, and running
+encounter/lookup counts. Two rules before touching any of it:
 
-- **Only the reader writes `status`.** Ingest and all three syncs leave it
-  alone, so re-syncing can never demote a word and encounter counts can never
-  auto-promote one (`spec/cold-start.md` Pass 4 rules that out explicitly).
+- **Only the reader writes `status`.** Ingest and the syncs leave it alone, so
+  a re-sync cannot demote a word and encounter counts cannot auto-promote one
+  (`spec/cold-start.md` Pass 4).
 - **`new` ≠ `unknown`.** `new` means never judged. Collapsing them is
   irreversible and breaks the triage progress figure and the "seen often, never
   judged" review query.
 
-read-stats' `#vocab` tab is the ledger's front end and the only writer of
-`status`: the counts per status, plus the triage sweep that fills them. It ticks
-a word `known` only when it was met often enough *and was never looked up* —
-`spec/cold-start.md` and `spec/knowledge-db.md` note 5 have the reasoning.
+read-stats' `#vocab` tab is the ledger's front end: the counts per status, plus
+the triage sweep that fills them. It ticks a word `known` only when it was met
+often enough *and was never looked up* (`spec/cold-start.md`). Other writers of
+`status`: the tap in `#read`, and the Anki, jiten.moe and frequency imports —
+`read-stats/CLAUDE.md` lists them. `#read`'s highlighter reads the ledger to
+tint each streamed line.
 
 yt-mine still writes an older, lemma-keyed `vocabulary` stub in its own
-database; it is superseded and awaiting migration onto this one.
+database, superseded and awaiting migration onto this one.
 
 ## Working here
 
 - Commit straight to `master`. This is a solo repo — don't create a feature
   branch for a change unless asked.
 - **Don't restart the stack or touch `~/.local/share/jp-tools` while a VN is
-  actually being read** — not because anything breaks, but because it
-  interrupts a session in progress. `scripts/dev-instance.sh` exists so
-  read-stats can be worked on regardless.
+  actually being read** — nothing breaks, but it interrupts the session.
+  `scripts/dev-instance.sh` exists so read-stats can be worked on regardless.
 
   Restarting `vn-buffer` *is* safe with Textractor open, verified 2026-07-25:
-  the logger sends a proper close frame on SIGTERM, and Textractor survived a
-  restart plus a full capture pause/resume cycle. What crashes its WS plugin is
-  an **abortive** disconnect — a `kill -9` that skips the close frame — so
-  don't hard-kill the logger and don't remove that signal handler.
+  the logger sends a close frame on SIGTERM, and Textractor survived a restart
+  plus a full capture pause/resume cycle. Only an **abortive** disconnect
+  crashes its WS plugin — a `kill -9` that skips the close frame — so don't
+  hard-kill the logger and don't remove that signal handler.
 - In the Preact/htm SPAs (`read-stats`, `yt-mine`), never let literal text and
   `${...}` straddle a line break inside an ``html`` `` template. htm collapses
-  the whitespace at the break, and prettier reflows markup there freely — that
-  combination silently rendered `snapshot 0 min ago` as `snapshot0 minago`.
-  Build the whole string in JS and interpolate it as one value:
+  the whitespace and prettier reflows markup freely; that combination silently
+  rendered `snapshot 0 min ago` as `snapshot0 minago`. Build the string in JS
+  and interpolate it whole:
 
   ```js
   const age = `snapshot ${mins} min ago`;   // then: <span>${age}</span>

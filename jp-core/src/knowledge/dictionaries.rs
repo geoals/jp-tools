@@ -4,14 +4,14 @@
 //!
 //! ## Roles, and why a term's dictionary matters
 //!
-//! Three dictionaries are loaded today — Sankoku (三省堂国語辞典, ~82k terms),
-//! Jitendex (~408k) and NHK (pitch only) — and they cannot be pooled into one
-//! "is it a word" set, because they disagree about what a word *is*. 335,540
-//! Jitendex terms are absent from Sankoku: phrasal expressions (`ああ見えても`),
+//! Three dictionaries are loaded — Sankoku (三省堂国語辞典, ~82k terms),
+//! Jitendex (~408k) and NHK (pitch only). They cannot be pooled into one "is it
+//! a word" set, because they disagree about what a word *is*: 335,540 Jitendex
+//! terms are absent from Sankoku — phrasal expressions (`ああ見えても`),
 //! compositional compounds (`あいうえお順`), and every orthographic variant of a
 //! technical term each get their own headword. A monolingual dictionary lists
-//! such phrases *under* a headword; Jitendex makes them headwords. So a vocab
-//! size counted against Jitendex means nothing.
+//! those *under* a headword; Jitendex makes them headwords. So a vocab size
+//! counted against Jitendex means nothing.
 //!
 //! Hence [`Role`], and two different thresholds from the same data:
 //!
@@ -20,8 +20,8 @@
 //! - **vocabulary denominator** ("I know N words") — strict: the master only.
 //!   Sankoku's ~82k ceiling is a real vocabulary scale.
 //!
-//! Adding a dictionary must therefore never move the denominator, which is what
-//! the role is for: a new import is `reference` until someone says otherwise.
+//! Adding a dictionary must never move the denominator. That is what the role is
+//! for: a new import is `reference` until someone says otherwise.
 
 use std::collections::{HashMap, HashSet};
 

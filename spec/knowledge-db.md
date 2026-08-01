@@ -1,27 +1,20 @@
 # Knowledge DB & module architecture
 
-> **Status: current architecture (2026-07-27).** Unlike the other files in
-> `spec/` (which are the superseded pre-implementation design), this describes
-> how the code is actually organised. The database layout, the `role` column,
-> the module boundaries and the `vocabulary` ledger below are **built**; the
-> `#read` highlighter and the triage UI that fills the ledger's `status` are
-> **not** — see *Migration notes* at the end for exactly where the line falls.
+> **Status: current architecture (2026-08-01).** The other files in `spec/` are
+> superseded pre-implementation design; this one describes how the code is
+> actually organised.
 >
-> Where this stands: the data layer is complete, and **the assertion layer now
-> has its first writer** — the `#vocab` triage pass (migration note 5). What is
-> still missing is everything that *reads* an assertion: the highlighter, i+1
-> marking, and yt-mine's unknown-word count.
+> Everything below is built. Still missing: i+1 marking, and yt-mine's
+> unknown-word count (migration note 8).
 
 ## The two-axis model
 
-The tools looked tangled ("is this three separate apps or one workspace?")
-because two independent concerns were conflated. They are separate axes:
+The tools looked tangled because two concerns were conflated. They are
+separate axes, and a tool's place on one does not determine its place on the
+other:
 
-1. **Card authoring** — *who builds the Anki card.*
-2. **Knowledge tracking** — *what I know / what I have consumed.*
-
-A tool's place on axis 1 does not determine its place on axis 2. Keeping them
-separate is what makes the rest of the design fall out cleanly.
+1. **Card authoring** — who builds the Anki card.
+2. **Knowledge tracking** — what I know / what I have consumed.
 
 ### Axis 1 — card authoring
 
@@ -34,21 +27,18 @@ Which paradigm applies is forced by **whether a live browser dictionary
 | manga-mine (OCR crop) | the app | yes | at creation |
 | VN reading (vn-mine) | **Yomitan** | no | retroactively (audio clip + screenshot from the VN process) |
 
-For a YouTube transcript or an OCR crop there is no texthooker to hover words
-in, so the app must do the lookup + note-building + export — that is exactly
-what `jp-mine-core` is. For a VN there *is* a texthooker, so Yomitan (with its
-dictionaries, pitch, deck config) authors the card; vn-mine only attaches the
-media Yomitan can't reach. **This split is principled — do not try to unify it.**
-Routing yt/manga "through Yomitan" is not achievable (no popup over that
-content); routing VN through `jp-mine-core` would throw away Yomitan's popup.
+A YouTube transcript or an OCR crop has no texthooker to hover words in, so
+the app does the lookup, note-building and export — that is `jp-mine-core`. A VN
+has one, so Yomitan authors the card and vn-mine only attaches the media Yomitan
+can't reach. **Don't try to unify these.** yt/manga cannot route through Yomitan
+(no popup over that content), and routing VN through `jp-mine-core` would throw
+away Yomitan's popup.
 
 ### Axis 2 — knowledge tracking
 
-Independent of who made the card, every lookup / encounter / mined word is a
-fact about a **term**: "word X, from source Y, at time T." That ledger is the
-convergence layer every front end reads and future tools (kotodex, `#read`
-highlighting) build on. It does **not** belong to any one app — today it is
-scattered and partly missing.
+Whoever made the card, every lookup / encounter / mined word is a fact about a
+**term**: "word X, from source Y, at time T." That ledger is the convergence
+layer every front end reads. It belongs to no single app.
 
 ## Term identity is dictionary-gated
 
@@ -93,9 +83,9 @@ Jitendex (407,868), NHK (pitch only).
 
 Jitendex is ~5× larger and **335,540 of its terms are absent from Sankoku** —
 phrasal expressions (`ああ見えても`, `ああでもないこうでもない`), compositional
-compounds (`あいうえお順`), and every orthographic variant of technical terms
+compounds (`あいうえお順`), and every orthographic variant of a technical term
 (`α-ヘリックス` / `α－ヘリックス`) each get their own entry. A monolingual dict
-lists such phrases *under* a headword; Jitendex makes them headwords too. So a
+lists such phrases *under* a headword; Jitendex makes them headwords. So a
 vocab-size count against Jitendex is meaningless.
 
 **Sankoku is the master dictionary.** Its ~82k-term ceiling is a real
@@ -141,18 +131,19 @@ the card.
 |---|---|
 | `new` | ingested from reading, never judged — **the default** |
 | `known` | I know this word |
-| `unknown` | I looked at it and I don't |
-| `learning` | actively being learned (set by hand, never by the Anki sync) |
+| `unknown` | judged, and not known — also what the triage sweep's "no" writes |
 | `blacklisted` | never surface this again |
-| `name` | a proper noun, not vocabulary |
 
-`new` is kept distinct from `unknown` deliberately. The two are the same to
-i+1 counting and to the highlighter, so it would be tempting to collapse them —
-but once ingest has written `unknown` across every word ever read, no later
-migration can reconstruct which of them were actually judged. That distinction
+`learning` and `name` were removed in 2026-07, both at zero rows: `learning`
+duplicated `mined`, and ingest drops names before they reach the ledger. Old
+values read back as `new`.
+
+`new` stays distinct from `unknown`. The two look the same to i+1 counting and
+to the highlighter, but once ingest has written `unknown` across every word ever
+read, no migration can reconstruct which were actually judged. That distinction
 is what makes cold-start.md's Pass 4 ("seen 12 times, never judged, do you know
-it?") and the seed page's progress figure answerable at all. It costs one extra
-allowed value in a TEXT column.
+it?") and the progress figure answerable. It costs one allowed value in a TEXT
+column.
 
 No writer other than the reader touches `status` — not ingest, not the Anki
 sync, not the lookup sync. Encountering a word again says nothing about whether
@@ -162,49 +153,43 @@ it can't happen by accident.
 
 ## Encounters are implicit — counts live on the ledger row
 
-There is **no separate per-occurrence encounter table**, and **no `word_days`
-table**. Both would be fully derived data: the raw truth of "every occurrence of
-a term" already lives in `lines` (and in `manual_sessions` once it carries its
-content — see below). Storing a derived copy violates "don't store what you can
-derive."
+There is **no per-occurrence encounter table**, and `word_days` is on its way
+out (see the end of this section). Both are fully derived data: the raw truth of
+"every occurrence of a term" already lives in `lines` (and in `manual_sessions`
+once it carries its content — see below). Storing a derived copy violates
+"don't store what you can derive."
 
-Instead, the `vocabulary` ledger row carries running aggregates —
-`encounter_count`, `lookup_count`, `first_seen`, `last_seen` — written by the
-same ingest that tokenizes new lines (`read-stats/src/ingest.rs`, watermarked
-on `settings`). This is what the planned `#read` highlighter needs: an O(1)
-per-token status lookup, viable to run as each line arrives.
+Instead the ledger row carries running aggregates — `encounter_count`,
+`lookup_count`, `first_seen`, `last_seen` — written by the same ingest that
+tokenizes new lines (`read-stats/src/ingest.rs`, watermarked on `settings`).
+That gives the `#read` highlighter an O(1) status lookup per token, cheap
+enough to run as each line arrives.
 
 **Each sink has its own watermark.** `word_days` and the ledger are filled by
 one tokenization pass but tracked separately (`tokenized_through_line_id` vs
-`vocab_through_line_id`, and the same pair for sessions). That is what made the
-ledger backfillable at all: it arrived 11,859 lines into a history `word_days`
-had already counted, so it had to be filled from text one sink was done with —
-and a single shared watermark would have forced a choice between an empty
-ledger and double-counted days. Both sinks are additive and neither is
-idempotent, so the rule is absolute: a row is written to a sink only when its
-id is past *that sink's* watermark. `POST /api/vocab/rebuild` rewinds the
-ledger's pair alone, which is also the repair path for any future
-re-tokenization (a Sudachi upgrade, a change to `is_content_word`).
+`vocab_through_line_id`, same pair for sessions). That is what made the ledger
+backfillable: it arrived 11,859 lines into a history `word_days` had already
+counted, and a shared watermark would have forced a choice between an empty
+ledger and double-counted days. The sinks are additive and not idempotent, so a
+row is written to a sink only when its id is past *that sink's* watermark.
+`POST /api/vocab/rebuild` rewinds the ledger's pair alone — also the repair path
+for any re-tokenization (a Sudachi upgrade, a change to `is_content_word`).
 
-The highlighter reads the ledger's aggregate counts + status per token — no
-history scan. Any dashboard stat that a plain count can't answer (e.g. "mined
-words never re-encountered since their mined day") is derived on demand from
-`lines`, which carries `ts`; cheap at this scale and off the hot path.
-Time-windowed variants (e.g. "encounters this week") are **not needed** and are
-not a design constraint.
+The highlighter reads counts + status per token, no history scan. Any stat a
+plain count can't answer ("mined words never re-encountered since their mined
+day") is derived on demand from `lines`, which carries `ts` — cheap at this
+scale and off the hot path. Time-windowed variants ("encounters this week") are
+**not** a design constraint.
 
-`word_days` exists today only because there was no ledger to compute its one
-consumer from — the mined-word re-encounter panel (`routes/anki.rs`,
-`fetch_mined_word_days`). Once that panel is recomputed from `lines` + the
-ledger, `word_days` can be dropped.
+`word_days` exists only because there was no ledger to compute its one consumer
+from — the mined-word re-encounter panel (`routes/anki.rs`,
+`fetch_mined_word_days`). It can be dropped once that panel is recomputed from
+`lines` + the ledger.
 
-**Not done yet.** The table and its consumer are both still live
-(`read-stats/src/db/word_days.rs`, `routes/anki.rs:92`), and the ingest still
-fills it on its own watermark. Dropping it is a follow-up to the triage pass,
-not part of it: the panel asks "of the words I carded, which has the reading
-shown me again?", which needs the ledger's `mined` flag to be trustworthy, and
-that in turn wants Anki import (note 6) so a mined word missing from the line
-stream still has a row.
+**Not done yet.** Table and consumer are both live
+(`read-stats/src/db/word_days.rs`, `routes/anki.rs:92`) and ingest still fills
+it. The panel asks "of the words I carded, which has the reading shown me
+again?", which needs a trustworthy `mined` flag.
 
 ## Database layout
 
@@ -230,7 +215,7 @@ dimension that feed it. Everything here is dictionary-gated or joins the ledger.
   map aggregates by it. Carries display fields (cover, status, queue_pos) too,
   but its identity is the knowledge layer. *Moved here 2026-07.*
 - `lines` — raw hooked VN lines; tokenized into the ledger's counts and joined
-  against the dict for the planned `#read` highlighting. *Moved here 2026-07.*
+  against the dict for `#read` highlighting. *Moved here 2026-07.*
 - `manual_sessions` — manually entered reading time (renamed from `sessions`).
   Carries `content TEXT` — the actual text read (online article, ebook,
   YouTube transcript, a physically-read book typed/pasted later) — and a `url`
@@ -245,19 +230,16 @@ dimension that feed it. Everything here is dictionary-gated or joins the ledger.
   session's duration is derived from the reader's own effective pace rather
   than stored (`History::duration_of`). *2026-07-26.*
 
-  That `content` is tokenized into both sinks by
-  `ingest::ingest_new_sessions`, behind session watermarks of its own
-  (`tokenized_through_session_id` / `vocab_through_session_id`), so manual and
-  live reading feed the same knowledge state. It landed *after* the split that
-  made it safe: article *lookups* are never captured (the guard in
-  `read-stats/CLAUDE.md` is staying), so article characters feed every count
-  about **exposure** and none about **cost** — `stats/kanji.rs` carries
-  `metered_count` beside `count` for exactly that. `spec/manual-session-content.md`
-  is the record of why. *Done 2026-07-26.*
+  `content` is tokenized into both sinks by `ingest::ingest_new_sessions`,
+  behind session watermarks of its own (`tokenized_through_session_id` /
+  `vocab_through_session_id`), so manual and live reading feed the same
+  knowledge state. It landed after the split that made it safe: article lookups
+  are never captured, so article characters feed every **exposure** count and no
+  **cost** count — `stats/kanji.rs` carries `metered_count` beside `count` for
+  that. See `spec/manual-session-content.md`. *Done 2026-07-26.*
 
-Consequence: **read-stats writes into the shared DB** (line ingestion, the
-highlighter's status reads). It is not a pure reader — stated so ownership is
-honest.
+**read-stats writes into the shared DB** (line ingestion, the highlighter's
+status reads). It is not a pure reader.
 
 ### `read-stats.db` — read-stats internal
 
@@ -371,36 +353,31 @@ Done (2026-07-27):
    unrecognised status rather than falling back to `Status::parse`'s `new`,
    which would silently un-judge a row while reporting success.
 
-Not done, in dependency order:
-6. **Anki import (Pass 1) as its own pass.** The mined sync only *flags rows
-   that exist*, and a mined word never met in the line stream has no row: at
-   the first backfill, 431 of 1,995 deck words matched. The rest are multi-word
-   expressions Sudachi never emits whole (腹を探る, 相好を崩す) and words mined
-   from yt/manga rather than read. Importing the deck directly has to resolve a
-   reading per note against the master dictionary — Anki has none — which is
-   why it is a pass of its own and not a line in the sync.
+7. ✅ **The `#read` highlighter** — `read-stats/src/routes/reader/highlight.rs`.
+   The ledger's first reader. Ingest's Sudachi pipeline runs over each streamed
+   line; each content word is returned as an *offset*, not markup, so the line
+   stays one text node and Yomitan's DOM scan is unaffected.
 
-   **Import as `known`, gated on the card's Anki queue** (decided 2026-07-27).
-   A card the reader has actually been reviewing is strong evidence — call it
-   ~90% — and the vocabulary count is an estimate anyway. But a card still in
-   Anki's *new* or *learning* queue is a word they explicitly do not have yet,
-   so the gate is the queue, not merely the card's existence:
-   `findNotes "deck:X -is:new -is:learn"`. Cards inside those queues import as
-   `learning`.
+6. ✅ **Anki import (Pass 1)** — `POST /api/vocab/anki-import`. Its own pass and
+   not a line in the mined sync, because the sync only flags rows that exist:
+   at the first backfill 431 of 1,995 deck words matched. The rest are
+   multi-word expressions Sudachi never emits whole (腹を探る, 相好を崩す) and
+   words mined
+   from yt/manga rather than read.
 
-   This needs the snapshot to carry card state, which it does not:
-   `anki_notes` is `(note_id, vocab)` only. Either widen it or run the queue
-   query as a second `findNotes` at import time — the latter keeps the recurring
-   snapshot unchanged, which matters for the next paragraph.
+   Gated on Anki's queue — `findNotes "deck:X -is:new -is:learn"` — and
+   imported as `known`; a card in active review is ~90% reliable evidence and
+   the vocabulary count is an estimate anyway. A card still in the new/learning
+   queue is a word explicitly not yet had, so those notes are left alone.
 
-   **It stays a reader-triggered import, never part of the refresh.** `status`
-   is written by the reader and nothing else; that invariant is what makes a
-   resync unable to demote a word. An import is the reader asserting "trust my
-   deck" once, so it does not breach it — but wiring the same logic into the
-   recurring Anki refresh would.
-7. Wire the wordhood gate + status lookup into read-stats' `#read` highlighter.
-   Nothing exists yet beyond the doc comments in `ingest.rs` and `db/mod.rs`
-   that name it as the consumer.
+   Reader-triggered, never part of the recurring refresh. Only the reader
+   writes `status`; an import is them saying "trust my deck" once.
+
+9. ✅ **jiten.moe seed (Pass 5)** — `POST /api/vocab/jiten-import`. Cards carry
+   JMdict `ent_seq`, so nothing has to be inferred or skipped as ambiguous.
+   jiten's maturity grades are ignored: every card imports as `known`.
+
+Not done:
 8. Migrate yt-mine's `routes/vocab` off its own `yt-mine.db` stub onto this
    ledger — the second consumer, and what makes "how many unknown words are in
    this video" answerable.
