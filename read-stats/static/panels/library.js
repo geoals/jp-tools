@@ -9,13 +9,12 @@
 // Two levels. The shelf lists the works; opening one replaces the whole tab
 // with that work's page rather than expanding a row in place — everything
 // per-work goes there, and there is more of it than a row can hold. The
-// vocabulary, dialogue and log-form cards belong to the shelf level: they are
-// about the reading as a whole, not about any one work.
+// vocabulary and log-form cards belong to the shelf level: they are about the
+// reading as a whole, not about any one work.
 
 import { html } from "htm/preact";
 import { useState } from "preact/hooks";
 import { AnkiPanel } from "./anki.js";
-import { DialogueCard } from "./dialogue.js";
 import { LogForm } from "./log-form.js";
 import { LookupsPanel } from "./lookups.js";
 import { SegmentedControl } from "../components/controls.js";
@@ -32,7 +31,6 @@ export function LibraryView({
   settings,
   anki,
   lookups,
-  dialogue,
   openWork,
   onRefreshAnki,
   ankiBusy,
@@ -100,11 +98,6 @@ export function LibraryView({
           : html`<${LookupsPanel} lookups=${lookups} />`
       }
     </div>
-
-    <${DialogueCard}
-      dialogue=${dialogue}
-      currentWork=${settings.current_work}
-    />
 
     <div class="card">
       <div class="card-head">

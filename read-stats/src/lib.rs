@@ -18,9 +18,9 @@
 //! observable), [`llm`] + [`compactdef`] + [`tags`] (card enrichment),
 //! [`covers`] + [`vndb`] (work art), [`ingest`] (tokenizing new lines).
 //!
-//! Character counting and the speech/prose split are **not** here — they are
-//! `jp_core::text`, shared with the other tools, because a character counted by
-//! this crate's speed figures has to be the same character everywhere else.
+//! Character counting is **not** here — it is `jp_core::text`, shared with the
+//! other tools, because a character counted by this crate's speed figures has
+//! to be the same character everywhere else.
 
 pub mod app;
 pub mod clock;

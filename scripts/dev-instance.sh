@@ -136,7 +136,6 @@ cmd_snapshot() {
   get timeline_bucket "/api/day/timeline?date=$yesterday&bucket_secs=300"
   get anki_summary    "/api/anki/summary"
   get lookups_summary "/api/lookups/summary"
-  get dialogue        "/api/dialogue/summary?days=90"
   get reader_state    "/api/reader/state"
 
   stop_server

@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use axum::Router;
@@ -10,7 +9,7 @@ use tower_http::services::ServeDir;
 use jp_core::dictionary::Dictionary;
 use jp_core::tokenize::Tokenizer;
 
-use crate::routes::{api, vocab};
+use crate::routes::api;
 use crate::services::download::AudioDownloader;
 use crate::services::export::AnkiExporter;
 use crate::services::llm::LlmDefiner;
@@ -28,7 +27,6 @@ pub struct AppState {
     pub exporter: Arc<dyn AnkiExporter>,
     pub media_extractor: Arc<dyn MediaExtractor>,
     pub tokenizer: Arc<dyn Tokenizer>,
-    pub dictionary_forms: Arc<HashSet<String>>,
     pub dictionaries: Vec<Arc<Dictionary>>,
     pub llm_definer: Option<Arc<dyn LlmDefiner>>,
     pub audio_dir: String,
@@ -54,13 +52,10 @@ pub fn build_router(state: AppState) -> Router {
             get(api::llm_definition),
         )
         .route("/api/export", post(api::export_sentences))
-        .route("/api/vocab/tokenize", post(vocab::tokenize_text))
-        .route("/api/vocab/submit", post(vocab::submit_vocab))
         .route(
             "/{video_id}/sentences/{sentence_id}/audio",
             get(api::sentence_audio),
         )
-        .route("/vocab", get(spa_shell))
         .route("/{video_id}", get(spa_shell))
         .nest_service("/static", ServeDir::new(STATIC_DIR))
         .with_state(state)

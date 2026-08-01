@@ -765,23 +765,6 @@ async fn the_vocabulary_scale_counts_master_terms_not_ledger_rows() {
 }
 
 #[tokio::test]
-async fn dialogue_splits_a_line_by_its_corner_brackets() {
-    let app = TestApp::new().await;
-    let base = today_start() + 3600.0;
-    app.add_line(base, "「そうか」と彼は言った", None).await;
-    app.add_line(base + 10.0, "あいうえお", None).await;
-
-    let d = app.get("/api/dialogue/summary?days=1").await;
-    assert_eq!(d["today"]["dialogue_chars"], 3, "そうか is 3 counted chars");
-    assert_eq!(
-        d["today"]["narration_chars"],
-        6 + 5,
-        "と彼は言った + the prose line"
-    );
-    assert_eq!(d["today"]["share"], 3.0 / 14.0);
-}
-
-#[tokio::test]
 async fn the_reader_backlog_comes_back_oldest_first() {
     // The feed itself is an SSE stream, but the backlog a client gets on open
     // is this query, and its ordering is the part that has been wrong before:

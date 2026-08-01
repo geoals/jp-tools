@@ -4,8 +4,7 @@
 > superseded pre-implementation design; this one describes how the code is
 > actually organised.
 >
-> Everything below is built. Still missing: i+1 marking, and yt-mine's
-> unknown-word count (migration note 8).
+> Everything below is built. Still missing: i+1 marking.
 
 ## The two-axis model
 
@@ -288,9 +287,8 @@ Done (2026-07-25):
 1. ✅ `dictionaries` / `dictionary_*` moved out of `yt-mine.db`, and `works` /
    `lines` / `sessions` / `word_days` / `anki_notes` / `lookups` out of
    `stats.db`, into `knowledge.db`, by a one-time script since deleted.
-   `vocabulary` was **left in `yt-mine.db`**: it is empty, and the ledger that
-   replaces it is designed here but not built, so moving the stub would only
-   have moved a decision that hasn't been made.
+   `vocabulary` was left in `yt-mine.db` at the time; that stub has since been
+   deleted (note 8).
 2. ✅ `dictionaries.role` (`master` / `name` / `reference`) exists;
    `jp_core::knowledge::dictionaries::ensure_master` marks Sankoku at startup
    from `JP_TOOLS_MASTER_DICTIONARY`. Nothing reads the role yet — it is
@@ -377,33 +375,14 @@ Done (2026-07-27):
    JMdict `ent_seq`, so nothing has to be inferred or skipped as ambiguous.
    jiten's maturity grades are ignored: every card imports as `known`.
 
-Not done:
-8. Migrate yt-mine's `routes/vocab` off its own `yt-mine.db` stub onto this
-   ledger — the second consumer, and what makes "how many unknown words are in
-   this video" answerable.
+Done (2026-08-01):
 
-   Bigger than a table swap, because yt-mine has a **second, incompatible
-   status vocabulary** in flight. `yt_mine::models::VocabStatus` is
-   `seen`/`known`/`blacklisted` and its `/vocab` page writes it through
-   `submit_vocab` → migration `007`'s lemma-keyed, `user_id`-carrying table.
-   Two mismatches have to be resolved, not just re-pointed:
-
-   - **`seen` vs `new`.** yt-mine's `seen` is written *by the reader pressing a
-     button*, so it is an assertion, but it is the same word this document uses
-     for the un-judged default. Mapping it to `new` would silently discard
-     judgements; `unknown` is the honest target, since "I looked at it and
-     didn't mark it known" is what the button means.
-   - **Lemma → `(headword, reading)`.** The stub is keyed on lemma alone, so
-     the migration inherits exactly the homograph problem `Term` exists to
-     solve. The tokenizer supplies a reading at submit time (`TokenResult`
-     already carries one), so new writes are fine; it is only pre-existing
-     rows that would need resolving — and both local copies of the stub hold
-     **0 rows**, so on this machine there is nothing to migrate. Check the
-     master machine's copy before assuming that everywhere.
-
-   The upside of doing it: yt-mine's page is the closest thing to a triage UI
-   that exists, so notes 5 and 8 are plausibly one piece of work rather than
-   two.
+8. ✅ yt-mine's own lemma-keyed `vocabulary` table and its `/vocab` calibration
+   page were **removed** rather than migrated. Both local copies held 0 rows,
+   and its `seen`/`known`/`blacklisted` status vocabulary was incompatible with
+   this ledger's. read-stats' `#vocab` tab is the triage UI now. If yt-mine
+   ever wants "how many unknown words are in this video", it reads
+   `jp_core::knowledge::vocabulary` directly.
 
 ### Where the queries live
 

@@ -5,7 +5,7 @@
 
 use serde_json::{Value, json};
 
-use crate::stats::{FocusDay, Side};
+use crate::stats::FocusDay;
 
 pub fn focus_json(f: &FocusDay) -> Value {
     json!({
@@ -13,18 +13,5 @@ pub fn focus_json(f: &FocusDay) -> Value {
         "span_secs": f.span_secs,
         "longest_stretch_secs": f.longest_stretch_secs,
         "interruptions": f.interruptions,
-    })
-}
-
-pub fn side_json(s: &Side) -> Value {
-    json!({
-        "chars": s.chars,
-        "timed_chars": s.timed_chars,
-        "timed_secs": s.timed_secs,
-        "lines": s.lines,
-        "speed": s.speed(),
-        "clean_speed": s.clean_speed(),
-        "lookups": s.lookups,
-        "lookups_per_1k": s.lookups_per_1k(),
     })
 }

@@ -54,7 +54,6 @@ function App({ view, sub }) {
   const [sessions, setSessions] = useState(null);
   const [anki, setAnki] = useState(null);
   const [lookups, setLookups] = useState(null);
-  const [dialogue, setDialogue] = useState(null);
   const [kanji, setKanji] = useState(null);
   const [vocab, setVocab] = useState(null);
   const [ankiBusy, setAnkiBusy] = useState(false);
@@ -62,7 +61,7 @@ function App({ view, sub }) {
 
   async function load() {
     try {
-      const [s, d, w, cfg, sess, ank, lk, dlg, kj, vc] = await Promise.all([
+      const [s, d, w, cfg, sess, ank, lk, kj, vc] = await Promise.all([
         api("/api/summary"),
         api("/api/days?days=60"),
         api("/api/works"),
@@ -70,7 +69,6 @@ function App({ view, sub }) {
         api("/api/sessions"),
         api("/api/anki/summary"),
         api("/api/lookups/summary"),
-        api("/api/dialogue/summary?days=60"),
         api("/api/kanji"),
         api("/api/vocab/summary"),
       ]);
@@ -81,7 +79,6 @@ function App({ view, sub }) {
       setSessions(sess);
       setAnki(ank);
       setLookups(lk);
-      setDialogue(dlg);
       setKanji(kj);
       setVocab(vc);
       setError(null);
@@ -220,7 +217,6 @@ function App({ view, sub }) {
         : tab === "trends"
           ? html`<${TrendsCard}
               days=${days}
-              dialogue=${dialogue}
               targetMins=${summary.goal.target_mins}
               todayDate=${summary.today.date}
             />`
@@ -238,7 +234,6 @@ function App({ view, sub }) {
                     settings=${settings}
                     anki=${anki}
                     lookups=${lookups}
-                    dialogue=${dialogue}
                     openWork=${sub}
                     onRefreshAnki=${refreshAnki}
                     ankiBusy=${ankiBusy}

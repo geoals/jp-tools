@@ -199,32 +199,6 @@
   outline-offset: -2px;
 }
 
-/* Dialogue vs narration ---------------------------------------------------
-   Dialogue takes slot 1 and narration slot 2 — a categorical pair, validated
-   for CVD separation against both surfaces. Every bar carries a text label and
-   its own value, so identity and magnitude never rest on colour alone. */
-.split-bar {
-  display: flex;
-  gap: 2px; /* surface gap between segments, per the mark spec */
-  height: 14px;
-  margin: 12px 0 6px;
-}
-.split-seg {
-  border-radius: 3px;
-  min-width: 3px;
-}
-.split-caption {
-  display: flex;
-  justify-content: space-between;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-.split-caption .legend-swatch {
-  display: inline-block;
-  margin-right: 6px;
-  vertical-align: baseline;
-}
-
 .compare {
   margin-top: 16px;
 }

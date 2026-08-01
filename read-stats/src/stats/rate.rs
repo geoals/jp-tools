@@ -1,11 +1,9 @@
 //! Lookups per 1000 characters — the unknown-word rate.
 //!
-//! The one number that says whether a work sits at the comprehension edge, and
-//! the reason it lives alone here is the floor: below a few hundred characters
-//! the ratio is dominated by whether you happened to hit one hard name, so it
-//! is reported as `None` rather than as a wild number. Two callers compute it
-//! (the per-day figure and the per-kind figure in [`super::dialogue`]) and they
-//! must agree on that floor.
+//! The one number that says whether a work sits at the comprehension edge. It
+//! lives alone here for the floor: below a few hundred characters the ratio is
+//! dominated by whether you happened to hit one hard name, so it is reported as
+//! `None` rather than as a wild number.
 //!
 //! **`chars` is hooked characters only — never a day's total.** A lookup is
 //! recorded only while the line stream is live (`routes::ankiproxy::record`),

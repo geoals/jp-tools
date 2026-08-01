@@ -186,9 +186,7 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
         detail.days.length
           ? html`<${DailyBarChart}
               days=${detail.days}
-              dialogueByDate=${{}}
               metric="chars"
-              split=${false}
               targetMins=${0}
             />`
           : html`<p class="chart-empty">No reading days recorded.</p>`
@@ -387,8 +385,7 @@ function TermList({ title, note, terms }) {
 }
 
 /** How something compares with the rest of your reading, as "1.4× your usual".
- *  A bare percentage here says nothing: 38% dialogue is talky or sparse
- *  depending entirely on what the other 38 works do. */
+ *  A bare number here says nothing on its own. */
 function ratio(mine, theirs) {
   if (!mine || !theirs) return null;
   const r = mine / theirs;
@@ -400,11 +397,6 @@ function ratio(mine, theirs) {
  *  of its own. Kept to one row of facts on purpose. */
 function ProseCard({ prose, corpus, workChars }) {
   if (!prose || !prose.chars) return null;
-  const share = (prose.dialogue_chars / prose.chars) * 100;
-  const corpusShare = corpus.chars
-    ? (corpus.dialogue_chars / corpus.chars) * 100
-    : null;
-  const shareNote = corpusShare !== null ? ratio(share, corpusShare) : null;
   const lenNote = ratio(prose.median_len, corpus.median_len);
   // Built whole — htm collapses the whitespace where a literal and an
   // interpolation straddle a line break.
@@ -414,10 +406,6 @@ function ProseCard({ prose, corpus, workChars }) {
   const tailLabel = prose.p90_len
     ? `longest tenth from ${prose.p90_len}`
     : null;
-  const spoken = prose.dialogue_median_len;
-  const narrated = prose.narration_median_len;
-  const registerLabel =
-    spoken && narrated ? `${spoken} spoken vs ${narrated} narrated` : null;
   // Only text the tracker actually captured can be measured. A work read
   // mostly before hooking — logged by hand with a character count and no text
   // — has prose figures drawn from whatever fraction was hooked, and saying
@@ -431,19 +419,6 @@ function ProseCard({ prose, corpus, workChars }) {
   return html` <div class="card">
     <h2>What the prose is like</h2>
     <div class="prose-facts">
-      ${
-        prose.brackets_dialogue
-          ? html`<div class="prose-fact">
-              <span class="label">dialogue</span>
-              <span class="value">${`${share.toFixed(0)}%`}</span>
-              ${shareNote && html`<span class="prose-note">${shareNote}</span>`}
-            </div>`
-          : html`<div class="prose-fact">
-              <span class="label">dialogue</span>
-              <span class="value">—</span>
-              <span class="prose-note">this text does not bracket speech</span>
-            </div>`
-      }
       <div class="prose-fact">
         <span class="label">median sentence</span>
         <span class="value">${sentenceLabel}</span>
@@ -456,19 +431,11 @@ function ProseCard({ prose, corpus, workChars }) {
           <span class="value">${tailLabel}</span>
         </div>`
       }
-      ${
-        registerLabel &&
-        html`<div class="prose-fact">
-          <span class="label">by register</span>
-          <span class="value">${registerLabel}</span>
-        </div>`
-      }
     </div>
     <p class="chart-note">
-      Measured against everything else you have read, because a share on its own
-      says nothing. Sentence lengths exclude punctuation, like every other
-      character count here; the register split takes only lines that are wholly
-      one or the other.
+      Measured against everything else you have read, because a length on its
+      own says nothing. Sentence lengths exclude punctuation, like every other
+      character count here.
     </p>
   </div>`;
 }

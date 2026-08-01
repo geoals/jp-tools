@@ -74,7 +74,7 @@ impl History {
         let tz = tz_offset_secs();
         let today = date_key(now_ts(), settings.day_rollover_hour, tz);
 
-        let classified = db::fetch_classified_lines(&state.knowledge, 0.0, f64::MAX).await?;
+        let classified = db::fetch_worked_lines(&state.knowledge, 0.0, f64::MAX).await?;
         let mut lines = Vec::with_capacity(classified.len());
         let mut line_works = Vec::with_capacity(classified.len());
         for c in classified {

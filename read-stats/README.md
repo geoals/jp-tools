@@ -2,12 +2,10 @@
 
 Automatic daily reading tracker: characters read and active reading time,
 derived from the raw line stream `vn-mine/vn-ws-logger.py` already captures —
-no manual copying, no counters to reset. Dashboard with goal meter (floor /
-target minutes), streak, a daily bar chart switchable between minutes and
-characters and stackable by dialogue, a chars/hour trend, a
-toggleable lookups/h vs cards/h trend, a minute-resolution *Day detail*
-view that prices the lookup tax against reading speed, and a *Dialogue vs
-narration* card that splits the reading on 「」.
+no manual copying, no counters to reset. Dashboard with a goal meter, a streak,
+a daily bar chart in minutes or characters, a chars/hour trend, a lookups/h vs
+cards/h trend, and a minute-resolution *Day detail* view that prices the lookup
+tax against reading speed.
 
 ## How it works
 
@@ -39,24 +37,6 @@ narration* card that splits the reading on 「」.
   - a gap over `session_gap_secs` (600) closes the session;
   - days roll over at `day_rollover_hour` (04:00) — late-night reading counts
     toward the evening's day.
-- **Dialogue is separated from narration by bracket depth**
-  (`jp_core::text::dialogue`).
-  Japanese marks speech with 「…」 (and 『…』 nested or for titles), so the
-  distinction is already in the hooked text and costs nothing to derive. The
-  split is per *character*, not per line, so `「そうか」と彼は言った` is three
-  dialogue characters and six narration; that makes it an exact partition of
-  `count_chars`, which is what lets the share be quoted against the same
-  totals everything else uses. Only corner brackets count — “…” is used for
-  emphasis and for quoting a phrase rather than a speaker, and （…） is usually
-  inner monologue.
-
-  Bracket depth **carries across lines**: a long speech is hooked as several
-  text boxes, so its 「 opens on one row and closes on a later one. Resetting
-  per line would file every continuation as narration. It is dropped across a
-  gap over `jp_core::text::dialogue::CARRY_GAP_SECS` (300), which is far past any real
-  continuation, so one dropped 」 can't recolor a whole session as speech.
-
-  See *Dialogue vs narration* below for what the numbers say.
 - **Yomitan lookups are counted by proxying AnkiConnect**
   (`routes/ankiproxy.rs`).
   Yomitan checks Anki for duplicates every time it shows a definition popup, so
@@ -76,14 +56,8 @@ narration* card that splits the reading on 「」.
   you were there**. Needs the line stream, so manually logged sessions have no
   focus figure.
 
-  Both halves of that have to use the same `Presence` rule the rest of the app
-  does, and for a while they didn't. On 2026-07-20 focus read 97.3% with a
-  52-minute longest stretch; all 17 gaps behind the missing 2.7% held lookups,
-  and the one "interruption" splitting the stretch was a 93-second sentence
-  worked through with four of them. Corrected: **99.6%, one unbroken stretch of
-  98.5 minutes, zero interruptions** — which is what the reading actually was.
-  A metric that counts using a dictionary as losing focus is measuring the
-  wrong thing.
+  Both halves use the same `Presence` rule as the rest of the app. A metric
+  that counts using a dictionary as losing focus is measuring the wrong thing.
 - **Pause capture** (`POST /api/capture/pause` toggle, dashboard or `#read`
   button) for skipping scenes / replaying read text. This stops the *source*:
   it sets `settings.capture_paused`, which vn-ws-logger.py polls and answers by
@@ -122,7 +96,7 @@ narration* card that splits the reading on 「」.
   One caveat: `word_days` is **not** rewound. If tokenization already ran over
   a cleared line (it runs on Anki refresh, so usually it hasn't) its lemma
   counts stay, very slightly inflating the re-encounter card. Everything else —
-  chars, time, speed, focus, the dialogue split — is derived fresh and correct.
+  chars, time, speed and focus — is derived fresh and correct.
 - **Manual sessions** cover everything without a line stream: physical books
   (pages × `chars_per_page`, default 550 ≈ bunkobon), manga, or imported
   history. Logged from the dashboard form or `POST /api/sessions`.
@@ -213,7 +187,7 @@ client disconnects abortively, so a second WS client would be a risk for nothing
 
 ## The dashboard
 
-Three tabs, one per question, all fed by the same single poll — the tabs choose
+Five tabs, one per question, all fed by the same single poll — the tabs choose
 what renders, never what is fetched, so two of them can't disagree about a day.
 
 - **Today** (`#today`) — Currently reading first: which VN, how far in, and what
@@ -229,9 +203,12 @@ what renders, never what is fetched, so two of them can't disagree about a day.
   share a y-axis honestly. Stacked, a speed dip and a lookup spike on the same
   day line up vertically, which is the lookup-tax argument in one glance.
 - **Library** (`#library`) — the works, the vocabulary funnel (lookups and Anki
-  re-encounters, toggled), dialogue vs narration, and the manual log form. The
-  log form is an *action*, so it is a disclosure at the bottom rather than a
-  permanent card in a column of statistics.
+  re-encounters, toggled), and the manual log form. The log form is an *action*,
+  so it is a disclosure at the bottom rather than a permanent card.
+- **Kanji** (`#kanji`) — every kanji ever read, tinted by encounter count, with
+  grade coverage and a discovery curve.
+- **Vocab** (`#vocab`) — the ledger's status counts and the triage sweep that
+  fills them.
 
 ## Settings (`/#settings`)
 
@@ -260,11 +237,9 @@ they describe (Currently reading, Library).
 cargo run -p read-stats     # http://localhost:3200
 ```
 
-Or as part of the stack: `scripts/start-all.sh`. To run only the VN reading
-stack (read-stats + optional whisper-service, skipping yt-mine and manga):
-`scripts/vn.sh` — see its `--help`. The passive `vn-buffer` ingestion daemon is
-a systemd user unit (`systemctl --user start vn-buffer`); `vn.sh status` reports
-it but doesn't manage it.
+Or as part of the stack: `scripts/start-all.sh`, which takes service names
+(`start-all.sh restart read-stats`). The `vn-buffer` ingestion daemon is a
+separate systemd user unit: `systemctl --user start vn-buffer`.
 
 ## API
 
@@ -326,10 +301,6 @@ it but doesn't manage it.
 - `GET  /api/lookups/summary` — lookup outcomes per distinct term (mined /
   already-carded / never carded), repeat-lookup list, leech list, median
   lookup→card latency
-- `GET  /api/dialogue/summary?days=60&work=<title>` — the 「」 split: `today` and
-  per-`day` character shares, plus `overall` with speed, clean speed and
-  lookups/1k for each side. `work` scopes it to one VN (its lines only, filtered
-  before aggregation); absent/empty pools all works. See *Dialogue vs narration*
 - `GET/PUT /api/settings` — `afk_secs`, `session_gap_secs`, `day_rollover_hour`,
   `goal_floor_mins`, `goal_target_mins`, `chars_per_page`, `current_work`,
   `vn_window` (legacy global fallback; the VN window is now a per-work column —
@@ -422,14 +393,10 @@ A gap counts as lookup time when a `lookups` row falls inside it. The
 separation is sharp enough to trust: over 2026-07-20's 1220 in-session gaps,
 those holding a lookup ran a median 21.3s against 3.1s for those that didn't.
 
-The classification is nonetheless all-or-nothing per gap, which **biases the
-tax upward**: a gap is long for reasons other than the dictionary too — a
-stretch, a re-read, a stray thought — and the longer it runs, the likelier it
-is to also catch a lookup and be billed whole. Two things bound how much of the
-20% this could be. The `lookup_chars` subtraction above already removes the
-reading inside those gaps, and an 18-second spread between the two medians is
-far more than idle-catching alone would produce at 7% of gaps. Treat the figure
-as good to a couple of points, not to the decimal.
+The classification is all-or-nothing per gap, which **biases the tax upward**:
+a long gap catches a lookup and is billed whole even when the dictionary wasn't
+the reason it was long. Treat the figure as good to a couple of points, not to
+the decimal.
 
 **Time lost to lookups is not the same as time inside lookup gaps.** Such a gap
 holds the line's reading *and* the dictionary detour, so the note under the
@@ -465,31 +432,22 @@ keyboard, and the answer comes from evidence rather than a flat rate:
   your uninterrupted pace. A 15-character line earns about four seconds whether
   you were gone 35 seconds or seven minutes.
 
-The flat cap this replaced paid a blanket 30 seconds into *every* over-cap gap.
-On 2026-07-19 that was 44 absences, 22 minutes of reading that never happened,
-and an 11% understatement of that day's speed. The rule cuts both ways: 07-19
-loses 12 minutes, but 07-20 — a lookup-heavy day with barely any absence —
-*gains* 3, because the extension credits detours the cap used to shear off. The
-two days' speeds converge from 12,121/13,467 to 13,028/13,160, which is the
-point: the metric should measure reading, not how often you remembered to hit
-pause.
+This replaced a flat cap that paid a blanket 30 seconds into *every* over-cap
+gap, which both invented reading that never happened and sheared off real
+lookup detours.
 
 Pace comes from `stats::measure_pace` over **all history**, never the slice a
-request happened to fetch. It is a property of the reader, and deriving it
-per-endpoint had the dashboard measuring it across every day and the timeline
-across one, so the same day's active minutes differed depending on which page
-you opened.
+request happened to fetch — it is a property of the reader, and deriving it
+per-endpoint made the dashboard and the timeline disagree about the same day.
 
-Two guards worth knowing about. Sub-cap gaps are never repriced
-(`ordinary_gaps_are_never_repriced`) — pricing each gap at what its line was
-"worth" would clip every above-average gap to average and leave the
-below-average ones, shortening a day by a quarter while calling it a
-correction. And a stream too sparse to establish a pace falls back to the flat
-cap, which is the right thing to degrade to.
+Two guards: sub-cap gaps are never repriced
+(`ordinary_gaps_are_never_repriced`), since pricing each gap at what its line
+was "worth" would clip every above-average gap and shorten a day by a quarter;
+and a stream too sparse to establish a pace falls back to the flat cap.
 
-You should not have to think about the afk timer, and with this you don't:
-walking away costs nothing and is never credited, so pausing capture is about
-keeping junk out of the stream, not about protecting the numbers.
+The upshot is that you never have to think about the afk timer — walking away
+costs nothing and is never credited, so pausing capture is about keeping junk
+out of the stream, not about protecting the numbers.
 
 Two panels rather than one overlay, because chars/hour runs in the thousands and
 events/hour in the tens: one plot would need two y-scales, and where two scales
@@ -513,73 +471,6 @@ Lookups and cards falling outside every session are dropped from the buckets —
 with no reading time around them there is no per-hour rate they belong to — so
 the card's event counts can sit a little under the day totals on
 `/api/days`.
-
-### Dialogue vs narration
-
-The card answers three questions off one classification: what share of the
-reading was people talking, whether speech and prose read at different speeds,
-and which of the two carries more unknown words.
-
-A **scope toggle** (all works / current work) sits in the header. All-works
-pools your entire history; scoping to a VN filters to its lines before the split
-is aggregated, so the numbers are that VN's own — and they diverge sharply (on
-the current corpus 素晴らしき日々 is 69% dialogue at 14.5k/h, ドーナドーナ is 90%
-dialogue at 8.8k/h; pooled sits between and belongs to neither). Per-VN scoping
-relies on the same session-level line stream the rest of the app does, so
-coarse interleaving is exact and only line-by-line alternation inside one
-sitting would blur it.
-
-On 素晴らしき日々 the answer is lopsided, and consistently so:
-
-| | share of chars | chars/hour | lookups per 1k |
-|---|---|---|---|
-| dialogue | 70% | 14,300 | 2.0 |
-| narration | 30% | 11,100 | 4.2 |
-
-Narration reads about a fifth slower and needs **twice** the lookups per
-character. That is the useful finding: the prose, not the speech, is where the
-difficulty sits — so a work's difficulty is better predicted by how
-narration-heavy it is than by its overall lookup rate, and a slow day may just
-have been a description-heavy scene rather than a bad one.
-
-**The share and the speeds are counted over different lines, deliberately.**
-
-- *Share* is over every classified character, mixed lines included. It is
-  asking what the text consisted of, so it cannot skip any of it.
-- *Speed* and *lookups/1k* are over lines that were **wholly** one kind
-  (`Side::timed_chars`). A gap is one undivided span of time: whatever was
-  spent on `「そうか」と彼は言った` cannot be split into a dialogue part and a
-  narration part afterwards, and charging it whole to the majority side would
-  bias the comparison by exactly the quantity being compared. Mixed lines are
-  dropped from both halves instead — 30 lines in 5183 on the current corpus.
-
-Never divide one against the other; they are different populations.
-
-**The daily bar chart takes the same split**, over two independent switches:
-minutes or characters, stacked by dialogue or not. Minutes and characters share
-one chart with a switch rather than getting two, because they are the same
-question in the two units it has — and they are never overlaid, which would
-need a second y-scale. Reading speed *is* the relationship between them and
-already has its own chart.
-
-The stack has a third segment, **no line text**, and it is a real category
-rather than a rounding bucket: manually logged sessions (physical books, or
-imported history) have no hooked text to classify, so those days are legitimately
-all remainder. It is drawn in muted ink rather than a fourth hue because it is
-the absence of the measurement, not a third kind of reading. The parts are never
-rescaled to fill the bar — a bar's height is the day's real total in both modes,
-so toggling the split changes what a bar is made of and never how tall it is.
-
-Both speeds also come in a **lookups-removed** form (`clean_speed`), computed
-the same way the day timeline does it: the characters read across a lookup gap
-leave the numerator along with the seconds they cost. Dividing all of a side's
-characters by only its uninterrupted seconds is the same unbounded inflation
-`raw_speed_cannot_explode_in_a_lookup_burst` pins for the timeline.
-
-Days with no line stream — manual sessions, or history imported before text was
-kept — report a `null` share rather than 0%. "No text to split" is not "all
-narration", and counting those rows would have dragged every old day's share
-toward prose.
 
 ### Importing spreadsheet history
 

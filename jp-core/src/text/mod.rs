@@ -9,8 +9,6 @@
 //!
 //! - [`chars`] — which codepoints count as Japanese text, matched to
 //!   texthooker-ui so reading speeds are comparable with the wider community's.
-//! - [`dialogue`] — splitting a line into spoken dialogue and narration by
-//!   corner-bracket depth.
 //! - [`sentences`] — segmenting a block of text into sentences.
 //! - [`kana`] — katakana/hiragana normalization, so a Sudachi reading and a
 //!   dictionary reading are the same string.
@@ -20,7 +18,6 @@
 
 mod bccwj_data;
 pub mod chars;
-pub mod dialogue;
 pub mod kana;
 pub mod kanji;
 mod kanji_data;

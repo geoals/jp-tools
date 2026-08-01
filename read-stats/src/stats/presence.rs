@@ -174,13 +174,6 @@ pub(crate) fn has_mark(marks: &[f64], from: f64, to: f64) -> bool {
     marks.get(at).is_some_and(|&ts| ts < to)
 }
 
-/// How many marks fall in `[from, to)`. `marks` is sorted.
-pub(crate) fn marks_in(marks: &[f64], from: f64, to: f64) -> i64 {
-    let end = marks.partition_point(|&ts| ts < to);
-    let start = marks.partition_point(|&ts| ts < from);
-    (end - start) as i64
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::testutil::ev;

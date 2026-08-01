@@ -32,10 +32,9 @@ const RANGES = [
 
 const MIN_RATE_SECS = 600;
 
-export function TrendsCard({ days, dialogue, targetMins, todayDate }) {
+export function TrendsCard({ days, targetMins, todayDate }) {
   const [range, setRange] = useState("30");
   const [metric, setMetric] = useState("minutes");
-  const [split, setSplit] = useState(false);
 
   const n = Number(range);
   const win = days.slice(-n);
@@ -52,9 +51,6 @@ export function TrendsCard({ days, dialogue, targetMins, todayDate }) {
       ? `${fmtChars(Math.round(measChars / (measSecs / 3600)))}/h`
       : "—";
   const daysReadLabel = `${daysRead}/${win.length}`;
-
-  const byDate = {};
-  for (const d of dialogue?.days ?? []) byDate[d.date] = d;
 
   // Minutes and characters get one chart with a switch rather than two charts,
   // because they are the same question — how much reading happened — asked in
@@ -97,33 +93,17 @@ export function TrendsCard({ days, dialogue, targetMins, todayDate }) {
 
       <div class="day-chart-head">
         <h3>${barsTitle}</h3>
-        <div class="card-controls">
-          <${SegmentedControl}
-            label="Measure"
-            value=${metric}
-            onChange=${setMetric}
-            options=${[
-              { value: "minutes", label: "minutes" },
-              { value: "chars", label: "chars" },
-            ]}
-          />
-          <button
-            type="button"
-            class=${split ? "toggle-btn toggle-on" : "toggle-btn"}
-            aria-pressed=${split}
-            onClick=${() => setSplit(!split)}
-          >
-            ⬓ split by dialogue
-          </button>
-        </div>
+        <${SegmentedControl}
+          label="Measure"
+          value=${metric}
+          onChange=${setMetric}
+          options=${[
+            { value: "minutes", label: "minutes" },
+            { value: "chars", label: "chars" },
+          ]}
+        />
       </div>
-      <${DailyBarChart}
-        days=${win}
-        dialogueByDate=${byDate}
-        metric=${metric}
-        split=${split}
-        targetMins=${targetMins}
-      />
+      <${DailyBarChart} days=${win} metric=${metric} targetMins=${targetMins} />
 
       <div class="day-chart-head">
         <h3>Reading speed · chars/hour</h3>

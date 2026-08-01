@@ -1,46 +1,21 @@
-// The daily bar chart: minutes or characters per day, stackable by source and
-// by the dialogue/narration split.
+// The daily bar chart: minutes or characters per day.
 
 import { html } from "htm/preact";
 import { useState } from "preact/hooks";
-import { Tooltip, W, barPath, kChars, niceCeil, niceTicks, segments, shortDate } from "./svg.js";
+import {
+  Tooltip,
+  W,
+  barPath,
+  kChars,
+  niceCeil,
+  niceTicks,
+  shortDate,
+} from "./svg.js";
 
-/* The three segments a day's bar can split into. Dialogue and narration keep
-   the hues they carry on the dialogue card — colour follows the entity, so the
-   same green means narration wherever it appears.
+const BAR_COLOR = "var(--series-1)";
 
-   "no line text" is the remainder, and it is a real category rather than a
-   rounding bucket: manually logged sessions have no hooked text to classify,
-   so a day of physical-book reading is legitimately all remainder. Drawing it
-   in muted ink rather than a fourth hue says that — it is the absence of the
-   measurement, not a third kind of reading. */
-
-const DAY_SPLIT = [
-  { key: "dialogue", label: "dialogue", color: "var(--series-1)" },
-  { key: "narration", label: "narration", color: "var(--series-2)" },
-  { key: "other", label: "no line text", color: "var(--muted)" },
-];
-
-/**
- * Daily reading, as minutes or as characters, optionally stacked by whether
- * the text was dialogue.
- *
- * `dialogueByDate` supplies the split; a date missing from it (or a day whose
- * parts fall short of the total, which is what a manual session looks like)
- * lands in the remainder segment. The parts are never rescaled to fill the
- * bar — the bar's height stays the day's real total in both modes, so toggling
- * the split changes what the bar is made of and never how tall it is.
- *
- * days: [{date, active_secs, chars}]
- */
-
-export function DailyBarChart({
-  days,
-  dialogueByDate,
-  metric,
-  split,
-  targetMins,
-}) {
+/** Daily reading, as minutes or as characters. days: [{date, active_secs, chars}] */
+export function DailyBarChart({ days, metric, targetMins }) {
   const [hover, setHover] = useState(null);
   const H = 300;
   // Right margin holds the "goal 120" label — wide enough that
@@ -51,20 +26,6 @@ export function DailyBarChart({
   const isMins = metric === "minutes";
 
   const total = (d) => (isMins ? d.active_secs / 60 : d.chars);
-
-  /** A day's bar as stacked parts, largest category first, bottom-up. */
-  const parts = (d) => {
-    const t = total(d);
-    if (!split) return [{ ...DAY_SPLIT[0], key: "all", value: t }];
-    const s = dialogueByDate[d.date];
-    const dv = s ? (isMins ? s.dialogue_secs / 60 : s.dialogue_chars) : 0;
-    const nv = s ? (isMins ? s.narration_secs / 60 : s.narration_chars) : 0;
-    // Clamped: the parts are derived on a slightly different day boundary from
-    // the total (a gap straddling the rollover), so they can overshoot by a
-    // few seconds. Never let that draw a bar taller than the day.
-    const other = Math.max(0, t - dv - nv);
-    return [dv, nv, other].map((value, k) => ({ ...DAY_SPLIT[k], value }));
-  };
 
   const maxV = Math.max(...days.map(total), 0);
   let ticks;
@@ -113,9 +74,7 @@ export function DailyBarChart({
         )}
         ${
           isMins &&
-          [
-            [targetMins, "goal"],
-          ].map(
+          [[targetMins, "goal"]].map(
             ([v, name]) => html`
               <line
                 x1=${m.left}
@@ -132,29 +91,20 @@ export function DailyBarChart({
         }
         ${days.map((d, i) => {
           const cx = m.left + band * i + band / 2;
-          const segs = parts(d).filter((s) => s.value > 0);
+          const v = total(d);
+          const h = y(0) - y(v);
           const dim = hover === null || hover === i ? 1 : 0.55;
-          let acc = 0;
           return html`
-            ${segs.map((s, k) => {
-              const yBase = y(acc);
-              acc += s.value;
-              const yTop = y(acc);
-              const isTop = k === segs.length - 1;
-              // 2px of surface between segments, taken off the top of every
-              // segment but the last so the gaps sit *between* the fills.
-              const h = yBase - yTop - (isTop ? 0 : 2);
-              return (
-                h > 0.5 &&
-                html`
-                  <path
-                    d=${barPath(cx - barW / 2, yTop, barW, h, isTop ? 4 : 0)}
-                    fill=${s.color}
-                    opacity=${dim}
-                  />
-                `
-              );
-            })}
+            ${
+              h > 0.5 &&
+              html`
+                <path
+                  d=${barPath(cx - barW / 2, y(v), barW, h, 4)}
+                  fill=${BAR_COLOR}
+                  opacity=${dim}
+                />
+              `
+            }
             ${
               i % labelEvery === 0 &&
               html`
@@ -182,33 +132,10 @@ export function DailyBarChart({
         />
       </svg>
       ${
-        split &&
-        html`
-          <div class="chart-legend">
-            ${DAY_SPLIT.map(
-            (s) => html`
-              <span class="legend-item legend-static">
-                <span
-                  class="legend-swatch"
-                  style=${`background:${s.color}`}
-                ></span
-                >${s.label}
-              </span>
-            `,
-          )}
-          </div>
-        `
-      }
-      ${
         hover !== null &&
         html`
           <${Tooltip} x=${m.left + band * hover + band / 2} y=${8}>
-            <${DayBarTooltip}
-              day=${days[hover]}
-              parts=${parts(days[hover])}
-              split=${split}
-              isMins=${isMins}
-            />
+            <${DayBarTooltip} day=${days[hover]} />
           <//>
         `
       }
@@ -216,23 +143,7 @@ export function DailyBarChart({
   `;
 }
 
-function DayBarTooltip({ day, parts, split, isMins }) {
-  const fmt = (v) =>
-    isMins
-      ? `${Math.round(v)} min`
-      : `${Math.round(v).toLocaleString("en")} chars`;
+function DayBarTooltip({ day }) {
   const headline = `${Math.round(day.active_secs / 60)} min · ${day.chars.toLocaleString("en")} chars`;
-  return html`
-    <strong>${day.date}</strong><br />
-    ${headline}
-    ${
-      split &&
-      parts
-        .filter((s) => s.value > 0)
-        .map((s) => {
-          const line = `${s.label} ${fmt(s.value)}`;
-          return html`<br /><span class="tooltip-sub">${line}</span>`;
-        })
-    }
-  `;
+  return html`<strong>${day.date}</strong><br />${headline}`;
 }

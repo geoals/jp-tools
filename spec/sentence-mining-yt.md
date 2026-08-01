@@ -16,11 +16,10 @@
 > | "same SQLite DB" as everything else | three DBs; the shared knowledge/dictionary tables moved to `knowledge.db` (`spec/knowledge-db.md`) |
 > | note type `jp-tools-sentence` | **"Japanese sentences"** — the same note type Yomitan uses, so VN and yt cards are one deck |
 >
-> MVP 1 and 2 are shipped. **MVP 3 (smart filtering) is not** — and its
-> vocabulary-DB dependency is the live question: the `vocabulary` ledger it
-> needs now exists but holds no assertions, so i+1 filtering and
-> known/unknown dimming cannot work until `spec/cold-start.md`'s triage passes
-> run. See `spec/knowledge-db.md` note 8 for the migration yt-mine needs first.
+> MVP 1 and 2 are shipped. **MVP 3 (smart filtering) is not.** The ledger it
+> would filter against is `vocabulary` in `knowledge.db`, owned by read-stats;
+> yt-mine's own lemma-keyed `vocabulary` table and its `/vocab` calibration page
+> were removed as superseded.
 
 Automatic sentence mining pipeline: paste a YouTube URL, get transcribed
 sentences, pick the ones worth studying, export to Anki.

@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use tracing::{info, warn};
@@ -87,19 +86,12 @@ async fn main() {
         );
     }
 
-    // Broader set including readings — いう matches 言う via reading
-    let dictionary_forms =
-        jp_core::knowledge::dictionaries::get_all_dictionary_forms(knowledge.pool())
-            .await
-            .expect("failed to load dictionary forms");
-
-    let (downloader, transcriber, exporter, media_extractor, tokenizer, dictionary_forms): (
+    let (downloader, transcriber, exporter, media_extractor, tokenizer): (
         Arc<dyn AudioDownloader>,
         Arc<dyn Transcriber>,
         Arc<dyn AnkiExporter>,
         Arc<dyn MediaExtractor>,
         Arc<dyn Tokenizer>,
-        HashSet<String>,
     ) = if config.fake_api {
         info!("*** DEV MODE — using fake services (no external deps needed) ***");
         (
@@ -108,7 +100,6 @@ async fn main() {
             Arc::new(FakeAnkiExporter),
             Arc::new(FakeMediaExtractor),
             Arc::new(FakeTokenizer),
-            HashSet::new(),
         )
     } else {
         // Tokenizer gets terms-only headwords for Mode C compound validation
@@ -128,7 +119,6 @@ async fn main() {
             Arc::new(AnkiConnectExporter::new(config.anki_url, config.anki)),
             Arc::new(FfmpegMediaExtractor),
             tokenizer,
-            dictionary_forms,
         )
     };
 
@@ -149,7 +139,6 @@ async fn main() {
         exporter,
         media_extractor,
         tokenizer,
-        dictionary_forms: Arc::new(dictionary_forms),
         dictionaries,
         llm_definer,
         audio_dir: config.audio_dir,

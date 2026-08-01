@@ -7,8 +7,8 @@
 //! The four shapes exist because the callers genuinely need different columns:
 //!
 //! - [`ReaderLine`] — id + text, for the reading view's live feed.
-//! - [`ClassifiedLine`] / [`crate::stats::LineEvent`] — time + chars + the
-//!   speech/prose split, for the derivations.
+//! - [`WorkedLine`] / [`crate::stats::LineEvent`] — time + chars, for the
+//!   derivations.
 //! - [`crate::stats::WorkLine`] — time + chars + work, for per-VN totals.
 //! - [`IngestLine`] — id + text, for tokenizing into `word_days`.
 //!
@@ -195,21 +195,20 @@ pub async fn line_within(
     Ok(row.get::<i64, _>("recent") == 1)
 }
 
-/// A classified line paired with the work it was stamped for, so the dialogue
-/// summary can scope its split to one VN. The 「」 classification comes from the
-/// same scanner `fetch_line_events` uses.
-pub struct ClassifiedLine {
+/// A line paired with the work it was stamped for, so a summary can be scoped
+/// to one VN.
+pub struct WorkedLine {
     pub event: LineEvent,
     pub work: Option<String>,
 }
 
-pub async fn fetch_classified_lines(
+pub async fn fetch_worked_lines(
     k: &Knowledge,
     from_ts: f64,
     to_ts: f64,
-) -> Result<Vec<ClassifiedLine>, sqlx::Error> {
+) -> Result<Vec<WorkedLine>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT ts, chars, text, work FROM lines
+        "SELECT ts, chars, work FROM lines
              WHERE ts >= ? AND ts < ? AND discarded = 0 ORDER BY ts",
     )
     .bind(from_ts)
@@ -217,47 +216,14 @@ pub async fn fetch_classified_lines(
     .fetch_all(k.pool())
     .await?;
 
-    // One scanner across the whole stream: a speech broken over several text
-    // boxes leaves its 「 open on the first row, so depth has to carry. It is
-    // dropped across a break too long for that to be what happened — see
-    // `dialogue::CARRY_GAP_SECS`.
-    let mut scanner = jp_core::text::dialogue::Scanner::new();
-    let mut prev_ts: Option<f64> = None;
     Ok(rows
         .iter()
-        .map(|r| {
-            let ts: f64 = r.get("ts");
-            let chars: i64 = r.get("chars");
-            let text: Option<String> = r.get("text");
-            let work: Option<String> = r.get("work");
-            if prev_ts.is_some_and(|p| ts - p > jp_core::text::dialogue::CARRY_GAP_SECS) {
-                scanner.reset();
-            }
-            prev_ts = Some(ts);
-            let event = match text {
-                Some(text) => {
-                    let split = scanner.scan(&text);
-                    LineEvent {
-                        ts,
-                        chars,
-                        // `chars` is authoritative (startup recounts it), so
-                        // clamp rather than let a stale disagreement make
-                        // narration negative.
-                        dialogue_chars: split.dialogue.min(chars),
-                        classified: true,
-                    }
-                }
-                None => {
-                    scanner.reset();
-                    LineEvent {
-                        ts,
-                        chars,
-                        dialogue_chars: 0,
-                        classified: false,
-                    }
-                }
-            };
-            ClassifiedLine { event, work }
+        .map(|r| WorkedLine {
+            event: LineEvent {
+                ts: r.get("ts"),
+                chars: r.get("chars"),
+            },
+            work: r.get("work"),
         })
         .collect())
 }
@@ -267,7 +233,7 @@ pub async fn fetch_line_events(
     from_ts: f64,
     to_ts: f64,
 ) -> Result<Vec<LineEvent>, sqlx::Error> {
-    Ok(fetch_classified_lines(k, from_ts, to_ts)
+    Ok(fetch_worked_lines(k, from_ts, to_ts)
         .await?
         .into_iter()
         .map(|c| c.event)

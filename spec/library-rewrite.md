@@ -35,8 +35,8 @@ join key lines are stamped with, nothing upserts a `works` row for a title you
 start reading, and the synthetic `Articles` work can never have one. Metadata
 is optional on that endpoint; the reading is what makes a work real here.
 
-The vocabulary, dialogue and log-form cards stay at the list level, untouched:
-they are about the reading as a whole, not about any one work.
+The vocabulary and log-form cards stay at the list level, untouched: they are
+about the reading as a whole, not about any one work.
 
 `dev-instance.sh browser` now renders `#library` too. The detail panel is
 reached only by clicking a card, so a bad import there would leave the tab
@@ -91,20 +91,11 @@ No queue and no status lanes: reading and finished are the states with data.
 
 ## Phase 6 — what the prose is like (built)
 
-`stats/prose.rs`, one compact card: the 「」 share, the median sentence and its
-90th percentile, and the median split by register — each stated as a ratio
-against everything *else* read, since a bare "38% dialogue" is unreadable
-without knowing the corpus runs at 52%. Both sides come out of one pass over
-the text, which is why the endpoint asks for the whole stream and partitions it
-rather than querying one work.
-
-**Not every work brackets its dialogue.** Under `BRACKET_FLOOR` (10% of
-characters) the split is omitted rather than reported as 100% narration — that
-would be a measurement of the punctuation dressed up as one of the writing.
-Ten rather than a token two percent because there is nothing in between worth
-reporting: a work that brackets its speech runs far above it (素晴らしき日々 is
-at 69%) and one that only brackets the occasional shout or title sits in the
-low single digits (魔法少女ノ魔女裁判, 1.0%).
+`stats/prose.rs`, one compact card: the median sentence length and its 90th
+percentile, each stated as a ratio against everything *else* read, since a bare
+median is unreadable without knowing the corpus. Both sides come out of one pass
+over the text, which is why the endpoint asks for the whole stream and
+partitions it rather than querying one work.
 
 Percentiles need `SENTENCE_FLOOR` (200) sentences or they are `None` — over
 forty sentences a median describes one scene, and printing it beside a corpus
