@@ -65,10 +65,9 @@ Only the reader writes its `status` column, and `new` (never judged) is not
   Otherwise restart the affected services after a change so it is live
   immediately.
 - In the Preact/htm SPAs (`read-stats`, `yt-mine`), never let literal text and
-  `${...}` straddle a line break inside an `html` template. htm collapses the
-  whitespace and prettier reflows markup freely; that combination silently
-  rendered `snapshot 0 min ago` as `snapshot0 minago`. Build the string in JS
-  and interpolate it whole:
+  `${...}` straddle a line break inside an `html` template — htm collapses the
+  whitespace, which silently rendered `snapshot 0 min ago` as `snapshot0
+  minago`. Build the string in JS and interpolate it whole:
 
   ```js
   const age = `snapshot ${mins} min ago`; // then: <span>${age}</span>

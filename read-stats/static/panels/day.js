@@ -85,8 +85,8 @@ export function DayCard({ days, todayDate, goal }) {
   const speed = rated ? meas.chars / (meas.active_secs / 3600) : null;
   const lookupsPerHour = rated ? day.lookups / (meas.active_secs / 3600) : null;
 
-  // Sub-values are built as strings so prettier can't reflow the markup and
-  // change the rendered spacing.
+  // Sub-values are built as strings: interpolated beside literal text, htm
+  // would collapse the whitespace at a line break.
   const lookupRate =
     lookupsPerHour !== null ? `(${lookupsPerHour.toFixed(1)}/h)` : null;
   const bestStretch =

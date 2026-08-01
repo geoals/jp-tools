@@ -94,8 +94,8 @@ export function VocabView({ vocab, settings, onJudged }) {
 function StatusSummary({ vocab, onImported }) {
   const byStatus = new Map(vocab.by_status.map((s) => [s.status, s]));
   const asserted = vocab.total - (byStatus.get("new")?.total ?? 0);
-  // Built whole rather than interpolated beside literal text: htm collapses
-  // whitespace at a line break and prettier reflows markup there freely.
+  // Built whole rather than interpolated beside literal text, where htm
+  // collapses the whitespace at a line break.
   const spellings = `(${vocab.known_in_master.toLocaleString("en")} spellings)`;
   const readyHint = `Unjudged vocabulary met at least ${vocab.ready_min_encounters} times — what a sweep can offer. Derived from the encounter count, not a stored status, so changing the threshold re-reads the whole history.`;
   // The sweep's own figure beside the standing one. `ready` cannot shrink as a

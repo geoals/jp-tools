@@ -82,8 +82,7 @@ export function PromotionView({ onPromoted }) {
     `;
   }
 
-  // Built whole: htm collapses whitespace at a line break, and prettier
-  // reflows markup there freely.
+  // Built whole: htm collapses whitespace at a line break.
   const heading = `${data.pending.toLocaleString("en")} terms the master dictionary does not list`;
   const chosen = `${picked.size} selected`;
 

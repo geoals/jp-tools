@@ -200,9 +200,9 @@ add to when the question is "does the SQL select what the derivation assumes".
 - Preact + htm from a CDN import map, no build step. `charts.js` and
   `style.css` are re-export/`@import` facades — add a chart or a sheet there.
 - **Never let literal text and `${...}` straddle a line break inside an `html`
-  template.** htm collapses the whitespace and prettier reflows freely; that
-  silently rendered `snapshot 0 min ago` as `snapshot0 minago`. Build the string
-  in JS and interpolate it whole.
+  template.** htm collapses the whitespace, which silently rendered
+  `snapshot 0 min ago` as `snapshot0 minago`. Build the string in JS and
+  interpolate it whole.
 - The dashboard polls once and passes the result down — half the cards are
   different readings of the same days. **Tabs choose what renders, never what is
   fetched.**

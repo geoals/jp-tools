@@ -54,8 +54,7 @@ export function KanjiView({ kanji }) {
   const solid = rows.filter((r) => r.count >= solidAt).length;
   const once = rows.filter((r) => r.count === 1).length;
   // Built whole, leading space included: htm collapses the whitespace where a
-  // literal and an interpolation straddle a line break, and prettier decides
-  // where those breaks go.
+  // literal and an interpolation straddle a line break.
   const joyoOf = ` (${joyoMet} / ${joyoTotal})`;
   const solidOf = ` (≥${solidAt}×)`;
 

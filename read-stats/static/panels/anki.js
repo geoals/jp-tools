@@ -21,8 +21,8 @@ export function AnkiPanel({ anki, onRefresh, busy }) {
   const pct =
     anki.mined > 0 ? ((anki.reencountered / anki.mined) * 100).toFixed(0) : 0;
   const ageMins = Math.round((Date.now() / 1000 - anki.snapshot_ts) / 60);
-  // One string, not markup: line breaks between text and ${...} inside an
-  // element get collapsed by htm, so a prettier reflow eats the spaces.
+  // One string, not markup: htm collapses a line break between text and
+  // ${...} inside an element, eating the spaces.
   const snapshotAge = `snapshot ${
     ageMins < 60 ? `${ageMins} min` : `${Math.round(ageMins / 60)} h`
   } ago`;

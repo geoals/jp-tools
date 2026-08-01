@@ -854,9 +854,8 @@ function fmtTime(ts) {
  *  that child must be the line's text node. `paintMarks` builds Ranges by
  *  offset into it, and a stray whitespace node in front — which is what htm
  *  yields when a template puts an interpolation on its own line — would shift
- *  every tint on the line left by one word. Hence the `prettier-ignore`: this
- *  one line must not be reflowed. */
-// prettier-ignore
+ *  every tint on the line left by one word. So the template stays on one line;
+ *  don't wrap it. */
 function renderLine(line, els) {
   return html`<p class="reader-line" key=${line.id} ref=${(el) => keepLineEl(els, line.id, el)}>${line.text}</p>`;
 }
