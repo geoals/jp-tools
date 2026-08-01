@@ -72,7 +72,7 @@ export function KanjiView() {
   const solidOf = ` (≥${solidAt}×)`;
 
   return html`
-    <div class="tile-row">
+    <div class="tile-row kanji-tiles">
       <div class="tile">
         <div class="label">distinct kanji</div>
         <div class="value">${rows.length.toLocaleString("en")}</div>

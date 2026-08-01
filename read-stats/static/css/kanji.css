@@ -5,6 +5,12 @@
    strength is the only honest encoding. --k is set per chip in JS (log-scaled
    encounter count) and everything here reads it. */
 
+/* These tiles are bare on the page rather than inside a card, so nothing
+   separates them from the card below. */
+.kanji-tiles {
+  margin-bottom: 18px;
+}
+
 .kanji-grid {
   display: flex;
   flex-wrap: wrap;
