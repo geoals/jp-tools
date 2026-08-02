@@ -198,8 +198,8 @@ pub struct Analyzed {
 
 /// Pair each token with where it sits in the line.
 ///
-/// Sudachi's tokens carry no offsets, but `decompose`/`recompose` regroup
-/// surfaces without altering one, so a single forward cursor recovers them. A
+/// Sudachi's tokens carry no offsets, but `recompose` regroups surfaces without
+/// altering one, so a single forward cursor recovers them. A
 /// surface not found ahead of the cursor means that assumption broke, and the
 /// token is dropped rather than guessed at — a tint on the wrong word is worse
 /// than no tint.

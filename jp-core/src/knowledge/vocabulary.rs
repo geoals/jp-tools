@@ -940,7 +940,7 @@ pub async fn status_counts(k: &Knowledge) -> Result<Vec<StatusCount>, sqlx::Erro
 ///   term reaches them at all, since every reading-based queue gates on the
 ///   vocabulary predicate.
 /// - **it was read often** — 懲罰房 was met 61 times and credited to nothing,
-///   Sudachi tagging it a place name so it is never decomposed.
+///   Sudachi tagging it a place name so the name filter drops it.
 ///
 /// Not "every non-master term": most of those are tokenizer noise, and the
 /// blacklist bulk action exists for them.

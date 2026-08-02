@@ -66,8 +66,10 @@ pub struct SudachiTokenizer {
     /// [`keeps_whole`](SudachiTokenizer::keeps_whole) — a word the reader has
     /// mined is a word — and never a substitute for `lexicon`.
     mined: HashSet<String>,
-    /// Words the master dictionary lists, for [`SudachiTokenizer::decompose`].
-    /// Empty disables it.
+    /// Words the master dictionary lists. The wordhood authority: it decides
+    /// what [`keeps_whole`](SudachiTokenizer::keeps_whole) holds together and
+    /// what [`recompose`](SudachiTokenizer::recompose) may build. Empty leaves
+    /// Sudachi's own analysis untouched.
     lexicon: HashSet<String>,
     /// Master headwords, keyed by their reading. A reading naming several
     /// headwords keeps all of them: joining still refuses to guess, but
@@ -122,8 +124,8 @@ impl SudachiTokenizer {
         })
     }
 
-    /// Teach it which words a dictionary actually lists, enabling compound
-    /// decomposition. See [`SudachiTokenizer::decompose`].
+    /// Teach it which words the master dictionary actually lists — the set that
+    /// decides whether a compound is a word.
     pub fn with_lexicon(mut self, lexicon: HashSet<String>) -> Self {
         self.lexicon = lexicon;
         self
@@ -274,57 +276,7 @@ impl SudachiTokenizer {
         }
     }
 
-    /// Split a compound no dictionary lists into parts that one does.
-    ///
-    /// Sudachi's splitting stops at its own entries: 懲罰房 is one entry with no
-    /// sub-units, so every mode returns it whole and 懲罰 — a Sankoku word read
-    /// sixty-one times — was credited to nothing, while 医務室 splits fine.
-    ///
-    /// So: longest match from the left, every part a master headword, the whole
-    /// string consumed, at least two parts.
-    ///
-    /// **A one-character part must be kanji.** Bare kana shreds — み is a noun,
-    /// so 楽しみ split into 楽し + み, and ミリア into three letters. A compound
-    /// ending in kana is left whole.
-    ///
-    /// `None` when it cannot be built from known words, which leaves it whole
-    /// and visible in the non-vocabulary tail.
-    fn decompose(&self, word: &str) -> Option<Vec<String>> {
-        if self.lexicon.is_empty() || self.lexicon.contains(word) {
-            return None;
-        }
-        let chars: Vec<char> = word.chars().collect();
-        let acceptable = |part: &str| {
-            let n = part.chars().count();
-            n >= 2
-                || part
-                    .chars()
-                    .next()
-                    .is_some_and(crate::text::kanji::is_kanji)
-        };
-
-        let mut parts = Vec::new();
-        let mut i = 0;
-        while i < chars.len() {
-            let mut matched = None;
-            for end in (i + 1..=chars.len()).rev() {
-                let candidate: String = chars[i..end].iter().collect();
-                if acceptable(&candidate) && self.lexicon.contains(&candidate) {
-                    matched = Some((candidate, end));
-                    break;
-                }
-            }
-            let (part, end) = matched?;
-            parts.push(part);
-            i = end;
-        }
-        (parts.len() >= 2).then_some(parts)
-    }
-
-    /// Join adjacent tokens that the master dictionary lists as one word.
-    ///
-    /// The mirror of [`decompose`](Self::decompose), and the case neither it nor
-    /// the C→B→A pass can reach — both only ever *split*, so a compound
+    /// The case neither Sudachi nor the C→B→A pass can reach — both only ever *split*, so a compound
     /// Sudachi's lexicon lacks is gone before any of this logic sees it.
     /// しゃくりあげる is not a Sudachi entry, so Mode C returned しゃくり + あげ
     /// and credited しゃくる and 上げる while 噦り上げる was never met once. Over
@@ -882,47 +834,6 @@ impl Tokenizer for SudachiTokenizer {
             // not a reason to shred every compound the master lists.
             return Ok(self.recompose(drop_stutters(morphemes.iter().map(&to_token).collect())));
         }
-        // Each token that survives the C→B→A pass is offered to `decompose`,
-        // which only fires on a compound the master dictionary cannot account
-        // for whole but can account for in parts.
-        let split_unknown = |tokens: Vec<Token>| -> Result<Vec<Token>, TokenizeError> {
-            if self.lexicon.is_empty() {
-                return Ok(tokens);
-            }
-            let mut out = Vec::with_capacity(tokens.len());
-            for t in tokens {
-                // Never take a name apart. A general dictionary lists no place
-                // or surname, so every one of them looks like an unlistable
-                // compound: 東京 became 東 + 京, 間宮 became 間 + 宮, and the
-                // parts are ordinary nouns that the name filter downstream has
-                // no way to recognise — it can only see what a token *is*, and
-                // 京 is a word. Twenty-two sightings of Tokyo turned into
-                // twenty-two of "capital".
-                if t.proper_noun {
-                    out.push(t);
-                    continue;
-                }
-                let Some(parts) = self.decompose(&t.base_form) else {
-                    out.push(t);
-                    continue;
-                };
-                // Re-analyse each part rather than inventing its reading: the
-                // part is a word, so the tokenizer has one for it.
-                for part in parts {
-                    match tokenizer.tokenize(&part, Mode::C, false) {
-                        Ok(ms) if ms.len() == 1 => out.extend(ms.iter().map(&to_token)),
-                        // A part that no longer analyses as one morpheme is
-                        // not worth guessing at; keep the compound instead.
-                        _ => {
-                            out.push(t.clone());
-                            break;
-                        }
-                    }
-                }
-            }
-            Ok(out)
-        };
-
         // Dictionary-validated splitting: C → B → A.
         // Keep tokens that are words in their own right. Split unknown
         // compounds progressively (C→B→A) until sub-tokens are recognized
@@ -972,9 +883,9 @@ impl Tokenizer for SudachiTokenizer {
         // Recomposition goes last, over the finished stream: it has to see the
         // tokens the splitting passes actually produced, since those are what
         // shredded the compound in the first place.
-        // Before the splitting passes: a stammer fragment is not a word, so it
-        // must not be offered to `decompose` or joined into one by `recompose`.
-        Ok(self.recompose(split_unknown(drop_stutters(tokens))?))
+        // Before recomposition: a stammer fragment is not a word, so it must
+        // not be joined into one.
+        Ok(self.recompose(drop_stutters(tokens)))
     }
 }
 
@@ -1352,16 +1263,28 @@ mod tests {
         assert_eq!(iku.base_form, "行く");
     }
 
-    /// A compound the master dictionary cannot account for whole is taken
-    /// apart into words it does list — including across a one-character
-    /// hiragana tail, which is where 凛 was being lost.
+    /// A compound the master dictionary does not list stays whole.
+    ///
+    /// It used to be taken apart into words the master *did* list, to stop a
+    /// known word inside a compound going uncredited. Measured over the corpus
+    /// that traded far more than it bought: it manufactured 145 sightings of
+    /// 牢屋 out of 牢屋敷 against the 13 the reader actually met, cut 味方 into
+    /// "taste" + "direction", 気まずい into 気 + 不味い, and レイピア into レイ +
+    /// ピア — while the two compounds it was written for stopped reaching it
+    /// anyway, 懲罰房 because Sudachi calls it a place name and 医務室 because
+    /// Sankoku now lists it. What it destroyed were words (味方, 裏切り,
+    /// 組み合わせ); what it produced were fragments (敷き, ピア, 立て).
+    ///
+    /// An unlisted compound is a word the reader has not judged, and belongs in
+    /// the ledger as one.
     #[test]
     #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
-    fn compounds_decompose_into_dictionary_words_but_names_do_not() {
+    fn a_compound_the_master_does_not_list_is_left_whole() {
         let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
             .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
-        // Stands in for the master dictionary's headwords.
-        let lexicon: HashSet<String> = ["凛", "と", "白蓮", "華", "東", "京", "ミ", "リ", "ア"]
+        // Stands in for the master dictionary's headwords: every part of 白蓮華
+        // is listed, and the compound itself is not.
+        let lexicon: HashSet<String> = ["白蓮", "華", "東", "京", "凛", "と"]
             .iter()
             .map(|s| s.to_string())
             .collect();
@@ -1377,19 +1300,9 @@ mod tests {
                 .collect::<Vec<_>>()
         };
 
-        // Sudachi holds this whole — no mode splits it — and calls it an
-        // ordinary noun, so it is taken apart into words the dictionary lists.
-        assert_eq!(bases("白蓮華"), vec!["白蓮", "華"]);
-        // A bare kana tail is not a part: 楽しみ would otherwise become
-        // 楽し + み, since a dictionary does list み as a noun.
+        assert_eq!(bases("白蓮華"), vec!["白蓮華"]);
+        assert_eq!(bases("東京"), vec!["東京"]);
         assert_eq!(bases("凛とした")[0], "凛と");
-        // Katakana is excluded, or a name becomes three "words".
-        assert_eq!(bases("ミリア").len(), 1, "a name is not a compound");
-        // And neither is a place. A general dictionary lists no place names,
-        // so 東京 looks exactly like an unlistable compound of two words it
-        // does list — splitting it would credit the reader with "east" and
-        // "capital" twenty-two times over.
-        assert_eq!(bases("東京"), vec!["東京"], "a name is never decomposed");
     }
 
     /// The other direction: a compound Sudachi's own lexicon does not hold, so

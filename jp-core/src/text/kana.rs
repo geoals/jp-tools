@@ -29,7 +29,7 @@ pub fn to_hiragana(s: &str) -> String {
 /// Used to decide whether a one-character piece of a compound may stand as a
 /// word: hiragana may (a lone と is a particle, which ingest drops on part of
 /// speech), katakana may not (it shreds names — see
-/// [`crate::tokenize::SudachiTokenizer::decompose`]).
+/// [`crate::tokenize::SudachiTokenizer::recompose`]).
 pub fn is_hiragana(c: char) -> bool {
     matches!(c, 'ぁ'..='ゖ')
 }

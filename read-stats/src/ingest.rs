@@ -245,9 +245,9 @@ async fn watermark(state: &AppState, key: &str) -> Result<i64, AppError> {
         .unwrap_or(0))
 }
 
-/// The master dictionary's headwords, for decomposing compounds Sudachi holds
-/// whole but Sankoku does not list (懲罰房 → 懲罰 + 房). See
-/// `SudachiTokenizer::decompose`.
+/// The master dictionary's headwords — the tokenizer's wordhood authority. It
+/// decides which compounds are held whole through the C→B→A pass and which
+/// adjacent tokens may be rejoined.
 pub(crate) async fn master_lexicon(state: &AppState) -> Result<HashSet<String>, AppError> {
     Ok(jp_core::knowledge::dictionaries::master_headwords(state.knowledge.pool()).await?)
 }

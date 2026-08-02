@@ -112,10 +112,15 @@ and a ledger row cannot disagree):
 - **One word, one row, spelt the way the master dictionary spells it.** Terms
   key on Sudachi's _normalized_ form. Where Sudachi and Sankoku disagree,
   Sankoku wins (`written_form`).
-- **Compounds the master dictionary doesn't list are decomposed into parts it
-  does** (`decompose`), and **adjacent parts it lists as one word are rejoined**
-  (`recompose`). Names are never decomposed and never rejoined; bare kana is
-  excluded from decomposition.
+- **A compound the master doesn't list stays whole**, and **adjacent parts it
+  lists as one word are rejoined** (`recompose`). Splitting such a compound into
+  listed parts is what `decompose` used to do, and it was removed: it made 145
+  sightings of 牢屋 out of 牢屋敷 against the 13 really read, cut 味方 into
+  "taste" + "direction" and レイピア into レイ + ピア, while the two compounds it
+  was written for had stopped reaching it — 懲罰房 because Sudachi calls it a
+  place name, 医務室 because Sankoku lists it now. It destroyed words and
+  produced fragments. An unlisted compound is a word the reader has not judged,
+  and belongs in the ledger as one. Names are never rejoined.
 - **A name is not vocabulary** — 固有名詞 keeps a work's cast out of the ledger.
   The verdict is per _term_ over a whole pass, never per occurrence.
 - **Anything the master dictionary lists is a word, whatever its tag.**
