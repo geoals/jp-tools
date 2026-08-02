@@ -313,6 +313,11 @@ add to when the question is "does the SQL select what the derivation assumes".
   **on submit, never on load**; only for a
   request that asked (`advance_sweep`); and it is a filter and nothing else —
   `scoped=0` still reaches every ready row.
+- **The sweep's two orderings are one batch, seen from either end.**
+  `order=frequency` sorts the same rows by BCCWJ rank instead of encounter
+  count, so the page reaches words common in Japanese rather than common in
+  what was read. It changes nothing about the filter, the counts or what a
+  submit writes; an unranked word sorts last rather than dropping out.
 - **A rule the UI needs is a tooltip, not a paragraph.** Prose that explains
   what a number means goes in `title=` on the heading or tile it explains. Text
   on the page itself carries data — a count, a range, a date.

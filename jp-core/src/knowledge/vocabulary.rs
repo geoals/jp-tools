@@ -143,6 +143,10 @@ pub struct VocabRow {
     pub in_master: bool,
     pub in_name: bool,
     pub in_reference: bool,
+    /// BCCWJ rank, only where the query asked for it ([`QueueOrder::Frequency`]).
+    /// `None` also means "the frequency list does not carry this word", so it
+    /// cannot be read as a rank on its own.
+    pub freq_rank: Option<i64>,
 }
 
 impl VocabRow {
@@ -180,6 +184,7 @@ fn row_to_vocab(r: &sqlx::sqlite::SqliteRow) -> VocabRow {
         in_master: r.get::<i64, _>("in_master") != 0,
         in_name: r.get::<i64, _>("in_name") != 0,
         in_reference: r.get::<i64, _>("in_reference") != 0,
+        freq_rank: r.try_get("freq_rank").ok().flatten(),
     }
 }
 
@@ -604,8 +609,8 @@ pub async fn fetch_all(k: &Knowledge) -> Result<Vec<VocabRow>, sqlx::Error> {
 /// - **`encounter_count >= min_encounters`** — a word met twice is not yet
 ///   evidence of anything.
 ///
-/// Ordered by encounter count, since the words met most are the ones every
-/// downstream feature hits most.
+/// Ordered by [`QueueOrder`] — encounter count by default, since the words met
+/// most are the ones every downstream feature hits most.
 ///
 /// **A word judged under one of its readings is not offered under another.**
 /// The ledger keys on `(headword, reading)` because 空 is そら or から, but most
@@ -637,18 +642,47 @@ fn queue_where(since_ts: Option<f64>) -> String {
     )
 }
 
+/// What the sweep's page is sorted by. Two different questions over the same
+/// rows: which words *this* reading keeps producing, and which words are common
+/// in Japanese at all — the second reaches a word met three times that everyone
+/// else meets constantly, which the encounter order buries.
+#[derive(Debug, Clone, Copy)]
+pub enum QueueOrder {
+    Encounters,
+    /// BCCWJ rank, commonest first. A row the frequency list does not carry
+    /// sorts last rather than dropping out: the ordering is a view of the
+    /// queue, and must not hide rows the count promises.
+    Frequency {
+        bccwj_id: i64,
+    },
+}
+
 pub async fn triage_queue(
     k: &Knowledge,
     min_encounters: i64,
     since_ts: Option<f64>,
+    order: QueueOrder,
     limit: i64,
 ) -> Result<Vec<VocabRow>, sqlx::Error> {
+    // The rank subquery seeks `idx_dictionary_frequency_lookup` on both key
+    // columns; keep the `dictionary_id` and `term` equalities together.
+    let (select, order_by) = match order {
+        QueueOrder::Encounters => ("SELECT *", "encounter_count DESC, headword"),
+        QueueOrder::Frequency { .. } => (
+            "SELECT *, (SELECT MIN(df.frequency) FROM dictionary_frequency df \
+                        WHERE df.dictionary_id = ? AND df.term = vocabulary.headword) AS freq_rank",
+            "freq_rank IS NULL, freq_rank, encounter_count DESC, headword",
+        ),
+    };
     let sql = format!(
-        "SELECT * FROM vocabulary WHERE {} \
-         ORDER BY encounter_count DESC, headword LIMIT ?",
+        "{select} FROM vocabulary WHERE {} ORDER BY {order_by} LIMIT ?",
         queue_where(since_ts)
     );
-    let mut q = sqlx::query(&sql).bind(min_encounters);
+    let mut q = sqlx::query(&sql);
+    if let QueueOrder::Frequency { bccwj_id } = order {
+        q = q.bind(bccwj_id);
+    }
+    q = q.bind(min_encounters);
     if let Some(ts) = since_ts {
         q = q.bind(ts);
     }
@@ -1462,7 +1496,7 @@ mod tests {
             .await
             .unwrap();
 
-        let offered: Vec<String> = triage_queue(&k, 1, None, 50)
+        let offered: Vec<String> = triage_queue(&k, 1, None, QueueOrder::Encounters, 50)
             .await
             .unwrap()
             .iter()
@@ -1652,6 +1686,7 @@ mod tests {
             in_master: true,
             in_name: false,
             in_reference: false,
+            freq_rank: None,
         };
         assert!(preselects_known(&row, 3), "met often, never looked up");
 
@@ -1695,7 +1730,9 @@ mod tests {
             .await
             .unwrap();
 
-        let queue = triage_queue(&k, 3, None, 100).await.unwrap();
+        let queue = triage_queue(&k, 3, None, QueueOrder::Encounters, 100)
+            .await
+            .unwrap();
         let words: Vec<&str> = queue.iter().map(|r| r.term.headword.as_str()).collect();
         assert_eq!(
             words,
@@ -1704,15 +1741,70 @@ mod tests {
         );
 
         // The floor is the only thing keeping 齟齬 out, so lowering it lets it in.
-        assert_eq!(triage_queue(&k, 1, None, 100).await.unwrap().len(), 2);
+        assert_eq!(
+            triage_queue(&k, 1, None, QueueOrder::Encounters, 100)
+                .await
+                .unwrap()
+                .len(),
+            2
+        );
         // …and っっ stays out at any floor, despite being the most-met row.
         assert!(
-            !triage_queue(&k, 1, None, 100)
+            !triage_queue(&k, 1, None, QueueOrder::Encounters, 100)
                 .await
                 .unwrap()
                 .iter()
                 .any(|r| r.term.headword == "っっ")
         );
+    }
+
+    /// The frequency ordering inverts the encounter one here, which is the
+    /// whole point of it: a word met four times that Japanese uses constantly
+    /// comes before one this reading happened to repeat. An unranked word is
+    /// still offered, last.
+    #[tokio::test]
+    async fn the_frequency_order_offers_the_commonest_word_first() {
+        let k = temp().await;
+        record_encounters(
+            &k,
+            &[
+                enc("憂鬱", "ユウウツ", 40, 1.0),
+                enc("時間", "ジカン", 4, 1.0),
+                enc("齟齬", "ソゴ", 9, 1.0),
+            ],
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO dictionaries (id, title, source_path, role) \
+                 VALUES (1, 'Sankoku', '/s.zip', 'master'), (2, 'BCCWJ', '/b.zip', 'reference');\
+             INSERT INTO dictionary_entries (dictionary_id, term, reading, definitions_json) \
+                 VALUES (1, '憂鬱', 'ゆううつ', '[]'), (1, '時間', 'じかん', '[]'), \
+                        (1, '齟齬', 'そご', '[]');\
+             INSERT INTO dictionary_frequency (dictionary_id, term, reading, frequency) \
+                 VALUES (2, '時間', 'じかん', 120), (2, '憂鬱', 'ゆううつ', 9000);",
+        )
+        .execute(k.pool())
+        .await
+        .unwrap();
+        refresh_dictionary_flags(&k).await.unwrap();
+
+        let bccwj = QueueOrder::Frequency { bccwj_id: 2 };
+        let words: Vec<String> = triage_queue(&k, 1, None, bccwj, 100)
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| r.term.headword.clone())
+            .collect();
+        assert_eq!(words, vec!["時間", "憂鬱", "齟齬"]);
+
+        let ranks: Vec<Option<i64>> = triage_queue(&k, 1, None, bccwj, 100)
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| r.freq_rank)
+            .collect();
+        assert_eq!(ranks, vec![Some(120), Some(9000), None]);
     }
 
     #[tokio::test]
@@ -1761,18 +1853,28 @@ mod tests {
             .await
             .unwrap();
 
-        let scoped = triage_queue(&k, 3, Some(50.0), 100).await.unwrap();
+        let scoped = triage_queue(&k, 3, Some(50.0), QueueOrder::Encounters, 100)
+            .await
+            .unwrap();
         let words: Vec<&str> = scoped.iter().map(|r| r.term.headword.as_str()).collect();
         assert_eq!(words, vec!["憂鬱"], "齟齬 was last read before the mark");
         assert_eq!(triage_pending(&k, 3, Some(50.0)).await.unwrap(), (1, 1));
 
         // Unscoped, both are still there — the mark narrows the batch, it does
         // not judge or retire anything.
-        assert_eq!(triage_queue(&k, 3, None, 100).await.unwrap().len(), 2);
+        assert_eq!(
+            triage_queue(&k, 3, None, QueueOrder::Encounters, 100)
+                .await
+                .unwrap()
+                .len(),
+            2
+        );
 
         // A mark past everything empties the batch rather than falling back to
         // the whole queue: "nothing new since you last swept" is the answer.
-        let swept_past = triage_queue(&k, 3, Some(1000.0), 100).await.unwrap();
+        let swept_past = triage_queue(&k, 3, Some(1000.0), QueueOrder::Encounters, 100)
+            .await
+            .unwrap();
         assert!(swept_past.is_empty());
     }
 

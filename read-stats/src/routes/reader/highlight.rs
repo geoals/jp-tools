@@ -559,6 +559,7 @@ mod tests {
             in_master: true,
             in_name: false,
             in_reference: false,
+            freq_rank: None,
         }
     }
 

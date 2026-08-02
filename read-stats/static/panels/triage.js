@@ -17,6 +17,11 @@
 // (`vocabulary::preselects_known`). The zero-lookup half is what makes the
 // default defensible.
 //
+// The page can be taken from either end of that batch: most-seen first, or
+// commonest in BCCWJ first. Only the ordering changes — the filter, the counts
+// and what a submit writes are the same either way — but the second reaches the
+// words that are common in Japanese rather than common in whatever was read.
+//
 // Two deliberate frictions:
 //
 //   - **The batch is what is on screen**, so a half-finished pass leaves a
@@ -36,8 +41,16 @@
 import { html } from "htm/preact";
 import { useEffect, useState } from "preact/hooks";
 import { api } from "../api.js";
+import { SegmentedControl } from "../components/controls.js";
 import { fmtTsDate } from "../lib/format.js";
 import { Spellings, useSpellings } from "../lib/spellings.js";
+
+/** The two orderings of one batch. `frequency` is BCCWJ rank, the same list the
+ *  frequency view thresholds on — here it only decides what the page reaches. */
+const ORDERS = [
+  { value: "encounters", label: "most seen" },
+  { value: "frequency", label: "commonest in Japanese" },
+];
 
 export function TriageView({ minEncounters, onJudged }) {
   const [queue, setQueue] = useState(null);
@@ -45,6 +58,10 @@ export function TriageView({ minEncounters, onJudged }) {
   // The sweep's scoping. On by default: the standing backlog is the exception
   // now, not the daily loop.
   const [scoped, setScoped] = useState(true);
+  // Which end of the same batch gets the page: the words this reading repeats,
+  // or the words Japanese repeats. A word met four times that BCCWJ ranks 800th
+  // is worth a verdict long before one met forty times in one VN.
+  const [order, setOrder] = useState("encounters");
   // headword\treading → true (known) / false (unknown). Seeded from the
   // server's preselect, then owned by the reader.
   const [checked, setChecked] = useState({});
@@ -56,11 +73,11 @@ export function TriageView({ minEncounters, onJudged }) {
   // is a separate question, and one nobody asks on every visit.
   const [noise, setNoise] = useState(null);
 
-  async function load(min, isScoped) {
+  async function load(min, isScoped, sortBy) {
     setErr(null);
     try {
       const q = await api(
-        `/api/vocab/queue?min_encounters=${min}&scoped=${isScoped ? 1 : 0}`,
+        `/api/vocab/queue?min_encounters=${min}&scoped=${isScoped ? 1 : 0}&order=${sortBy}`,
       );
       setQueue(q);
       const seed = {};
@@ -72,8 +89,8 @@ export function TriageView({ minEncounters, onJudged }) {
   }
 
   useEffect(() => {
-    load(floor, scoped);
-  }, [floor, scoped]);
+    load(floor, scoped, order);
+  }, [floor, scoped, order]);
 
   async function submit() {
     setBusy(true);
@@ -92,7 +109,7 @@ export function TriageView({ minEncounters, onJudged }) {
         body: { judgements, advance_sweep: queue.scoped },
       });
       setDone(`${res.written} judged`);
-      await load(floor, scoped);
+      await load(floor, scoped, order);
       onJudged?.();
     } catch (e) {
       setErr(e.message);
@@ -134,6 +151,9 @@ export function TriageView({ minEncounters, onJudged }) {
   const known = queue.terms.filter((t) => checked[key(t)]).length;
   const unknown = queue.terms.length - known;
   const sweptOn = fmtTsDate(queue.since);
+  // From the response, not the control: the extra column belongs to the batch
+  // on screen, which is the one that carries ranks.
+  const byFrequency = queue.order === "frequency";
   // One string, not markup: htm collapses whitespace at a line break, so text
   // and ${...} must not straddle one (see CLAUDE.md).
   const scopeLine = queue.scoped
@@ -168,6 +188,12 @@ export function TriageView({ minEncounters, onJudged }) {
         />
         show everything ready, not just since the last sweep
       </label>
+      <${SegmentedControl}
+        value=${order}
+        options=${ORDERS}
+        onChange=${setOrder}
+        label="queue order"
+      />
       <p
         class="meta-hint"
         title="Only words you have never looked up are ticked for you. Accepting writes both verdicts for the rows below: unticked means unknown, which keeps a word out of later batches until you read it a lot more."
@@ -214,6 +240,7 @@ export function TriageView({ minEncounters, onJudged }) {
                     <th>reading</th>
                     <th>seen</th>
                     <th>looked up</th>
+                    ${byFrequency && html`<th title="BCCWJ rank — how common the word is in Japanese at large, not here">rank</th>`}
                     <th></th>
                   </tr>
                 </thead>
@@ -246,6 +273,7 @@ export function TriageView({ minEncounters, onJudged }) {
                         <td>${t.reading || "—"}</td>
                         <td>${t.encounter_count.toLocaleString("en")}</td>
                         <td>${t.lookup_count || "—"}</td>
+                        ${byFrequency && html`<td>${t.freq_rank ? t.freq_rank.toLocaleString("en") : "—"}</td>`}
                         <td>
                           <button
                             class="ghost"
@@ -260,7 +288,7 @@ export function TriageView({ minEncounters, onJudged }) {
                         spellings.isOpen(t) &&
                         html`<tr key=${`${key(t)}-spellings`}>
                           <td></td>
-                          <td colspan="5">
+                          <td colspan=${byFrequency ? "6" : "5"}>
                             <${Spellings} data=${spellings.data(t)} />
                           </td>
                         </tr>`

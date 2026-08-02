@@ -97,6 +97,9 @@ pub struct QueueParams {
     /// default); `scoped=0` asks for the whole backlog. A string because
     /// `serde`'s `bool` accepts only `true`/`false` and would 400 on `0`.
     scoped: Option<String>,
+    /// `frequency` sorts the same batch by BCCWJ rank instead of by encounter
+    /// count. Anything else is the encounter order.
+    order: Option<String>,
 }
 
 /// When the last sweep was submitted, as an epoch timestamp in
@@ -114,7 +117,10 @@ async fn sweep_watermark(state: &AppState) -> Result<Option<f64>, AppError> {
         .and_then(|v| v.parse().ok()))
 }
 
-/// The triage queue: untriaged vocabulary to judge, most-encountered first.
+/// The triage queue: untriaged vocabulary to judge, most-encountered first, or
+/// commonest in BCCWJ first with `order=frequency`. The ordering is a view of
+/// one batch: it changes which rows the page limit reaches, nothing about what
+/// the queue offers or what a submit writes.
 ///
 /// `preselect` is computed here, not in the client — it decides what gets
 /// written, so it has to be testable without a browser.
@@ -137,7 +143,19 @@ pub async fn vocab_queue(
         _ => sweep_watermark(&state).await?,
     };
 
-    let rows = vocabulary::triage_queue(&state.knowledge, min, since, QUEUE_LIMIT).await?;
+    // The ordering picks which end of the same batch is on screen, so the
+    // pending counts below hold for both.
+    let by_frequency = params.order.as_deref() == Some("frequency");
+    let order = if by_frequency {
+        let bccwj = dictionaries::by_title(state.knowledge.pool(), "BCCWJ")
+            .await?
+            .ok_or_else(|| AppError::Upstream("BCCWJ frequency dictionary not loaded".into()))?;
+        vocabulary::QueueOrder::Frequency { bccwj_id: bccwj.id }
+    } else {
+        vocabulary::QueueOrder::Encounters
+    };
+
+    let rows = vocabulary::triage_queue(&state.knowledge, min, since, order, QUEUE_LIMIT).await?;
     let (pending, pending_preselected) =
         vocabulary::triage_pending(&state.knowledge, min, since).await?;
 
@@ -151,6 +169,7 @@ pub async fn vocab_queue(
                 "encounter_count": r.encounter_count,
                 "lookup_count": r.lookup_count,
                 "mined": r.mined,
+                "freq_rank": r.freq_rank,
                 "preselect": vocabulary::preselects_known(r, min),
             })
         })
@@ -160,6 +179,7 @@ pub async fn vocab_queue(
         "min_encounters": min,
         "since": since,
         "scoped": since.is_some(),
+        "order": if by_frequency { "frequency" } else { "encounters" },
         "pending": pending,
         "pending_preselected": pending_preselected,
         "terms": terms,
