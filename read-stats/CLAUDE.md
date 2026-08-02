@@ -139,6 +139,37 @@ and a ledger row cannot disagree):
   three works read, パソコン looks exactly like ナノカ. Until a user dictionary
   of cast names exists, per VN, expect to blacklist about five names per work in
   triage, and read 皆/みな's count as inflated.
+
+### Known errors, and why they are left alone
+
+A random audit of 240 tokens puts content-word accuracy near 97%. What is left
+is understood, and each was measured and declined rather than missed. **A
+Sudachi user dictionary is the one mechanism that would take all of them**: they
+are all cases where Sudachi's lexicon lacks the word, and every repair further
+down the pipeline is either a hand-list or a loosening that costs more than it
+buys.
+
+- **待ちたまえ → 待ち + た + まえ**, and まえ becomes the noun 前. たまえ is 給え,
+  which Sankoku lists, so `recompose` could rejoin on the reading — but that
+  fence must stay shut. 3,016 adjacent pairs in the corpus have readings
+  spelling exactly one master headword, and they are て + いく → テイク,
+  ない + ん → ナイン, は + ない → 派内, いる + か → 海豚. Five tokens of gain
+  against three thousand ways to be wrong.
+- **皆守 → 皆 + 守**, 191 lines. Sudachi has no entry for the surname, and 皆 is
+  tagged an ordinary noun so the name filter does not catch it.
+- **擦る is する.** Sudachi gives the 五段 verb both the dictionary form and the
+  normalised form する, identical to the irregular. Only the conjugation class
+  separates them, and using it means narrowing the kana exemption in
+  `conjugatable_lemma`, which exists for the auxiliaries. 12 tokens.
+- **ない/無い and こと/事 are two ledger rows each.** Sudachi's dictionary
+  normalises いう→言う and できる→出来る but not these. No derivable rule fixes
+  it: "merge a kana headword with the kanji one that reads the same" also merges
+  た with 他.
+- **A stammer with no comma is not caught** — 「そ……そう」, 「そそそう」. The
+  rule keys on the comma because that is the part that is unambiguous.
+- **Function-word counts carry roughly 10% noise** from stammer fragments,
+  onomatopoeia and garbled hook output landing on だ, に, の. Harmless for
+  vocabulary; do not build a grammar metric on particle frequencies.
 - **Anything the master dictionary lists is a word, whatever its tag.**
   `counts_as_word` admits a content word, or any token whose
   `(headword, reading)` pair Sankoku lists. The gate decides what gets a row;
