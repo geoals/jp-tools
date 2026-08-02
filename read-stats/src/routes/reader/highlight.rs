@@ -269,6 +269,17 @@ pub async fn shared(state: &crate::app::AppState) -> Option<std::sync::Arc<Highl
             let vocab = crate::ingest::validation_headwords(state).await?;
             let lexicon = crate::ingest::master_lexicon(state).await?;
             let readings = crate::ingest::master_readings(state).await?;
+            // The same five inputs the ingest pass builds its tokenizer with,
+            // and they have to stay the same five. Without the frequency ranks
+            // a word written in kana whose reading names several master
+            // headwords is left as the kana — うかがう rather than 窺う, which
+            // no dictionary lists as a headword — so the wordhood gate calls it
+            // a non-word and the reader tints nothing. Ingest meanwhile files
+            // the same token under 窺う and counts it. Two pipelines, two
+            // answers, and the tinted one was the wrong one.
+            let ranks = crate::ingest::frequency_ranks(state, &readings).await?;
+            let preferred = crate::ingest::preferred_readings(state).await?;
+            let conjugatable = crate::ingest::conjugatable(state).await?;
             let master = MasterWords::new(lexicon.clone(), &readings);
             // Dictionary load is CPU-bound and measured in seconds; it must not
             // sit on the runtime while other readers' streams are polling.
@@ -276,7 +287,10 @@ pub async fn shared(state: &crate::app::AppState) -> Option<std::sync::Arc<Highl
                 let tokenizer = SudachiTokenizer::new(&dict_path, vocab)
                     .map_err(|e| crate::error::AppError::Upstream(format!("sudachi: {e}")))?
                     .with_lexicon(lexicon.clone())
-                    .with_master_readings(&readings);
+                    .with_master_readings(&readings)
+                    .with_frequency(ranks)
+                    .with_preferred_readings(preferred)
+                    .with_conjugatable(conjugatable);
                 Ok(std::sync::Arc::new(Highlighter::new(
                     tokenizer, lexicon, master,
                 )))
