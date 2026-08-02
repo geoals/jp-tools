@@ -598,6 +598,30 @@ impl SudachiTokenizer {
             candidates.push((m.dictionary_form().to_string(), lemma_reading.clone()));
         }
         candidates.push(sudachi());
+        // The normalised spelling with *its own* reading, where the lemma's is
+        // not the same word's. Sudachi normalises 信じ to 信じる but reads it off
+        // its dictionary form 信ずる, so the pair offered above is
+        // (信じる, しんずる) — which the master does not list, and the ladder fell
+        // through to 信ずる, a spelling the text never used, 104 times. Asked on
+        // its own, 信じる reads しんじる and the pair lists.
+        //
+        // Before the dictionary form, because the normalised spelling is the one
+        // the ledger keys on; a reading that came off the wrong lemma is not a
+        // reason to change the spelling.
+        //
+        // **Only when the surface still sounds like it.** 信じ reads シンジ and
+        // 信じる シンジル, so the one is a form of the other; お前 reads オマエ
+        // and 御前 ゴゼン, so they are two words that happen to share a
+        // normalisation, and swapping the spelling would silently rewrite the
+        // sentence. まだ/未だ (マダ, イマダ) and あんた/貴方 (アンタ, アナタ)
+        // are the same trap.
+        if self.lexicon.contains(m.normalized_form())
+            && let Some(reading) = self.rederive_reading(m.normalized_form())
+            && crate::text::kana::to_hiragana(&reading)
+                .starts_with(&crate::text::kana::to_hiragana(m.reading_form()))
+        {
+            candidates.push((m.normalized_form().to_string(), reading));
+        }
         candidates.push((m.dictionary_form().to_string(), lemma_reading.clone()));
         // Only when the surface *is* the word. An inflected surface is a stem,
         // and a stem that happens to be listed is a different word: 許せ is an

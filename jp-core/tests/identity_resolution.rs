@@ -79,6 +79,8 @@ fn conjugatable() -> HashSet<String> {
         "笑う",
         "見る",
         "振り返る",
+        "信じる",
+        "信ずる",
     ]
     .into_iter()
     .map(str::to_string)
@@ -427,4 +429,31 @@ fn a_listed_expression_on_the_never_join_list_stays_apart() {
         pair("本当に", "ほんとうに"),
         "an expression not on the list still rejoins"
     );
+}
+
+/// 信じ is Sudachi's 信じる normalised, but read off its dictionary form 信ずる,
+/// so the pair offered is (信じる, しんずる) — which the master does not list.
+/// The ladder used to fall through to 信ずる, a spelling the text never used.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_normalised_spelling_keeps_its_own_reading() {
+    let (tk, _) = setup();
+    let tokens = tokens_of(&tk, "まるで信じられない");
+    assert_eq!(identity_of(&tokens, "信じ"), pair("信じる", "しんじる"));
+}
+
+/// And only where the surface still sounds like it. お前 reads おまえ, 御前
+/// reads ごぜん: two words sharing a normalisation, and swapping the spelling
+/// would rewrite the sentence.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_normalisation_that_changes_the_sound_is_not_followed() {
+    let (tk, _) = setup();
+    for (text, surface, term, reading) in [
+        ("お前は誰だ", "お前", "お前", "おまえ"),
+        ("まだ来ない", "まだ", "まだ", "まだ"),
+    ] {
+        let tokens = tokens_of(&tk, text);
+        assert_eq!(identity_of(&tokens, surface), pair(term, reading), "{text}");
+    }
 }
