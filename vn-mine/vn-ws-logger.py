@@ -97,6 +97,11 @@ NOT_COUNTED = re.compile(f"[^{_COUNTED}]")
 # reading.
 MAX_READING_CHARS = 500
 
+# The C0 controls a VN uses as script markup, minus the whitespace three. Only
+# stripped from the text — see clean_line; whether a line contains them is still
+# no evidence about whether it is reading.
+CONTROL = re.compile(r"[\x01-\x08\x0b\x0c\x0e-\x1f]")
+
 # Dohna Dohna (Alicesoft System 4.3), hook HS932#-C@289F60:main.bin, taps the
 # script-text layer before rendering, so one capture interleaves dialogue with
 # UI/animation directives. The two are self-labelling: the engine's own regexes
@@ -149,7 +154,11 @@ def clean_line(raw):
         return None
     if len(text) > MAX_READING_CHARS or not JP.search(text):
         return None
-    return text
+    # Strip the markup codes, having declined to drop the line for them. They
+    # are the VN's, not the reader's, and Sudachi analyses them as words —
+    # \x05 and \x04 reached read-stats' vocabulary ledger as "e" and "d". No
+    # effect on the count: NOT_COUNTED is an allowlist and never counted them.
+    return CONTROL.sub("", text)
 
 KNOWLEDGE_DB = os.environ.get("JP_TOOLS_KNOWLEDGE_DB_PATH") or os.path.expanduser(
     "~/.local/share/jp-tools/knowledge.db"

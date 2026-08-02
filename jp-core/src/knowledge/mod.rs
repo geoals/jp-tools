@@ -33,6 +33,8 @@ const MIGRATION_VOCAB_HISTORY: &str =
     include_str!("../../migrations/knowledge/008_vocab_history.sql");
 const MIGRATION_TERM_SURFACES: &str =
     include_str!("../../migrations/knowledge/009_term_surfaces.sql");
+const MIGRATION_STRIP_CONTROL: &str =
+    include_str!("../../migrations/knowledge/010_strip_control_chars.sql");
 
 /// A connection pool for `knowledge.db`.
 ///
@@ -97,6 +99,7 @@ impl Knowledge {
             MIGRATION_VOCAB,
             MIGRATION_WORK_TERMS,
             MIGRATION_TERM_SURFACES,
+            MIGRATION_STRIP_CONTROL,
         ] {
             sqlx::raw_sql(sql).execute(&self.0).await?;
         }

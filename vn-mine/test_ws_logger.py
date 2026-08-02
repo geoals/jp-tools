@@ -100,6 +100,23 @@ class CleanLine(unittest.TestCase):
         self.assertEqual(wl.clean_line("「こんにちは」"), "「こんにちは」")
         self.assertEqual(wl.clean_line("　あれは……夢だったのか。"), "　あれは……夢だったのか。")
 
+    def test_script_control_codes_are_stripped_not_dropped(self):
+        # Subahibi heads a narration line with \x05 and puts \x04 mid-clause.
+        # The line is real reading and stays; the markup is the VN's and goes,
+        # or Sudachi analyses it and "e"/"d" turn up in the vocabulary ledger.
+        self.assertEqual(wl.clean_line("\x05御霊祭だかなんだか"), "御霊祭だかなんだか")
+        self.assertEqual(
+            wl.clean_line("「うん？\x04\u3000君のお兄さん」"), "「うん？\u3000君のお兄さん」"
+        )
+
+    def test_control_codes_do_not_change_the_character_count(self):
+        # Both counters are allowlists, so this has to be a no-op either way —
+        # stripping markup must never move a reading statistic.
+        self.assertEqual(
+            len(wl.NOT_COUNTED.sub("", "\x05御霊祭")),
+            len(wl.NOT_COUNTED.sub("", "御霊祭")),
+        )
+
     def test_runaway_capture_dropped(self):
         self.assertIsNone(wl.clean_line("あ" * (wl.MAX_READING_CHARS + 1)))
 
