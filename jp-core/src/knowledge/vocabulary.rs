@@ -798,11 +798,18 @@ pub async fn seed_status_each(
 /// `triage` is what was judged by hand. Unranked rows sort last: BCCWJ is a
 /// written corpus and its silence about おじぎ is a gap in the corpus, not a
 /// statement about the word.
+/// `collapse` shows one row per *word* rather than per ledger row — the
+/// question this view is for. The ledger keys on forms because the tokenizer
+/// emits forms, but 元々 and 元元 are one word and listing both is listing the
+/// database rather than the vocabulary. The survivor is the entry's
+/// best-scored spelling, which is the one the word is normally written with,
+/// and `forms` says how many it stands for.
 pub async fn browse(
     k: &Knowledge,
     status: Option<&str>,
     source: Option<&str>,
     rarest_first: bool,
+    collapse: bool,
     limit: i64,
     offset: i64,
 ) -> Result<(i64, Vec<BrowseRow>), sqlx::Error> {
@@ -814,14 +821,7 @@ pub async fn browse(
         .await?
         .map(|d| d.id);
 
-    let (total,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM vocabulary \
-          WHERE (?1 IS NULL OR status = ?1) AND (?2 IS NULL OR status_source = ?2)",
-    )
-    .bind(status)
-    .bind(source)
-    .fetch_one(k.pool())
-    .await?;
+    let lex = super::dictionaries::lexeme_dictionary(k.pool()).await?;
 
     // Unranked last either way. BCCWJ is written text, so its silence about
     // おじぎ is a hole in the corpus and not a claim that the word is rare —
@@ -832,25 +832,67 @@ pub async fn browse(
     } else {
         "rank IS NULL, rank ASC"
     };
+    // A form with no entry id groups only with itself, so an unresolvable row is
+    // never merged into another word — it stands alone, exactly as the lexeme
+    // layer's third rule has it.
+    //
+    // The entry id is taken off the form's best-scored row rather than as a
+    // `MIN(sequence)`: SQLite serves a MIN over that column from
+    // `idx_dictionary_entries_sequence`, which is keyed on `dictionary_id`
+    // alone, so the term never reaches an index and every ledger row costs a
+    // partial scan of 400k entries.
+    let group = "COALESCE(CAST(seq AS TEXT), headword || CHAR(31) || reading)";
+    // Collapsed, the filter picks *words*, not rows. 元々 was judged by hand and
+    // 元元 came from the import; filtering the rows first left 元元 standing
+    // alone as its own word, which is the database showing through again. So a
+    // word is shown when any of its spellings matches, and the row shown is one
+    // that did.
+    let survivor = if collapse {
+        "WHERE n = 1 AND matched = 1"
+    } else {
+        "WHERE hit = 1"
+    };
     let sql = format!(
-        "SELECT v.headword, v.reading, v.status, v.status_source, v.encounter_count, \
-                v.lookup_count, v.mined, \
-                (SELECT MIN(f.frequency) FROM dictionary_frequency f \
-                  WHERE f.dictionary_id = ?3 AND f.term = v.headword \
-                    AND (f.reading = v.reading OR v.reading = '' OR f.reading = '')) AS rank \
-           FROM vocabulary v \
-          WHERE (?1 IS NULL OR v.status = ?1) AND (?2 IS NULL OR v.status_source = ?2) \
-          ORDER BY {order}, v.headword LIMIT ?4 OFFSET ?5"
+        "WITH picked AS ( \
+             SELECT v.headword, v.reading, v.status, v.status_source, v.encounter_count, \
+                    v.lookup_count, v.mined, \
+                    (CASE WHEN (?1 IS NULL OR v.status = ?1) \
+                            AND (?2 IS NULL OR v.status_source = ?2) \
+                          THEN 1 ELSE 0 END) AS hit, \
+                    (SELECT j.sequence FROM dictionary_entries j \
+                      WHERE j.dictionary_id = ?3 AND j.term = v.headword \
+                        AND (COALESCE(NULLIF(j.reading, ''), j.term) = v.reading \
+                             OR v.reading = '') \
+                      ORDER BY j.score DESC LIMIT 1) AS seq, \
+                    (SELECT MAX(j.score) FROM dictionary_entries j \
+                      WHERE j.dictionary_id = ?3 AND j.term = v.headword \
+                        AND (COALESCE(NULLIF(j.reading, ''), j.term) = v.reading \
+                             OR v.reading = '')) AS score, \
+                    (SELECT MIN(f.frequency) FROM dictionary_frequency f \
+                      WHERE f.dictionary_id = ?4 AND f.term = v.headword \
+                        AND (f.reading = v.reading OR v.reading = '' OR f.reading = '')) AS rank \
+               FROM vocabulary v), \
+          grouped AS ( \
+             SELECT *, \
+                    ROW_NUMBER() OVER (PARTITION BY {group} \
+                        ORDER BY hit DESC, score DESC, encounter_count DESC, headword) AS n, \
+                    COUNT(*) OVER (PARTITION BY {group}) AS forms, \
+                    MAX(hit) OVER (PARTITION BY {group}) AS matched \
+               FROM picked) \
+         SELECT *, COUNT(*) OVER () AS total FROM grouped {survivor} \
+          ORDER BY {order}, headword LIMIT ?5 OFFSET ?6"
     );
     let rows = sqlx::query(&sql)
         .bind(status)
         .bind(source)
+        .bind(lex)
         .bind(corpus)
         .bind(limit)
         .bind(offset)
         .fetch_all(k.pool())
         .await?;
 
+    let total = rows.first().map(|r| r.get::<i64, _>("total")).unwrap_or(0);
     Ok((
         total,
         rows.iter()
@@ -862,6 +904,7 @@ pub async fn browse(
                 lookup_count: r.get("lookup_count"),
                 mined: r.get::<i64, _>("mined") != 0,
                 rank: r.get("rank"),
+                forms: r.get("forms"),
             })
             .collect(),
     ))
@@ -877,6 +920,8 @@ pub struct BrowseRow {
     pub lookup_count: i64,
     pub mined: bool,
     pub rank: Option<i64>,
+    /// How many ledger rows this one stands for — spellings of the same word.
+    pub forms: i64,
 }
 
 /// Revert the most recent [`seed_status_each`] batch, and only that one.

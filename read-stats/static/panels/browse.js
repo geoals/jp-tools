@@ -130,9 +130,7 @@ export function BrowseView({ onJudged }) {
                 ${page.terms.map(
                   (t) => html`
                     <tr key=${`${t.headword}|${t.reading}`}>
-                      <td>${t.reading && t.reading !== t.headword
-                        ? `${t.headword}【${t.reading}】`
-                        : t.headword}</td>
+                      <td>${wordLabel(t)}</td>
                       <td class="num">${t.rank === null ? "—" : t.rank.toLocaleString("en")}</td>
                       <td class="num">${t.encounter_count}</td>
                       <td class="num">${t.lookup_count || ""}</td>
@@ -177,6 +175,17 @@ export function BrowseView({ onJudged }) {
       </div>
     </div>
   `;
+}
+
+/** The word, plus how many spellings it stands for. Built whole rather than
+ *  interpolated beside literal text — htm collapses the whitespace at a line
+ *  break (see CLAUDE.md). */
+function wordLabel(t) {
+  const word =
+    t.reading && t.reading !== t.headword
+      ? `${t.headword}【${t.reading}】`
+      : t.headword;
+  return t.forms > 1 ? `${word} +${t.forms - 1}` : word;
 }
 
 /** A row of radio-ish buttons. Small enough that a `<select>` would hide the

@@ -373,6 +373,9 @@ pub struct BrowseParams {
     /// Rarest first by default — the end of a bulk import where a threshold
     /// rule claims words that were never really met.
     pub common_first: Option<bool>,
+    /// One row per ledger *form* rather than per word. Off by default: 元々 and
+    /// 元元 are one word, and listing both is listing the database.
+    pub all_forms: Option<bool>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -395,6 +398,7 @@ pub async fn vocab_browse(
         blank_is_none(&params.status).as_deref(),
         blank_is_none(&params.source).as_deref(),
         !params.common_first.unwrap_or(false),
+        !params.all_forms.unwrap_or(false),
         limit,
         offset,
     )
@@ -414,6 +418,7 @@ pub async fn vocab_browse(
                 "lookup_count": r.lookup_count,
                 "mined": r.mined,
                 "rank": r.rank,
+                "forms": r.forms,
             }))
             .collect::<Vec<_>>(),
     })))
