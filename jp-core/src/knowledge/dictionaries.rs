@@ -228,6 +228,17 @@ pub async fn lexeme_dictionary(pool: &SqlitePool) -> Result<Option<i64>, sqlx::E
 /// whose headword is already kana stores the reading either as the headword
 /// again or not at all. Without that every kana headword failed to join.
 ///
+/// **A form JMdict scores negative is not one the entry claims.** An entry
+/// groups every way a word has ever been written and read, current or not, and
+/// tags the dead ones: 三人 is さんにん at 200 and みたり at -102, 硬い is also
+/// 緊い at -103. Fanning out to those marks a word the reader has never met as
+/// known — 501 of them in one import, 10% of it. The live forms still fan out,
+/// which is the point: 回る/廻る (200/199) and 硬い/固い/堅い (200/199/198) are
+/// one word spelt several ways, and triage should not ask three times.
+///
+/// The same score, read the same way, as `preferred_readings` — negative is
+/// JMdict tagging a form as rare, outdated or irregular.
+///
 /// Returned whole rather than per id: an import asks about ~13k of them.
 pub async fn master_forms_by_sequence(
     pool: &SqlitePool,
@@ -247,7 +258,7 @@ pub async fn master_forms_by_sequence(
            ON m.dictionary_id = ? AND m.term = j.term \
           AND COALESCE(NULLIF(m.reading, ''), m.term) \
               = COALESCE(NULLIF(j.reading, ''), j.term) \
-         WHERE j.dictionary_id = ? AND j.sequence IS NOT NULL",
+         WHERE j.dictionary_id = ? AND j.sequence IS NOT NULL AND j.score >= 0",
     )
     .bind(master.id)
     .bind(lex)
@@ -847,6 +858,72 @@ mod tests {
             vec![("零れ落ちる".to_string(), "こぼれおちる".to_string())],
             "only the spelling the master dictionary lists"
         );
+    }
+
+    /// An entry keeps every way a word has ever been written and read, and tags
+    /// the dead ones with a negative score. A card for 三人 claims さんにん; it
+    /// does not claim みたり, which the reader has very likely never met.
+    #[tokio::test]
+    async fn a_form_the_entry_tags_as_dead_is_not_one_it_claims() {
+        let k = with_dicts(&[
+            ("Sankoku", "/x/sankoku.zip"),
+            ("Jitendex", "/x/jitendex.zip"),
+        ])
+        .await;
+        set_role(k.pool(), 1, Role::Master).await.unwrap();
+
+        // Sankoku lists both readings; JMdict scores みたり -102.
+        for (dict, term, reading, seq, score) in [
+            (1i64, "三人", "さんにん", None, 0i64),
+            (1, "三人", "みたり", None, 0),
+            (2, "三人", "さんにん", Some(1301000i64), 200),
+            (2, "三人", "みたり", Some(1301000), -102),
+        ] {
+            sqlx::query(
+                "INSERT INTO dictionary_entries (dictionary_id, term, reading, definitions_json, sequence, score) \
+                 VALUES (?, ?, ?, '[]', ?, ?)",
+            )
+            .bind(dict).bind(term).bind(reading).bind(seq).bind(score)
+            .execute(k.pool()).await.unwrap();
+        }
+
+        let map = master_forms_by_sequence(k.pool()).await.unwrap();
+        assert_eq!(
+            map.get(&1301000).cloned().unwrap_or_default(),
+            vec![("三人".to_string(), "さんにん".to_string())],
+            "みたり is tagged dead and must not ride in on the shared entry id"
+        );
+    }
+
+    /// The live spellings still fan out — that is what stops triage asking
+    /// about 回る and 廻る separately.
+    #[tokio::test]
+    async fn the_spellings_an_entry_still_uses_all_come_through() {
+        let k = with_dicts(&[
+            ("Sankoku", "/x/sankoku.zip"),
+            ("Jitendex", "/x/jitendex.zip"),
+        ])
+        .await;
+        set_role(k.pool(), 1, Role::Master).await.unwrap();
+
+        for (dict, term, seq, score) in [
+            (1i64, "回る", None, 0i64),
+            (1, "廻る", None, 0),
+            (2, "回る", Some(1604300i64), 200),
+            (2, "廻る", Some(1604300), 199),
+        ] {
+            sqlx::query(
+                "INSERT INTO dictionary_entries (dictionary_id, term, reading, definitions_json, sequence, score) \
+                 VALUES (?, ?, 'まわる', '[]', ?, ?)",
+            )
+            .bind(dict).bind(term).bind(seq).bind(score)
+            .execute(k.pool()).await.unwrap();
+        }
+
+        let mut forms = master_forms_by_sequence(k.pool()).await.unwrap()
+            .get(&1604300).cloned().unwrap_or_default();
+        forms.sort();
+        assert_eq!(forms.len(), 2, "both live spellings: {forms:?}");
     }
 
     #[tokio::test]
