@@ -696,6 +696,46 @@ pub fn has_impossible_onset(surface: &str) -> bool {
     )
 }
 
+/// Drop the leading fragment of a stammer: そ、そう / ト、ト、トラウマ.
+///
+/// Japanese writes a stammer by repeating the first mora with a comma after it,
+/// and Sudachi analyses that fragment as whatever word it happens to spell —
+/// そ is an adverb normalizing to そう, ト a particle normalizing to と. Every
+/// one of those is a miscount, and the commonest of them, そ, was a sixth of
+/// every そう in the corpus.
+///
+/// The pattern is orthographic, so the rule is too: **one kana, a comma, then a
+/// word starting with that same kana**. Kana only — 木、木材 is not a stammer,
+/// and a kanji fragment would be a real word every time.
+fn drop_stutters(tokens: Vec<Token>) -> Vec<Token> {
+    let fragment = |t: &Token| {
+        let mut chars = t.surface.chars();
+        let (Some(c), None) = (chars.next(), chars.next()) else {
+            return None;
+        };
+        // A stammer repeats a whole mora; a small kana or っ/ん is never one.
+        (crate::text::kana::is_all_kana(&t.surface) && !has_impossible_onset(&t.surface))
+            .then(|| crate::text::kana::to_hiragana(&c.to_string()))
+    };
+    let mut out = Vec::with_capacity(tokens.len());
+    let mut i = 0;
+    while i < tokens.len() {
+        let repeated = fragment(&tokens[i])
+            .filter(|_| tokens.get(i + 1).is_some_and(|t| t.surface == "、"))
+            .zip(tokens.get(i + 2))
+            .is_some_and(|(mora, next)| {
+                crate::text::kana::to_hiragana(&next.surface).starts_with(&mora)
+            });
+        if repeated {
+            i += 2;
+            continue;
+        }
+        out.push(tokens[i].clone());
+        i += 1;
+    }
+    out
+}
+
 impl Tokenizer for SudachiTokenizer {
     fn tokenize(&self, text: &str) -> Result<Vec<Token>, TokenizeError> {
         let tokenizer = StatelessTokenizer::new(&self.dict);
@@ -722,7 +762,7 @@ impl Tokenizer for SudachiTokenizer {
                 .map_err(|e| TokenizeError::Failed(e.to_string()))?;
             // Still recomposed: an empty deck is a reason to skip the wordhood
             // gate, not a reason to shred every compound the master lists.
-            return Ok(self.recompose(morphemes.iter().map(&to_token).collect()));
+            return Ok(self.recompose(drop_stutters(morphemes.iter().map(&to_token).collect())));
         }
         // Each token that survives the C→B→A pass is offered to `decompose`,
         // which only fires on a compound the master dictionary cannot account
@@ -814,7 +854,9 @@ impl Tokenizer for SudachiTokenizer {
         // Recomposition goes last, over the finished stream: it has to see the
         // tokens the splitting passes actually produced, since those are what
         // shredded the compound in the first place.
-        Ok(self.recompose(split_unknown(tokens)?))
+        // Before the splitting passes: a stammer fragment is not a word, so it
+        // must not be offered to `decompose` or joined into one by `recompose`.
+        Ok(self.recompose(split_unknown(drop_stutters(tokens))?))
     }
 }
 
@@ -995,6 +1037,57 @@ mod tests {
             &affix("彼女", "彼女", "カノジョ", "代名詞"),
             &MasterWords::new(HashSet::new(), &[])
         ));
+    }
+
+    fn surfaces(tokens: Vec<Token>) -> Vec<String> {
+        tokens.into_iter().map(|t| t.surface).collect()
+    }
+
+    /// The fragment and its comma go; the word it stammers stays.
+    #[test]
+    fn a_stammer_loses_its_fragment() {
+        let stream = vec![
+            affix("そ", "そう", "ソ", "副詞"),
+            affix("、", "、", "、", "補助記号"),
+            affix("そう", "そう", "ソウ", "副詞"),
+        ];
+        assert_eq!(surfaces(drop_stutters(stream)), ["そう"]);
+    }
+
+    /// ト、ト、トラウマ — a stammer may repeat, and katakana is a stammer too.
+    #[test]
+    fn a_repeated_stammer_loses_every_fragment() {
+        let stream = vec![
+            affix("ト", "と", "ト", "助詞"),
+            affix("、", "、", "、", "補助記号"),
+            affix("ト", "と", "ト", "助詞"),
+            affix("、", "、", "、", "補助記号"),
+            affix("トラウマ", "トラウマ", "トラウマ", "名詞"),
+        ];
+        assert_eq!(surfaces(drop_stutters(stream)), ["トラウマ"]);
+    }
+
+    /// The mora has to actually repeat: そ、それ is a stammer, そ、あれ is not.
+    #[test]
+    fn a_comma_alone_is_not_a_stammer() {
+        let stream = vec![
+            affix("そ", "そう", "ソ", "副詞"),
+            affix("、", "、", "、", "補助記号"),
+            affix("あれ", "あれ", "アレ", "代名詞"),
+        ];
+        assert_eq!(surfaces(drop_stutters(stream)), ["そ", "、", "あれ"]);
+    }
+
+    /// 木、木材 is two words. A one-character kanji is a word every time, which
+    /// is why the rule is kana-only.
+    #[test]
+    fn a_kanji_fragment_is_never_a_stammer() {
+        let stream = vec![
+            affix("木", "木", "キ", "名詞"),
+            affix("、", "、", "、", "補助記号"),
+            affix("木材", "木材", "モクザイ", "名詞"),
+        ];
+        assert_eq!(surfaces(drop_stutters(stream)), ["木", "、", "木材"]);
     }
 
     #[test]

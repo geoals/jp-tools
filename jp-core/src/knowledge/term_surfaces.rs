@@ -37,10 +37,7 @@ pub struct SurfaceRow {
 /// Additive and not idempotent, like the other ingest sinks: the caller is
 /// watermarked. `line_id` is kept from the first batch that supplies one, so
 /// re-running a rebuild lands on the same example line.
-pub async fn record_surfaces(
-    k: &Knowledge,
-    batch: &[SurfaceEncounter],
-) -> Result<(), sqlx::Error> {
+pub async fn record_surfaces(k: &Knowledge, batch: &[SurfaceEncounter]) -> Result<(), sqlx::Error> {
     if batch.is_empty() {
         return Ok(());
     }

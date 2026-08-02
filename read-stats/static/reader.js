@@ -8,7 +8,13 @@
  *  per-token spans would break lookups. The word marks work around that rather
  *  than through it: a layer of rectangles behind the text, never markup inside
  *  it. See `paintMarks` at the foot of this file. */
-import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "preact/hooks";
 import { html } from "htm/preact";
 import { api } from "./api.js";
 
@@ -249,6 +255,40 @@ export function Reader() {
     anchor.offsetTop = anchorEl.offsetTop;
   }, [lines, keptIds]);
 
+  // What the painter reads, held in a ref rather than captured: the frame it
+  // runs in is not the render that asked for it, and the observer below is
+  // built once and must still see the current feed.
+  const paintInput = useRef({ visible, highlightOn });
+  paintInput.current = { visible, highlightOn };
+
+  /** Ask for a repaint, at most one per frame.
+   *
+   *  The opening batch arrives as one SSE event per line, so 200 lines are 200
+   *  renders, and painting measures every marked word on screen with its own
+   *  `Range` + `getClientRects` — a forced layout each. Painting per render is
+   *  quadratic in the batch, and now that almost every word is unjudged almost
+   *  every token is measured rather than skipped as known.
+   *
+   *  Still flash-free: a rAF callback runs before the frame it was scheduled
+   *  for is painted, so the marks land with the text, which is what the layout
+   *  effect below was for. */
+  const paintPending = useRef(false);
+  const requestPaint = useCallback(() => {
+    if (paintPending.current) return;
+    paintPending.current = true;
+    requestAnimationFrame(() => {
+      paintPending.current = false;
+      const { visible, highlightOn } = paintInput.current;
+      paintMarks(
+        visible,
+        lineEls.current,
+        highlightOn,
+        listRef.current,
+        marksRef.current,
+      );
+    });
+  }, []);
+
   // Repaint whenever the text could have moved: a new line, a font change, the
   // toggle. A layout effect, not an effect — it measures just-committed nodes,
   // and a frame with text drawn but unmarked flashes on every line.
@@ -259,29 +299,33 @@ export function Reader() {
   // pushed everything on screen down with nothing in the dependency list
   // changed. Marks sat a page-height off their words until an unrelated repaint
   // corrected them.
-  useLayoutEffect(() => {
-    paintMarks(
-      visible,
-      lineEls.current,
-      highlightOn,
-      listRef.current,
-      marksRef.current,
-    );
-  }, [lines, keptIds, highlightOn, fontPx, markedOnly]);
+  useLayoutEffect(requestPaint, [
+    lines,
+    keptIds,
+    highlightOn,
+    fontPx,
+    markedOnly,
+  ]);
 
   // The other way the text reflows: the window or the split pane changing width.
   // Nothing re-renders then, so nothing above would fire — for the marks or for
   // the bottom edge, which a narrower pane pushes down as the lines wrap.
+  //
+  // **Must not depend on `lines`.** `observe` fires its callback immediately, so
+  // rebuilding the observer per line would paint a second time for every line
+  // on top of the effect above. `requestPaint` reads the current lines from a
+  // ref, so one observer for the life of the view sees fresh ones anyway, and
+  // `pinToBottom` only touches refs.
   useLayoutEffect(() => {
     const el = listRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => {
-      paintMarks(visible, lineEls.current, highlightOn, el, marksRef.current);
+      requestPaint();
       pinToBottom(false);
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [lines, keptIds, highlightOn, fontPx, markedOnly]);
+  }, [requestPaint]);
 
   useEffect(() => {
     // Successes clear themselves; failures stay until the next attempt.
