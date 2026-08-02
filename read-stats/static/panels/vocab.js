@@ -120,11 +120,6 @@ function StatusSummary({ vocab, onImported }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [err, setErr] = useState(null);
-  // What the last import discarded, by name. Held until the next one so it can
-  // be read at leisure — it is the only place the names and phrase entries
-  // ever surface.
-  const [dropped, setDropped] = useState(null);
-  const [showDropped, setShowDropped] = useState(null);
 
   async function importAnki() {
     setBusy(true);
@@ -167,7 +162,6 @@ function StatusSummary({ vocab, onImported }) {
           `${vetoed} · ` +
           `${r.unresolved_entries.toLocaleString("en")} not in the master dictionary`,
       );
-      setDropped(r.dropped ?? null);
       onImported?.();
     } catch (e) {
       setErr(e.message);
@@ -232,37 +226,6 @@ function StatusSummary({ vocab, onImported }) {
       </div>
       ${err && html`<p class="chart-empty">Failed: ${err}</p>`}
       ${result && html`<p class="meta-hint">${result}</p>`}
-      ${dropped &&
-      html`
-        <div class="triage-actions">
-          ${["unresolved", "vetoed"].map((kind) => {
-            const rows = dropped[kind] ?? [];
-            if (!rows.length) return null;
-            const label =
-              kind === "unresolved"
-                ? `${rows.length.toLocaleString("en")} not in the master dictionary`
-                : `${rows.length.toLocaleString("en")} held back (looked up)`;
-            const open = showDropped === kind;
-            return html`
-              <button
-                class="pause-btn"
-                onClick=${() => setShowDropped(open ? null : kind)}
-              >
-                ${open ? `hide ${label}` : `show ${label}`}
-              </button>
-            `;
-          })}
-        </div>
-      `}
-      ${dropped &&
-      showDropped &&
-      html`
-        <p class="meta-hint" style="max-height:22em;overflow:auto">
-          ${(dropped[showDropped] ?? [])
-            .map((d) => (d.reading && d.reading !== d.term ? `${d.term}[${d.reading}]` : d.term))
-            .join("  ·  ")}
-        </p>
-      `}
     </div>
 
     <div class="card">
