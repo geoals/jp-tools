@@ -266,7 +266,7 @@ pub async fn shared(state: &crate::app::AppState) -> Option<std::sync::Arc<Highl
     let built: Result<&std::sync::Arc<Highlighter>, crate::error::AppError> = cell
         .get_or_try_init(|| async {
             let dict_path = state.sudachi_dict_path.clone();
-            let vocab = crate::ingest::validation_headwords(state).await?;
+            let vocab = crate::ingest::mined_vocab(state).await?;
             let lexicon = crate::ingest::master_lexicon(state).await?;
             let readings = crate::ingest::master_readings(state).await?;
             // The same five inputs the ingest pass builds its tokenizer with,

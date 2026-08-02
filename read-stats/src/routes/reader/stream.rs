@@ -193,10 +193,16 @@ async fn capture_status(state: &AppState) -> CaptureStatus {
             warn!(error = %e, "capture status: heartbeat unreadable");
             None
         });
-    let beat = raw.as_deref().and_then(|v| serde_json::from_str::<Heartbeat>(v).ok());
+    let beat = raw
+        .as_deref()
+        .and_then(|v| serde_json::from_str::<Heartbeat>(v).ok());
 
     let Some(beat) = beat else {
-        return CaptureStatus { capture: "down", age_secs: None, pending: 0 };
+        return CaptureStatus {
+            capture: "down",
+            age_secs: None,
+            pending: 0,
+        };
     };
     let age = crate::clock::now_ts() - beat.ts;
     // Paused outranks unhooked because a paused logger disconnects on purpose:
@@ -213,7 +219,11 @@ async fn capture_status(state: &AppState) -> CaptureStatus {
     } else {
         "live"
     };
-    CaptureStatus { capture, age_secs: Some(age), pending: beat.pending }
+    CaptureStatus {
+        capture,
+        age_secs: Some(age),
+        pending: beat.pending,
+    }
 }
 
 fn status_event(status: CaptureStatus) -> Event {

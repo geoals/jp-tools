@@ -62,7 +62,10 @@ pub enum TokenizeError {
 
 pub struct SudachiTokenizer {
     dict: Arc<JapaneseDictionary>,
-    headwords: HashSet<String>,
+    /// The words already mined into Anki. A second, much smaller source for
+    /// [`keeps_whole`](SudachiTokenizer::keeps_whole) — a word the reader has
+    /// mined is a word — and never a substitute for `lexicon`.
+    mined: HashSet<String>,
     /// Words the master dictionary lists, for [`SudachiTokenizer::decompose`].
     /// Empty disables it.
     lexicon: HashSet<String>,
@@ -93,7 +96,7 @@ pub struct SudachiTokenizer {
 }
 
 impl SudachiTokenizer {
-    pub fn new(dict_path: &Path, headwords: HashSet<String>) -> Result<Self, TokenizeError> {
+    pub fn new(dict_path: &Path, mined: HashSet<String>) -> Result<Self, TokenizeError> {
         let abs_path = std::fs::canonicalize(dict_path).map_err(|e| {
             TokenizeError::Failed(format!(
                 "dictionary not found at {}: {e}",
@@ -107,7 +110,7 @@ impl SudachiTokenizer {
         })?;
         Ok(Self {
             dict: Arc::new(dict),
-            headwords,
+            mined,
             lexicon: HashSet::new(),
             by_reading: HashMap::new(),
             term_reading: HashMap::new(),
@@ -223,6 +226,25 @@ impl SudachiTokenizer {
         }
         self.lists(term, &pref.preferred)
             .then(|| pref.preferred.clone())
+    }
+
+    /// Is this compound a word in its own right, so the C→B→A pass should stop
+    /// here rather than take it apart?
+    ///
+    /// Both dictionaries answer, and the master is the one that matters: the
+    /// mined deck is a couple of thousand words, so on its own it let every
+    /// compound the reader had not happened to mine be shredded into its parts.
+    /// 周波数 became 周 + 波 + 数, 擦り剥く became 擦る + 剥く — three wrong
+    /// identities in place of one right one, and the parts are ordinary words
+    /// that nothing downstream can tell from real sightings.
+    /// Asked of the normalized form as well as the dictionary form, because
+    /// that is the spelling the master lists and the one an identity is keyed
+    /// on: Sudachi's dictionary form for 擦り剥く is the kana すりむく, which
+    /// Sankoku has no entry for.
+    fn keeps_whole<T: DictionaryAccess>(&self, m: &Morpheme<'_, T>) -> bool {
+        [m.dictionary_form(), m.normalized_form()]
+            .iter()
+            .any(|f| self.mined.contains(*f) || self.lexicon.contains(*f))
     }
 
     /// Does the master dictionary list this identity? Same rule as
@@ -755,13 +777,13 @@ impl Tokenizer for SudachiTokenizer {
             }
         };
 
-        if self.headwords.is_empty() {
-            // No dictionaries loaded — Mode B (current behavior)
+        if self.mined.is_empty() && self.lexicon.is_empty() {
+            // Nothing to ask whether a compound is a word — Mode B.
             let morphemes = tokenizer
                 .tokenize(text, Mode::B, false)
                 .map_err(|e| TokenizeError::Failed(e.to_string()))?;
-            // Still recomposed: an empty deck is a reason to skip the wordhood
-            // gate, not a reason to shred every compound the master lists.
+            // Still recomposed: having no wordhood gate is a reason to skip it,
+            // not a reason to shred every compound the master lists.
             return Ok(self.recompose(drop_stutters(morphemes.iter().map(&to_token).collect())));
         }
         // Each token that survives the C→B→A pass is offered to `decompose`,
@@ -806,7 +828,7 @@ impl Tokenizer for SudachiTokenizer {
         };
 
         // Dictionary-validated splitting: C → B → A.
-        // Keep tokens that exist as dictionary headwords. Split unknown
+        // Keep tokens that are words in their own right. Split unknown
         // compounds progressively (C→B→A) until sub-tokens are recognized
         // or we reach the finest granularity.
         let morphemes = tokenizer
@@ -819,7 +841,7 @@ impl Tokenizer for SudachiTokenizer {
         let mut tokens = Vec::new();
 
         for m in morphemes.iter() {
-            if self.headwords.contains(m.dictionary_form()) {
+            if self.keeps_whole(&m) {
                 tokens.push(to_token(m));
                 continue;
             }
@@ -838,7 +860,7 @@ impl Tokenizer for SudachiTokenizer {
 
             // Mode B split — check each sub-token
             for sub in buf_b.iter() {
-                if self.headwords.contains(sub.dictionary_form()) {
+                if self.keeps_whole(&sub) {
                     tokens.push(to_token(sub));
                 } else {
                     buf_a.clear();

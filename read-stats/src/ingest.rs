@@ -11,7 +11,7 @@
 //!   spelling, since the ledger's normalized key cannot say whether 窺う was
 //!   read as 窺う or as うかがう.
 //!
-//! Tokenization uses the mined vocab as Sudachi validation headwords, so a mined
+//! Tokenization uses the mined vocab beside the master lexicon, so a mined
 //! compound found whole in Mode C stays whole and matches its card.
 //!
 //! **Each sink has its own watermark per stream, and a row is written to a sink
@@ -23,8 +23,8 @@
 use std::collections::{HashMap, HashSet};
 
 use jp_core::knowledge::dictionaries;
-use jp_core::knowledge::vocabulary::{Encounter, Term};
 use jp_core::knowledge::term_surfaces::SurfaceEncounter;
+use jp_core::knowledge::vocabulary::{Encounter, Term};
 use jp_core::knowledge::work_terms::WorkEncounter;
 use jp_core::tokenize::{MasterWords, SudachiTokenizer, Token, Tokenizer, counts_as_word};
 use tracing::{info, warn};
@@ -245,7 +245,6 @@ async fn watermark(state: &AppState, key: &str) -> Result<i64, AppError> {
         .unwrap_or(0))
 }
 
-/// The mined deck, as Sudachi validation headwords.
 /// The master dictionary's headwords, for decomposing compounds Sudachi holds
 /// whole but Sankoku does not list (懲罰房 → 懲罰 + 房). See
 /// `SudachiTokenizer::decompose`.
@@ -306,7 +305,10 @@ pub(crate) async fn conjugatable(state: &AppState) -> Result<HashSet<String>, Ap
     Ok(dictionaries::master_conjugatable(state.knowledge.pool()).await?)
 }
 
-pub(crate) async fn validation_headwords(state: &AppState) -> Result<HashSet<String>, AppError> {
+/// The mined deck. The tokenizer's *second* wordhood source, behind the master
+/// lexicon: a word the reader has mined is a word, but the deck is a couple of
+/// thousand entries and a dictionary is eighty thousand.
+pub(crate) async fn mined_vocab(state: &AppState) -> Result<HashSet<String>, AppError> {
     Ok(db::fetch_anki_notes(&state.knowledge)
         .await?
         .into_iter()
@@ -362,7 +364,7 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
     let settings = db::load_settings(&state.local).await?;
     let rollover = settings.day_rollover_hour;
     let tz = tz_offset_secs();
-    let vocab = validation_headwords(state).await?;
+    let vocab = mined_vocab(state).await?;
     let lexicon = master_lexicon(state).await?;
     let readings = master_readings(state).await?;
     let ranks = frequency_ranks(state, &readings).await?;
@@ -452,7 +454,7 @@ pub async fn ingest_new_sessions(state: &AppState) -> Result<IngestOutcome, AppE
     let settings = db::load_settings(&state.local).await?;
     let rollover = settings.day_rollover_hour;
     let tz = tz_offset_secs();
-    let vocab = validation_headwords(state).await?;
+    let vocab = mined_vocab(state).await?;
     let lexicon = master_lexicon(state).await?;
     let readings = master_readings(state).await?;
     let ranks = frequency_ranks(state, &readings).await?;
