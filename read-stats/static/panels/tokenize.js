@@ -10,6 +10,12 @@
 // including the ones the feed drops, since "why was this word never asked
 // about" is usually answered by a `name` or a `non-word` in that column.
 //
+// Each row also expands into how that word was written everywhere *else* it has
+// been met, with a line for each spelling. The table above says what the
+// pipeline made of the text in front of you; that says whether the same term
+// has been arriving the same way all along — which is the other half of "did
+// the tokenizer find a word or invent one".
+//
 // Marks here are inline `<span>`s, not the feed's positioned layer. The layer
 // exists so Yomitan sees one text node per line; nothing scans this page, so
 // the plain way is the right one here.
@@ -17,6 +23,7 @@
 import { html } from "htm/preact";
 import { useState } from "preact/hooks";
 import { api } from "../api.js";
+import { Spellings, useSpellings } from "../lib/spellings.js";
 
 /** The tiers the feed paints. `known` is returned and deliberately not tinted —
  *  the absence of a mark is what makes the marks readable — so it is left plain
@@ -77,6 +84,7 @@ export function TokenizeView() {
 }
 
 function Result({ result }) {
+  const spellings = useSpellings();
   const words = result.tokens.filter((t) => t.status);
   const counted = `${result.tokens.length} tokens · ${words.length} words`;
   return html`
@@ -100,6 +108,7 @@ function Result({ result }) {
             <th>status</th>
             <th class="num">met</th>
             <th class="num">looked up</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -124,7 +133,28 @@ function Result({ result }) {
                 </td>
                 <td class="num">${count(t.encounter_count)}</td>
                 <td class="num">${count(t.lookup_count)}</td>
+                <td>
+                  ${
+                    t.headword
+                      ? html`<button
+                          class="ghost"
+                          title="How this word was written everywhere else it has been met, and a line it appeared in"
+                          onClick=${() => spellings.toggle(t)}
+                        >
+                          ${spellings.isOpen(t) ? "hide" : "how written"}
+                        </button>`
+                      : null
+                  }
+                </td>
               </tr>
+              ${
+                spellings.isOpen(t) &&
+                html`<tr key=${`${t.start}-${i}-spellings`}>
+                  <td colspan="9">
+                    <${Spellings} data=${spellings.data(t)} />
+                  </td>
+                </tr>`
+              }
             `,
           )}
         </tbody>

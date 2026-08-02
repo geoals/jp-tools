@@ -121,3 +121,25 @@
 .vocab-swatch.unknown {
   background: var(--vocab-unknown);
 }
+
+/* The spellings a term was met in, expanded under a triage or tokenize row.
+   Shared by both, so it hangs off its own class rather than either table's.
+   The surface is set in the reading font for the same reason the triage word
+   is: telling うかがう from 窺う at 14px is the point of the panel. The line
+   takes the rest and wraps, since it is a sentence. */
+.spellings-table .triage-word {
+  text-align: left;
+  font-family: "Noto Sans JP", sans-serif;
+  font-size: 17px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.spellings-table td.num {
+  width: 4em;
+  color: var(--muted);
+}
+.spellings-table td.jp:last-child {
+  font-family: "Noto Sans JP", sans-serif;
+  color: var(--muted);
+  white-space: normal;
+}
