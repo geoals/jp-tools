@@ -805,8 +805,9 @@ pub fn has_impossible_onset(surface: &str) -> bool {
 /// every そう in the corpus.
 ///
 /// The pattern is orthographic, so the rule is too: **one kana, a comma, then a
-/// word starting with that same kana**. Kana only — 木、木材 is not a stammer,
-/// and a kanji fragment would be a real word every time.
+/// word that *begins* with that same mora**, in its spelling or in its reading.
+/// Kana only for the fragment — 木、木材 is not a stammer, and a kanji fragment
+/// would be a real word every time.
 fn drop_stutters(tokens: Vec<Token>) -> Vec<Token> {
     let fragment = |t: &Token| {
         let mut chars = t.surface.chars();
@@ -824,7 +825,20 @@ fn drop_stutters(tokens: Vec<Token>) -> Vec<Token> {
             .filter(|_| tokens.get(i + 1).is_some_and(|t| t.surface == "、"))
             .zip(tokens.get(i + 2))
             .is_some_and(|(mora, next)| {
-                crate::text::kana::to_hiragana(&next.surface).starts_with(&mora)
+                let starts_with = |s: &str| crate::text::kana::to_hiragana(s).starts_with(&mora);
+                if starts_with(&next.surface) {
+                    return true;
+                }
+                // A stammer of a word written in kanji shows the repeat only in
+                // the reading — 「ち、違っ」 is ちがう and 違 carries no ち. But
+                // reading off the kanji is a much weaker signal than reading it
+                // off the spelling, so a *particle* is never spent on it: 「〜
+                // か、彼は」 is the question particle and かれ, not a stammer, and
+                // dropping the か there cost それどころか its join. The loss is
+                // real — な、何 and と、父さん are stammers too — and it is the
+                // cheaper one, because a wrong drop rewrites the sentence while
+                // a missed one only leaves a fragment behind.
+                tokens[i].pos != "助詞" && starts_with(&next.reading)
             });
         if repeated {
             i += 2;
@@ -1206,6 +1220,42 @@ mod tests {
             affix("トラウマ", "トラウマ", "トラウマ", "名詞"),
         ];
         assert_eq!(surfaces(drop_stutters(stream)), ["トラウマ"]);
+    }
+
+    /// A stammer of a word written in kanji shows the repeat only in the
+    /// reading: 「ち、違っ」 is ちがう, and 違 starts with no ち at all.
+    #[test]
+    fn a_stammer_is_caught_through_the_reading_too() {
+        let stream = vec![
+            affix("ち", "ちっ", "チ", "感動詞"),
+            affix("、", "、", "、", "補助記号"),
+            affix("違っ", "違う", "チガウ", "動詞"),
+        ];
+        assert_eq!(surfaces(drop_stutters(stream)), ["違っ"]);
+    }
+
+    /// は before a name is a gasp, not a stammer — and the reading is what says
+    /// so, since 羽咲 reads うさ and shares nothing with は.
+    #[test]
+    fn a_reading_that_does_not_repeat_is_not_a_stammer() {
+        let stream = vec![
+            affix("は", "は", "ハ", "助詞"),
+            affix("、", "、", "、", "補助記号"),
+            affix("羽咲", "羽咲", "ウサ", "名詞"),
+        ];
+        assert_eq!(surfaces(drop_stutters(stream)), ["は", "、", "羽咲"]);
+    }
+
+    /// 「〜か、彼は」 — the question particle, and かれ. A particle is never
+    /// dropped on a reading match alone; this one cost それどころか its join.
+    #[test]
+    fn a_particle_is_never_a_stammer_on_the_reading_alone() {
+        let stream = vec![
+            affix("か", "か", "カ", "助詞"),
+            affix("、", "、", "、", "補助記号"),
+            affix("彼", "彼", "カレ", "代名詞"),
+        ];
+        assert_eq!(surfaces(drop_stutters(stream)), ["か", "、", "彼"]);
     }
 
     /// The mora has to actually repeat: そ、それ is a stammer, そ、あれ is not.
