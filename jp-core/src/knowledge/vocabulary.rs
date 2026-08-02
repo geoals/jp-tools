@@ -804,33 +804,58 @@ fn word_rank_sql(lex: Option<i64>, corpus: Option<i64>, alias: &str) -> String {
     let Some(corpus) = corpus else {
         return "NULL".into();
     };
-    let (hw, rd) = (format!("{alias}.headword"), format!("{alias}.reading"));
+    let hw = format!("{alias}.headword");
+    // A kana headword stores no reading — `Term::new` refuses to write いる
+    // twice — so the reading has to be spelled out before it can be matched
+    // against a dictionary that always carries one.
+    let rd = format!("CASE WHEN {alias}.reading = '' THEN {hw} ELSE {alias}.reading END");
     // Two subqueries and a MIN, rather than one over a `term IN (...)` set: the
     // set form makes `dictionary_frequency` unreachable by index and costs a
     // second per row — 4.7s for five rows against 0.18s for the whole ledger.
     let form = format!(
         "(SELECT MIN(f.frequency) FROM dictionary_frequency f \
            WHERE f.dictionary_id = {corpus} AND f.term = {hw} \
-             AND (f.reading = {rd} OR {rd} = '' OR f.reading = ''))"
+             AND (f.reading = {rd} OR f.reading = ''))"
     );
     // No reference dictionary loaded is no way to know what a word's other
     // spellings are, so the form's own rank is all there is.
     let Some(lex) = lex else { return form };
+    let said = |j: &str| format!("COALESCE(NULLIF({j}.reading, ''), {j}.term)");
+    let entry = format!(
+        "(SELECT j0.sequence FROM dictionary_entries j0 \
+           WHERE j0.dictionary_id = {lex} AND j0.term = {hw} AND {} = {rd} \
+           ORDER BY j0.score DESC LIMIT 1)",
+        said("j0")
+    );
     let siblings = format!(
         "(SELECT MIN(f.frequency) FROM dictionary_entries j \
             JOIN dictionary_frequency f \
               ON f.dictionary_id = {corpus} AND f.term = j.term \
-             AND (f.reading = {rd} OR {rd} = '' OR f.reading = '') \
-           WHERE j.dictionary_id = {lex} \
-             AND j.sequence = (SELECT j0.sequence FROM dictionary_entries j0 \
-                                WHERE j0.dictionary_id = {lex} AND j0.term = {hw} \
-                                  AND (COALESCE(NULLIF(j0.reading, ''), j0.term) = {rd} \
-                                       OR {rd} = '') \
-                                ORDER BY j0.score DESC LIMIT 1) \
-             AND COALESCE(NULLIF(j.reading, ''), j.term) = {rd})"
+             AND (f.reading = {rd} OR f.reading = '') \
+           WHERE j.dictionary_id = {lex} AND j.sequence = {entry} AND {} = {rd})",
+        said("j")
     );
-    // `MIN(a, b)` is NULL if either is, so each side stands in for the other.
-    format!("MIN(COALESCE({form}, {siblings}), COALESCE({siblings}, {form}))")
+    // UniDic normalises the *reading* too, not only the spelling: it reads
+    // 不器用 as ふきよう (14,328) where the dictionaries say ぶきよう (405,782),
+    // and 日本 as ニッポン. So when the entry has one reading, whatever reading
+    // the corpus recorded for its spellings must be that reading — there is no
+    // other word it could have been counting. An entry with two is left alone,
+    // which is what keeps 明日【みょうにち】off 明日【あす】's rank.
+    let one_reading = format!(
+        "(SELECT MIN(f.frequency) FROM dictionary_entries j \
+            JOIN dictionary_frequency f \
+              ON f.dictionary_id = {corpus} AND f.term = j.term \
+           WHERE j.dictionary_id = {lex} AND j.sequence = {entry} \
+             AND (SELECT COUNT(DISTINCT {}) FROM dictionary_entries j2 \
+                   WHERE j2.dictionary_id = {lex} AND j2.sequence = j.sequence) = 1)",
+        said("j2")
+    );
+    // An aggregate `MIN` over the three, rather than the scalar one: the scalar
+    // form is NULL if any argument is, and two of these three usually are.
+    format!(
+        "(SELECT MIN(r) FROM (SELECT {form} AS r \
+                        UNION ALL SELECT {siblings} UNION ALL SELECT {one_reading}))"
+    )
 }
 
 /// A page of the ledger, filtered and ordered for reading rather than judging.
@@ -2318,10 +2343,14 @@ mod tests {
                 (2, 'お辞儀', 'おじぎ', 200, '[]', 100), \
                 (2, '御辞儀', 'おじぎ', 100, '[]', 100), \
                 (2, '明日', 'あした', 200, '[]', 200), \
-                (2, '明日', 'みょうにち', 100, '[]', 200); \
+                (2, '明日', 'みょうにち', 100, '[]', 200), \
+                (2, '不器用', 'ぶきよう', 200, '[]', 300), \
+                (2, '無器用', 'ぶきよう', -101, '[]', 300); \
             INSERT INTO dictionary_frequency (dictionary_id, term, reading, frequency) VALUES \
                 (3, '御辞儀', 'おじぎ', 12272), (3, 'お辞儀', 'おじぎ', 405782), \
-                (3, '明日', 'あした', 1000), (3, '明日', 'みょうにち', 209173);";
+                (3, '明日', 'あした', 1000), (3, '明日', 'みょうにち', 209173), \
+                (3, '不器用', 'ふきよう', 14328), (3, '不器用', 'ぶきよう', 536048), \
+                (3, '無器用', 'ぶきよう', 405782);";
         for stmt in sql.split(';').filter(|s| !s.trim().is_empty()) {
             sqlx::query(stmt).execute(k.pool()).await.unwrap();
         }
@@ -2342,6 +2371,19 @@ mod tests {
             .unwrap();
 
         assert_eq!(rank_of(&k).await, Some(12272));
+    }
+
+    /// The corpus reads it ふきよう where every dictionary says ぶきよう. One
+    /// reading in the entry means there is no other word it could have counted.
+    #[tokio::test]
+    async fn a_word_the_corpus_reads_differently_is_still_that_word() {
+        let k = temp().await;
+        corpus_that_spells_it_differently(&k).await;
+        record_encounters(&k, &[enc("不器用", "ブキヨウ", 1, 100.0)])
+            .await
+            .unwrap();
+
+        assert_eq!(rank_of(&k).await, Some(14328));
     }
 
     #[tokio::test]
@@ -2371,5 +2413,29 @@ mod tests {
             .unwrap();
 
         assert_eq!(rank_of(&k).await, Some(7));
+    }
+
+    /// A kana headword stores no reading, and matching the blank against a
+    /// dictionary that always carries one found no siblings at all — which cost
+    /// the ledger's commonest words their rank entirely: いる, この, また.
+    #[tokio::test]
+    async fn a_kana_headword_still_finds_its_kanji_spelling() {
+        let k = temp().await;
+        let sql = "\
+            INSERT INTO dictionaries (id, title, source_path, role) VALUES \
+                (2, 'lex', 'l.zip', 'reference'), (3, 'BCCWJ', 'b.zip', 'reference'); \
+            INSERT INTO dictionary_entries (dictionary_id, term, reading, score, \
+                                            definitions_json, sequence) VALUES \
+                (2, '居る', 'いる', 200, '[]', 300), (2, 'いる', 'いる', 100, '[]', 300); \
+            INSERT INTO dictionary_frequency (dictionary_id, term, reading, frequency) \
+                VALUES (3, '居る', 'いる', 13);";
+        for stmt in sql.split(';').filter(|s| !s.trim().is_empty()) {
+            sqlx::query(stmt).execute(k.pool()).await.unwrap();
+        }
+        record_encounters(&k, &[enc("いる", "イル", 1, 100.0)])
+            .await
+            .unwrap();
+
+        assert_eq!(rank_of(&k).await, Some(13));
     }
 }
