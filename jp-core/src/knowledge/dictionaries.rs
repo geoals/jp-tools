@@ -228,16 +228,28 @@ pub async fn lexeme_dictionary(pool: &SqlitePool) -> Result<Option<i64>, sqlx::E
 /// whose headword is already kana stores the reading either as the headword
 /// again or not at all. Without that every kana headword failed to join.
 ///
-/// **A form JMdict scores negative is not one the entry claims.** An entry
-/// groups every way a word has ever been written and read, current or not, and
-/// tags the dead ones: 三人 is さんにん at 200 and みたり at -102, 硬い is also
-/// 緊い at -103. Fanning out to those marks a word the reader has never met as
-/// known — 501 of them in one import, 10% of it. The live forms still fan out,
-/// which is the point: 回る/廻る (200/199) and 硬い/固い/堅い (200/199/198) are
-/// one word spelt several ways, and triage should not ask three times.
+/// **Spellings fan out; readings do not.** An entry groups every way a word has
+/// ever been written *and said*, and those are not the same claim. Knowing
+/// 回る means knowing 廻る — one word, two spellings, and triage should not ask
+/// twice. Knowing 執着 as しゅうちゃく says nothing about しゅうじゃく, which is
+/// a reading in its own right; the same for 出入り/ではいり against でいり,
+/// 利益/りやく against りえき, 入り口/はいりぐち against いりぐち.
 ///
-/// The same score, read the same way, as `preferred_readings` — negative is
-/// JMdict tagging a form as rare, outdated or irregular.
+/// So a form is admitted when **its reading** is in the entry's best tier.
+/// JMdict's priority scores land on tiers — about 200 tagged common, about 99
+/// in one list, 0 untagged, negative tagged rare — and a secondary reading sits
+/// a whole tier below the primary: しゅうじゃく 98 against しゅうちゃく 200,
+/// はいりぐち 96 against いりぐち 200. Tiering by reading rather than by form is
+/// what keeps 硬い/固い/堅い (200/199/198, all かたい) together while splitting
+/// those apart.
+///
+/// Negative is excluded outright as well, which is a claim about the *spelling*:
+/// 三人 is さんにん at 200 and みたり at -102, 硬い is also 緊い at -103.
+///
+/// Measured on one import: 501 dead forms and 441 secondary readings, 20% of it.
+/// A variant spelling of the primary reading still comes through — 次々/次次,
+/// 元々/元元, 不気味/無気味 — and costs nothing, since it collapses onto the
+/// same lexeme.
 ///
 /// Returned whole rather than per id: an import asks about ~13k of them.
 pub async fn master_forms_by_sequence(
@@ -251,15 +263,27 @@ pub async fn master_forms_by_sequence(
     };
 
     let rows = sqlx::query(
-        "SELECT DISTINCT j.sequence AS seq, j.term AS term, \
+        "WITH tier AS ( \
+             SELECT sequence AS seq, \
+                    COALESCE(NULLIF(reading, ''), term) AS said, \
+                    MAX(CASE WHEN score >= 150 THEN 2 WHEN score >= 0 THEN 1 ELSE 0 END) AS t \
+               FROM dictionary_entries \
+              WHERE dictionary_id = ? AND sequence IS NOT NULL \
+              GROUP BY seq, said), \
+          top AS (SELECT seq, MAX(t) AS t FROM tier GROUP BY seq) \
+         SELECT DISTINCT j.sequence AS seq, j.term AS term, \
                 COALESCE(NULLIF(j.reading, ''), j.term) AS reading \
          FROM dictionary_entries j \
          JOIN dictionary_entries m \
            ON m.dictionary_id = ? AND m.term = j.term \
           AND COALESCE(NULLIF(m.reading, ''), m.term) \
               = COALESCE(NULLIF(j.reading, ''), j.term) \
+         JOIN tier ti ON ti.seq = j.sequence \
+          AND ti.said = COALESCE(NULLIF(j.reading, ''), j.term) \
+         JOIN top tp ON tp.seq = j.sequence AND tp.t = ti.t \
          WHERE j.dictionary_id = ? AND j.sequence IS NOT NULL AND j.score >= 0",
     )
+    .bind(lex)
     .bind(master.id)
     .bind(lex)
     .fetch_all(pool)
@@ -961,6 +985,72 @@ mod tests {
             .get(&1604300).cloned().unwrap_or_default();
         forms.sort();
         assert_eq!(forms.len(), 2, "both live spellings: {forms:?}");
+    }
+
+    /// An entry groups every way its word is *said*, and those are separate
+    /// claims. 出入り is でいり at 200 and ではいり at 99 — one entry, one card,
+    /// and knowing the word says nothing about the second reading.
+    #[tokio::test]
+    async fn a_secondary_reading_is_a_claim_the_card_does_not_make() {
+        let k = with_dicts(&[
+            ("Sankoku", "/x/sankoku.zip"),
+            ("Jitendex", "/x/jitendex.zip"),
+        ])
+        .await;
+        set_role(k.pool(), 1, Role::Master).await.unwrap();
+
+        for (dict, term, reading, seq, score) in [
+            (1i64, "出入り", "でいり", None, 0i64),
+            (1, "出入り", "ではいり", None, 0),
+            (2, "出入り", "でいり", Some(1339910i64), 200),
+            (2, "出入り", "ではいり", Some(1339910), 99),
+        ] {
+            sqlx::query(
+                "INSERT INTO dictionary_entries (dictionary_id, term, reading, definitions_json, sequence, score) \
+                 VALUES (?, ?, ?, '[]', ?, ?)",
+            )
+            .bind(dict).bind(term).bind(reading).bind(seq).bind(score)
+            .execute(k.pool()).await.unwrap();
+        }
+
+        let map = master_forms_by_sequence(k.pool()).await.unwrap();
+        assert_eq!(
+            map.get(&1339910).cloned().unwrap_or_default(),
+            vec![("出入り".to_string(), "でいり".to_string())],
+            "ではいり is a reading of its own, not a spelling of でいり"
+        );
+    }
+
+    /// But a variant *spelling* of the primary reading still comes through,
+    /// even a tier down: 次々 and 次次 are both つぎつぎ and collapse onto one
+    /// lexeme, so admitting the second costs nothing and saves a triage
+    /// question.
+    #[tokio::test]
+    async fn a_variant_spelling_of_the_living_reading_still_comes_through() {
+        let k = with_dicts(&[
+            ("Sankoku", "/x/sankoku.zip"),
+            ("Jitendex", "/x/jitendex.zip"),
+        ])
+        .await;
+        set_role(k.pool(), 1, Role::Master).await.unwrap();
+
+        for (dict, term, seq, score) in [
+            (1i64, "次々", None, 0i64),
+            (1, "次次", None, 0),
+            (2, "次々", Some(1597850i64), 200),
+            (2, "次次", Some(1597850), 99),
+        ] {
+            sqlx::query(
+                "INSERT INTO dictionary_entries (dictionary_id, term, reading, definitions_json, sequence, score) \
+                 VALUES (?, ?, 'つぎつぎ', '[]', ?, ?)",
+            )
+            .bind(dict).bind(term).bind(seq).bind(score)
+            .execute(k.pool()).await.unwrap();
+        }
+
+        let forms = master_forms_by_sequence(k.pool()).await.unwrap()
+            .get(&1597850).cloned().unwrap_or_default();
+        assert_eq!(forms.len(), 2, "both spellings of つぎつぎ: {forms:?}");
     }
 
     #[tokio::test]
