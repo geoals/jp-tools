@@ -17,6 +17,7 @@ import { useState } from "preact/hooks";
 import { api } from "../api.js";
 import { SegmentedControl } from "../components/controls.js";
 import { fmtTsDate } from "../lib/format.js";
+import { BrowseView } from "./browse.js";
 import { FrequencyView } from "./frequency.js";
 import { PromotionView } from "./promotion.js";
 import { TriageView } from "./triage.js";
@@ -41,6 +42,7 @@ const SECTIONS = [
   { value: "triage", label: "sweep" },
   { value: "frequency", label: "frequency" },
   { value: "promote", label: "promote" },
+  { value: "browse", label: "browse" },
 ];
 
 export function VocabView({ vocab, settings, onJudged }) {
@@ -83,7 +85,9 @@ export function VocabView({ vocab, settings, onJudged }) {
             />`
           : section === "promote"
             ? html`<${PromotionView} onPromoted=${onJudged} />`
-            : html`<${StatusSummary} vocab=${vocab} onImported=${onJudged} />`
+            : section === "browse"
+              ? html`<${BrowseView} onJudged=${onJudged} />`
+              : html`<${StatusSummary} vocab=${vocab} onImported=${onJudged} />`
     }
   `;
 }

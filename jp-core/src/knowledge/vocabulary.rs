@@ -786,6 +786,99 @@ pub async fn seed_status_each(
     Ok(n)
 }
 
+/// A page of the ledger, filtered and ordered for reading rather than judging.
+///
+/// The triage passes each pick their own rows and show them one screen at a
+/// time; this is the other question — "what is actually in here, and where did
+/// it come from". Ordered by corpus rank because that is the axis a bulk import
+/// goes wrong along: the rare end is where a threshold rule claims words that
+/// were never really met.
+///
+/// `source` filters on `status_source`, so `seed` is the jiten import and
+/// `triage` is what was judged by hand. Unranked rows sort last: BCCWJ is a
+/// written corpus and its silence about おじぎ is a gap in the corpus, not a
+/// statement about the word.
+pub async fn browse(
+    k: &Knowledge,
+    status: Option<&str>,
+    source: Option<&str>,
+    rarest_first: bool,
+    limit: i64,
+    offset: i64,
+) -> Result<(i64, Vec<BrowseRow>), sqlx::Error> {
+    // The corpus id is resolved once and bound. Reaching it through
+    // `JOIN dictionaries ON title = 'BCCWJ'` inside the correlated subquery
+    // costs `idx_dictionary_frequency_lookup` — the plan drops to a bare SEARCH
+    // per row, and the page never returns.
+    let corpus = super::dictionaries::by_title(k.pool(), "BCCWJ")
+        .await?
+        .map(|d| d.id);
+
+    let (total,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM vocabulary \
+          WHERE (?1 IS NULL OR status = ?1) AND (?2 IS NULL OR status_source = ?2)",
+    )
+    .bind(status)
+    .bind(source)
+    .fetch_one(k.pool())
+    .await?;
+
+    // Unranked last either way. BCCWJ is written text, so its silence about
+    // おじぎ is a hole in the corpus and not a claim that the word is rare —
+    // sorting those to the top of "rarest first" would fill the page with the
+    // one thing the rank cannot speak to.
+    let order = if rarest_first {
+        "rank IS NULL, rank DESC"
+    } else {
+        "rank IS NULL, rank ASC"
+    };
+    let sql = format!(
+        "SELECT v.headword, v.reading, v.status, v.status_source, v.encounter_count, \
+                v.lookup_count, v.mined, \
+                (SELECT MIN(f.frequency) FROM dictionary_frequency f \
+                  WHERE f.dictionary_id = ?3 AND f.term = v.headword \
+                    AND (f.reading = v.reading OR v.reading = '' OR f.reading = '')) AS rank \
+           FROM vocabulary v \
+          WHERE (?1 IS NULL OR v.status = ?1) AND (?2 IS NULL OR v.status_source = ?2) \
+          ORDER BY {order}, v.headword LIMIT ?4 OFFSET ?5"
+    );
+    let rows = sqlx::query(&sql)
+        .bind(status)
+        .bind(source)
+        .bind(corpus)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(k.pool())
+        .await?;
+
+    Ok((
+        total,
+        rows.iter()
+            .map(|r| BrowseRow {
+                term: Term::new(r.get::<String, _>("headword"), &r.get::<String, _>("reading")),
+                status: r.get("status"),
+                source: r.get("status_source"),
+                encounter_count: r.get("encounter_count"),
+                lookup_count: r.get("lookup_count"),
+                mined: r.get::<i64, _>("mined") != 0,
+                rank: r.get("rank"),
+            })
+            .collect(),
+    ))
+}
+
+/// See [`browse`].
+#[derive(Debug, Clone)]
+pub struct BrowseRow {
+    pub term: Term,
+    pub status: String,
+    pub source: Option<String>,
+    pub encounter_count: i64,
+    pub lookup_count: i64,
+    pub mined: bool,
+    pub rank: Option<i64>,
+}
+
 /// Revert the most recent [`seed_status_each`] batch, and only that one.
 ///
 /// A batch is identified by its `status_ts`, which the seed writes identically

@@ -361,6 +361,64 @@ pub struct PageParams {
     pub offset: Option<i64>,
 }
 
+/// How many rows the browse list shows at a time.
+const BROWSE_PAGE: i64 = 100;
+
+#[derive(Deserialize)]
+pub struct BrowseParams {
+    pub status: Option<String>,
+    /// `status_source`: `seed` is the jiten import, `triage` what was judged by
+    /// hand.
+    pub source: Option<String>,
+    /// Rarest first by default — the end of a bulk import where a threshold
+    /// rule claims words that were never really met.
+    pub common_first: Option<bool>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+/// Read the ledger rather than judge it: a page of rows, filtered by status and
+/// by which pass wrote them, ordered by how common the corpus says they are.
+///
+/// The triage passes answer "what should I look at next". This one answers
+/// "what is in here", which is the question a 5,000-word import raises and
+/// nothing else could show.
+pub async fn vocab_browse(
+    State(state): State<AppState>,
+    Query(params): Query<BrowseParams>,
+) -> Result<Json<Value>, AppError> {
+    let limit = params.limit.unwrap_or(BROWSE_PAGE).clamp(1, 500);
+    let offset = params.offset.unwrap_or(0).max(0);
+    let blank_is_none = |s: &Option<String>| s.clone().filter(|v| !v.is_empty() && v != "any");
+    let (total, rows) = vocabulary::browse(
+        &state.knowledge,
+        blank_is_none(&params.status).as_deref(),
+        blank_is_none(&params.source).as_deref(),
+        !params.common_first.unwrap_or(false),
+        limit,
+        offset,
+    )
+    .await?;
+    Ok(Json(json!({
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "terms": rows
+            .iter()
+            .map(|r| json!({
+                "headword": r.term.headword,
+                "reading": r.term.display_reading(),
+                "status": r.status,
+                "source": r.source,
+                "encounter_count": r.encounter_count,
+                "lookup_count": r.lookup_count,
+                "mined": r.mined,
+                "rank": r.rank,
+            }))
+            .collect::<Vec<_>>(),
+    })))
+}
+
 /// Blacklist every untriaged row no dictionary recognizes as a word.
 ///
 /// The queue filters these out; this is what clears them, so the ledger's
