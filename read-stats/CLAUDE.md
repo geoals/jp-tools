@@ -123,6 +123,22 @@ and a ledger row cannot disagree):
   and belongs in the ledger as one. Names are never rejoined.
 - **A name is not vocabulary** — 固有名詞 keeps a work's cast out of the ledger.
   The verdict is per _term_ over a whole pass, never per occurrence.
+- **The name filter is the tokenizer's largest known error, and it needs a name
+  dictionary rather than another rule.** It can only ask Sudachi's 固有名詞 tag,
+  and Sudachi does not know a VN's cast. It misses in both directions:
+  ナノカ (tagged a name 14% of the time), メルル (47%, just under the majority),
+  ミリオ (0%, and it is ミリア normalised to a nonsense headword), ココ (6%) and
+  ゴクチョー (3%) are all in the ledger as vocabulary — about 1,500 tokens —
+  while 懲罰房 is tagged 固有名詞/地名 every time and gets dropped though it is a
+  real word. ノア passes the vote at 51%, four sightings from flipping. 皆守 is
+  worse than either: Sudachi has no entry for it at all, so it splits into
+  皆 + 守 across 191 lines and credits ~190 sightings of みな.
+
+  No threshold fixes this — the misses run from 0% to 47%. Per-work
+  concentration (`work_terms`) is the right signal and is not usable yet: with
+  three works read, パソコン looks exactly like ナノカ. Until a user dictionary
+  of cast names exists, per VN, expect to blacklist about five names per work in
+  triage, and read 皆/みな's count as inflated.
 - **Anything the master dictionary lists is a word, whatever its tag.**
   `counts_as_word` admits a content word, or any token whose
   `(headword, reading)` pair Sankoku lists. The gate decides what gets a row;
