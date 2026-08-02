@@ -1,13 +1,18 @@
 //! The production tokenizer, run over lines given on stdin.
 //!
 //! ```text
-//! cargo run --example full -p jp-core -- <master.tsv> <conj.tsv> <anki.tsv> <dict.dic> < lines.txt
+//! cargo run --example full -p jp-core -- <master.tsv> <conj.tsv> <anki.tsv> <dict.dic> <freq.tsv> <prefer.tsv> < lines.txt
+//!
+//! All six, for the reason `surfaces.rs` says: without the ranks and the
+//! preferences the identity ladder's last steps cannot fire and the output is
+//! not what production produces.
 //! ```
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::path::Path;
 
+use jp_core::knowledge::dictionaries::PreferredReading;
 use jp_core::tokenize::{SudachiTokenizer, Tokenizer};
 
 fn main() {
@@ -32,10 +37,39 @@ fn main() {
         .map(str::to_string)
         .collect();
 
+    let ranks: HashMap<(String, String), i64> = std::fs::read_to_string(&a[5])
+        .unwrap()
+        .lines()
+        .filter_map(|l| {
+            let mut it = l.split('\t');
+            let term = it.next()?.to_string();
+            let reading = jp_core::text::kana::to_hiragana(it.next()?);
+            Some(((term, reading), it.next()?.trim().parse().ok()?))
+        })
+        .collect();
+    let prefer: HashMap<String, PreferredReading> = std::fs::read_to_string(&a[6])
+        .unwrap()
+        .lines()
+        .filter_map(|l| {
+            let mut it = l.split('\t');
+            let term = it.next()?.to_string();
+            let preferred = it.next()?.to_string();
+            let acceptable = it.next()?.split(',').map(str::to_string).collect();
+            Some((
+                term,
+                PreferredReading {
+                    preferred,
+                    acceptable,
+                },
+            ))
+        })
+        .collect();
     let tk = SudachiTokenizer::new(Path::new(&a[4]), anki)
         .unwrap()
         .with_lexicon(lexicon)
         .with_master_readings(&entries)
+        .with_frequency(ranks)
+        .with_preferred_readings(prefer)
         .with_conjugatable(conj);
 
     let mut input = String::new();
