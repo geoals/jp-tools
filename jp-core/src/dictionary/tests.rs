@@ -246,6 +246,23 @@ fn parse_entry_from_8_element_array() {
 }
 
 #[test]
+fn parse_entry_drops_sankokus_reading_boundary() {
+    let json = r#"["味＝方", "みかた", "", "", 0, ["ally"], 1, ""]"#;
+    let arr: Vec<Value> = serde_json::from_str(json).unwrap();
+    assert_eq!(parse_entry(&arr, &HashMap::new()).unwrap().term, "味方");
+}
+
+#[test]
+fn parse_entry_keeps_a_katakana_separator() {
+    let json = r#"["サピア＝ウォーフの仮説", "", "", "", 0, ["hypothesis"], 1, ""]"#;
+    let arr: Vec<Value> = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        parse_entry(&arr, &HashMap::new()).unwrap().term,
+        "サピア＝ウォーフの仮説"
+    );
+}
+
+#[test]
 fn parse_entry_rejects_short_array() {
     let arr: Vec<Value> = serde_json::from_str(r#"["食べる", "たべる"]"#).unwrap();
     assert!(parse_entry(&arr, &HashMap::new()).is_none());

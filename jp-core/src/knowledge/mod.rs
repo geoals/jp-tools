@@ -35,6 +35,8 @@ const MIGRATION_TERM_SURFACES: &str =
     include_str!("../../migrations/knowledge/009_term_surfaces.sql");
 const MIGRATION_STRIP_CONTROL: &str =
     include_str!("../../migrations/knowledge/010_strip_control_chars.sql");
+const MIGRATION_STRIP_OKURIGANA_MARKER: &str =
+    include_str!("../../migrations/knowledge/011_strip_okurigana_marker.sql");
 
 /// A connection pool for `knowledge.db`.
 ///
@@ -245,6 +247,11 @@ impl Knowledge {
         sqlx::raw_sql(MIGRATION_LEXEME).execute(&self.0).await?;
         // Likewise: its triggers read `promoted` and `status_source`.
         sqlx::raw_sql(MIGRATION_VOCAB_HISTORY)
+            .execute(&self.0)
+            .await?;
+        // Last of all: it rewrites keys across `vocabulary`, `term_surfaces`
+        // and `vocabulary_events`, so every one of them has to exist first.
+        sqlx::raw_sql(MIGRATION_STRIP_OKURIGANA_MARKER)
             .execute(&self.0)
             .await?;
         Ok(())

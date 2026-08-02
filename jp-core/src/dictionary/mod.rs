@@ -153,13 +153,29 @@ impl Dictionary {
     }
 }
 
+/// Sankoku splits a headword at the morpheme boundary of its reading — 味＝方
+/// is みかた as み + かた, 不知＝火 しらぬ + い — and the ＝ is not part of the
+/// word. Left in, it makes the key unmatchable: 味方 has never been credited to
+/// the master, so it counts for the wordhood gate on Jitendex alone and stays
+/// out of the vocabulary denominator. 136 headwords are keyed this way.
+///
+/// **Katakana terms are left alone**, because there ＝ is a real character:
+/// Jitendex writes サピア＝ウォーフの仮説 and オーストリア＝ハンガリー帝国,
+/// where it separates two names rather than marking a reading boundary.
+fn strip_okurigana_marker(term: &str) -> String {
+    if term.chars().any(|c| ('ァ'..='ヺ').contains(&c)) {
+        return term.to_string();
+    }
+    term.replace('＝', "")
+}
+
 /// Parse a single Yomitan v3 term bank entry (8-element JSON array)
 /// into a `DictionaryEntry`.
 fn parse_entry(arr: &[Value], images: &HashMap<String, String>) -> Option<DictionaryEntry> {
     if arr.len() < 8 {
         return None;
     }
-    let term = arr[0].as_str()?.to_string();
+    let term = strip_okurigana_marker(arr[0].as_str()?);
     let reading = arr[1].as_str().unwrap_or("").to_string();
     let rules = arr[3].as_str().unwrap_or("").to_string();
     let score = arr[4].as_i64().unwrap_or(0);
