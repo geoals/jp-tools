@@ -140,6 +140,15 @@ and a ledger row cannot disagree):
   of cast names exists, per VN, expect to blacklist about five names per work in
   triage, and read 皆/みな's count as inflated.
 
+  **TODO: import a per-VN blacklist.** The cast of a VN is knowable before it is
+  read — VNDB has it, and so does anyone who has played it — so the fix is a
+  list per work that ingest consults, not a rule that has to infer names from
+  three works of evidence. Same list, same shape, for the other thing a work
+  brings with it: its spelling of the pronouns, あてぃし and わたくしめ and
+  ぼくちん, which are that character's voice and not vocabulary. Blacklisting
+  after the fact works and is what to do meanwhile; it just has to be redone
+  every VN, and the encounters are already counted by the time triage sees them.
+
 ### Known errors, and why they are left alone
 
 A random audit of 240 tokens puts content-word accuracy near 97%. What is left
@@ -167,6 +176,15 @@ buys.
   た with 他.
 - **A stammer with no comma is not caught** — 「そ……そう」, 「そそそう」. The
   rule keys on the comma because that is the part that is unambiguous.
+- **他 is both た and ほか**, 65 and 66 encounters, and neither is a double
+  count: bare 他 occurs 149 times and Sudachi assigns each occurrence one
+  reading. Both are Sankoku pairs, so nothing downstream can arbitrate. This is
+  the same case the ない/無い entry above names as unfixable.
+- **The headword shown is the canonical spelling, not the written one.**
+  傍 normalises onto 側/そば, which is the mechanism that makes いう and 言う one
+  row. `term_surfaces` keeps what the text actually wrote, and the triage UI
+  shows it beside the count — that breakdown, not the headword, is the record of
+  how a word was spelt.
 - **Function-word counts carry roughly 10% noise** from stammer fragments,
   onomatopoeia and garbled hook output landing on だ, に, の. Harmless for
   vocabulary; do not build a grammar metric on particle frequencies.
