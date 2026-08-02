@@ -394,3 +394,31 @@ fn an_inflected_kana_verb_reaches_its_kanji_lemma() {
         pair("慣れる", "なれる")
     );
 }
+
+/// The master lists それは — the intensifier of 「それはもう見事に」 — and
+/// ものを, and rejoining on that listing alone credits every それ + は and
+/// もの + を to the expression. `NEVER_JOIN` names the ones that are phrases in
+/// practice; the rest of what the join builds has to survive it.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_listed_expression_on_the_never_join_list_stays_apart() {
+    let (tk, _) = setup();
+
+    for (text, phrase) in [("それは私の本だ", "それは"), ("ものを見た", "ものを")]
+    {
+        let tokens = tokens_of(&tk, text);
+        assert!(
+            !tokens.iter().any(|t| t.surface == phrase),
+            "{phrase} must not rejoin in {text}: {:?}",
+            identities(&tokens)
+        );
+    }
+
+    // The list refuses named strings and nothing else.
+    let tokens = tokens_of(&tk, "本当に嬉しい");
+    assert_eq!(
+        identity_of(&tokens, "本当に"),
+        pair("本当に", "ほんとうに"),
+        "an expression not on the list still rejoins"
+    );
+}

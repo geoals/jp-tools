@@ -426,7 +426,7 @@ impl SudachiTokenizer {
             None
         }?;
 
-        if term.chars().count() < 3 {
+        if term.chars().count() < 3 || NEVER_JOIN.contains(&term.as_str()) {
             return None;
         }
         let reading = self
@@ -686,6 +686,37 @@ impl SudachiTokenizer {
         Some(reading)
     }
 }
+
+/// Expressions [`recompose`](SudachiTokenizer::recompose) must never build,
+/// however the master spells them.
+///
+/// Sankoku is a learner's dictionary, so it lists a phrase like それは — the
+/// intensifier of 「それはもう見事に」 — as a headword of its own. It is right
+/// to. The join is what is wrong: it sees それ next to は and produces the
+/// expression every time, so 「それは私の本だ」 is credited to it too. Over the
+/// corpus that is 778 sightings, and それ's own count comes out at 430 when the
+/// reader met it 945 times.
+///
+/// **A list rather than a rule, because the distinction is lexical.** 何か and
+/// 何が are the same two tags, 代名詞 + 助詞; one is a word and one is a phrase.
+/// ものを and ために are both 名詞 + 格助詞. Every structural rule tried here
+/// took a real word with it — barring content words breaks 医務室 (名詞 +
+/// 接尾辞), barring case particles breaks 本当に and ために, requiring three
+/// parts keeps 中には and drops んだ. Sudachi cannot arbitrate either: it splits
+/// all of them, これは and 本当に alike.
+///
+/// So each entry is one reviewed judgement about one string, and refusing a
+/// named string cannot cost anything that is not named. Everything else the
+/// join builds — ところが, まずは, 実は, 本当に, ために, すぐに, 同時に,
+/// ちなみに, ところで, 医務室 — is the word the sentence used.
+const NEVER_JOIN: [&str; 6] = [
+    "それは", // それ + は: 「それは幸か不幸か」
+    "それが", // それ + が: 「それがいつまで続くのか」
+    "これは", // これ + は: 「たしかにこれは厄介ね」
+    "ここに", // ここ + に: 「ここにいてほしい」
+    "ものを", // もの + を: 「そぐわないものを目にし」
+    "今日は", // 今日 + は — the greeting is こんにちは, and this is not it
+];
 
 /// Remove the emphatic っ — the one written for a hard stop at the end of an
 /// utterance, not to double a consonant: 早くっ, ですっ, ごめんなさいっ.
