@@ -25,6 +25,12 @@
 //     filtering locally, so the count shown is the count the server would act
 //     on. It is saved separately, in Settings.
 //
+// Each row expands into how the word was actually *written* — the ledger keys
+// on Sudachi's normalized form, so a row saying 窺う may only ever have appeared
+// as うかがう, and 何 may have been ナニ. The line beside each spelling is what
+// settles the other question a queue row cannot answer on its own: whether the
+// tokenizer found a word or invented one.
+//
 // The same rule covers the non-vocabulary tail below.
 
 import { html } from "htm/preact";
@@ -44,6 +50,9 @@ export function TriageView({ minEncounters, onJudged }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [done, setDone] = useState(null);
+  // headword\treading → {surfaces} once fetched, or null while loading. Only
+  // the rows actually opened: the queue is 200 rows and nobody expands them all.
+  const [spellings, setSpellings] = useState({});
   // The non-vocabulary tail, once asked for. Never fetched with the queue: it
   // is a separate question, and one nobody asks on every visit.
   const [noise, setNoise] = useState(null);
@@ -90,6 +99,29 @@ export function TriageView({ minEncounters, onJudged }) {
       setErr(e.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function toggleSpellings(t) {
+    const k = key(t);
+    if (k in spellings) {
+      setSpellings((s) => {
+        const next = { ...s };
+        delete next[k];
+        return next;
+      });
+      return;
+    }
+    setSpellings((s) => ({ ...s, [k]: null }));
+    try {
+      const q = new URLSearchParams({
+        headword: t.headword,
+        reading: t.reading || "",
+      });
+      const res = await api(`/api/vocab/surfaces?${q}`);
+      setSpellings((s) => ({ ...s, [k]: res }));
+    } catch (e) {
+      setSpellings((s) => ({ ...s, [k]: { error: e.message } }));
     }
   }
 
@@ -206,6 +238,7 @@ export function TriageView({ minEncounters, onJudged }) {
                     <th>reading</th>
                     <th>seen</th>
                     <th>looked up</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -237,7 +270,25 @@ export function TriageView({ minEncounters, onJudged }) {
                         <td>${t.reading || "—"}</td>
                         <td>${t.encounter_count.toLocaleString("en")}</td>
                         <td>${t.lookup_count || "—"}</td>
+                        <td>
+                          <button
+                            class="ghost"
+                            title="How this word was actually written, and a line it appeared in"
+                            onClick=${() => toggleSpellings(t)}
+                          >
+                            ${key(t) in spellings ? "hide" : "how written"}
+                          </button>
+                        </td>
                       </tr>
+                      ${
+                        key(t) in spellings &&
+                        html`<tr key=${`${key(t)}-spellings`}>
+                          <td></td>
+                          <td colspan="5">
+                            <${Spellings} data=${spellings[key(t)]} />
+                          </td>
+                        </tr>`
+                      }
                     `,
                   )}
                 </tbody>
@@ -336,6 +387,38 @@ function NoisePreview({ noise, busy, onPage, onBlacklist, onCancel }) {
         </button>
       </span>
     </div>
+  `;
+}
+
+/** How one queue row was spelt on the page, with the evidence.
+ *
+ *  Counts are per surface with inflection kept, so 出来る and 出来れ are separate
+ *  lines. Folding them would need the same normalization that lost the
+ *  orthography in the first place. */
+function Spellings({ data }) {
+  if (data === null) return html`<p class="meta-hint">Loading…</p>`;
+  if (data.error) return html`<p class="meta-hint">Failed: ${data.error}</p>`;
+  if (!data.surfaces.length) {
+    return html`<p class="meta-hint">
+      No spellings recorded — this word predates the surface sink, or came from
+      logged session text rather than hooked lines.
+    </p>`;
+  }
+  return html`
+    <table class="days">
+      <tbody>
+        ${data.surfaces.map((s) => {
+          const seen = `×${s.count.toLocaleString("en")}`;
+          return html`
+            <tr key=${s.surface}>
+              <td class="triage-word">${s.surface}</td>
+              <td>${seen}</td>
+              <td>${s.line ?? "—"}</td>
+            </tr>
+          `;
+        })}
+      </tbody>
+    </table>
   `;
 }
 

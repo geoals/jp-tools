@@ -34,7 +34,7 @@ Cargo workspace for Japanese language learning tools.
 
 | file            | holds                                                                                                             | owner                |
 | --------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `knowledge.db`  | dictionary cache (+ role), `works`, `lines`, `manual_sessions`, `anki_notes`, `word_days`, `lookups`, `vocabulary` | `jp_core::knowledge` |
+| `knowledge.db`  | dictionary cache (+ role), `works`, `lines`, `manual_sessions`, `anki_notes`, `word_days`, `lookups`, `vocabulary`, `term_surfaces` | `jp_core::knowledge` |
 | `read-stats.db` | `settings`, `reader_marks`, `work_covers`                                                                          | read-stats           |
 | `yt-mine.db`    | `mining_jobs`, `mining_sentences`                                                                                  | yt-mine              |
 

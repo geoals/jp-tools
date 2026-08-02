@@ -7,6 +7,9 @@
 //!   encounter counts, which `#read`'s highlighter looks status up in.
 //! - **`work_terms`** — the same terms counted per work, so a work's page can
 //!   say how much of it you already know.
+//! - **`term_surfaces`** — how each term was actually spelt, with a line id per
+//!   spelling, since the ledger's normalized key cannot say whether 窺う was
+//!   read as 窺う or as うかがう.
 //!
 //! Tokenization uses the mined vocab as Sudachi validation headwords, so a mined
 //! compound found whole in Mode C stays whole and matches its card.
@@ -21,6 +24,7 @@ use std::collections::{HashMap, HashSet};
 
 use jp_core::knowledge::dictionaries;
 use jp_core::knowledge::vocabulary::{Encounter, Term};
+use jp_core::knowledge::term_surfaces::SurfaceEncounter;
 use jp_core::knowledge::work_terms::WorkEncounter;
 use jp_core::tokenize::{MasterWords, SudachiTokenizer, Token, Tokenizer, counts_as_word};
 use tracing::{info, warn};
@@ -40,6 +44,9 @@ const VOCAB_SESSION_WATERMARK_KEY: &str = "vocab_through_session_id";
 /// And the per-work sink's, which arrived after both.
 const WORKS_LINE_WATERMARK_KEY: &str = "work_terms_through_line_id";
 const WORKS_SESSION_WATERMARK_KEY: &str = "work_terms_through_session_id";
+/// And the spelling sink's, latest of all.
+const SURFACES_LINE_WATERMARK_KEY: &str = "term_surfaces_through_line_id";
+const SURFACES_SESSION_WATERMARK_KEY: &str = "term_surfaces_through_session_id";
 
 fn tz_offset_secs() -> i64 {
     chrono::Local::now().offset().local_minus_utc() as i64
@@ -54,6 +61,8 @@ pub struct IngestOutcome {
     pub terms: usize,
     /// Distinct `(term, work)` pairs written to `work_terms`.
     pub work_terms: usize,
+    /// Distinct `(term, surface)` pairs written to `term_surfaces`.
+    pub surfaces: usize,
 }
 
 impl IngestOutcome {
@@ -63,6 +72,7 @@ impl IngestOutcome {
             words: 0,
             terms: 0,
             work_terms: 0,
+            surfaces: 0,
         }
     }
 }
@@ -85,6 +95,8 @@ struct Harvest {
     proper: HashMap<Term, (i64, i64)>,
     /// `(term, work) → count`
     works: HashMap<(Term, String), i64>,
+    /// `(term, surface) → (count, first line id)`
+    surfaces: HashMap<(Term, String), (i64, Option<i64>)>,
 }
 
 impl Harvest {
@@ -95,6 +107,7 @@ impl Harvest {
             terms: HashMap::new(),
             proper: HashMap::new(),
             works: HashMap::new(),
+            surfaces: HashMap::new(),
         }
     }
 }
@@ -109,7 +122,11 @@ struct Sinks<'a> {
     days: bool,
     terms: bool,
     works: bool,
+    surfaces: bool,
     work: Option<&'a str>,
+    /// The line the token came from, for `term_surfaces`' example. `None` for
+    /// session text, which has no per-line ids.
+    line_id: Option<i64>,
 }
 
 impl Harvest {
@@ -124,7 +141,7 @@ impl Harvest {
                 .entry((t.base_form.clone(), date.to_string()))
                 .or_default() += 1;
         }
-        if !sinks.terms && !sinks.works {
+        if !sinks.terms && !sinks.works && !sinks.surfaces {
             return;
         }
         let term = Term::new(t.base_form, &t.reading);
@@ -139,6 +156,14 @@ impl Harvest {
             entry.1 += 1;
             entry.2 = entry.2.min(ts);
             entry.3 = entry.3.max(ts);
+        }
+        if sinks.surfaces {
+            let entry = self
+                .surfaces
+                .entry((term.clone(), t.surface))
+                .or_insert((0, sinks.line_id));
+            entry.0 += 1;
+            entry.1 = entry.1.or(sinks.line_id);
         }
         // Unlabeled text has no work to credit. It is dropped from this sink
         // rather than bucketed under a placeholder, so `work_terms` only ever
@@ -180,6 +205,19 @@ impl Harvest {
                 term: term.clone(),
                 work: work.clone(),
                 count: *count,
+            })
+            .collect()
+    }
+
+    fn surface_encounters(&self) -> Vec<SurfaceEncounter> {
+        self.surfaces
+            .iter()
+            .filter(|((term, _), _)| !self.is_name(term))
+            .map(|((term, surface), (count, line_id))| SurfaceEncounter {
+                term: term.clone(),
+                surface: surface.clone(),
+                count: *count,
+                line_id: *line_id,
             })
             .collect()
     }
@@ -285,27 +323,37 @@ async fn commit(
     day_key: &str,
     vocab_key: &str,
     works_key: &str,
-) -> Result<(usize, usize, usize), AppError> {
+    surfaces_key: &str,
+) -> Result<(usize, usize, usize, usize), AppError> {
     let day_rows = harvest.day_rows();
     let encounters = harvest.encounters();
     let work_encounters = harvest.work_encounters();
+    let surfaces = harvest.surface_encounters();
     db::add_word_day_counts(&state.knowledge, &day_rows).await?;
     jp_core::knowledge::vocabulary::record_encounters(&state.knowledge, &encounters).await?;
     jp_core::knowledge::work_terms::record_work_terms(&state.knowledge, &work_encounters).await?;
+    jp_core::knowledge::term_surfaces::record_surfaces(&state.knowledge, &surfaces).await?;
     db::save_setting(&state.local, day_key, &max_id.to_string()).await?;
     db::save_setting(&state.local, vocab_key, &max_id.to_string()).await?;
     db::save_setting(&state.local, works_key, &max_id.to_string()).await?;
-    Ok((day_rows.len(), encounters.len(), work_encounters.len()))
+    db::save_setting(&state.local, surfaces_key, &max_id.to_string()).await?;
+    Ok((
+        day_rows.len(),
+        encounters.len(),
+        work_encounters.len(),
+        surfaces.len(),
+    ))
 }
 
 pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppError> {
     let day_mark = watermark(state, WATERMARK_KEY).await?;
     let vocab_mark = watermark(state, VOCAB_LINE_WATERMARK_KEY).await?;
     let works_mark = watermark(state, WORKS_LINE_WATERMARK_KEY).await?;
+    let surfaces_mark = watermark(state, SURFACES_LINE_WATERMARK_KEY).await?;
 
     // Re-read from whichever sink is furthest behind; each token is then
     // credited only to the sinks that have not had it.
-    let behind = day_mark.min(vocab_mark).min(works_mark);
+    let behind = day_mark.min(vocab_mark).min(works_mark).min(surfaces_mark);
     let lines = db::fetch_lines_after(&state.knowledge, behind).await?;
     let Some(max_id) = lines.last().map(|l| l.id) else {
         return Ok(IngestOutcome::none());
@@ -339,7 +387,9 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
                 days: line.id > day_mark,
                 terms: line.id > vocab_mark,
                 works: line.id > works_mark,
+                surfaces: line.id > surfaces_mark,
                 work: line.work.as_deref(),
+                line_id: Some(line.id),
             };
             match tokenizer.tokenize(&line.text) {
                 Ok(tokens) => {
@@ -355,25 +405,27 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
     .await
     .map_err(|e| AppError::Upstream(format!("tokenize task panicked: {e}")))??;
 
-    let (words, terms, work_terms) = commit(
+    let (words, terms, work_terms, surfaces) = commit(
         state,
         &harvest,
         max_id,
         WATERMARK_KEY,
         VOCAB_LINE_WATERMARK_KEY,
         WORKS_LINE_WATERMARK_KEY,
+        SURFACES_LINE_WATERMARK_KEY,
     )
     .await?;
 
     info!(
         lines = n_lines,
-        words, terms, work_terms, "line ingest complete"
+        words, terms, work_terms, surfaces, "line ingest complete"
     );
     Ok(IngestOutcome {
         lines: n_lines,
         words,
         terms,
         work_terms,
+        surfaces,
     })
 }
 
@@ -389,8 +441,9 @@ pub async fn ingest_new_sessions(state: &AppState) -> Result<IngestOutcome, AppE
     let day_mark = watermark(state, SESSION_WATERMARK_KEY).await?;
     let vocab_mark = watermark(state, VOCAB_SESSION_WATERMARK_KEY).await?;
     let works_mark = watermark(state, WORKS_SESSION_WATERMARK_KEY).await?;
+    let surfaces_mark = watermark(state, SURFACES_SESSION_WATERMARK_KEY).await?;
 
-    let behind = day_mark.min(vocab_mark).min(works_mark);
+    let behind = day_mark.min(vocab_mark).min(works_mark).min(surfaces_mark);
     let sessions = db::fetch_session_texts_after(&state.knowledge, behind).await?;
     let Some(max_id) = sessions.last().map(|s| s.id) else {
         return Ok(IngestOutcome::none());
@@ -427,7 +480,9 @@ pub async fn ingest_new_sessions(state: &AppState) -> Result<IngestOutcome, AppE
                 days: s.id > day_mark,
                 terms: s.id > vocab_mark,
                 works: s.id > works_mark,
+                surfaces: s.id > surfaces_mark,
                 work: work.as_deref(),
+                line_id: None,
             };
             // Sentence by sentence: Sudachi has an input length limit, and an
             // article is far longer than the hooked line this path was built
@@ -449,25 +504,27 @@ pub async fn ingest_new_sessions(state: &AppState) -> Result<IngestOutcome, AppE
     .await
     .map_err(|e| AppError::Upstream(format!("tokenize task panicked: {e}")))??;
 
-    let (words, terms, work_terms) = commit(
+    let (words, terms, work_terms, surfaces) = commit(
         state,
         &harvest,
         max_id,
         SESSION_WATERMARK_KEY,
         VOCAB_SESSION_WATERMARK_KEY,
         WORKS_SESSION_WATERMARK_KEY,
+        SURFACES_SESSION_WATERMARK_KEY,
     )
     .await?;
 
     info!(
         sessions = n_sessions,
-        words, terms, work_terms, "session ingest complete"
+        words, terms, work_terms, surfaces, "session ingest complete"
     );
     Ok(IngestOutcome {
         lines: n_sessions,
         words,
         terms,
         work_terms,
+        surfaces,
     })
 }
 
@@ -486,10 +543,14 @@ pub async fn reset_vocabulary(state: &AppState) -> Result<(), AppError> {
     // occurs should disappear, and unlike `vocabulary` these rows carry
     // nothing a reader asserted.
     jp_core::knowledge::work_terms::reset(&state.knowledge).await?;
+    // Same reasoning: derived wholly from the pass, and carries no assertion.
+    jp_core::knowledge::term_surfaces::reset(&state.knowledge).await?;
     db::save_setting(&state.local, VOCAB_LINE_WATERMARK_KEY, "0").await?;
     db::save_setting(&state.local, VOCAB_SESSION_WATERMARK_KEY, "0").await?;
     db::save_setting(&state.local, WORKS_LINE_WATERMARK_KEY, "0").await?;
     db::save_setting(&state.local, WORKS_SESSION_WATERMARK_KEY, "0").await?;
+    db::save_setting(&state.local, SURFACES_LINE_WATERMARK_KEY, "0").await?;
+    db::save_setting(&state.local, SURFACES_SESSION_WATERMARK_KEY, "0").await?;
     info!("vocabulary ledger counts reset; next ingest will rebuild them");
     Ok(())
 }
@@ -525,7 +586,9 @@ mod tests {
             days: true,
             terms: true,
             works: true,
+            surfaces: true,
             work: Some("A"),
+            line_id: Some(1),
         }
     }
 
@@ -597,6 +660,35 @@ mod tests {
         let h = harvest(vec![noise; 9]);
         assert!(h.encounters().is_empty());
         assert!(h.day_rows().is_empty());
+    }
+
+    #[test]
+    fn the_spelling_sink_keeps_what_the_page_said() {
+        // The ledger key is the normalized form for both of these; the whole
+        // point of the sink is that they are not the same question.
+        let mut kana = tok("窺う", "うかがう", false);
+        kana.surface = "うかがう".to_string();
+        let mut kanji = tok("窺う", "うかがう", false);
+        kanji.surface = "窺っ".to_string();
+        let h = harvest(vec![kana.clone(), kana, kanji]);
+
+        assert_eq!(h.encounters().len(), 1, "one ledger row, as before");
+        let mut spellings: Vec<(String, i64)> = h
+            .surface_encounters()
+            .iter()
+            .map(|s| (s.surface.clone(), s.count))
+            .collect();
+        spellings.sort();
+        assert_eq!(
+            spellings,
+            vec![("うかがう".to_string(), 2), ("窺っ".to_string(), 1)]
+        );
+    }
+
+    #[test]
+    fn a_name_leaves_the_spelling_sink_with_the_ledger() {
+        let h = harvest(vec![tok("ノア", "のあ", true); 20]);
+        assert!(h.surface_encounters().is_empty());
     }
 
     #[test]

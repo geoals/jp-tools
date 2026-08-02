@@ -13,6 +13,7 @@
 
 pub mod dictionaries;
 pub mod lexeme;
+pub mod term_surfaces;
 pub mod vocabulary;
 pub mod work_terms;
 
@@ -30,6 +31,8 @@ const MIGRATION_WORK_TERMS: &str = include_str!("../../migrations/knowledge/006_
 const MIGRATION_LEXEME: &str = include_str!("../../migrations/knowledge/007_lexeme.sql");
 const MIGRATION_VOCAB_HISTORY: &str =
     include_str!("../../migrations/knowledge/008_vocab_history.sql");
+const MIGRATION_TERM_SURFACES: &str =
+    include_str!("../../migrations/knowledge/009_term_surfaces.sql");
 
 /// A connection pool for `knowledge.db`.
 ///
@@ -93,6 +96,7 @@ impl Knowledge {
             MIGRATION_READING,
             MIGRATION_VOCAB,
             MIGRATION_WORK_TERMS,
+            MIGRATION_TERM_SURFACES,
         ] {
             sqlx::raw_sql(sql).execute(&self.0).await?;
         }

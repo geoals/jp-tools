@@ -308,3 +308,31 @@ pub async fn fetch_kanji_lines(k: &Knowledge) -> Result<Vec<crate::stats::KanjiL
         })
         .collect())
 }
+
+/// The text of a handful of specific lines, keyed by id.
+///
+/// For `term_surfaces`' example lines: a triage row asks for the sentence
+/// behind each spelling, which is a few ids, not a range. Discarded lines are
+/// included — the word was still read, and hiding the evidence would leave the
+/// spelling with a count and nothing to show for it.
+pub async fn fetch_line_texts_by_id(
+    k: &Knowledge,
+    ids: &[i64],
+) -> Result<std::collections::HashMap<i64, String>, sqlx::Error> {
+    if ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let places = std::iter::repeat_n("?", ids.len())
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!("SELECT id, text FROM lines WHERE id IN ({places}) AND text IS NOT NULL");
+    let mut q = sqlx::query(&sql);
+    for id in ids {
+        q = q.bind(id);
+    }
+    Ok(q.fetch_all(k.pool())
+        .await?
+        .iter()
+        .map(|r| (r.get("id"), r.get("text")))
+        .collect())
+}

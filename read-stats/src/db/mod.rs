@@ -51,7 +51,7 @@ pub use anki_notes::{AnkiNote, fetch_anki_note_ids, fetch_anki_notes, replace_an
 pub use covers::{clear_work_cover_vndb, fetch_work_covers, set_work_cover_vndb};
 pub use lines::{
     IngestLine, ReaderLine, WorkedLine, fetch_current_session_lines, fetch_kanji_lines,
-    fetch_line_events, fetch_line_texts, fetch_lines_after, fetch_lines_after_id,
+    fetch_line_events, fetch_line_texts, fetch_line_texts_by_id, fetch_lines_after, fetch_lines_after_id,
     fetch_lines_before_id, fetch_recent_lines, fetch_worked_lines, line_within, max_line_id,
     set_lines_discarded,
 };

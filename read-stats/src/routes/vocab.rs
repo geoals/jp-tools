@@ -11,6 +11,7 @@ use axum::Json;
 use axum::extract::{ConnectInfo, Query, State};
 use jp_core::knowledge::dictionaries;
 use jp_core::knowledge::lexeme;
+use jp_core::knowledge::term_surfaces;
 use jp_core::knowledge::vocabulary::{self, Status, Term};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -162,6 +163,47 @@ pub async fn vocab_queue(
         "pending": pending,
         "pending_preselected": pending_preselected,
         "terms": terms,
+    })))
+}
+
+#[derive(Deserialize)]
+pub struct SurfacesParams {
+    headword: String,
+    #[serde(default)]
+    reading: String,
+}
+
+/// How one term was actually written, with a line to show for each spelling.
+///
+/// The ledger keys on Sudachi's normalized form, so a queue row reading 窺う may
+/// never have appeared in kanji at all. Triage needs both halves of that: which
+/// spellings, and a sentence per spelling — the only thing that separates a real
+/// word from a tokenizer artefact without leaving the page.
+pub async fn vocab_surfaces(
+    State(state): State<AppState>,
+    Query(params): Query<SurfacesParams>,
+) -> Result<Json<Value>, AppError> {
+    let term = Term::new(&params.headword, &params.reading);
+    let rows = term_surfaces::for_term(&state.knowledge, &term).await?;
+
+    let ids: Vec<i64> = rows.iter().filter_map(|r| r.line_id).collect();
+    let texts = db::fetch_line_texts_by_id(&state.knowledge, &ids).await?;
+
+    let surfaces: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            json!({
+                "surface": r.surface,
+                "count": r.count,
+                "line": r.line_id.and_then(|id| texts.get(&id)),
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({
+        "headword": term.headword,
+        "reading": term.display_reading(),
+        "surfaces": surfaces,
     })))
 }
 
