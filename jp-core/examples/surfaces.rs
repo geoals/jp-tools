@@ -2,7 +2,12 @@
 //! change can be reviewed before it is written to the database.
 //!
 //! ```text
-//! cargo run --release --example surfaces -p jp-core -- <master.tsv> <conj.tsv> <anki.tsv> <dict.dic> <lines.txt>
+//! cargo run --release --example surfaces -p jp-core -- <master.tsv> <conj.tsv> <anki.tsv> <dict.dic> <lines.txt> <freq.tsv> <prefer.tsv>
+//!
+//! All seven inputs, because the tokenizer behaves differently without any of
+//! them: the frequency ranks and the reading preferences are what let the
+//! identity ladder's last steps fire, so a probe missing them reports words as
+//! unlisted that production resolves.
 //! ```
 //!
 //! Prints `rank<TAB>identity<TAB>total<TAB>surface<TAB>count<TAB>example line`.
@@ -10,6 +15,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+use jp_core::knowledge::dictionaries::PreferredReading;
 use jp_core::tokenize::{MasterWords, SudachiTokenizer, Tokenizer, counts_as_word};
 
 fn main() {
@@ -30,10 +36,37 @@ fn main() {
             .map(str::to_string)
             .collect()
     };
+    let ranks: HashMap<String, i64> = std::fs::read_to_string(&a[6])
+        .unwrap()
+        .lines()
+        .filter_map(|l| {
+            let (t, r) = l.split_once('\t')?;
+            Some((t.to_string(), r.trim().parse().ok()?))
+        })
+        .collect();
+    let prefer: HashMap<String, PreferredReading> = std::fs::read_to_string(&a[7])
+        .unwrap()
+        .lines()
+        .filter_map(|l| {
+            let mut it = l.split('\t');
+            let term = it.next()?.to_string();
+            let preferred = it.next()?.to_string();
+            let acceptable = it.next()?.split(',').map(str::to_string).collect();
+            Some((
+                term,
+                PreferredReading {
+                    preferred,
+                    acceptable,
+                },
+            ))
+        })
+        .collect();
     let tk = SudachiTokenizer::new(Path::new(&a[4]), set(&a[3]))
         .unwrap()
         .with_lexicon(lexicon.clone())
         .with_master_readings(&entries)
+        .with_frequency(ranks)
+        .with_preferred_readings(prefer)
         .with_conjugatable(set(&a[2]));
     let words = MasterWords::new(lexicon, &entries);
 
