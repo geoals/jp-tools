@@ -155,11 +155,31 @@ function StatusSummary({ vocab, onImported }) {
       });
       if (!res.ok) throw new Error((await res.text()) || res.statusText);
       const r = await res.json();
+      const vetoed = `${r.vetoed_by_lookup.toLocaleString("en")} held back (looked up)`;
       setResult(
         `${r.terms_marked.toLocaleString("en")} spellings marked known from ` +
           `${r.resolved_entries.toLocaleString("en")} entries · ` +
+          `${vetoed} · ` +
           `${r.unresolved_entries.toLocaleString("en")} not in the master dictionary`,
       );
+      onImported?.();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function undoSeed() {
+    if (!confirm("Put back the last jiten import? Words judged by hand since then are kept.")) {
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await api("/api/vocab/seed-undo", { method: "POST" });
+      const n = r.reverted.toLocaleString("en");
+      setResult(`${n} spellings put back to unjudged`);
       onImported?.();
     } catch (e) {
       setErr(e.message);
@@ -181,7 +201,8 @@ function StatusSummary({ vocab, onImported }) {
       <div class="triage-actions">
         <span class="meta-hint">
           jiten.moe's JSON export. Keyed by JMdict entry id, so readings are
-          exact and nothing is guessed. Never overwrites a word already judged.
+          exact and nothing is guessed. Never overwrites a word already judged,
+          and a word you have looked up is held back however the list grades it.
         </span>
         <label class="pause-btn" style="cursor:pointer">
           ${busy ? "importing…" : "import jiten.moe export…"}
@@ -193,6 +214,15 @@ function StatusSummary({ vocab, onImported }) {
             disabled=${busy}
           />
         </label>
+      </div>
+      <div class="triage-actions">
+        <span class="meta-hint">
+          Withdraws the last import's claims and keeps every judgement made by
+          hand since.
+        </span>
+        <button class="pause-btn" onClick=${undoSeed} disabled=${busy}>
+          ${busy ? "working…" : "undo last jiten import"}
+        </button>
       </div>
       ${err && html`<p class="chart-empty">Failed: ${err}</p>`}
       ${result && html`<p class="meta-hint">${result}</p>`}

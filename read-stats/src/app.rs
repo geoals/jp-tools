@@ -123,6 +123,10 @@ pub fn build_router(state: AppState) -> Router {
             "/api/vocab/rebuild",
             axum::routing::post(vocab::vocab_rebuild),
         )
+        .route(
+            "/api/vocab/seed-undo",
+            axum::routing::post(vocab::vocab_seed_undo),
+        )
         .route("/api/lookups/summary", get(lookups::lookups_summary))
         .route("/api/kanji", get(kanji::kanji))
         .route(

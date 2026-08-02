@@ -16,7 +16,7 @@
 //! are incremental because re-tokenizing all of `lines` on every Anki refresh
 //! would be minutes of CPU. `status` is assertions only.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use sqlx::{Row, SqlitePool};
 
@@ -274,6 +274,24 @@ pub async fn sync_lookup_counts(k: &Knowledge) -> Result<(), sqlx::Error> {
     .execute(k.pool())
     .await?;
     Ok(())
+}
+
+/// Every headword the reader has ever stopped to look up.
+///
+/// The one piece of evidence in the database that a word was *not* known, and
+/// the reader's own rather than inferred. A bulk import claiming to know things
+/// has to be told about it: of 3,469 seeded-known words that came up again in
+/// reading, 95 were looked up, and those 95 were a quarter of every lookup made
+/// in that stretch.
+///
+/// Headword only — Yomitan sends no reading — so a lookup of 空 vetoes both
+/// そら and から. That is the safe direction: the pair stays unjudged and reaches
+/// triage, rather than being claimed on evidence that does not name it.
+pub async fn looked_up_headwords(k: &Knowledge) -> Result<HashSet<String>, sqlx::Error> {
+    let rows: Vec<(String,)> = sqlx::query_as("SELECT DISTINCT term FROM lookups WHERE term <> ''")
+        .fetch_all(k.pool())
+        .await?;
+    Ok(rows.into_iter().map(|(t,)| t).collect())
 }
 
 /// Recompute the three dictionary flags from `dictionary_entries` + the roles.
@@ -766,6 +784,33 @@ pub async fn seed_status_each(
     }
     tx.commit().await?;
     Ok(n)
+}
+
+/// Revert the most recent [`seed_status_each`] batch, and only that one.
+///
+/// A batch is identified by its `status_ts`, which the seed writes identically
+/// across the whole import. Every row it touched was `new` before — the seed's
+/// `WHERE status = 'new'` guarantees it — so `new` is what they go back to, with
+/// no need to consult the event log. A row judged by hand since then has
+/// `status_source = 'triage'` and is left alone.
+///
+/// Returns how many rows were put back.
+pub async fn undo_last_seed(k: &Knowledge) -> Result<u64, sqlx::Error> {
+    let Some((batch,)): Option<(f64,)> =
+        sqlx::query_as("SELECT MAX(status_ts) FROM vocabulary WHERE status_source = 'seed'")
+            .fetch_optional(k.pool())
+            .await?
+    else {
+        return Ok(0);
+    };
+    Ok(sqlx::query(
+        "UPDATE vocabulary SET status = 'new', status_ts = NULL, status_source = NULL \
+         WHERE status_source = 'seed' AND status_ts = ?",
+    )
+    .bind(batch)
+    .execute(k.pool())
+    .await?
+    .rows_affected())
 }
 
 /// `source` labels the pass in the history log — `triage`, `anki`,

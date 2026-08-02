@@ -456,13 +456,20 @@ pub struct JitenCard {
 /// safe because counting collapses back — `lexeme` reports こちら and こっち as
 /// one word — and it stops triage asking about each spelling separately.
 ///
+/// **A word the reader has looked up is never imported**, whatever the list
+/// says — see [`vocabulary::looked_up_headwords`]. The list says a word was met
+/// often enough to have been learnt; a lookup says it was not, and only one of
+/// the two is the reader's own evidence.
+///
 /// Order does not matter and re-running is free: `status` is set, never
-/// cleared, and counts are left alone.
+/// cleared, and counts are left alone. Undone by
+/// [`vocab_seed_undo`] rather than by hand.
 pub async fn vocab_jiten_import(
     State(state): State<AppState>,
     Json(export): Json<JitenExport>,
 ) -> Result<Json<Value>, AppError> {
     let forms_by_seq = dictionaries::master_forms_by_sequence(state.knowledge.pool()).await?;
+    let looked_up = vocabulary::looked_up_headwords(&state.knowledge).await?;
 
     let ids: std::collections::HashSet<i64> = export.cards.iter().map(|c| c.w).collect();
     let mut terms: std::collections::HashSet<Term> = std::collections::HashSet::new();
@@ -481,6 +488,13 @@ pub async fn vocab_jiten_import(
         }
     }
 
+    // Reading it in a list is not knowing it. The lookup log is the reader's
+    // own record of the opposite, so it overrules the list: a word stopped for
+    // goes to triage as `new` rather than being claimed here.
+    let before = terms.len();
+    terms.retain(|t| !looked_up.contains(&t.headword));
+    let vetoed = (before - terms.len()) as i64;
+
     let judgements: Vec<(Term, Status)> = terms.into_iter().map(|t| (t, Status::Known)).collect();
     let marked = vocabulary::seed_status_each(&state.knowledge, &judgements, now_ts()).await?;
 
@@ -494,6 +508,7 @@ pub async fn vocab_jiten_import(
         ids = ids.len(),
         resolved = ids.len() as i64 - unresolved,
         unresolved,
+        vetoed,
         marked,
         "jiten import"
     );
@@ -502,8 +517,28 @@ pub async fn vocab_jiten_import(
         "ids": ids.len(),
         "resolved_entries": ids.len() as i64 - unresolved,
         "unresolved_entries": unresolved,
+        "vetoed_by_lookup": vetoed,
         "terms_marked": marked,
     })))
+}
+
+/// Put the last jiten import back, because a bulk claim about 14,000 words is
+/// one worth being able to withdraw.
+///
+/// Exact rather than reconstructed: [`seed_status_each`] writes only over rows
+/// that were `new`, so `new` is what every seeded row was, and the whole batch
+/// shares one `status_ts`. Anything judged by hand since carries
+/// `status_source = 'triage'` and is not touched — the undo withdraws the
+/// import's claims and none of the reader's.
+///
+/// `vocabulary_events` keeps both the import and this, so the history says what
+/// was claimed and what was taken back.
+///
+/// [`seed_status_each`]: jp_core::knowledge::vocabulary::seed_status_each
+pub async fn vocab_seed_undo(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
+    let reverted = vocabulary::undo_last_seed(&state.knowledge).await?;
+    info!(reverted, "withdrew the last seed import");
+    Ok(Json(json!({ "reverted": reverted })))
 }
 
 /// How many encounters make a non-master term worth asking about when no card
