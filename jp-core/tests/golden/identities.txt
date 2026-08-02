@@ -1,4 +1,4 @@
-# 250 lines, 3199 counted tokens, 984 distinct identities
+# 250 lines, 3198 counted tokens, 983 distinct identities
 # 325 counted tokens (10.2%) are identities the master does not list
 # regenerate: cargo run --example golden -p jp-core --features test-support
 
@@ -576,7 +576,7 @@
     マーゴ/まーご? は/は 人目/ひとめ に/に つく/つく ない/ない よう/よう だ/だ 暗い/くらい 奥まる/おくまる? た/た ところで/ところで ひっそり/ひっそり と/と 読書/どくしょ を/を する/する て/て いる/いる た/た
 
 マーゴはぽつりと呟き、興味なさげに本へと目を落とす。
-    マーゴ/まーご? は/は ぽつり/ぽつり? と/と 呟く/つぶやく? 興味/きょうみ ない/ない 気/げ だ/だ 本/ほん へ/へ と/と 目を落とす/めをおとす
+    マーゴ/まーご? は/は ぽつり/ぽつり? と/と 呟く/つぶやく? 興味/きょうみ ない/ない だ/だ 本/ほん へ/へ と/と 目を落とす/めをおとす
 
 友だちって認識で合ってますわよ。
     友達/ともだち? 認識/にんしき で/で 合う/あう てる/てる ます/ます わ/わ よ/よ

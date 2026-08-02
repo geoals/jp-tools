@@ -639,7 +639,16 @@ impl SudachiTokenizer {
             .all(crate::text::kana::is_hiragana)
         {
             let spoken = crate::text::kana::to_hiragana(&lemma_reading);
-            if let Some(term) = self.headword_for_reading(&spoken) {
+            // **Never on a single mora.** Japanese has a kanji for every one of
+            // them, so this step always finds an answer and the answer is
+            // always a guess: 「ぐっ」 became 具 68 times, 「ひぃ」 日 58,
+            // 「ふっ」 不 41, 「ちょ、マジで」 著 22. None of those is a word
+            // anyone read. A mora carries no information about which word it
+            // is, and a fallback that cannot be wrong about a real word cannot
+            // be right about a fragment either.
+            if !is_one_mora(&spoken)
+                && let Some(term) = self.headword_for_reading(&spoken)
+            {
                 return (term.clone(), spoken);
             }
         }
@@ -742,6 +751,15 @@ pub fn strip_emphatic_sokuon(text: &str) -> String {
 /// counts: 突っ込む and 真っ黒 are geminates across the okurigana.
 fn starts_a_word(c: char) -> bool {
     matches!(c, 'ぁ'..='ん' | 'ァ'..='ヶ' | 'ー') || crate::text::kanji::is_kanji(c)
+}
+
+/// One beat of speech: a kana, optionally followed by a small ゃゅょ.
+fn is_one_mora(reading: &str) -> bool {
+    let mut chars = reading.chars();
+    let (Some(_), second, None) = (chars.next(), chars.next(), chars.next()) else {
+        return false;
+    };
+    second.is_none_or(|c| matches!(c, 'ゃ' | 'ゅ' | 'ょ' | 'ャ' | 'ュ' | 'ョ'))
 }
 
 /// No Japanese word begins with っ, ん or a small kana — a token that does is a
@@ -1119,6 +1137,16 @@ mod tests {
             &affix("彼女", "彼女", "カノジョ", "代名詞"),
             &MasterWords::new(HashSet::new(), &[])
         ));
+    }
+
+    #[test]
+    fn one_mora_is_a_kana_and_at_most_a_small_y() {
+        assert!(is_one_mora("ぐ"));
+        assert!(is_one_mora("ちょ"));
+        assert!(is_one_mora("しゃ"));
+        assert!(!is_one_mora("いつ"));
+        assert!(!is_one_mora("うかがう"));
+        assert!(!is_one_mora(""));
     }
 
     #[test]
