@@ -10,8 +10,10 @@
 // correctly and rare ones on the strength of a single book's subject matter, so
 // the tail is where the mistakes are, and going down it is the cheapest audit
 // there is. Rows with no BCCWJ rank sort *after* the ranked ones rather than
-// first: the corpus is written text and its silence about おじぎ is a gap in
+// first: the corpus is written text and its silence about この野郎 is a gap in
 // the corpus, not a claim about the word.
+//
+// The rank shown is the *word's*, not the spelling's — see `word_rank_sql`.
 //
 // Judging writes straight through `POST /api/vocab/judge`, one word at a time
 // and optimistically, the same shape `frequency.js` uses — the point of a list

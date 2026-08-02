@@ -682,25 +682,22 @@ pub async fn triage_queue(
     order: QueueOrder,
     limit: i64,
 ) -> Result<Vec<VocabRow>, sqlx::Error> {
-    // The rank subquery seeks `idx_dictionary_frequency_lookup` on both key
-    // columns; keep the `dictionary_id` and `term` equalities together.
     let (select, order_by) = match order {
-        QueueOrder::Encounters => ("SELECT *", "encounter_count DESC, headword"),
-        QueueOrder::Frequency { .. } => (
-            "SELECT *, (SELECT MIN(df.frequency) FROM dictionary_frequency df \
-                        WHERE df.dictionary_id = ? AND df.term = vocabulary.headword) AS freq_rank",
-            "freq_rank IS NULL, freq_rank, encounter_count DESC, headword",
-        ),
+        QueueOrder::Encounters => ("SELECT *".to_string(), "encounter_count DESC, headword"),
+        QueueOrder::Frequency { bccwj_id } => {
+            let lex = super::dictionaries::lexeme_dictionary(k.pool()).await?;
+            let rank = word_rank_sql(lex, Some(bccwj_id), "vocabulary");
+            (
+                format!("SELECT *, {rank} AS freq_rank"),
+                "freq_rank IS NULL, freq_rank, encounter_count DESC, headword",
+            )
+        }
     };
     let sql = format!(
         "{select} FROM vocabulary WHERE {} ORDER BY {order_by} LIMIT ?",
         queue_where(since_ts)
     );
-    let mut q = sqlx::query(&sql);
-    if let QueueOrder::Frequency { bccwj_id } = order {
-        q = q.bind(bccwj_id);
-    }
-    q = q.bind(min_encounters);
+    let mut q = sqlx::query(&sql).bind(min_encounters);
     if let Some(ts) = since_ts {
         q = q.bind(ts);
     }
@@ -786,6 +783,56 @@ pub async fn seed_status_each(
     Ok(n)
 }
 
+/// How common the *word* is, as an SQL expression over a `vocabulary` row.
+///
+/// Not `MIN(frequency) WHERE term = headword`. BCCWJ is annotated with UniDic,
+/// which normalises the spelling, so the corpus files お辞儀 under 御辞儀 and
+/// asking under Sankoku's spelling answers 405,782 for a word the corpus ranks
+/// 12,272. The rank is taken over every spelling the entry carries **for this
+/// reading**, which is what the corpus was counting all along.
+///
+/// Grouping by reading and not by entry is what keeps 明日【みょうにち】at
+/// 209,173 rather than inheriting 明日【あした】's rank — a rare reading is a
+/// different word to know, where a rare spelling is not.
+///
+/// The form's own rank stays in the `MIN`: a row the reference dictionary
+/// cannot resolve has no siblings and must not lose the rank it does have.
+///
+/// The ids are formatted in rather than bound — they come from `dictionaries`,
+/// and the callers number their placeholders differently.
+fn word_rank_sql(lex: Option<i64>, corpus: Option<i64>, alias: &str) -> String {
+    let Some(corpus) = corpus else {
+        return "NULL".into();
+    };
+    let (hw, rd) = (format!("{alias}.headword"), format!("{alias}.reading"));
+    // Two subqueries and a MIN, rather than one over a `term IN (...)` set: the
+    // set form makes `dictionary_frequency` unreachable by index and costs a
+    // second per row — 4.7s for five rows against 0.18s for the whole ledger.
+    let form = format!(
+        "(SELECT MIN(f.frequency) FROM dictionary_frequency f \
+           WHERE f.dictionary_id = {corpus} AND f.term = {hw} \
+             AND (f.reading = {rd} OR {rd} = '' OR f.reading = ''))"
+    );
+    // No reference dictionary loaded is no way to know what a word's other
+    // spellings are, so the form's own rank is all there is.
+    let Some(lex) = lex else { return form };
+    let siblings = format!(
+        "(SELECT MIN(f.frequency) FROM dictionary_entries j \
+            JOIN dictionary_frequency f \
+              ON f.dictionary_id = {corpus} AND f.term = j.term \
+             AND (f.reading = {rd} OR {rd} = '' OR f.reading = '') \
+           WHERE j.dictionary_id = {lex} \
+             AND j.sequence = (SELECT j0.sequence FROM dictionary_entries j0 \
+                                WHERE j0.dictionary_id = {lex} AND j0.term = {hw} \
+                                  AND (COALESCE(NULLIF(j0.reading, ''), j0.term) = {rd} \
+                                       OR {rd} = '') \
+                                ORDER BY j0.score DESC LIMIT 1) \
+             AND COALESCE(NULLIF(j.reading, ''), j.term) = {rd})"
+    );
+    // `MIN(a, b)` is NULL if either is, so each side stands in for the other.
+    format!("MIN(COALESCE({form}, {siblings}), COALESCE({siblings}, {form}))")
+}
+
 /// A page of the ledger, filtered and ordered for reading rather than judging.
 ///
 /// The triage passes each pick their own rows and show them one screen at a
@@ -796,7 +843,7 @@ pub async fn seed_status_each(
 ///
 /// `source` filters on `status_source`, so `seed` is the jiten import and
 /// `triage` is what was judged by hand. Unranked rows sort last: BCCWJ is a
-/// written corpus and its silence about おじぎ is a gap in the corpus, not a
+/// written corpus and its silence about この野郎 is a gap in the corpus, not a
 /// statement about the word.
 /// `collapse` shows one row per *word* rather than per ledger row — the
 /// question this view is for. The ledger keys on forms because the tokenizer
@@ -813,10 +860,10 @@ pub async fn browse(
     limit: i64,
     offset: i64,
 ) -> Result<(i64, Vec<BrowseRow>), sqlx::Error> {
-    // The corpus id is resolved once and bound. Reaching it through
-    // `JOIN dictionaries ON title = 'BCCWJ'` inside the correlated subquery
-    // costs `idx_dictionary_frequency_lookup` — the plan drops to a bare SEARCH
-    // per row, and the page never returns.
+    // The corpus id is resolved here rather than reached through
+    // `JOIN dictionaries ON title = 'BCCWJ'` inside the correlated subquery,
+    // which costs `idx_dictionary_frequency_lookup` — the plan drops to a bare
+    // SEARCH per row, and the page never returns.
     let corpus = super::dictionaries::by_title(k.pool(), "BCCWJ")
         .await?
         .map(|d| d.id);
@@ -824,7 +871,7 @@ pub async fn browse(
     let lex = super::dictionaries::lexeme_dictionary(k.pool()).await?;
 
     // Unranked last either way. BCCWJ is written text, so its silence about
-    // おじぎ is a hole in the corpus and not a claim that the word is rare —
+    // この野郎 is a hole in the corpus and not a claim that the word is rare —
     // sorting those to the top of "rarest first" would fill the page with the
     // one thing the rank cannot speak to.
     let order = if rarest_first {
@@ -852,6 +899,7 @@ pub async fn browse(
     } else {
         "WHERE hit = 1"
     };
+    let rank = word_rank_sql(lex, corpus, "v");
     let sql = format!(
         "WITH picked AS ( \
              SELECT v.headword, v.reading, v.status, v.status_source, v.encounter_count, \
@@ -868,9 +916,7 @@ pub async fn browse(
                       WHERE j.dictionary_id = ?3 AND j.term = v.headword \
                         AND (COALESCE(NULLIF(j.reading, ''), j.term) = v.reading \
                              OR v.reading = '')) AS score, \
-                    (SELECT MIN(f.frequency) FROM dictionary_frequency f \
-                      WHERE f.dictionary_id = ?4 AND f.term = v.headword \
-                        AND (f.reading = v.reading OR v.reading = '' OR f.reading = '')) AS rank \
+                    {rank} AS rank \
                FROM vocabulary v), \
           grouped AS ( \
              SELECT *, \
@@ -880,13 +926,12 @@ pub async fn browse(
                     MAX(hit) OVER (PARTITION BY {group}) AS matched \
                FROM picked) \
          SELECT *, COUNT(*) OVER () AS total FROM grouped {survivor} \
-          ORDER BY {order}, headword LIMIT ?5 OFFSET ?6"
+          ORDER BY {order}, headword LIMIT ?4 OFFSET ?5"
     );
     let rows = sqlx::query(&sql)
         .bind(status)
         .bind(source)
         .bind(lex)
-        .bind(corpus)
         .bind(limit)
         .bind(offset)
         .fetch_all(k.pool())
@@ -2257,5 +2302,74 @@ mod tests {
 
     async fn get(k: &Knowledge, term: &Term) -> VocabRow {
         fetch(k, term).await.unwrap().expect("row exists")
+    }
+
+    /// A reference dictionary that spells おじぎ two ways under one entry, and a
+    /// corpus that only counted the spelling the ledger does not use — the
+    /// UniDic normalisation, in miniature. 明日 rides along as the control:
+    /// one entry, two readings, one of them rare.
+    async fn corpus_that_spells_it_differently(k: &Knowledge) {
+        let sql = "\
+            INSERT INTO dictionaries (id, title, source_path, role) VALUES \
+                (1, 'master', 'm.zip', 'master'), (2, 'lex', 'l.zip', 'reference'), \
+                (3, 'BCCWJ', 'b.zip', 'reference'); \
+            INSERT INTO dictionary_entries (dictionary_id, term, reading, score, \
+                                            definitions_json, sequence) VALUES \
+                (2, 'お辞儀', 'おじぎ', 200, '[]', 100), \
+                (2, '御辞儀', 'おじぎ', 100, '[]', 100), \
+                (2, '明日', 'あした', 200, '[]', 200), \
+                (2, '明日', 'みょうにち', 100, '[]', 200); \
+            INSERT INTO dictionary_frequency (dictionary_id, term, reading, frequency) VALUES \
+                (3, '御辞儀', 'おじぎ', 12272), (3, 'お辞儀', 'おじぎ', 405782), \
+                (3, '明日', 'あした', 1000), (3, '明日', 'みょうにち', 209173);";
+        for stmt in sql.split(';').filter(|s| !s.trim().is_empty()) {
+            sqlx::query(stmt).execute(k.pool()).await.unwrap();
+        }
+    }
+
+    async fn rank_of(k: &Knowledge) -> Option<i64> {
+        let (_, rows) = browse(k, None, None, false, false, 50, 0).await.unwrap();
+        assert_eq!(rows.len(), 1, "the fixture holds one ledger row");
+        rows[0].rank
+    }
+
+    #[tokio::test]
+    async fn a_word_is_as_common_as_the_corpus_spells_it() {
+        let k = temp().await;
+        corpus_that_spells_it_differently(&k).await;
+        record_encounters(&k, &[enc("お辞儀", "オジギ", 1, 100.0)])
+            .await
+            .unwrap();
+
+        assert_eq!(rank_of(&k).await, Some(12272));
+    }
+
+    #[tokio::test]
+    async fn a_rare_reading_does_not_inherit_the_common_one() {
+        let k = temp().await;
+        corpus_that_spells_it_differently(&k).await;
+        record_encounters(&k, &[enc("明日", "ミョウニチ", 1, 100.0)])
+            .await
+            .unwrap();
+
+        assert_eq!(rank_of(&k).await, Some(209173));
+    }
+
+    #[tokio::test]
+    async fn a_form_no_dictionary_resolves_keeps_the_rank_it_has() {
+        let k = temp().await;
+        corpus_that_spells_it_differently(&k).await;
+        sqlx::query(
+            "INSERT INTO dictionary_frequency (dictionary_id, term, reading, frequency) \
+             VALUES (3, 'ぬるぽ', 'ぬるぽ', 7)",
+        )
+        .execute(k.pool())
+        .await
+        .unwrap();
+        record_encounters(&k, &[enc("ぬるぽ", "ヌルポ", 1, 100.0)])
+            .await
+            .unwrap();
+
+        assert_eq!(rank_of(&k).await, Some(7));
     }
 }
