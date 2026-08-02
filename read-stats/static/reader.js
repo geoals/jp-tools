@@ -27,9 +27,12 @@ const MARKED_ONLY_KEY = "reader-marked-only";
  *  makes the marks readable. Anything unrecognised is ignored rather than
  *  drawn — that is version skew, not a word. */
 const PAINTED = ["seen", "new", "unknown"];
-/** How far a mark reaches past its word on each side — enough to look
- *  deliberate, small enough that two adjacent marks don't merge. */
-const MARK_PAD_PX = 2;
+/** How far a mark is held back from its word on each side. Japanese sets
+ *  without spaces, so two adjacent marked words have touching rects: a mark
+ *  that reached *past* its word overlapped its neighbour and the two read as
+ *  one bar, corner radius and all. The inset is what makes the boundary
+ *  visible. */
+const MARK_INSET_PX = 1;
 /** Distance from the bottom that still counts as "following along", so
  *  scrolling up to re-read isn't yanked back by the next line. */
 const STICK_SLOP_PX = 80;
@@ -912,9 +915,9 @@ function paintMarks(lines, els, enabled, listEl, layerEl) {
           if (!r.width) continue;
           boxes.push({
             tier: t.status,
-            left: r.left + dx - MARK_PAD_PX,
+            left: r.left + dx + MARK_INSET_PX,
             top: r.top + dy,
-            width: r.width + MARK_PAD_PX * 2,
+            width: Math.max(1, r.width - MARK_INSET_PX * 2),
             height: r.height,
           });
         }

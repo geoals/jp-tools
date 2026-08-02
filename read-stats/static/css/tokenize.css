@@ -77,9 +77,14 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* Radius and the 2px gap between adjacent words are the feed's (reader.js's
+   MARK_INSET_PX). A span cannot be painted narrower than its own box, so the
+   gap is margin rather than the feed's inset: the glyphs move 2px per mark
+   here, where the feed's cannot move at all. */
 .tok-mark {
   border-radius: 3px;
-  padding: 2px 1px;
+  padding: 2px 0;
+  margin: 0 1px;
 }
 .tok-mark.new {
   background: var(--vocab-new);

@@ -368,6 +368,9 @@ impl SudachiTokenizer {
             .map(|t| t.surface.as_str())
             .chain(std::iter::once(last.base_form.as_str()))
             .collect();
+        // Whether the parts *spell* the headword, as opposed to merely sounding
+        // like it. The length floor below turns on this.
+        let mut spelled = true;
         let term = if content && self.lexicon.contains(&written) {
             Some(written)
         } else if run.iter().all(|t| !t.inflected) && self.lexicon.contains(&surfaces) {
@@ -388,6 +391,7 @@ impl SudachiTokenizer {
             // happens not to list it.
             Some(surfaces.clone())
         } else if self.reading_join_admitted(run, head, content) {
+            spelled = false;
             let read: String = head
                 .iter()
                 .map(spoken_form)
@@ -405,7 +409,21 @@ impl SudachiTokenizer {
             None
         }?;
 
-        if term.chars().count() < 3 || NEVER_JOIN.contains(&term.as_str()) {
+        // **Three characters minimum, unless the parts spell it in kanji.**
+        //
+        // The floor is there for kana: two kana spell so many words that a join
+        // finds one by accident — こと + し is 今年, ん + だ is んだ, and the
+        // reading path is worse still, since 時 + 前 sounds like 自前 and
+        // 皆 + 守 like 水上. A two-kanji compound has no such ambiguity, and the
+        // floor was silently costing every one Sudachi hands over in pieces:
+        // 一件 came apart into 一 + 件 because Sudachi reads it as a numeral and
+        // a counter, and so did 一年, 一度, 神様, 人達, 一枚, 三人, 室内 — 137
+        // sightings over the corpus, none of them wrong.
+        //
+        // Spelled, not sounded: the reading path keeps the floor at every
+        // length, because that is the one that invents 自前 out of じ + まえ.
+        let unambiguous = spelled && term.chars().all(crate::text::kanji::is_kanji);
+        if (term.chars().count() < 3 && !unambiguous) || NEVER_JOIN.contains(&term.as_str()) {
             return None;
         }
         let reading = self

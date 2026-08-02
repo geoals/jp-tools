@@ -140,7 +140,7 @@
 }
 .reader-mark {
   position: absolute;
-  border-radius: 5px;
+  border-radius: 3px;
 }
 .reader-mark.new {
   background: var(--vocab-new);
