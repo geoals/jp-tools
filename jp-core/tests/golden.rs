@@ -47,9 +47,10 @@ fn the_identities_a_corpus_yields_have_not_moved() {
         .into_iter()
         .map(|r| (r[0].clone(), r.get(1).cloned().unwrap_or_default()))
         .collect();
-    let ranks: HashMap<String, i64> = tsv("frequency.tsv")
+    // term, reading, rank — the rank belongs to the pair, not the spelling.
+    let ranks: HashMap<(String, String), i64> = tsv("frequency.tsv")
         .into_iter()
-        .filter_map(|r| Some((r[0].clone(), r.get(1)?.parse().ok()?)))
+        .filter_map(|r| Some(((r[0].clone(), r.get(1)?.clone()), r.get(2)?.parse().ok()?)))
         .collect();
     let preferences: HashMap<String, PreferredReading> = tsv("preferences.tsv")
         .into_iter()

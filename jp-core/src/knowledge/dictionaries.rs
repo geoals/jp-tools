@@ -390,24 +390,35 @@ pub async fn lookup_frequency(
 /// (うかがう is 伺う and 窺う), and it needs it *before* it starts, so the ranks
 /// are fetched in one pass rather than a query per token. Terms with no entry
 /// are simply absent — the caller then refuses to arbitrate.
+/// **Keyed on the reading as well as the term**, because the question being
+/// asked is always "how common is this spelling *read this way*". Ranking the
+/// spelling alone answers a different one and answers it wrongly: 一 is rank 23
+/// as いち, so いつ resolved to 一 rather than 何時 — 103 times — even though
+/// 一/いつ is rank 536,048 against 何時/いつ at 151.
 pub async fn frequency_ranks(
     pool: &SqlitePool,
     dictionary_id: i64,
     terms: &[String],
-) -> Result<HashMap<String, i64>, sqlx::Error> {
-    let mut ranks = HashMap::new();
+) -> Result<HashMap<(String, String), i64>, sqlx::Error> {
+    let mut ranks: HashMap<(String, String), i64> = HashMap::new();
     // SQLite's variable limit is 32k on recent builds and 999 on older ones.
     for chunk in terms.chunks(900) {
         let placeholders = vec!["?"; chunk.len()].join(",");
         let sql = format!(
-            "SELECT term, MIN(frequency) FROM dictionary_frequency
-             WHERE dictionary_id = ? AND term IN ({placeholders}) GROUP BY term"
+            "SELECT term, reading, MIN(frequency) FROM dictionary_frequency
+             WHERE dictionary_id = ? AND term IN ({placeholders}) GROUP BY term, reading"
         );
-        let mut q = sqlx::query_as::<_, (String, i64)>(&sql).bind(dictionary_id);
+        let mut q = sqlx::query_as::<_, (String, String, i64)>(&sql).bind(dictionary_id);
         for term in chunk {
             q = q.bind(term);
         }
-        ranks.extend(q.fetch_all(pool).await?);
+        for (term, reading, rank) in q.fetch_all(pool).await? {
+            let key = (term, crate::text::kana::to_hiragana(&reading));
+            ranks
+                .entry(key)
+                .and_modify(|r| *r = (*r).min(rank))
+                .or_insert(rank);
+        }
     }
     Ok(ranks)
 }

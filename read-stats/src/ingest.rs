@@ -262,6 +262,8 @@ pub(crate) async fn master_readings(state: &AppState) -> Result<Vec<(String, Str
 /// BCCWJ ranks for the master headwords that share a reading with another one,
 /// so the tokenizer can name a word written in kana (うかがう → 伺う over 窺う).
 ///
+/// Keyed on `(headword, reading)`, since that is the pair being ranked.
+///
 /// Only those headwords, and fetched here rather than inside the tokenizer:
 /// tokenization runs in `spawn_blocking`, which has no runtime to query from.
 ///
@@ -270,7 +272,7 @@ pub(crate) async fn master_readings(state: &AppState) -> Result<Vec<(String, Str
 pub(crate) async fn frequency_ranks(
     state: &AppState,
     readings: &[(String, String)],
-) -> Result<HashMap<String, i64>, AppError> {
+) -> Result<HashMap<(String, String), i64>, AppError> {
     let pool = state.knowledge.pool();
     let Some(bccwj) = jp_core::knowledge::dictionaries::by_title(pool, "BCCWJ").await? else {
         return Ok(HashMap::new());

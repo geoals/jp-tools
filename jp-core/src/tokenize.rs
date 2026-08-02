@@ -83,9 +83,13 @@ pub struct SudachiTokenizer {
     /// be one of. Same key shape as [`MasterWords`], which is the consumer of
     /// the identities this produces.
     pairs: HashSet<(String, String)>,
-    /// BCCWJ rank per headword, to break a reading that names several. Empty
-    /// refuses to arbitrate.
-    frequency: HashMap<String, i64>,
+    /// BCCWJ rank per `(headword, reading)`, to break a reading that names
+    /// several. Empty refuses to arbitrate.
+    frequency: HashMap<(String, String), i64>,
+    /// The same ranks collapsed to the headword — its best over every reading.
+    /// Only consulted when the pair itself is unranked; see
+    /// [`headword_for_reading`](SudachiTokenizer::headword_for_reading).
+    frequency_any_reading: HashMap<String, i64>,
     /// The reading to believe for a headword the master lists several ways,
     /// where Sudachi's choice is not to be trusted. Empty leaves it to Sudachi.
     preferred: HashMap<String, crate::knowledge::dictionaries::PreferredReading>,
@@ -118,6 +122,7 @@ impl SudachiTokenizer {
             term_reading: HashMap::new(),
             pairs: HashSet::new(),
             frequency: HashMap::new(),
+            frequency_any_reading: HashMap::new(),
             preferred: HashMap::new(),
             conjugatable: HashSet::new(),
             rederived: Mutex::new(HashMap::new()),
@@ -163,7 +168,13 @@ impl SudachiTokenizer {
     /// Teach it how common each master headword is, so a reading naming several
     /// of them can still yield an identity. See the ladder's reading fallback in
     /// [`resolve_identity`](Self::resolve_identity).
-    pub fn with_frequency(mut self, ranks: HashMap<String, i64>) -> Self {
+    pub fn with_frequency(mut self, ranks: HashMap<(String, String), i64>) -> Self {
+        for ((term, _), rank) in &ranks {
+            self.frequency_any_reading
+                .entry(term.clone())
+                .and_modify(|best| *best = (*best).min(*rank))
+                .or_insert(*rank);
+        }
         self.frequency = ranks;
         self
     }
@@ -264,16 +275,32 @@ impl SudachiTokenizer {
 
     /// The headword a reading names, arbitrated by frequency when it names
     /// several. No rank for any candidate — refuse rather than guess blind.
+    ///
+    /// **The pair's rank, falling back to the headword's own.** The question is
+    /// how common a spelling is *read this way*, and asking it of the spelling
+    /// alone made いつ resolve to 一 — rank 23 as いち — over 何時, 103 times.
+    /// But a pair the corpus never records must not simply lose its vote: BCCWJ
+    /// ranks 先 only as さき, so keying on the pair alone dropped 先 out of the
+    /// contest and handed さっき to 殺気. The fallback is the weaker signal and
+    /// is used only where the sharper one is silent — where BCCWJ does rank the
+    /// pair, however badly (一/いつ is 536,048th), that number stands.
     fn headword_for_reading(&self, reading: &str) -> Option<&String> {
         let terms = self.by_reading.get(reading)?;
         match terms.as_slice() {
             [one] => Some(one),
             many => many
                 .iter()
-                .filter_map(|t| self.frequency.get(t).map(|r| (r, t)))
-                .min_by_key(|(r, _)| **r)
+                .filter_map(|t| self.rank(t, reading).map(|r| (r, t)))
+                .min_by_key(|(r, _)| *r)
                 .map(|(_, t)| t),
         }
+    }
+
+    fn rank(&self, term: &str, reading: &str) -> Option<i64> {
+        self.frequency
+            .get(&(term.to_string(), reading.to_string()))
+            .or_else(|| self.frequency_any_reading.get(term))
+            .copied()
     }
 
     /// The case neither Sudachi nor the C→B→A pass can reach — both only ever *split*, so a compound

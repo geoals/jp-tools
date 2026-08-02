@@ -43,15 +43,17 @@ fn main() {
     let lexicon: HashSet<String> = entries.iter().map(|(t, _)| t.clone()).collect();
     let anki: HashSet<String> = anki_tsv.lines().map(|l| l.trim().to_string()).collect();
     let ambiguous: HashSet<String> = ambiguous_headwords(&entries).into_iter().collect();
-    let ranks: HashMap<String, i64> = freq_tsv
+    let ranks: HashMap<(String, String), i64> = freq_tsv
         .iter()
         .flat_map(|s| s.lines())
         .filter_map(|l| {
-            let (term, rank) = l.split_once('\t')?;
-            if !ambiguous.contains(term) {
+            let mut it = l.split('\t');
+            let term = it.next()?.to_string();
+            if !ambiguous.contains(&term) {
                 return None;
             }
-            Some((term.to_string(), rank.trim().parse().ok()?))
+            let reading = jp_core::text::kana::to_hiragana(it.next()?);
+            Some(((term, reading), it.next()?.trim().parse().ok()?))
         })
         .collect();
 

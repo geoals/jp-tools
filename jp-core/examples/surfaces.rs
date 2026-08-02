@@ -36,12 +36,14 @@ fn main() {
             .map(str::to_string)
             .collect()
     };
-    let ranks: HashMap<String, i64> = std::fs::read_to_string(&a[6])
+    let ranks: HashMap<(String, String), i64> = std::fs::read_to_string(&a[6])
         .unwrap()
         .lines()
         .filter_map(|l| {
-            let (t, r) = l.split_once('\t')?;
-            Some((t.to_string(), r.trim().parse().ok()?))
+            let mut it = l.split('\t');
+            let term = it.next()?.to_string();
+            let reading = jp_core::text::kana::to_hiragana(it.next()?);
+            Some(((term, reading), it.next()?.trim().parse().ok()?))
         })
         .collect();
     let prefer: HashMap<String, PreferredReading> = std::fs::read_to_string(&a[7])

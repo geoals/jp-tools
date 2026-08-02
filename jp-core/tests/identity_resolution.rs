@@ -28,11 +28,17 @@ fn master_entries() -> Vec<(String, String)> {
 
 /// BCCWJ ranks, only for the headwords a test actually has to arbitrate
 /// between. うかがう is 伺う and 窺う and nothing in the sentence can say which.
-fn ranks() -> HashMap<String, i64> {
-    [("伺う", 1886), ("窺う", 2831), ("敵", 1039), ("隙", 4156)]
-        .into_iter()
-        .map(|(t, r)| (t.to_string(), r))
-        .collect()
+fn ranks() -> HashMap<(String, String), i64> {
+    // Keyed on the pair: a rank belongs to a spelling *read a certain way*.
+    [
+        ("伺う", "うかがう", 1886),
+        ("窺う", "うかがう", 2831),
+        ("敵", "てき", 1039),
+        ("隙", "すき", 4156),
+    ]
+    .into_iter()
+    .map(|(t, r, n)| ((t.to_string(), r.to_string()), n))
+    .collect()
 }
 
 /// What `dictionaries::preferred_readings` derives for these words from

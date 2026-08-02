@@ -20,7 +20,7 @@ use crate::tokenize::{MasterWords, SudachiTokenizer, Tokenizer, counts_as_word};
 pub fn tokenizer(
     dict_path: &Path,
     master: &[(String, String)],
-    ranks: HashMap<String, i64>,
+    ranks: HashMap<(String, String), i64>,
     preferences: HashMap<String, PreferredReading>,
     conjugatable: HashSet<String>,
 ) -> SudachiTokenizer {
@@ -42,7 +42,7 @@ pub fn snapshot(
     dict_path: &Path,
     corpus: &[String],
     master: &[(String, String)],
-    ranks: HashMap<String, i64>,
+    ranks: HashMap<(String, String), i64>,
     preferences: HashMap<String, PreferredReading>,
     conjugatable: HashSet<String>,
 ) -> String {

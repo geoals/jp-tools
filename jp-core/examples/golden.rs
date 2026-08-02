@@ -156,8 +156,11 @@ async fn main() {
     );
 }
 
-fn write_map(path: PathBuf, map: &HashMap<String, i64>) {
-    let mut rows: Vec<String> = map.iter().map(|(t, n)| format!("{t}\t{n}\n")).collect();
+fn write_map(path: PathBuf, map: &HashMap<(String, String), i64>) {
+    let mut rows: Vec<String> = map
+        .iter()
+        .map(|((t, r), n)| format!("{t}\t{r}\t{n}\n"))
+        .collect();
     rows.sort();
     std::fs::write(path, rows.concat()).unwrap();
 }
