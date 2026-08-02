@@ -166,6 +166,12 @@ async fn resolve(k: &Knowledge) -> Result<HashMap<Term, Lexeme>, sqlx::Error> {
     Ok(out)
 }
 
+/// Every known form with the lexeme it collapses onto — the grouping the counts
+/// are built from, for a caller that needs the mapping itself and not its size.
+pub async fn resolved_forms(k: &Knowledge) -> Result<HashMap<Term, Lexeme>, sqlx::Error> {
+    resolve(k).await
+}
+
 /// How many distinct **words** are known, as opposed to how many rows say
 /// `known`.
 ///
