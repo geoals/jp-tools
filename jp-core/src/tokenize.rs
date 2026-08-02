@@ -1034,12 +1034,38 @@ pub fn counts_as_word(t: &Token, master: &MasterWords) -> bool {
     if has_impossible_onset(&t.surface) {
         return false;
     }
-    is_content_word(&t.pos) || master.lists(&t.base_form, &t.reading)
+    (is_content_word(&t.pos) && !is_figures(&t.surface)) || master.lists(&t.base_form, &t.reading)
+}
+
+/// A number written in figures, which Sudachi tags 名詞 and the ledger would
+/// otherwise take for vocabulary.
+///
+/// Every distinct string of digits becomes its own headword, and Sudachi reads
+/// them digit by digit, so the corpus grew 43 of them with readings like
+/// 20/ニレイ, 21/ニイチ and 10/イチレイ — and 1 twice over, as イチ and ヒト.
+/// The quantity in 1時間 is not a word; 時間 is.
+///
+/// Figures only. A numeral written in kanji is left alone, because 一 is a
+/// Sankoku entry and reaches the ledger the way every other listed term does.
+fn is_figures(surface: &str) -> bool {
+    !surface.is_empty()
+        && surface
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('０'..='９').contains(&c))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_number_in_figures_is_not_vocabulary() {
+        let m = master();
+        assert!(!counts_as_word(&affix("1", "1", "イチ", "名詞"), &m));
+        assert!(!counts_as_word(&affix("２０", "20", "ニレイ", "名詞"), &m));
+        // Kanji numerals are ordinary terms and reach the ledger as ones.
+        assert!(counts_as_word(&affix("一", "一", "イチ", "名詞"), &m));
+    }
 
     #[test]
     fn is_content_word_matches_nouns() {
