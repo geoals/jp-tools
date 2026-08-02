@@ -469,17 +469,24 @@ pub async fn vocab_jiten_import(
     Json(export): Json<JitenExport>,
 ) -> Result<Json<Value>, AppError> {
     let forms_by_seq = dictionaries::master_forms_by_sequence(state.knowledge.pool()).await?;
+    let labels = dictionaries::entry_labels_by_sequence(state.knowledge.pool()).await?;
     let looked_up = vocabulary::looked_up_headwords(&state.knowledge).await?;
 
     let ids: std::collections::HashSet<i64> = export.cards.iter().map(|c| c.w).collect();
     let mut terms: std::collections::HashSet<Term> = std::collections::HashSet::new();
-    let mut unresolved = 0i64;
+    let mut unresolved: Vec<Value> = Vec::new();
     for id in &ids {
         match forms_by_seq.get(id) {
             // No master spelling: a name, or one of JMdict's phrase entries.
             // Not vocabulary, so it imports as nothing rather than as a row
             // the triage queue would then have to reject.
-            None => unresolved += 1,
+            None => {
+                let (term, reading) = labels
+                    .get(id)
+                    .cloned()
+                    .unwrap_or_else(|| (id.to_string(), String::new()));
+                unresolved.push(json!({ "term": term, "reading": reading }));
+            }
             Some(forms) => {
                 for (headword, reading) in forms {
                     terms.insert(Term::new(headword.clone(), reading));
@@ -487,13 +494,21 @@ pub async fn vocab_jiten_import(
             }
         }
     }
+    unresolved.sort_by_key(|v| v["term"].as_str().unwrap_or_default().to_string());
 
     // Reading it in a list is not knowing it. The lookup log is the reader's
     // own record of the opposite, so it overrules the list: a word stopped for
     // goes to triage as `new` rather than being claimed here.
-    let before = terms.len();
-    terms.retain(|t| !looked_up.contains(&t.headword));
-    let vetoed = (before - terms.len()) as i64;
+    let mut vetoed: Vec<Value> = Vec::new();
+    terms.retain(|t| {
+        if looked_up.contains(&t.headword) {
+            vetoed.push(json!({ "term": t.headword, "reading": t.reading }));
+            false
+        } else {
+            true
+        }
+    });
+    vetoed.sort_by_key(|v| v["term"].as_str().unwrap_or_default().to_string());
 
     let judgements: Vec<(Term, Status)> = terms.into_iter().map(|t| (t, Status::Known)).collect();
     let marked = vocabulary::seed_status_each(&state.knowledge, &judgements, now_ts()).await?;
@@ -506,19 +521,22 @@ pub async fn vocab_jiten_import(
     info!(
         cards = export.cards.len(),
         ids = ids.len(),
-        resolved = ids.len() as i64 - unresolved,
-        unresolved,
-        vetoed,
+        resolved = ids.len() - unresolved.len(),
+        unresolved = unresolved.len(),
+        vetoed = vetoed.len(),
         marked,
         "jiten import"
     );
     Ok(Json(json!({
         "cards": export.cards.len(),
         "ids": ids.len(),
-        "resolved_entries": ids.len() as i64 - unresolved,
-        "unresolved_entries": unresolved,
-        "vetoed_by_lookup": vetoed,
+        "resolved_entries": ids.len() - unresolved.len(),
+        "unresolved_entries": unresolved.len(),
+        "vetoed_by_lookup": vetoed.len(),
         "terms_marked": marked,
+        // Named, not counted: a drop the reader cannot read is one they cannot
+        // check, and this is where the names and the phrase entries go.
+        "dropped": { "unresolved": unresolved, "vetoed": vetoed },
     })))
 }
 
