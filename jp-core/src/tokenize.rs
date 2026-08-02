@@ -228,8 +228,23 @@ impl SudachiTokenizer {
     /// **The surface must be all kanji.** That is what makes the reading a guess
     /// worth overruling: when the text writes あたくし or わたし in kana, the
     /// reading is not Sudachi's opinion but the text's, and it stands.
-    fn preferred_reading(&self, term: &str, reading: &str, surface: &str) -> Option<String> {
+    ///
+    /// **And the token must be the free-standing word**, which is the only thing
+    /// the popularity dictionary scored. A bound kanji is a different word that
+    /// shares the spelling, and it is read the other way *because* it is bound:
+    /// 数名 is メイ, 三日 is カ, 悪ガキ is ワル. Overruling those to な, にち and
+    /// あく was the whole cost of this rule — 280 tokens against 私's 1,078.
+    fn preferred_reading(
+        &self,
+        term: &str,
+        reading: &str,
+        surface: &str,
+        pos: &[String],
+    ) -> Option<String> {
         if surface.is_empty() || !surface.chars().all(crate::text::kanji::is_kanji) {
+            return None;
+        }
+        if is_bound_morpheme(pos) {
             return None;
         }
         let pref = self.preferred.get(term)?;
@@ -597,6 +612,14 @@ impl SudachiTokenizer {
         if subsidiary && crate::text::kana::is_all_kana(m.dictionary_form()) {
             candidates.push((m.dictionary_form().to_string(), lemma_reading.clone()));
         }
+        // **One mora of kana never becomes a kanji word.** The reading fallback
+        // already refuses this, for the reason that applies here too: Japanese
+        // has a kanji for every mora, so the match is always found and never
+        // evidence. UniDic normalises the か of 何もかも onto the archaic pronoun
+        // 彼, which Sankoku duly lists as 彼/か — a validated pair, and not the
+        // word anyone read.
+        let mora_of_kana = crate::text::kana::is_all_kana(&surface)
+            && is_one_mora(&crate::text::kana::to_hiragana(&surface));
         candidates.push(sudachi());
         // The normalised spelling with *its own* reading, where the lemma's is
         // not the same word's. Sudachi normalises 信じ to 信じる but reads it off
@@ -637,13 +660,18 @@ impl SudachiTokenizer {
         if !uninflected {
             candidates.retain(|(term, _)| self.conjugatable_lemma(term));
         }
+        // See `mora_of_kana`: one mora spells nothing, so it may keep only the
+        // spelling the text used.
+        if mora_of_kana {
+            candidates.retain(|(term, _)| !term.chars().any(crate::text::kanji::is_kanji));
+        }
 
         if let Some((term, reading)) = candidates
             .iter()
             .find(|(term, reading)| self.lists(term, reading))
         {
             let reading = self
-                .preferred_reading(term, reading, &surface)
+                .preferred_reading(term, reading, &surface, m.part_of_speech())
                 .unwrap_or_else(|| reading.clone());
             return (term.clone(), reading);
         }
@@ -695,6 +723,9 @@ impl SudachiTokenizer {
             }
         }
 
+        if mora_of_kana {
+            return (surface, m.reading_form().to_string());
+        }
         sudachi()
     }
 
@@ -739,13 +770,16 @@ impl SudachiTokenizer {
 /// named string cannot cost anything that is not named. Everything else the
 /// join builds — ところが, まずは, 実は, 本当に, ために, すぐに, 同時に,
 /// ちなみに, ところで, 医務室 — is the word the sentence used.
-const NEVER_JOIN: [&str; 6] = [
-    "それは", // それ + は: 「それは幸か不幸か」
-    "それが", // それ + が: 「それがいつまで続くのか」
-    "これは", // これ + は: 「たしかにこれは厄介ね」
-    "ここに", // ここ + に: 「ここにいてほしい」
-    "ものを", // もの + を: 「そぐわないものを目にし」
-    "今日は", // 今日 + は — the greeting is こんにちは, and this is not it
+const NEVER_JOIN: [&str; 7] = [
+    "それは",   // それ + は: 「それは幸か不幸か」
+    "それが",   // それ + が: 「それがいつまで続くのか」
+    "これは",   // これ + は: 「たしかにこれは厄介ね」
+    "ここに",   // ここ + に: 「ここにいてほしい」
+    "ものを",   // もの + を: 「そぐわないものを目にし」
+    "今日は",   // 今日 + は — the greeting is こんにちは, and this is not it
+    "たらしい", // た + らしい: the suffix of 憎たらしい, never the hearsay after
+                // a past tense. Sudachi is right here and the join is not:
+                // all 30 sightings are 襲われたらしい, 死んだらしい.
 ];
 
 /// Remove the emphatic っ — the one written for a hard stop at the end of an
@@ -802,6 +836,23 @@ fn is_one_mora(reading: &str) -> bool {
         return false;
     };
     second.is_none_or(|c| matches!(c, 'ゃ' | 'ゅ' | 'ょ' | 'ャ' | 'ュ' | 'ョ'))
+}
+
+/// Is this token a piece of a compound rather than the word standing alone?
+///
+/// Sudachi tags the bound uses apart from the free one, which is what lets the
+/// reading correction stay off them: 名 is 助数詞可能 as the counter in 数名 and
+/// 一般 as the noun な, 日 is 接尾辞 in 三日, 者 is 接尾辞 in 経験者. A prefix or
+/// suffix is bound by definition; a counter is bound by use, and Sudachi splits
+/// the two senses into separate entries rather than tagging one token both ways.
+fn is_bound_morpheme(pos: &[String]) -> bool {
+    matches!(
+        pos.first().map(String::as_str).unwrap_or_default(),
+        "接頭辞" | "接尾辞"
+    ) || matches!(
+        pos.get(2).map(String::as_str).unwrap_or_default(),
+        "助数詞" | "助数詞可能"
+    )
 }
 
 /// No Japanese word begins with っ, ん or a small kana — a token that does is a

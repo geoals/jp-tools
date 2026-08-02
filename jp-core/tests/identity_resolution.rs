@@ -47,6 +47,11 @@ fn preferences() -> HashMap<String, PreferredReading> {
     [
         ("私", "わたし", vec!["わたし", "あたし", "あたくし"]),
         ("何", "なに", vec!["なに", "なん"]),
+        // JMdict scores the free-standing noun of each of these 200 and the
+        // bound reading 0, which is what the bound-morpheme guard has to refuse.
+        ("名", "な", vec!["な"]),
+        ("者", "もの", vec!["もの"]),
+        ("生", "なま", vec!["なま"]),
     ]
     .into_iter()
     .map(|(term, preferred, acceptable)| {
@@ -456,4 +461,55 @@ fn a_normalisation_that_changes_the_sound_is_not_followed() {
         let tokens = tokens_of(&tk, text);
         assert_eq!(identity_of(&tokens, surface), pair(term, reading), "{text}");
     }
+}
+
+/// A bound kanji is a different word that shares the spelling, and it is read
+/// the other way *because* it is bound. The popularity dictionary scored the
+/// free-standing word, so the reading correction has no business here: 数名 is
+/// メイ whatever JMdict thinks of 名/な.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_bound_kanji_keeps_the_reading_its_binding_gives_it() {
+    let (tk, _) = setup();
+    for (text, surface, term, reading) in [
+        ("生徒数名の名前", "名", "名", "めい"),
+        ("被害者が死んだ", "者", "者", "しゃ"),
+        ("練習生と探した", "生", "生", "せい"),
+    ] {
+        let tokens = tokens_of(&tk, text);
+        assert_eq!(identity_of(&tokens, surface), pair(term, reading), "{text}");
+    }
+}
+
+/// One mora of kana spells nothing. Japanese has a kanji for every one of them,
+/// so a normalisation onto one is always available and never evidence: UniDic
+/// sends the か of 何もかも to the archaic pronoun 彼, the nominalising み of
+/// 哀しみ to the homograph 味, and the honorific お to 御. Each is a pair Sankoku
+/// lists, and none is the word anyone read.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn one_mora_of_kana_never_becomes_a_kanji_word() {
+    let (tk, _) = setup();
+    for (text, surface) in [
+        ("何もかもが手遅れだった", "か"),
+        ("今お茶を入れますね", "お"),
+        ("ご家族は心配している", "ご"),
+    ] {
+        let tokens = tokens_of(&tk, text);
+        let (term, _) = identity_of(&tokens, surface);
+        assert_eq!(term, surface, "{text}: {surface} must keep its own spelling");
+    }
+}
+
+/// たらしい is the suffix of 憎たらしい and never the hearsay らしい after a past
+/// tense. Sudachi segments 襲われ + た + らしい correctly; the join is what was
+/// wrong, and it is lexical — hence the list, not a rule.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_past_tense_before_hearsay_is_not_the_suffix_of_a_word() {
+    let (tk, _) = setup();
+    let tokens = tokens_of(&tk, "若者が襲われたらしい");
+    let bases: Vec<&str> = tokens.iter().map(|t| t.base_form.as_str()).collect();
+    assert!(!bases.contains(&"たらしい"), "{bases:?}");
+    assert!(bases.contains(&"らしい"), "{bases:?}");
 }
