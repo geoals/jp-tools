@@ -99,6 +99,14 @@ The ledger (`vocabulary`):
 Tokenization (all in `jp_core::tokenize`, shared with the highlighter so a tint
 and a ledger row cannot disagree):
 
+- **The line is rewritten once before Sudachi sees it, and only once.** The
+  emphatic っ — a small っ with only punctuation or the end of the line after it
+  — is stripped (`strip_emphatic_sokuon`). It has to happen there: an analysis
+  ending in a 促音便 can absorb that っ where the real word cannot, so the
+  lattice prefers it and はいっ comes back as 入る, まずいですっ as まず + 出る +
+  素っ. No rule over the finished tokens can undo that. Nothing else edits the
+  input, and nothing should — every character removed is a っ, which is what
+  keeps every surface findable in the original line for `locate`'s offsets.
 - **A term's reading is the reading of its headword**, not of the surface —
   otherwise 知る splits across しる, しら and しっ.
 - **One word, one row, spelt the way the master dictionary spells it.** Terms

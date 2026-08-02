@@ -687,6 +687,53 @@ impl SudachiTokenizer {
     }
 }
 
+/// Remove the emphatic っ — the one written for a hard stop at the end of an
+/// utterance, not to double a consonant: 早くっ, ですっ, ごめんなさいっ.
+///
+/// **This is the tokenizer's one edit to its input, and it happens before
+/// Sudachi sees the text.** It has to: the damage is done inside the lattice,
+/// so no rule over the finished tokens can undo it. An analysis that ends in a
+/// 促音便 can *absorb* the っ where the whole word cannot account for it, so
+/// Sudachi prefers the absorbing path and the real word loses — ごめんなさいっ
+/// becomes ごめん + なさ + いっ(行く), まずいですっ becomes まず + 出る + 素っ,
+/// and はいっ becomes 入る. Not fragments: different words.
+///
+/// A geminate is a っ with a *word* after it to double, and is never touched —
+/// kana (行った, ちょっと) or kanji alike, because 突っ込む and ぶっ殺す double a
+/// consonant across the okurigana just the same. Only a っ with nothing but
+/// punctuation or the end of the line after it is emphatic. A word that really
+/// ends in one — あっ, えっ, おっ — loses it and normalizes straight back,
+/// because あ is あっ's own dictionary form.
+///
+/// Every character removed is a っ, so what is left is still an in-order
+/// subsequence of the line and every token surface is still found in it. That
+/// is what `reader::highlight::locate` needs to recover offsets against the
+/// *original* text.
+pub fn strip_emphatic_sokuon(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if matches!(c, 'っ' | 'ッ') {
+            // Look past a run of them: にっっ is one emphatic mark, not two.
+            let mut rest = chars.clone();
+            let next = std::iter::from_fn(|| rest.next())
+                .find(|n| !matches!(n, 'っ' | 'ッ'))
+                .unwrap_or(' ');
+            if !starts_a_word(next) {
+                continue;
+            }
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Is there a word after this っ for it to double the consonant of? Kanji
+/// counts: 突っ込む and 真っ黒 are geminates across the okurigana.
+fn starts_a_word(c: char) -> bool {
+    matches!(c, 'ぁ'..='ん' | 'ァ'..='ヶ' | 'ー') || crate::text::kanji::is_kanji(c)
+}
+
 /// No Japanese word begins with っ, ん or a small kana — a token that does is a
 /// shred off an out-of-vocabulary path, not a word.
 ///
@@ -760,6 +807,10 @@ fn drop_stutters(tokens: Vec<Token>) -> Vec<Token> {
 
 impl Tokenizer for SudachiTokenizer {
     fn tokenize(&self, text: &str) -> Result<Vec<Token>, TokenizeError> {
+        // The one place the input is rewritten, and the only one that can be:
+        // see [`strip_emphatic_sokuon`]. Everything below analyses `text`, and
+        // every surface it yields is still findable in the caller's original.
+        let text = &strip_emphatic_sokuon(text);
         let tokenizer = StatelessTokenizer::new(&self.dict);
         let to_token = |m: sudachi::prelude::Morpheme<'_, _>| {
             // [0] is the top-level class, [1] the subclass: 名詞,固有名詞,人名.
@@ -1059,6 +1110,43 @@ mod tests {
             &affix("彼女", "彼女", "カノジョ", "代名詞"),
             &MasterWords::new(HashSet::new(), &[])
         ));
+    }
+
+    #[test]
+    fn an_emphatic_sokuon_is_stripped_but_a_geminate_is_not() {
+        assert_eq!(strip_emphatic_sokuon("ごめんなさいっ"), "ごめんなさい");
+        assert_eq!(strip_emphatic_sokuon("「早くっ」"), "「早く」");
+        // A run is one mark, not several.
+        assert_eq!(strip_emphatic_sokuon("羽咲ちゃんっっ、"), "羽咲ちゃん、");
+        assert_eq!(strip_emphatic_sokuon("ですっ……"), "です……");
+        // Doubling a consonant: the っ is the word.
+        assert_eq!(strip_emphatic_sokuon("行ったちょっと"), "行ったちょっと");
+        assert_eq!(strip_emphatic_sokuon("待って"), "待って");
+        // Across the okurigana into a kanji, which is still a geminate.
+        assert_eq!(strip_emphatic_sokuon("突っ込む"), "突っ込む");
+        assert_eq!(strip_emphatic_sokuon("ぶっ殺す"), "ぶっ殺す");
+        assert_eq!(strip_emphatic_sokuon("真っ黒"), "真っ黒");
+    }
+
+    /// Every character removed is a っ, so what is left is still an in-order
+    /// subsequence — the property `reader::highlight::locate` recovers offsets
+    /// against the original line with.
+    #[test]
+    fn stripping_leaves_a_subsequence_of_the_original() {
+        for line in [
+            "「まずいですっ」",
+            "「は、はいっ……」",
+            "行ったっ",
+            "ちょっと待ってっ",
+            "力にっっ",
+        ] {
+            let stripped = strip_emphatic_sokuon(line);
+            let mut original = line.chars();
+            assert!(
+                stripped.chars().all(|c| original.any(|o| o == c)),
+                "{stripped:?} is not a subsequence of {line:?}"
+            );
+        }
     }
 
     fn surfaces(tokens: Vec<Token>) -> Vec<String> {

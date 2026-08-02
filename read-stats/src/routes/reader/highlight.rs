@@ -521,6 +521,23 @@ mod tests {
         );
     }
 
+    /// The tokenizer strips the emphatic っ before Sudachi sees the line
+    /// (`jp_core::tokenize::strip_emphatic_sokuon`), so the surfaces it returns
+    /// are missing characters the line still has. Offsets are recovered against
+    /// the *original*, and the stripped っ has to be stepped over like any
+    /// other unclaimed character or every later span slides left.
+    #[test]
+    fn a_stripped_sokuon_still_advances_the_cursor() {
+        let text = "「早くっ、本を」";
+        let tokens = vec![token("早く", "形容詞"), token("本", "名詞")];
+        let got: Vec<Span> = marked_spans(locate(text, tokens, &no_master()));
+        assert_eq!(
+            got.iter().map(|s| (s.start, s.len)).collect::<Vec<_>>(),
+            vec![(1, 2), (5, 1)],
+            "本 sits at 5: 「早くっ、 is four units before it"
+        );
+    }
+
     #[test]
     fn a_name_gets_no_span() {
         let mut name = token("間宮", "名詞");
