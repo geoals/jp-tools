@@ -509,6 +509,22 @@ pub struct JitenCard {
     w: i64,
 }
 
+#[derive(Deserialize)]
+pub struct JitenImportParams {
+    /// Refuse anything the frequency list ranks at or past this. Absent means
+    /// no gate, which is the old behaviour.
+    pub max_rank: Option<i64>,
+    /// Which loaded frequency list to rank against. `Jiten` by default — it is
+    /// built from the same kind of material the reading is, where BCCWJ is
+    /// newspapers and books.
+    pub rank_list: Option<String>,
+}
+
+/// See [`JitenImportParams::rank_list`].
+fn rank_source(params: &JitenImportParams) -> String {
+    params.rank_list.clone().unwrap_or_else(|| "Jiten".into())
+}
+
 /// Seed the ledger from a jiten.moe export.
 ///
 /// The only source that names *words* rather than spellings: it carries JMdict
@@ -524,16 +540,30 @@ pub struct JitenCard {
 /// often enough to have been learnt; a lookup says it was not, and only one of
 /// the two is the reader's own evidence.
 ///
+/// **`max_rank` gates on rarity**, off unless asked for. See the retain below.
+///
 /// Order does not matter and re-running is free: `status` is set, never
 /// cleared, and counts are left alone. Undone by
 /// [`vocab_seed_undo`] rather than by hand.
 pub async fn vocab_jiten_import(
     State(state): State<AppState>,
+    Query(params): Query<JitenImportParams>,
     Json(export): Json<JitenExport>,
 ) -> Result<Json<Value>, AppError> {
     let forms_by_seq = dictionaries::master_forms_by_sequence(state.knowledge.pool()).await?;
     let labels = dictionaries::entry_labels_by_sequence(state.knowledge.pool()).await?;
     let looked_up = vocabulary::looked_up_headwords(&state.knowledge).await?;
+    let too_rare_gate = match params.max_rank {
+        Some(max) if max > 0 => {
+            let corpus = dictionaries::by_title(state.knowledge.pool(), &rank_source(&params))
+                .await?
+                .ok_or_else(|| {
+                    AppError::Upstream(format!("{} frequency list not loaded", rank_source(&params)))
+                })?;
+            Some((corpus.id, max))
+        }
+        _ => None,
+    };
 
     let ids: std::collections::HashSet<i64> = export.cards.iter().map(|c| c.w).collect();
     let mut terms: std::collections::HashSet<Term> = std::collections::HashSet::new();
@@ -558,6 +588,45 @@ pub async fn vocab_jiten_import(
         }
     }
     unresolved.sort_by_key(|v| v["term"].as_str().unwrap_or_default().to_string());
+
+    // **Rarer than the gate is not claimed.** A "met N times" threshold is
+    // sound for common words and weak for rare ones, where N sightings are one
+    // book's subject matter rather than the language. Ranked against a corpus
+    // of the same kind of material the reading is — jiten's media list, not
+    // BCCWJ, which is newspapers and under-ranks 結界 and クラスメイト by a
+    // factor of three.
+    //
+    // A term the list does not rank is *kept*. Absence is not rarity: BCCWJ has
+    // no rank for お辞儀 at all, and jiten leaves 38 of 4,316 unranked.
+    let mut too_rare: Vec<Value> = Vec::new();
+    if let Some((corpus, max)) = too_rare_gate {
+        let headwords: Vec<String> = terms.iter().map(|t| t.headword.clone()).collect();
+        let ranks =
+            dictionaries::frequency_ranks(state.knowledge.pool(), corpus, &headwords).await?;
+        terms.retain(|t| {
+            // The pair first — "how common is this spelling read this way" —
+            // then the headword under any reading, for a kana term the ledger
+            // stores with no reading of its own.
+            let said = jp_core::text::kana::to_hiragana(&t.reading);
+            let rank = ranks
+                .get(&(t.headword.clone(), said))
+                .or_else(|| {
+                    ranks.get(&(
+                        t.headword.clone(),
+                        jp_core::text::kana::to_hiragana(&t.headword),
+                    ))
+                })
+                .copied();
+            match rank {
+                Some(r) if r >= max => {
+                    too_rare.push(json!({ "term": t.headword, "reading": t.reading, "rank": r }));
+                    false
+                }
+                _ => true,
+            }
+        });
+        too_rare.sort_by_key(|v| std::cmp::Reverse(v["rank"].as_i64().unwrap_or(0)));
+    }
 
     // Reading it in a list is not knowing it. The lookup log is the reader's
     // own record of the opposite, so it overrules the list: a word stopped for
@@ -587,6 +656,7 @@ pub async fn vocab_jiten_import(
         resolved = ids.len() - unresolved.len(),
         unresolved = unresolved.len(),
         vetoed = vetoed.len(),
+        too_rare = too_rare.len(),
         marked,
         "jiten import"
     );
@@ -596,10 +666,11 @@ pub async fn vocab_jiten_import(
         "resolved_entries": ids.len() - unresolved.len(),
         "unresolved_entries": unresolved.len(),
         "vetoed_by_lookup": vetoed.len(),
+        "too_rare": too_rare.len(),
         "terms_marked": marked,
         // Named, not counted: a drop the reader cannot read is one they cannot
         // check, and this is where the names and the phrase entries go.
-        "dropped": { "unresolved": unresolved, "vetoed": vetoed },
+        "dropped": { "unresolved": unresolved, "vetoed": vetoed, "too_rare": too_rare },
     })))
 }
 

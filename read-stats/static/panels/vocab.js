@@ -124,6 +124,9 @@ function StatusSummary({ vocab, onImported }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [err, setErr] = useState(null);
+  // 0 is no gate. Ranked against Jiten's list rather than BCCWJ: it is built
+  // from the same kind of material the reading is.
+  const [maxRank, setMaxRank] = useState(0);
 
   async function importAnki() {
     setBusy(true);
@@ -152,7 +155,8 @@ function StatusSummary({ vocab, onImported }) {
     setBusy(true);
     setErr(null);
     try {
-      const res = await fetch("/api/vocab/jiten-import", {
+      const gate = maxRank > 0 ? `?max_rank=${maxRank}` : "";
+      const res = await fetch(`/api/vocab/jiten-import${gate}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: await file.text(),
@@ -160,10 +164,14 @@ function StatusSummary({ vocab, onImported }) {
       if (!res.ok) throw new Error((await res.text()) || res.statusText);
       const r = await res.json();
       const vetoed = `${r.vetoed_by_lookup.toLocaleString("en")} held back (looked up)`;
+      const rare = r.too_rare
+        ? `${r.too_rare.toLocaleString("en")} past the rank gate · `
+        : "";
       setResult(
         `${r.terms_marked.toLocaleString("en")} spellings marked known from ` +
           `${r.resolved_entries.toLocaleString("en")} entries · ` +
           `${vetoed} · ` +
+          rare +
           `${r.unresolved_entries.toLocaleString("en")} not in the master dictionary`,
       );
       onImported?.();
@@ -208,6 +216,16 @@ function StatusSummary({ vocab, onImported }) {
           exact and nothing is guessed. Never overwrites a word already judged,
           and a word you have looked up is held back however the list grades it.
         </span>
+        <label class="triage-floor">
+          skip past Jiten rank (0 = no gate)
+          <input
+            type="number"
+            min="0"
+            step="5000"
+            value=${maxRank}
+            onChange=${(e) => setMaxRank(Math.max(0, Number(e.target.value) || 0))}
+          />
+        </label>
         <label class="pause-btn" style="cursor:pointer">
           ${busy ? "importing…" : "import jiten.moe export…"}
           <input
