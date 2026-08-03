@@ -771,15 +771,15 @@ impl SudachiTokenizer {
 /// join builds — ところが, まずは, 実は, 本当に, ために, すぐに, 同時に,
 /// ちなみに, ところで, 医務室 — is the word the sentence used.
 const NEVER_JOIN: [&str; 7] = [
-    "それは",   // それ + は: 「それは幸か不幸か」
-    "それが",   // それ + が: 「それがいつまで続くのか」
-    "これは",   // これ + は: 「たしかにこれは厄介ね」
-    "ここに",   // ここ + に: 「ここにいてほしい」
-    "ものを",   // もの + を: 「そぐわないものを目にし」
-    "今日は",   // 今日 + は — the greeting is こんにちは, and this is not it
+    "それは", // それ + は: 「それは幸か不幸か」
+    "それが", // それ + が: 「それがいつまで続くのか」
+    "これは", // これ + は: 「たしかにこれは厄介ね」
+    "ここに", // ここ + に: 「ここにいてほしい」
+    "ものを", // もの + を: 「そぐわないものを目にし」
+    "今日は", // 今日 + は — the greeting is こんにちは, and this is not it
     "たらしい", // た + らしい: the suffix of 憎たらしい, never the hearsay after
-                // a past tense. Sudachi is right here and the join is not:
-                // all 30 sightings are 襲われたらしい, 死んだらしい.
+              // a past tense. Sudachi is right here and the join is not:
+              // all 30 sightings are 襲われたらしい, 死んだらしい.
 ];
 
 /// Remove the emphatic っ — the one written for a hard stop at the end of an

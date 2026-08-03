@@ -203,7 +203,13 @@ async fn notes_vocab(
             };
             let vocab = clean_field(note["fields"][vocab_field]["value"].as_str().unwrap_or(""));
             if !vocab.is_empty() {
-                notes.push(AnkiNote { note_id: id, vocab });
+                // The AnkiConnect client has no tokenizer; the caller fills
+                // `headword` before the snapshot is stored.
+                notes.push(AnkiNote {
+                    note_id: id,
+                    vocab,
+                    headword: String::new(),
+                });
             }
         }
     }

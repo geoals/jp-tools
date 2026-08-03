@@ -326,34 +326,6 @@ async fn carry_stranded_judgements(state: &AppState) -> Result<usize, AppError> 
     Ok(carried)
 }
 
-/// Each spelling as the ingest would key it — Sudachi's normalized form.
-///
-/// A spelling the tokenizer does not resolve to exactly one token is returned
-/// unchanged: a card can hold a phrase (心おきなく, 見よう見まね), and the base
-/// form of whichever fragment came back first is not that word.
-async fn normalized_spellings(
-    dict_path: &std::path::Path,
-    spellings: Vec<String>,
-) -> Result<Vec<String>, AppError> {
-    let dict_path = dict_path.to_path_buf();
-    tokio::task::spawn_blocking(move || -> Result<Vec<String>, AppError> {
-        let tokenizer = SudachiTokenizer::new(&dict_path, Default::default())
-            .map_err(|e| AppError::Upstream(format!("sudachi: {e}")))?;
-        Ok(spellings
-            .into_iter()
-            .map(|s| match tokenizer.tokenize(&s) {
-                Ok(tokens) => match tokens.as_slice() {
-                    [t] => t.base_form.clone(),
-                    _ => s,
-                },
-                Err(_) => s,
-            })
-            .collect())
-    })
-    .await
-    .map_err(|e| AppError::Upstream(format!("tokenize task panicked: {e}")))?
-}
-
 /// What `blacklist-non-words` would blacklist, before it does.
 ///
 /// It is a bulk write over rows the queue never shows, so the reader would
@@ -511,7 +483,7 @@ pub async fn vocab_anki_import(
         return Err(last_err);
     };
 
-    let spellings = normalized_spellings(
+    let spellings = crate::ingest::normalized_spellings(
         &state.sudachi_dict_path,
         notes.iter().map(|n| n.vocab.clone()).collect(),
     )
@@ -608,7 +580,10 @@ pub async fn vocab_jiten_import(
             let corpus = dictionaries::by_title(state.knowledge.pool(), &rank_source(&params))
                 .await?
                 .ok_or_else(|| {
-                    AppError::Upstream(format!("{} frequency list not loaded", rank_source(&params)))
+                    AppError::Upstream(format!(
+                        "{} frequency list not loaded",
+                        rank_source(&params)
+                    ))
                 })?;
             Some((corpus.id, max))
         }

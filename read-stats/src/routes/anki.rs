@@ -46,6 +46,19 @@ pub async fn anki_refresh(
         return Err(last_err);
     };
 
+    // Normalized before the snapshot lands, so every join against a tokenizer
+    // lemma has a key to use rather than the card's own spelling.
+    let spellings = crate::ingest::normalized_spellings(
+        &state.sudachi_dict_path,
+        notes.iter().map(|n| n.vocab.clone()).collect(),
+    )
+    .await?;
+    let notes: Vec<db::AnkiNote> = notes
+        .into_iter()
+        .zip(spellings)
+        .map(|(n, headword)| db::AnkiNote { headword, ..n })
+        .collect();
+
     db::replace_anki_notes(&state.knowledge, &notes).await?;
     db::save_setting(&state.local, "anki_snapshot_ts", &now_ts().to_string()).await?;
     db::save_setting(&state.local, "anki_source", &source).await?;
@@ -83,7 +96,9 @@ pub async fn anki_summary(State(state): State<AppState>) -> Result<Json<Value>, 
     let mut mined: BTreeMap<String, (i64, String)> = BTreeMap::new();
     for n in db::fetch_anki_notes(&state.knowledge).await? {
         let date = stats::date_key(n.note_id as f64 / 1000.0, rollover, tz).to_string();
-        mined.entry(n.vocab).or_insert((n.note_id, date));
+        mined
+            .entry(n.key().to_string())
+            .or_insert((n.note_id, date));
     }
 
     // Encounters per mined lemma, split into after-mined-day and last-7-days.

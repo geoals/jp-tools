@@ -167,6 +167,28 @@ impl Knowledge {
                 .execute(&self.0)
                 .await?;
         }
+        // `anki_notes` predates keying a card on anything but its own spelling.
+        // A card is spelt the way the text spelt it; everything derived from
+        // reading is keyed on Sudachi's normalized form, and matching the two
+        // as raw strings silently lost every card whose spelling normalizes —
+        // 検死 never marked 検屍 mined, and never matched its own `word_days`
+        // lemma, so a word read all evening counted as never re-encountered.
+        //
+        // `vocab` stays the literal spelling (the kanji grid and the per-work
+        // mined list both want what is on the card); `headword` is what joins
+        // against anything the tokenizer produced. No backfill — the snapshot
+        // is replaced wholesale on every Anki refresh, so the column fills
+        // itself on the next one, and empty means "fall back to `vocab`".
+        if !has_column(&self.0, "anki_notes", "headword").await? {
+            sqlx::raw_sql("ALTER TABLE anki_notes ADD COLUMN headword TEXT NOT NULL DEFAULT ''")
+                .execute(&self.0)
+                .await?;
+            sqlx::raw_sql(
+                "CREATE INDEX IF NOT EXISTS idx_anki_notes_headword ON anki_notes(headword)",
+            )
+            .execute(&self.0)
+            .await?;
+        }
         // `manual_sessions` predates pasting the text that was read. Rows
         // logged before it stay as they were: an estimated char count and no
         // content, which is exactly what they are.

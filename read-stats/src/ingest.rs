@@ -324,9 +324,48 @@ pub(crate) async fn conjugatable(state: &AppState) -> Result<HashSet<String>, Ap
     Ok(dictionaries::master_conjugatable(state.knowledge.pool()).await?)
 }
 
+/// Each spelling as this module would key it — Sudachi's normalized form.
+///
+/// The bridge between a deck and a ledger: a card is spelt the way the text
+/// spelt it, and everything derived from reading is keyed on the normalized
+/// form, so anything joining the two has to normalize first or lose 検死 to
+/// 検屍.
+///
+/// A spelling the tokenizer does not resolve to exactly one token is returned
+/// unchanged: a card can hold a phrase (心おきなく, 見よう見まね), and the base
+/// form of whichever fragment came back first is not that word.
+pub(crate) async fn normalized_spellings(
+    dict_path: &std::path::Path,
+    spellings: Vec<String>,
+) -> Result<Vec<String>, AppError> {
+    let dict_path = dict_path.to_path_buf();
+    tokio::task::spawn_blocking(move || -> Result<Vec<String>, AppError> {
+        let tokenizer = SudachiTokenizer::new(&dict_path, Default::default())
+            .map_err(|e| AppError::Upstream(format!("sudachi: {e}")))?;
+        Ok(spellings
+            .into_iter()
+            .map(|s| match tokenizer.tokenize(&s) {
+                Ok(tokens) => match tokens.as_slice() {
+                    [t] => t.base_form.clone(),
+                    _ => s,
+                },
+                Err(_) => s,
+            })
+            .collect())
+    })
+    .await
+    .map_err(|e| AppError::Upstream(format!("tokenize task panicked: {e}")))?
+}
+
 /// The mined deck. The tokenizer's *second* wordhood source, behind the master
 /// lexicon: a word the reader has mined is a word, but the deck is a couple of
 /// thousand entries and a dictionary is eighty thousand.
+///
+/// The card's own spelling, deliberately, not [`normalized_spellings`]: this
+/// set is tested against a morpheme's dictionary *and* normalized form
+/// (`keeps_whole`), so the literal spelling is the half that answers, and
+/// adding the normalized one would keep compounds whole that are split today —
+/// a new identity for every one of them, and a stranded ledger row behind it.
 pub(crate) async fn mined_vocab(state: &AppState) -> Result<HashSet<String>, AppError> {
     Ok(db::fetch_anki_notes(&state.knowledge)
         .await?

@@ -497,7 +497,10 @@ fn one_mora_of_kana_never_becomes_a_kanji_word() {
     ] {
         let tokens = tokens_of(&tk, text);
         let (term, _) = identity_of(&tokens, surface);
-        assert_eq!(term, surface, "{text}: {surface} must keep its own spelling");
+        assert_eq!(
+            term, surface,
+            "{text}: {surface} must keep its own spelling"
+        );
     }
 }
 

@@ -249,8 +249,13 @@ pub async fn sync_mined(k: &Knowledge) -> Result<i64, sqlx::Error> {
         .execute(&mut *tx)
         .await?;
     sqlx::query(
+        // `headword` is the card's spelling normalized the way the ledger keys
+        // it; matching the raw `vocab` lost every card whose spelling
+        // normalizes — 検死 never marked 検屍. Empty means a snapshot older than
+        // the column, which falls back to the old behaviour until the next
+        // refresh fills it.
         "UPDATE vocabulary SET mined = 1 \
-         WHERE headword IN (SELECT vocab FROM anki_notes)",
+         WHERE headword IN (SELECT COALESCE(NULLIF(headword, ''), vocab) FROM anki_notes)",
     )
     .execute(&mut *tx)
     .await?;
@@ -967,7 +972,10 @@ pub async fn browse(
         total,
         rows.iter()
             .map(|r| BrowseRow {
-                term: Term::new(r.get::<String, _>("headword"), &r.get::<String, _>("reading")),
+                term: Term::new(
+                    r.get::<String, _>("headword"),
+                    &r.get::<String, _>("reading"),
+                ),
                 status: r.get("status"),
                 source: r.get("status_source"),
                 encounter_count: r.get("encounter_count"),

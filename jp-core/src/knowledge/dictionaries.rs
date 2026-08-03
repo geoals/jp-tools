@@ -981,8 +981,12 @@ mod tests {
             .execute(k.pool()).await.unwrap();
         }
 
-        let mut forms = master_forms_by_sequence(k.pool()).await.unwrap()
-            .get(&1604300).cloned().unwrap_or_default();
+        let mut forms = master_forms_by_sequence(k.pool())
+            .await
+            .unwrap()
+            .get(&1604300)
+            .cloned()
+            .unwrap_or_default();
         forms.sort();
         assert_eq!(forms.len(), 2, "both live spellings: {forms:?}");
     }
@@ -1048,8 +1052,12 @@ mod tests {
             .execute(k.pool()).await.unwrap();
         }
 
-        let forms = master_forms_by_sequence(k.pool()).await.unwrap()
-            .get(&1597850).cloned().unwrap_or_default();
+        let forms = master_forms_by_sequence(k.pool())
+            .await
+            .unwrap()
+            .get(&1597850)
+            .cloned()
+            .unwrap_or_default();
         assert_eq!(forms.len(), 2, "both spellings of つぎつぎ: {forms:?}");
     }
 

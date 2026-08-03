@@ -147,9 +147,12 @@ impl TestApp {
     pub async fn add_notes(&self, notes: &[(i64, &str)]) {
         let notes: Vec<db::AnkiNote> = notes
             .iter()
+            // No tokenizer in a fixture, so a card is spelt the way the ledger
+            // keys it — the case where normalizing changes nothing.
             .map(|(note_id, vocab)| db::AnkiNote {
                 note_id: *note_id,
                 vocab: (*vocab).into(),
+                headword: (*vocab).into(),
             })
             .collect();
         db::replace_anki_notes(&self.knowledge, &notes)
