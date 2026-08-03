@@ -351,9 +351,9 @@ impl SudachiTokenizer {
         let mut i = 0;
         while i < tokens.len() {
             let longest = MAX_COMPOUND_PARTS.min(tokens.len() - i);
-            let joined = (2..=longest)
-                .rev()
-                .find_map(|n| self.join_run(&tokens[i..i + n]));
+            let joined = (2..=longest).rev().find_map(|n| {
+                self.join_run(&tokens[i..i + n], i.checked_sub(1).map(|p| &tokens[p]))
+            });
             match joined {
                 Some(token) => {
                     i += token.parts;
@@ -370,7 +370,7 @@ impl SudachiTokenizer {
 
     /// One candidate run, joined or refused. See [`recompose`](Self::recompose)
     /// for the rules; this is only their transcription.
-    fn join_run(&self, run: &[Token]) -> Option<Joined> {
+    fn join_run(&self, run: &[Token], before: Option<&Token>) -> Option<Joined> {
         if run.iter().any(|t| t.surface.is_empty() || t.proper_noun) {
             return None;
         }
@@ -388,7 +388,10 @@ impl SudachiTokenizer {
         let mut spelled = true;
         let term = if content && self.lexicon.contains(&written) {
             Some(written)
-        } else if run.iter().all(|t| !t.inflected) && self.lexicon.contains(&surfaces) {
+        } else if run.iter().all(|t| !t.inflected)
+            && !before.is_some_and(|t| conjugation_continues(t, &run[0]))
+            && self.lexicon.contains(&surfaces)
+        {
             // The expression join, and the one place function words are allowed
             // in: それどころか is a Sankoku headword whose parts are two
             // particles. What it produces must itself be a listed headword — the
@@ -404,6 +407,14 @@ impl SudachiTokenizer {
             // neither of which is what the sentence said — and it is what made
             // the rule look arbitrary, 開いて staying split only because Sankoku
             // happens not to list it.
+            //
+            // **And not starting mid-conjugation**, which the no-stem rule
+            // cannot see: past た is its own dictionary form, so 音 + だっ + た +
+            // そう + です left た and そう looking like two free words spelling
+            // the headword たそう. They are not — た belongs to だっ, and the run
+            // only looks free because the stem it hangs off sits outside it. An
+            // expression never begins on the tail of the previous word's
+            // inflection.
             Some(surfaces.clone())
         } else if self.reading_join_admitted(run, head, content) {
             spelled = false;
@@ -517,6 +528,26 @@ pub fn ambiguous_headwords(entries: &[(String, String)]) -> Vec<String> {
         out.extend(terms.into_iter().cloned());
     }
     out.into_iter().collect()
+}
+
+/// Whether `next` is the past た finishing `prev` rather than opening a word of
+/// its own — the た of だっ + た.
+///
+/// Only the past tense, because the expressions Sankoku lists under a leading
+/// auxiliary are otherwise real: ないと is 向かわ + ない + と and has to keep
+/// joining. What past た heads instead are the entries that attach to a
+/// *different* stem — たそう is 行きたそう, where た is たい — so a past た
+/// reaching one means the run started on the tail of the previous word.
+///
+/// `inflected` alone will not do as the test on `prev`: it is `surface !=
+/// dictionary_form`, which is also true of a normalized `……` and of every kana
+/// spelling the lexicon files under another. Only a word that conjugates can
+/// have its conjugation continued.
+fn conjugation_continues(prev: &Token, next: &Token) -> bool {
+    next.pos == "助動詞"
+        && next.base_form == "た"
+        && prev.inflected
+        && (is_content_word(&prev.pos) || prev.pos == "助動詞")
 }
 
 /// How a token part sounds inside a compound: as written when it is kana, by
@@ -1521,6 +1552,38 @@ mod tests {
         assert!(!bases("読んでいた").contains(&"訂".to_string()));
         // A name beside a word is not a compound, in either direction.
         assert_eq!(bases("東京"), vec!["東京"]);
+    }
+
+    /// An expression join may not start on a past た, which belongs to the verb
+    /// before it. たそう is listed (行きたそう), and without this 音だったそう
+    /// filed だっ's た under it.
+    #[test]
+    #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+    fn a_past_tense_ta_never_opens_an_expression() {
+        let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
+            .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+        let entries: Vec<(String, String)> = [("たそう", "たそう"), ("ないと", "ないと")]
+            .iter()
+            .map(|(t, r)| (t.to_string(), r.to_string()))
+            .collect();
+        let lexicon: HashSet<String> = entries.iter().map(|(t, _)| t.clone()).collect();
+        let tokenizer = SudachiTokenizer::new(Path::new(&dict_path), HashSet::from(["x".into()]))
+            .unwrap()
+            .with_lexicon(lexicon)
+            .with_master_readings(&entries);
+        let bases = |text: &str| {
+            tokenizer
+                .tokenize(text)
+                .unwrap()
+                .into_iter()
+                .map(|t| t.base_form)
+                .collect::<Vec<_>>()
+        };
+
+        assert!(!bases("音だったそうです").contains(&"たそう".to_string()));
+        // The fence is the past tense alone: ないと is a verb's own negative
+        // plus と, and it has to keep joining.
+        assert!(bases("早く向かわないと").contains(&"ないと".to_string()));
     }
 
     /// A recomposed token carries the master's reading, not one assembled from
