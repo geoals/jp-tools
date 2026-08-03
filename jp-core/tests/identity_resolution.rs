@@ -516,3 +516,24 @@ fn a_past_tense_before_hearsay_is_not_the_suffix_of_a_word() {
     assert!(!bases.contains(&"たらしい"), "{bases:?}");
     assert!(bases.contains(&"らしい"), "{bases:?}");
 }
+
+/// The explanation and the tokenization are one code path, and this is what
+/// says so. `explain` is only [`Tokenizer::tokenize`] with the recorder on; the
+/// day it becomes a second implementation of the rules it starts explaining a
+/// pipeline nobody runs, which is worse than explaining nothing.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn explaining_a_line_yields_the_tokens_tokenizing_it_does() {
+    let (tk, _) = setup();
+    for line in [
+        "そのメルルの胸を、とんっと軽く押した。",
+        "彼女はしゃくりあげながら話した。",
+        "音だったそうです",
+        "それは私の本だ",
+        "ごめんなさいっ",
+    ] {
+        let (explained, steps) = tk.explain(line).unwrap();
+        assert_eq!(explained, tokens_of(&tk, line), "{line}");
+        assert!(!steps.is_empty(), "no steps recorded for {line}");
+    }
+}

@@ -53,7 +53,7 @@
   opacity: 0.6;
   cursor: default;
 }
-.tokenize-actions .linkish {
+.tokenize-page .linkish {
   border: none;
   background: none;
   padding: 0;
@@ -171,4 +171,59 @@
    read for, but it is not what the eye should land on first. */
 .tokenize-table tr.excluded .jp {
   color: var(--text-secondary);
+}
+
+/* The trace — one row per decision the pipeline made.
+ *
+ * A stage column narrow enough to scan down and wide enough for "not joined",
+ * with the sentence beside it. No colour beyond a left edge: the page already
+ * spends its three tints on the vocabulary scale above, and a fourth palette
+ * here would compete with the thing the reader came to read. */
+.trace {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.trace-step {
+  display: flex;
+  gap: 12px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--grid);
+  border-left: 2px solid transparent;
+}
+.trace-step.kept {
+  border-left-color: var(--good);
+}
+.trace-step.refused {
+  border-left-color: var(--warn);
+}
+.trace-stage {
+  flex: 0 0 96px;
+  color: var(--muted);
+  font-size: 12px;
+  padding-top: 3px;
+}
+.trace-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.trace-body .jp {
+  color: var(--text-primary);
+  font-size: 15px;
+}
+.trace-why {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.trace-cands {
+  color: var(--muted);
+  font-size: 12px;
+}
+.trace-toggle {
+  align-self: flex-start;
+  margin-top: 10px;
 }

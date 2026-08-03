@@ -13,6 +13,11 @@
 //! rather than being filtered as the feed filters them: what was dropped, and
 //! under which rule, is most of the question being asked.
 //!
+//! It also answers *why*: `steps` is the pipeline's own trace, every decision
+//! it made in the order it made them. The table says what happened; that says
+//! which rule it happened under, which is the difference between checking a
+//! parse against the system and having to reason it out from the outside.
+//!
 //! Read-only. It writes no ledger row, no `word_days` count and no presence
 //! mark — text pasted here was not read.
 
@@ -54,5 +59,8 @@ pub async fn tokenize_text(
         ));
     };
     let tokens = highlight::analyze(&state.knowledge, &h, &text).await;
-    Ok(Json(json!({ "text": text, "tokens": tokens })))
+    let steps = h.explain(&text);
+    Ok(Json(
+        json!({ "text": text, "tokens": tokens, "steps": steps }),
+    ))
 }

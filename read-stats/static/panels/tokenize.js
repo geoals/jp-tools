@@ -79,6 +79,7 @@ export function TokenizeView() {
 
       ${error && html`<div class="card tokenize-error">${error}</div>`}
       ${result && html`<${Result} result=${result} />`}
+      ${result && html`<${Trace} steps=${result.steps || []} />`}
     </div>
   `;
 }
@@ -160,6 +161,152 @@ function Result({ result }) {
         </tbody>
       </table>
     </div>
+  `;
+}
+
+/** Whether a step could have gone the other way.
+ *
+ *  Most of a trace is the pipeline agreeing with itself — every particle gets a
+ *  gate that keeps it and an identity with one candidate, and recomposition
+ *  offers every run of two and three adjacent tokens at every position, nearly
+ *  all of which spell nothing. Those are true and they are not why anything
+ *  happened, and on a full line they bury the handful of steps that are.
+ *
+ *  So the default view is the decisions with a fork in them:
+ *
+ *  - a **rewrite** or a **stammer drop** — the line is not what was pasted.
+ *  - a **join**, taken or refused. Never a run that named no word at all.
+ *  - a **split**, which is the gate having refused a compound. The gate itself
+ *    is left out: when it keeps a word there is nothing to explain, and when it
+ *    doesn't, the split underneath says so and says what came out.
+ *  - an **identity** with more than one candidate, or one that fell past the
+ *    plain "the master lists this pair" rung. Choosing 奇麗 over 綺麗 is a fork;
+ *    filing を under を is not. */
+const ROUTINE_IDENTITY = "the first candidate the master lists as a pair";
+
+/** Kana or kanji — anything that could be a word. A comma also gets an identity
+ *  and always falls all the way down the ladder, which reads like a fork and is
+ *  not one. */
+const WORDLIKE = /[぀-ヿ一-龯]/;
+
+function decisive(s) {
+  switch (s.kind) {
+    case "rewrite":
+    case "stutter":
+      return true;
+    case "join":
+      return s.verdict !== "no_signal";
+    case "split":
+      return s.parts.length > 1;
+    case "identity":
+      return (
+        WORDLIKE.test(s.surface) &&
+        (s.candidates.length > 1 || s.rule !== ROUTINE_IDENTITY)
+      );
+    default:
+      return false;
+  }
+}
+
+/** Every decision the pipeline made, in the order it made them.
+ *
+ *  The table above is the verdict; this is the reasoning, so a parse that looks
+ *  wrong can be checked against the rule that produced it instead of guessed
+ *  at. The server sends the tokenizer's own trace — the same run, recorded, not
+ *  a reconstruction — so a step here is a line of the pipeline and not an
+ *  opinion about one. */
+function Trace({ steps }) {
+  const [showAll, setShowAll] = useState(false);
+  if (!steps.length) return null;
+  const shown = showAll ? steps : steps.filter(decisive);
+  const count = `${shown.length} of ${steps.length} decisions`;
+  const toggle = showAll
+    ? "show only the decisions with a fork in them"
+    : `show all ${steps.length}, including the pipeline agreeing with itself`;
+  return html`
+    <div class="card">
+      <div class="card-head">
+        <h2>why</h2>
+        <span class="muted">${count}</span>
+      </div>
+      <ol class="trace">
+        ${shown.map((s, i) => html`<${TraceStep} key=${i} step=${s} />`)}
+      </ol>
+      <button
+        type="button"
+        class="linkish trace-toggle"
+        onClick=${() => setShowAll(!showAll)}
+      >
+        ${toggle}
+      </button>
+    </div>
+  `;
+}
+
+/** The stage badge and the sentence for one step.
+ *
+ *  Each branch builds its own text in JS rather than interleaving literals with
+ *  `${...}` across lines — htm collapses the whitespace between them, and the
+ *  arrows and slashes here are exactly the places that would silently close up. */
+function TraceStep({ step }) {
+  const s = step;
+  let stage = s.kind;
+  let main = "";
+  let note = "";
+  let tone = "";
+
+  if (s.kind === "rewrite") {
+    main = `${s.from} → ${s.to}`;
+    note = "the emphatic っ, removed before Sudachi saw the line";
+  } else if (s.kind === "gate") {
+    main = s.surface;
+    note = s.why;
+    tone = s.kept ? "kept" : "";
+    stage = s.kept ? "kept whole" : "gate";
+  } else if (s.kind === "split") {
+    stage = s.mode === "none" ? "no split" : `split ${s.mode}`;
+    main =
+      s.mode === "none"
+        ? s.surface
+        : `${s.surface} → ${s.parts.join(" + ")}`;
+  } else if (s.kind === "stutter") {
+    main = `${s.fragment} 、 ${s.into}`;
+    note = `the stammer's ${s.fragment} dropped — a fragment, not a word`;
+  } else if (s.kind === "identity") {
+    main = `${s.surface} → ${s.headword} / ${s.reading}`;
+    note = s.rule;
+  } else if (s.kind === "join") {
+    main = s.parts.join(" + ");
+    if (s.verdict === "joined") {
+      main = `${s.parts.join(" + ")} → ${s.term} / ${s.reading}`;
+      note = s.signal;
+      tone = "kept";
+      stage = "joined";
+    } else if (s.verdict === "refused") {
+      main = `${s.parts.join(" + ")} ↛ ${s.term}`;
+      note = s.reason;
+      tone = "refused";
+      stage = "refused";
+    } else {
+      note = s.reason;
+      stage = "not joined";
+    }
+  }
+
+  const candidates =
+    s.kind === "identity" && s.candidates.length
+      ? `tried: ${s.candidates.join("  ·  ")}`
+      : "";
+
+  return html`
+    <li class=${`trace-step ${tone}`}>
+      <span class="trace-stage">${stage}</span>
+      <span class="trace-body">
+        <span class="jp">${main}</span>
+        ${note && html`<span class="trace-why">${note}</span>`}
+        ${candidates && html`<span class="trace-cands">${candidates}</span>`}
+      </span>
+    </li>
   `;
 }
 

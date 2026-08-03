@@ -1489,6 +1489,7 @@ dependencies = [
  "base64",
  "flate2",
  "mockall",
+ "serde",
  "serde_json",
  "sqlx",
  "sudachi",

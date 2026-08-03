@@ -344,6 +344,22 @@ add to when the question is "does the SQL select what the derivation assumes".
   status came from a different row, `judged_as` carries that row's reading in
   its own column. The feed folds them in `spans`, on the way out of `analyze`.
   The page writes nothing — no ledger row, no count, no presence mark.
+- **The `why` card is the tokenizer's own trace, not a reconstruction of it.**
+  `jp_core::tokenize::trace` is threaded through the real predicates and
+  `SudachiTokenizer::explain` is `tokenize` with the recorder on, so a step is a
+  line of the pipeline. An explanation derived by a second implementation would
+  drift from the thing it explains, and would be worth less than nothing on the
+  day it mattered; `explaining_a_line_yields_the_tokens_tokenizing_it_does` is
+  what holds the two together. Recording is inert when off — `Trace::push` takes
+  a closure — so ingest pays a bool check per decision and no `format!`.
+- **The trace defaults to the decisions with a fork in them** (`decisive` in
+  `panels/tokenize.js`). A full line is ~60 steps and most are the pipeline
+  agreeing with itself: recomposition offers every run of two and three adjacent
+  tokens at every position and nearly all spell nothing, every particle gets a
+  gate that keeps it, and punctuation falls down the whole identity ladder every
+  time. Those are true and they are not why anything happened. What is left is a
+  rewrite, a stammer drop, a join taken or refused, a split, and an identity
+  that had more than one candidate — 綺麗 → 奇麗 is a fork, を → を is not.
 - **A bulk write shows its rows first.** `blacklist-non-words` judges rows the
   queue never displays, so `GET /api/vocab/non-words` lists them and the button
   only appears once they are on screen.

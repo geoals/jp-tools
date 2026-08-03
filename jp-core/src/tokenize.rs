@@ -11,6 +11,9 @@ use sudachi::dic::subset::InfoSubset;
 use sudachi::dic::word_id::WordId;
 use sudachi::prelude::Morpheme;
 
+pub mod trace;
+use trace::{Step, Trace, Verdict};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Token {
     pub surface: String,
@@ -269,10 +272,26 @@ impl SudachiTokenizer {
     /// that is the spelling the master lists and the one an identity is keyed
     /// on: Sudachi's dictionary form for 擦り剥く is the kana すりむく, which
     /// Sankoku has no entry for.
-    fn keeps_whole<T: DictionaryAccess>(&self, m: &Morpheme<'_, T>) -> bool {
-        [m.dictionary_form(), m.normalized_form()]
+    fn keeps_whole<T: DictionaryAccess>(&self, m: &Morpheme<'_, T>, trace: &mut Trace) -> bool {
+        let forms = [m.dictionary_form(), m.normalized_form()];
+        let listed = forms
             .iter()
-            .any(|f| self.mined.contains(*f) || self.lexicon.contains(*f))
+            .find(|f| self.mined.contains(**f) || self.lexicon.contains(**f));
+        if trace.is_recording() {
+            let surface = m.surface().to_string();
+            let why = match listed {
+                Some(f) if self.lexicon.contains(*f) => format!("the master lists {f}"),
+                Some(f) => format!("{f} is mined into Anki"),
+                None => {
+                    let mut forms: Vec<&str> = forms.to_vec();
+                    forms.dedup();
+                    format!("no listed word: {}", forms.join(", "))
+                }
+            };
+            let kept = listed.is_some();
+            trace.push(|| Step::Gate { surface, kept, why });
+        }
+        listed.is_some()
     }
 
     /// Does the master dictionary list this identity? Same rule as
@@ -343,7 +362,7 @@ impl SudachiTokenizer {
     /// two-character kana homographs out.
     ///
     /// The joined token takes the master's own spelling and reading.
-    fn recompose(&self, tokens: Vec<Token>) -> Vec<Token> {
+    fn recompose(&self, tokens: Vec<Token>, trace: &mut Trace) -> Vec<Token> {
         if self.lexicon.is_empty() && self.by_reading.is_empty() {
             return tokens;
         }
@@ -352,7 +371,11 @@ impl SudachiTokenizer {
         while i < tokens.len() {
             let longest = MAX_COMPOUND_PARTS.min(tokens.len() - i);
             let joined = (2..=longest).rev().find_map(|n| {
-                self.join_run(&tokens[i..i + n], i.checked_sub(1).map(|p| &tokens[p]))
+                self.join_run(
+                    &tokens[i..i + n],
+                    i.checked_sub(1).map(|p| &tokens[p]),
+                    trace,
+                )
             });
             match joined {
                 Some(token) => {
@@ -370,9 +393,14 @@ impl SudachiTokenizer {
 
     /// One candidate run, joined or refused. See [`recompose`](Self::recompose)
     /// for the rules; this is only their transcription.
-    fn join_run(&self, run: &[Token], before: Option<&Token>) -> Option<Joined> {
+    fn join_run(&self, run: &[Token], before: Option<&Token>, trace: &mut Trace) -> Option<Joined> {
+        let parts = || run.iter().map(|t| t.surface.clone()).collect::<Vec<_>>();
         if run.iter().any(|t| t.surface.is_empty() || t.proper_noun) {
-            return None;
+            return no_signal(
+                trace,
+                parts(),
+                "a part is a proper noun — a name beside a noun is not a compound",
+            );
         }
         let (last, head) = run.split_last()?;
         let content = run.iter().all(|t| is_content_word(&t.pos));
@@ -386,12 +414,12 @@ impl SudachiTokenizer {
         // Whether the parts *spell* the headword, as opposed to merely sounding
         // like it. The length floor below turns on this.
         let mut spelled = true;
+        let mut signal = "spelling — the parts as written spell a master headword";
+        let uninflected_run = run.iter().all(|t| !t.inflected);
+        let mid_conjugation = before.is_some_and(|t| conjugation_continues(t, &run[0]));
         let term = if content && self.lexicon.contains(&written) {
             Some(written)
-        } else if run.iter().all(|t| !t.inflected)
-            && !before.is_some_and(|t| conjugation_continues(t, &run[0]))
-            && self.lexicon.contains(&surfaces)
-        {
+        } else if uninflected_run && !mid_conjugation && self.lexicon.contains(&surfaces) {
             // The expression join, and the one place function words are allowed
             // in: それどころか is a Sankoku headword whose parts are two
             // particles. What it produces must itself be a listed headword — the
@@ -415,9 +443,11 @@ impl SudachiTokenizer {
             // only looks free because the stem it hangs off sits outside it. An
             // expression never begins on the tail of the previous word's
             // inflection.
+            signal = "expression — the surfaces spell a master headword";
             Some(surfaces.clone())
         } else if self.reading_join_admitted(run, head, content) {
             spelled = false;
+            signal = "reading — the parts read as one master headword";
             let read: String = head
                 .iter()
                 .map(spoken_form)
@@ -429,11 +459,43 @@ impl SudachiTokenizer {
             // arbitrated by frequency, so an ambiguous reading names nothing.
             match self.by_reading.get(&read).map(Vec::as_slice) {
                 Some([one]) => Some(one.clone()),
-                _ => None,
+                Some(_) => {
+                    return no_signal(
+                        trace,
+                        parts(),
+                        "the parts' reading names several headwords, and a join may not guess",
+                    );
+                }
+                None => None,
             }
         } else {
             None
-        }?;
+        };
+        let Some(term) = term else {
+            // The two structural guards on the expression path are refusals,
+            // not misses: the run *does* spell a headword and was turned down
+            // anyway, which is the case that looks like a bug and so is the one
+            // that must not be folded away with the runs that spelt nothing.
+            let blocked = if !uninflected_run {
+                "a part is a stem, and an expression may not glue one in"
+            } else if mid_conjugation {
+                "the run starts on the tail of the previous word's inflection"
+            } else {
+                return no_signal(
+                    trace,
+                    parts(),
+                    "the parts spell no master headword, and their reading names none",
+                );
+            };
+            if !self.lexicon.contains(&surfaces) {
+                return no_signal(
+                    trace,
+                    parts(),
+                    "the parts spell no master headword, and their reading names none",
+                );
+            }
+            return refused(trace, parts(), surfaces, blocked.into());
+        };
 
         // **Three characters minimum, unless the parts spell it in kanji.**
         //
@@ -449,8 +511,21 @@ impl SudachiTokenizer {
         // Spelled, not sounded: the reading path keeps the floor at every
         // length, because that is the one that invents 自前 out of じ + まえ.
         let unambiguous = spelled && term.chars().all(crate::text::kanji::is_kanji);
-        if (term.chars().count() < 3 && !unambiguous) || NEVER_JOIN.contains(&term.as_str()) {
-            return None;
+        if term.chars().count() < 3 && !unambiguous {
+            return refused(
+                trace,
+                parts(),
+                term,
+                "under three characters and not spelled in kanji — two kana spell so many words that a join finds one by accident".into(),
+            );
+        }
+        if NEVER_JOIN.contains(&term.as_str()) {
+            return refused(
+                trace,
+                parts(),
+                term,
+                "a reviewed judgement: this string is a phrase the master happens to list, never the word the sentence used".into(),
+            );
         }
         let reading = self
             .term_reading
@@ -460,8 +535,17 @@ impl SudachiTokenizer {
         // The joined token is an identity like any other and has to be one the
         // master lists; a join that produces something else is a bad join.
         if !self.pairs.is_empty() && !self.lists(&term, &reading) {
-            return None;
+            let reason = format!("the master does not list {term} read {reading}");
+            return refused(trace, parts(), term, reason);
         }
+        trace.push(|| Step::Join {
+            parts: parts(),
+            verdict: Verdict::Joined {
+                term: term.clone(),
+                reading: reading.clone(),
+                signal,
+            },
+        });
         Some(Joined {
             parts: run.len(),
             token: Token {
@@ -561,6 +645,26 @@ fn spoken_form(t: &Token) -> String {
     }
 }
 
+/// A run that named no word at all. Free functions rather than closures over
+/// the trace, so recording a refusal never has to argue with the borrow checker
+/// about the recorder still being alive further down.
+fn no_signal(trace: &mut Trace, parts: Vec<String>, reason: &'static str) -> Option<Joined> {
+    trace.push(|| Step::Join {
+        parts,
+        verdict: Verdict::NoSignal { reason },
+    });
+    None
+}
+
+/// A run that named a word and was turned down by a later rule.
+fn refused(trace: &mut Trace, parts: Vec<String>, term: String, reason: String) -> Option<Joined> {
+    trace.push(|| Step::Join {
+        parts,
+        verdict: Verdict::Refused { term, reason },
+    });
+    None
+}
+
 /// A joined run, and how many tokens it consumed.
 struct Joined {
     token: Token,
@@ -621,18 +725,64 @@ impl SudachiTokenizer {
         &self,
         m: &Morpheme<'_, T>,
         subsidiary: bool,
+        trace: &mut Trace,
     ) -> (String, String) {
+        let (headword, reading, rule, candidates) = self.identity_ladder(m, subsidiary);
+        if trace.is_recording() {
+            let surface = m.surface().to_string();
+            let (h, r) = (headword.clone(), reading.clone());
+            trace.push(|| Step::Identity {
+                surface,
+                headword: h,
+                reading: r,
+                rule,
+                candidates,
+            });
+        }
+        (headword, reading)
+    }
+
+    /// The ladder itself, with the rung that settled it and the candidates it
+    /// was choosing between — the two things an explanation needs and a caller
+    /// does not.
+    fn identity_ladder<T: DictionaryAccess>(
+        &self,
+        m: &Morpheme<'_, T>,
+        subsidiary: bool,
+    ) -> (String, String, &'static str, Vec<String>) {
         let lemma_reading = self.dictionary_form_reading(m);
         let surface = m.surface().to_string();
         let sudachi = || (m.normalized_form().to_string(), lemma_reading.clone());
+        // Deduplicated, in ladder order: the rungs are distinct *sources* for a
+        // pair — the normalized form, the lemma, the surface — and they agree
+        // far more often than not. Which source won is the `rule`; four
+        // identical lines under it say nothing.
+        let show = |c: &[(String, String)]| {
+            let mut seen = HashSet::new();
+            c.iter()
+                .map(|(t, r)| format!("{t} / {}", crate::text::kana::to_hiragana(r)))
+                .filter(|line| seen.insert(line.clone()))
+                .collect::<Vec<_>>()
+        };
 
         // A shred, not a word — and normalisation will happily "repair" it into
         // one (んっと → うんと). It gets no candidates at all.
         if has_impossible_onset(&surface) {
-            return (surface, m.reading_form().to_string());
+            return (
+                surface,
+                m.reading_form().to_string(),
+                "no Japanese word begins with this kana — a shred, kept as written",
+                Vec::new(),
+            );
         }
         if self.pairs.is_empty() && self.lexicon.is_empty() {
-            return sudachi();
+            let (t, r) = sudachi();
+            return (
+                t,
+                r,
+                "no master dictionary loaded — Sudachi's own answer",
+                Vec::new(),
+            );
         }
 
         let mut candidates: Vec<(String, String)> = Vec::with_capacity(4);
@@ -701,10 +851,14 @@ impl SudachiTokenizer {
             .iter()
             .find(|(term, reading)| self.lists(term, reading))
         {
-            let reading = self
-                .preferred_reading(term, reading, &surface, m.part_of_speech())
-                .unwrap_or_else(|| reading.clone());
-            return (term.clone(), reading);
+            let overruled = self.preferred_reading(term, reading, &surface, m.part_of_speech());
+            let rule = if overruled.is_some() {
+                "the master lists this pair, but its reading is one the language has moved off"
+            } else {
+                "the first candidate the master lists as a pair"
+            };
+            let reading = overruled.unwrap_or_else(|| reading.clone());
+            return (term.clone(), reading, rule, show(&candidates));
         }
 
         // The spelling is right and only the reading is wrong: Sudachi
@@ -718,7 +872,12 @@ impl SudachiTokenizer {
             if let Some(reading) = self.rederive_reading(term)
                 && self.lists(term, &reading)
             {
-                return (term.clone(), reading);
+                return (
+                    term.clone(),
+                    reading,
+                    "no candidate pair listed; this spelling is listed, so its reading was taken from the spelling alone",
+                    show(&candidates),
+                );
             }
         }
 
@@ -750,14 +909,30 @@ impl SudachiTokenizer {
             if !is_one_mora(&spoken)
                 && let Some(term) = self.headword_for_reading(&spoken)
             {
-                return (term.clone(), spoken);
+                return (
+                    term.clone(),
+                    spoken,
+                    "written in kana and no spelling listed — the headword its reading names",
+                    show(&candidates),
+                );
             }
         }
 
         if mora_of_kana {
-            return (surface, m.reading_form().to_string());
+            return (
+                surface,
+                m.reading_form().to_string(),
+                "one mora of kana spells nothing — kept as the text wrote it",
+                show(&candidates),
+            );
         }
-        sudachi()
+        let (t, r) = sudachi();
+        (
+            t,
+            r,
+            "nothing the master lists — Sudachi's own answer, off the master scale",
+            show(&candidates),
+        )
     }
 
     /// What a headword reads as when tokenized alone, cached forever.
@@ -929,7 +1104,7 @@ pub fn has_impossible_onset(surface: &str) -> bool {
 /// word that *begins* with that same mora**, in its spelling or in its reading.
 /// Kana only for the fragment — 木、木材 is not a stammer, and a kanji fragment
 /// would be a real word every time.
-fn drop_stutters(tokens: Vec<Token>) -> Vec<Token> {
+fn drop_stutters(tokens: Vec<Token>, trace: &mut Trace) -> Vec<Token> {
     let fragment = |t: &Token| {
         let mut chars = t.surface.chars();
         let (Some(c), None) = (chars.next(), chars.next()) else {
@@ -962,6 +1137,9 @@ fn drop_stutters(tokens: Vec<Token>) -> Vec<Token> {
                 tokens[i].pos != "助詞" && starts_with(&next.reading)
             });
         if repeated {
+            let fragment = tokens[i].surface.clone();
+            let into = tokens[i + 2].surface.clone();
+            trace.push(|| Step::Stutter { fragment, into });
             i += 2;
             continue;
         }
@@ -971,37 +1149,54 @@ fn drop_stutters(tokens: Vec<Token>) -> Vec<Token> {
     out
 }
 
-impl Tokenizer for SudachiTokenizer {
-    fn tokenize(&self, text: &str) -> Result<Vec<Token>, TokenizeError> {
+impl SudachiTokenizer {
+    /// Tokenize, and say why — every decision the pipeline made, in order.
+    ///
+    /// The same code path as [`Tokenizer::tokenize`] with the recorder switched
+    /// on, never a second implementation of the rules; see [`trace`].
+    pub fn explain(&self, text: &str) -> Result<(Vec<Token>, Vec<Step>), TokenizeError> {
+        let mut trace = Trace::recording();
+        let tokens = self.run(text, &mut trace)?;
+        Ok((tokens, trace.into_steps()))
+    }
+
+    fn to_token<T: DictionaryAccess>(&self, m: &Morpheme<'_, T>, trace: &mut Trace) -> Token {
+        // [0] is the top-level class, [1] the subclass: 名詞,固有名詞,人名.
+        let subclass = m.part_of_speech().get(1).cloned().unwrap_or_default();
+        let subsidiary = subclass == "非自立可能";
+        let (base_form, reading) = self.resolve_identity(m, subsidiary, trace);
+        Token {
+            surface: m.surface().to_string(),
+            base_form,
+            reading,
+            pos: m.part_of_speech()[0].clone(),
+            proper_noun: subclass == "固有名詞",
+            subsidiary,
+            inflected: *m.surface() != *m.dictionary_form(),
+        }
+    }
+
+    fn run(&self, text: &str, trace: &mut Trace) -> Result<Vec<Token>, TokenizeError> {
         // The one place the input is rewritten, and the only one that can be:
         // see [`strip_emphatic_sokuon`]. Everything below analyses `text`, and
         // every surface it yields is still findable in the caller's original.
-        let text = &strip_emphatic_sokuon(text);
+        let stripped = strip_emphatic_sokuon(text);
+        if stripped != text {
+            let (from, to) = (text.to_string(), stripped.clone());
+            trace.push(|| Step::Rewrite { from, to });
+        }
+        let text = &stripped;
         let tokenizer = StatelessTokenizer::new(&self.dict);
-        let to_token = |m: sudachi::prelude::Morpheme<'_, _>| {
-            // [0] is the top-level class, [1] the subclass: 名詞,固有名詞,人名.
-            let subclass = m.part_of_speech().get(1).cloned().unwrap_or_default();
-            let subsidiary = subclass == "非自立可能";
-            let (base_form, reading) = self.resolve_identity(&m, subsidiary);
-            Token {
-                surface: m.surface().to_string(),
-                base_form,
-                reading,
-                pos: m.part_of_speech()[0].clone(),
-                proper_noun: subclass == "固有名詞",
-                subsidiary,
-                inflected: *m.surface() != *m.dictionary_form(),
-            }
-        };
 
         if self.mined.is_empty() && self.lexicon.is_empty() {
             // Nothing to ask whether a compound is a word — Mode B.
             let morphemes = tokenizer
                 .tokenize(text, Mode::B, false)
                 .map_err(|e| TokenizeError::Failed(e.to_string()))?;
+            let plain: Vec<Token> = morphemes.iter().map(|m| self.to_token(&m, trace)).collect();
             // Still recomposed: having no wordhood gate is a reason to skip it,
             // not a reason to shred every compound the master lists.
-            return Ok(self.recompose(drop_stutters(morphemes.iter().map(&to_token).collect())));
+            return Ok(self.recompose(drop_stutters(plain, trace), trace));
         }
         // Dictionary-validated splitting: C → B → A.
         // Keep tokens that are words in their own right. Split unknown
@@ -1017,8 +1212,8 @@ impl Tokenizer for SudachiTokenizer {
         let mut tokens = Vec::new();
 
         for m in morphemes.iter() {
-            if self.keeps_whole(&m) {
-                tokens.push(to_token(m));
+            if self.keeps_whole(&m, trace) {
+                tokens.push(self.to_token(&m, trace));
                 continue;
             }
 
@@ -1027,23 +1222,32 @@ impl Tokenizer for SudachiTokenizer {
                 // Mode B didn't split — try Mode A directly
                 buf_a.clear();
                 if m.split_into(Mode::A, &mut buf_a).map_err(&err)? {
-                    tokens.extend(buf_a.iter().map(&to_token));
+                    self.record_split(&m, "A", &buf_a, trace);
+                    for sub in buf_a.iter() {
+                        tokens.push(self.to_token(&sub, trace));
+                    }
                 } else {
-                    tokens.push(to_token(m));
+                    self.record_split(&m, "none", &buf_a, trace);
+                    tokens.push(self.to_token(&m, trace));
                 }
                 continue;
             }
 
             // Mode B split — check each sub-token
+            self.record_split(&m, "B", &buf_b, trace);
             for sub in buf_b.iter() {
-                if self.keeps_whole(&sub) {
-                    tokens.push(to_token(sub));
+                if self.keeps_whole(&sub, trace) {
+                    tokens.push(self.to_token(&sub, trace));
                 } else {
                     buf_a.clear();
                     if sub.split_into(Mode::A, &mut buf_a).map_err(&err)? {
-                        tokens.extend(buf_a.iter().map(&to_token));
+                        self.record_split(&sub, "A", &buf_a, trace);
+                        for part in buf_a.iter() {
+                            tokens.push(self.to_token(&part, trace));
+                        }
                     } else {
-                        tokens.push(to_token(sub));
+                        self.record_split(&sub, "none", &buf_a, trace);
+                        tokens.push(self.to_token(&sub, trace));
                     }
                 }
             }
@@ -1054,7 +1258,32 @@ impl Tokenizer for SudachiTokenizer {
         // shredded the compound in the first place.
         // Before recomposition: a stammer fragment is not a word, so it must
         // not be joined into one.
-        Ok(self.recompose(drop_stutters(tokens)))
+        Ok(self.recompose(drop_stutters(tokens, trace), trace))
+    }
+
+    fn record_split<T: DictionaryAccess>(
+        &self,
+        m: &Morpheme<'_, T>,
+        mode: &'static str,
+        parts: &sudachi::prelude::MorphemeList<T>,
+        trace: &mut Trace,
+    ) {
+        if !trace.is_recording() {
+            return;
+        }
+        let surface = m.surface().to_string();
+        let parts: Vec<String> = parts.iter().map(|p| p.surface().to_string()).collect();
+        trace.push(|| Step::Split {
+            surface,
+            mode,
+            parts,
+        });
+    }
+}
+
+impl Tokenizer for SudachiTokenizer {
+    fn tokenize(&self, text: &str) -> Result<Vec<Token>, TokenizeError> {
+        self.run(text, &mut Trace::off())
     }
 }
 
@@ -1322,7 +1551,7 @@ mod tests {
             affix("、", "、", "、", "補助記号"),
             affix("そう", "そう", "ソウ", "副詞"),
         ];
-        assert_eq!(surfaces(drop_stutters(stream)), ["そう"]);
+        assert_eq!(surfaces(drop_stutters(stream, &mut Trace::off())), ["そう"]);
     }
 
     /// ト、ト、トラウマ — a stammer may repeat, and katakana is a stammer too.
@@ -1335,7 +1564,10 @@ mod tests {
             affix("、", "、", "、", "補助記号"),
             affix("トラウマ", "トラウマ", "トラウマ", "名詞"),
         ];
-        assert_eq!(surfaces(drop_stutters(stream)), ["トラウマ"]);
+        assert_eq!(
+            surfaces(drop_stutters(stream, &mut Trace::off())),
+            ["トラウマ"]
+        );
     }
 
     /// A stammer of a word written in kanji shows the repeat only in the
@@ -1347,7 +1579,7 @@ mod tests {
             affix("、", "、", "、", "補助記号"),
             affix("違っ", "違う", "チガウ", "動詞"),
         ];
-        assert_eq!(surfaces(drop_stutters(stream)), ["違っ"]);
+        assert_eq!(surfaces(drop_stutters(stream, &mut Trace::off())), ["違っ"]);
     }
 
     /// は before a name is a gasp, not a stammer — and the reading is what says
@@ -1359,7 +1591,10 @@ mod tests {
             affix("、", "、", "、", "補助記号"),
             affix("羽咲", "羽咲", "ウサ", "名詞"),
         ];
-        assert_eq!(surfaces(drop_stutters(stream)), ["は", "、", "羽咲"]);
+        assert_eq!(
+            surfaces(drop_stutters(stream, &mut Trace::off())),
+            ["は", "、", "羽咲"]
+        );
     }
 
     /// 「〜か、彼は」 — the question particle, and かれ. A particle is never
@@ -1371,7 +1606,10 @@ mod tests {
             affix("、", "、", "、", "補助記号"),
             affix("彼", "彼", "カレ", "代名詞"),
         ];
-        assert_eq!(surfaces(drop_stutters(stream)), ["か", "、", "彼"]);
+        assert_eq!(
+            surfaces(drop_stutters(stream, &mut Trace::off())),
+            ["か", "、", "彼"]
+        );
     }
 
     /// The mora has to actually repeat: そ、それ is a stammer, そ、あれ is not.
@@ -1382,7 +1620,10 @@ mod tests {
             affix("、", "、", "、", "補助記号"),
             affix("あれ", "あれ", "アレ", "代名詞"),
         ];
-        assert_eq!(surfaces(drop_stutters(stream)), ["そ", "、", "あれ"]);
+        assert_eq!(
+            surfaces(drop_stutters(stream, &mut Trace::off())),
+            ["そ", "、", "あれ"]
+        );
     }
 
     /// 木、木材 is two words. A one-character kanji is a word every time, which
@@ -1394,7 +1635,10 @@ mod tests {
             affix("、", "、", "、", "補助記号"),
             affix("木材", "木材", "モクザイ", "名詞"),
         ];
-        assert_eq!(surfaces(drop_stutters(stream)), ["木", "、", "木材"]);
+        assert_eq!(
+            surfaces(drop_stutters(stream, &mut Trace::off())),
+            ["木", "、", "木材"]
+        );
     }
 
     #[test]

@@ -26,6 +26,7 @@ use std::collections::{HashMap, HashSet};
 
 use jp_core::knowledge::Knowledge;
 use jp_core::knowledge::vocabulary::{self, Status, Term, VocabRow};
+use jp_core::tokenize::trace::Step;
 use jp_core::tokenize::{MasterWords, SudachiTokenizer, Tokenizer, counts_as_word};
 
 /// The encounter count at or below which a word is called `new` rather than
@@ -162,6 +163,23 @@ impl Highlighter {
             Ok(tokens) => locate(text, tokens, &self.master),
             Err(e) => {
                 tracing::warn!(error = %e, "reader highlight tokenize failed");
+                Vec::new()
+            }
+        }
+    }
+
+    /// Why the pipeline produced the tokens it did.
+    ///
+    /// The same tokenizer over the same text, run a second time with the
+    /// recorder on. Two runs, not two pipelines: tokenizing is deterministic
+    /// and pure, so the steps describe exactly the token stream
+    /// [`candidates`](Self::candidates) got. A line costs microseconds and this
+    /// is reached only by a hand-pasted request.
+    pub fn explain(&self, text: &str) -> Vec<Step> {
+        match self.tokenizer.explain(text) {
+            Ok((_, steps)) => steps,
+            Err(e) => {
+                tracing::warn!(error = %e, "tokenizer explain failed");
                 Vec::new()
             }
         }
