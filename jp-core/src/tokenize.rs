@@ -606,10 +606,21 @@ impl SudachiTokenizer {
     }
 }
 
-/// How many tokens [`SudachiTokenizer::recompose`] will join at once. Three
-/// covers 申し訳ない and もう一度; beyond that the candidates stop being
-/// compounds and start being phrases, which a vocabulary ledger does not want.
-const MAX_COMPOUND_PARTS: usize = 3;
+/// How many tokens [`SudachiTokenizer::recompose`] will join at once.
+///
+/// Five, because an idiom with a particle inside it is a headword like any
+/// other and this is the only thing that ever looks at one: 一か八か is four
+/// tokens and 首を横に振る five, so at three they were never offered — not
+/// refused, never asked about, though the master lists them.
+///
+/// It stops at five because six changes nothing — the corpus yields exactly
+/// the same tokens under both, and the extra pass costs 8%. What the fourth
+/// and fifth admit is 67 lines of 18,906, and they are 何でもない,
+/// どうしようもない, あっという間, 幸か不幸か, 是が非でも, 骨の髄まで. The
+/// guards on the expression path are what keeps grammar out at this length,
+/// and they are the reason this can be widened at all: じゃない and しまった
+/// are Sankoku headwords too, and are still refused for holding an inflection.
+const MAX_COMPOUND_PARTS: usize = 5;
 
 /// The headwords that share a reading with another headword — the only ones
 /// [`SudachiTokenizer::with_frequency`] can ever be asked about, so the only

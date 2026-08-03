@@ -46,6 +46,32 @@ fn a_trailing_suffix_may_spell_a_listed_headword() {
     assert!(bare.tokenize("度し難い").unwrap().len() > 1);
 }
 
+/// An idiom with particles inside is four or five morphemes, and at a cap of
+/// three recomposition never offered the run at all — the master listed the
+/// word and nothing ever asked about it.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn an_idiom_longer_than_three_morphemes_is_still_offered() {
+    let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
+        .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+    let listed = ["一か八か", "首を横に振る", "何でもない"];
+    let tokenizer = SudachiTokenizer::new(Path::new(&dict_path), HashSet::new())
+        .unwrap()
+        .with_lexicon(listed.iter().map(|w| w.to_string()).collect());
+
+    for word in listed {
+        let tokens = tokenizer.tokenize(word).unwrap();
+        let surfaces: Vec<_> = tokens.iter().map(|t| t.surface.as_str()).collect();
+        assert_eq!(surfaces, [word], "{word} should survive as one token");
+    }
+
+    let sentence = tokenizer.tokenize("彼は一か八かの勝負に出た").unwrap();
+    assert!(
+        sentence.iter().any(|t| t.surface == "一か八か"),
+        "the idiom should survive inside a sentence too"
+    );
+}
+
 #[test]
 #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
 fn mode_c_with_headwords_keeps_compounds_that_mode_b_splits() {

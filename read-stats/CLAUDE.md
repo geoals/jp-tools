@@ -181,6 +181,19 @@ system entry of the same POS — and Sankoku carries no POS, its `rules` column
 being empty for 82,271 of its rows, so POS has to come from the final morpheme's
 Sudachi tag. It also moves wordhood into costs `#tokenize` cannot explain.
 
+**Matching master headwords against the raw line before Sudachi sees it was
+measured and rejected.** It is the obvious way to protect a word the segmenter
+lacks, and over this corpus it protects the wrong things: at a four-character
+floor it freezes じゃない (322), しまった (143), どうして (72), のだろう (71),
+いけない (62), にとって (60) and 分からない (56) into single tokens. Those are
+Sankoku headwords, so no dictionary check rejects them, but as ledger rows they
+are grammar and they stop しまった counting as しまう and 分からない as 分かる.
+A further 478 matches cross a token boundary outright — ダイイン, 女になる,
+ってんだ. Raising the floor to five characters cuts the yield to 463
+occurrences and does not change the shape of what is caught. Longest-match has
+no way to tell a word from a construction; recomposition's expression path
+already does, which is why the length cap was the right thing to widen instead.
+
 - **待ちたまえ → 待ち + た + まえ**, and まえ becomes the noun 前. たまえ is 給え,
   which Sankoku lists, so `recompose` could rejoin on the reading — but that
   fence must stay shut. 3,016 adjacent pairs in the corpus have readings
