@@ -186,7 +186,8 @@ function Result({ result }) {
  *  The constant below has to stay the exact string `identity_ladder` returns
  *  for that rung — it is a filter keyed on prose, and rewording one end alone
  *  silently floods the default view. */
-const ROUTINE_IDENTITY = "the master lists this spelling with this reading";
+const ROUTINE_IDENTITY =
+  "Exact match: master dictionary lists both spelling and reading";
 
 /** Kana or kanji — anything that could be a word. A comma also gets an identity
  *  and always falls all the way down the ladder, which reads like a fork and is
@@ -225,8 +226,8 @@ function Trace({ steps }) {
   const shown = showAll ? steps : steps.filter(decisive);
   const count = `${shown.length} of ${steps.length} decisions`;
   const toggle = showAll
-    ? "show only the decisions that could have gone another way"
-    : `show all ${steps.length} steps, including the routine ones`;
+    ? "Show only decisions with alternatives"
+    : `Show all ${steps.length} steps, including routine matches`;
   return html`
     <div class="card">
       <div class="card-head">
@@ -247,7 +248,12 @@ function Trace({ steps }) {
   `;
 }
 
-/** The stage badge and the sentence for one step.
+/** One step: the phase it belongs to, what went in and out, and the rule.
+ *
+ *  The badge names the *phase* and the message leads with the classification —
+ *  the badge is not a second copy of the verdict, or every join row would read
+ *  "refused / Blocked from merging". The taken/refused distinction is carried
+ *  by the coloured edge and by the first word of the message.
  *
  *  Each branch builds its own text in JS rather than interleaving literals with
  *  `${...}` across lines — htm collapses the whitespace between them, and the
@@ -261,45 +267,40 @@ function TraceStep({ step }) {
 
   if (s.kind === "rewrite") {
     main = `${s.from} → ${s.to}`;
-    note = "the emphatic っ, taken off before Sudachi read the line";
+    note = "Emphatic っ removed before analysis";
   } else if (s.kind === "gate") {
     main = s.surface;
     note = s.why;
     tone = s.kept ? "kept" : "";
-    stage = s.kept ? "kept whole" : "taken apart";
   } else if (s.kind === "split") {
-    stage = s.mode === "none" ? "no split" : `split ${s.mode}`;
     main =
+      s.mode === "none" ? s.surface : `${s.surface} → ${s.parts.join(" + ")}`;
+    note =
       s.mode === "none"
-        ? s.surface
-        : `${s.surface} → ${s.parts.join(" + ")}`;
+        ? "No further split available"
+        : `Split at mode ${s.mode}`;
   } else if (s.kind === "stutter") {
     main = `${s.fragment} 、 ${s.into}`;
-    note = `${s.fragment} repeats the start of ${s.into}, so it is a stammer, not a word — dropped`;
+    note = `Stammer dropped: ${s.fragment} repeats the onset of ${s.into}`;
   } else if (s.kind === "identity") {
     main = `${s.surface} → ${s.headword} / ${s.reading}`;
     note = s.rule;
   } else if (s.kind === "join") {
     main = s.parts.join(" + ");
+    note = s.reason;
     if (s.verdict === "joined") {
       main = `${s.parts.join(" + ")} → ${s.term} / ${s.reading}`;
       note = s.signal;
       tone = "kept";
-      stage = "joined";
     } else if (s.verdict === "refused") {
       main = `${s.parts.join(" + ")} ↛ ${s.term}`;
-      note = s.reason;
       tone = "refused";
-      stage = "refused";
-    } else {
-      note = s.reason;
-      stage = "not joined";
     }
   }
 
   const candidates =
     s.kind === "identity" && s.candidates.length
-      ? `spellings tried, best first: ${s.candidates.join("  ·  ")}`
+      ? `Candidates tried, best first: ${s.candidates.join("  ·  ")}`
       : "";
 
   return html`
