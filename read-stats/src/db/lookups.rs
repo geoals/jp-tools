@@ -111,3 +111,33 @@ pub async fn fetch_lookup_terms(k: &Knowledge) -> Result<Vec<LookupTerm>, sqlx::
         })
         .collect())
 }
+
+/// Every spelling Yomitan sent that has not been resolved to a ledger key yet.
+///
+/// Distinct, because the normalization is per spelling and a term is looked up
+/// many times.
+pub async fn unnormalized_lookup_terms(k: &Knowledge) -> Result<Vec<String>, sqlx::Error> {
+    let rows = sqlx::query("SELECT DISTINCT term FROM lookups WHERE term <> '' AND headword = ''")
+        .fetch_all(k.pool())
+        .await?;
+    Ok(rows.iter().map(|r| r.get("term")).collect())
+}
+
+/// Store the ledger key for each spelling, one statement per distinct spelling.
+pub async fn set_lookup_headwords(
+    k: &Knowledge,
+    resolved: &[(String, String)],
+) -> Result<u64, sqlx::Error> {
+    let mut tx = k.pool().begin().await?;
+    let mut n = 0;
+    for (term, headword) in resolved {
+        n += sqlx::query("UPDATE lookups SET headword = ? WHERE term = ? AND headword = ''")
+            .bind(headword)
+            .bind(term)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+    }
+    tx.commit().await?;
+    Ok(n)
+}

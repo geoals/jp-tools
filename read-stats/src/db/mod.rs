@@ -55,7 +55,10 @@ pub use lines::{
     fetch_lines_after_id, fetch_lines_before_id, fetch_recent_lines, fetch_worked_lines,
     line_within, max_line_id, set_lines_discarded,
 };
-pub use lookups::{LookupTerm, fetch_lookup_events, fetch_lookup_terms, insert_lookup};
+pub use lookups::{
+    LookupTerm, fetch_lookup_events, fetch_lookup_terms, insert_lookup, set_lookup_headwords,
+    unnormalized_lookup_terms,
+};
 pub use marks::{fetch_reader_marks, insert_reader_mark};
 pub use pool::{create_pool, open_knowledge};
 pub use retire_pauses::retire as retire_pauses;

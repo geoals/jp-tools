@@ -1212,3 +1212,66 @@ async fn bulk_blacklist_clears_noise_but_not_words() {
         "only あああ — a Jitendex phrase and a name are still words"
     );
 }
+
+#[tokio::test]
+async fn a_lookup_credits_the_ledger_key_not_the_spelling_it_was_made_under() {
+    // Yomitan sends the word as the text spelt it, and the ledger keys on
+    // Sudachi's normalized form. Joining those as raw strings credited 検死 —
+    // a row nothing else writes to — while 検屍, the row the reader actually
+    // meets, read as never looked up. `preselects_known` ticks a word `known`
+    // on encounters alone when `lookup_count` is 0, so the cost of the miss was
+    // a wrong assertion written in bulk.
+    //
+    // The normalization itself needs a Sudachi dictionary; what is pinned here
+    // is that `sync_lookup_counts` follows `headword` once it is resolved.
+    use jp_core::knowledge::vocabulary;
+
+    let app = TestApp::new().await;
+    let ts = today_start() + 3600.0;
+
+    for (headword, reading) in [("検屍", "けんし"), ("検死", "けんし")] {
+        vocabulary::record_encounters(
+            &app.knowledge,
+            &[vocabulary::Encounter {
+                term: vocabulary::Term::new(headword.to_string(), reading),
+                pos: None,
+                count: 3,
+                first_ts: ts,
+                last_ts: ts,
+            }],
+        )
+        .await
+        .unwrap();
+    }
+
+    read_stats::db::insert_lookup(&app.knowledge, ts, "検死", None, 0.0)
+        .await
+        .unwrap();
+    read_stats::db::set_lookup_headwords(
+        &app.knowledge,
+        &[("検死".to_string(), "検屍".to_string())],
+    )
+    .await
+    .unwrap();
+    vocabulary::sync_lookup_counts(&app.knowledge)
+        .await
+        .unwrap();
+
+    async fn lookup_count(k: &jp_core::knowledge::Knowledge, headword: &str) -> i64 {
+        sqlx::query_scalar::<_, i64>("SELECT lookup_count FROM vocabulary WHERE headword = ?")
+            .bind(headword)
+            .fetch_one(k.pool())
+            .await
+            .unwrap()
+    }
+    assert_eq!(
+        lookup_count(&app.knowledge, "検屍").await,
+        1,
+        "the word the reader met is credited"
+    );
+    assert_eq!(
+        lookup_count(&app.knowledge, "検死").await,
+        0,
+        "the spelling Yomitan sent is not a second word"
+    );
+}

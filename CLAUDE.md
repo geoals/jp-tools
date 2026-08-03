@@ -77,6 +77,32 @@ canonical `(headword, reading)` — the reading is in the key because 空 is そ
 から and marking one known must not mark the other. `Term::new` is the only way
 to build that key.
 
+**Text from outside the tokenizer is spelt the way it was written, and joining
+it to a ledger key as a raw string is silently wrong.** The ledger keys on
+Sudachi's *normalized* form; an Anki card says 検死 because that is what the page
+said, Yomitan sends 検死 for the same reason, and the ledger row is 検屍. The
+strings do not match, nothing errors, and the row simply reads as zero. It cost
+four separate defects before it was named: the Anki import wrote a duplicate
+`known` row while the word stayed painted unjudged in `#read`; `sync_mined`
+flagged the duplicate; `anki_summary` counted 144 mined words as never
+re-encountered; and `sync_lookup_counts` credited lookups to the duplicate, so
+the real row read as never looked up and `preselects_known` would tick it
+`known` on encounters alone — a wrong assertion written in bulk, which is
+exactly what that two-signal rule exists to prevent.
+
+So: **any table holding a spelling from outside carries its resolved ledger key
+in its own column, and joins go through that column.** `anki_notes.headword` and
+`lookups.headword` are the two, both filled by
+`read_stats::ingest::normalized_spellings`, both falling back to the raw
+spelling while empty. The raw column stays — the kanji grid and the per-work
+mined list want what is actually on the card. A new table of this shape needs
+the same pair, and a new join needs to ask which column it is on.
+
+The normalization is deliberately conservative: a spelling that does not
+tokenize to exactly one token is left alone, because a card can hold a phrase
+(心おきなく, 見よう見まね) and the base form of its first fragment is not that
+word.
+
 Three jobs need the dictionaries, and they apply *different* thresholds, which is
 why `dictionaries.role` exists (`master` / `name` / `reference`) and why the
 ledger stores which dictionaries hold a term rather than one boolean:

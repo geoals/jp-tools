@@ -189,6 +189,26 @@ impl Knowledge {
             .execute(&self.0)
             .await?;
         }
+        // `lookups` predates it too, and for the same reason: Yomitan sends the
+        // word as the text spelt it, so a lookup of 検死 credited a row keyed
+        // 検死 while every reading of it counted against 検屍. The row the
+        // reader actually meets read as never looked up — and `preselects_known`
+        // ticks a word `known` on encounters alone when `lookup_count` is 0,
+        // which is exactly the one-signal default the triage rule forbids.
+        //
+        // Filled by a backfill pass rather than at write time: `ankiproxy`
+        // records on the mining hot path, where nothing may be awaited in front
+        // of the capture, and `lookup_count` is recomputed wholesale on the Anki
+        // refresh anyway. Empty means "not normalized yet" and falls back to
+        // `term`.
+        if !has_column(&self.0, "lookups", "headword").await? {
+            sqlx::raw_sql("ALTER TABLE lookups ADD COLUMN headword TEXT NOT NULL DEFAULT ''")
+                .execute(&self.0)
+                .await?;
+            sqlx::raw_sql("CREATE INDEX IF NOT EXISTS idx_lookups_headword ON lookups(headword)")
+                .execute(&self.0)
+                .await?;
+        }
         // `manual_sessions` predates pasting the text that was read. Rows
         // logged before it stay as they were: an estimated char count and no
         // content, which is exactly what they are.

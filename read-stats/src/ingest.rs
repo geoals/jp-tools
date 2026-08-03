@@ -644,11 +644,39 @@ pub async fn reset_vocabulary(state: &AppState) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Resolve every lookup spelling Yomitan has sent since the last pass to the
+/// ledger key it means.
+///
+/// Here rather than in `ankiproxy::record`, which writes the row: that runs on
+/// the mining hot path, where nothing may be awaited in front of the capture,
+/// and it would pay a Sudachi dictionary load per popup. `lookup_count` is
+/// recomputed wholesale on the Anki refresh, so resolving just before it is as
+/// timely as writing it at the popup would have been.
+///
+/// Only unresolved rows, so this is a no-op on a refresh with no new lookups
+/// and the first pass is the only one that pays for the backlog.
+async fn normalize_new_lookups(state: &AppState) -> Result<u64, AppError> {
+    let terms = db::unnormalized_lookup_terms(&state.knowledge).await?;
+    if terms.is_empty() {
+        return Ok(0);
+    }
+    let headwords = normalized_spellings(&state.sudachi_dict_path, terms.clone()).await?;
+    let resolved: Vec<(String, String)> = terms.into_iter().zip(headwords).collect();
+    let rows = db::set_lookup_headwords(&state.knowledge, &resolved).await?;
+    info!(
+        terms = resolved.len(),
+        rows, "resolved lookup spellings to ledger keys"
+    );
+    Ok(rows)
+}
+
 /// The wholesale syncs, run after an ingest: Anki owns `mined`, `lookups` owns
 /// `lookup_count`, the dictionaries own the wordhood flags. None of the three
 /// touches `status`.
 pub async fn sync_vocabulary(state: &AppState) -> Result<i64, AppError> {
     let mined = jp_core::knowledge::vocabulary::sync_mined(&state.knowledge).await?;
+    // Before the count that reads it, never after.
+    normalize_new_lookups(state).await?;
     jp_core::knowledge::vocabulary::sync_lookup_counts(&state.knowledge).await?;
     jp_core::knowledge::vocabulary::refresh_dictionary_flags(&state.knowledge).await?;
     Ok(mined)

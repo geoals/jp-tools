@@ -90,6 +90,15 @@ The ledger (`vocabulary`):
   beside `status`, never written into it.
 - **A word judged under one reading is not asked about again**, and not marked
   under another either. 皆 marked known as みな means 皆/みんな is never offered.
+- **A card and a lookup are spelt as they were written; the ledger keys on the
+  normalized form.** `anki_notes.headword` and `lookups.headword` hold the
+  resolved key and are what joins to `vocabulary.headword` — never the raw
+  `vocab`/`term`, which is how 検死 and 検屍 became two rows that each looked
+  empty. See the root CLAUDE.md for the full account. Both are filled by
+  `ingest::normalized_spellings`: `anki_notes` on the refresh that replaces the
+  snapshot, `lookups` by `ingest::normalize_new_lookups` just before
+  `sync_lookup_counts` reads it — not at write time, because `ankiproxy::record`
+  is on the mining hot path and would pay a Sudachi load per popup.
 - **Each ingest sink has its own watermark.** One pass fills `word_days`, the
   ledger and `work_terms`, but their three watermarks move independently. The
   sinks are additive and not idempotent, so a row goes to a sink only when its

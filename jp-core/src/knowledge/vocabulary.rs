@@ -273,8 +273,14 @@ pub async fn sync_mined(k: &Knowledge) -> Result<i64, sqlx::Error> {
 /// reflected on the next refresh instead of leaving a count that only grows.
 pub async fn sync_lookup_counts(k: &Knowledge) -> Result<(), sqlx::Error> {
     sqlx::query(
+        // Against the normalized key, not the spelling Yomitan sent: a lookup
+        // of 検死 belongs to 検屍, the row the reader actually meets. Empty
+        // means a row the backfill has not reached, which falls back to the
+        // spelling and so behaves as it did before.
         "UPDATE vocabulary SET lookup_count = \
-             (SELECT COUNT(*) FROM lookups WHERE lookups.term = vocabulary.headword)",
+             (SELECT COUNT(*) FROM lookups \
+               WHERE COALESCE(NULLIF(lookups.headword, ''), lookups.term) \
+                     = vocabulary.headword)",
     )
     .execute(k.pool())
     .await?;
@@ -293,10 +299,19 @@ pub async fn sync_lookup_counts(k: &Knowledge) -> Result<(), sqlx::Error> {
 /// そら and から. That is the safe direction: the pair stays unjudged and reaches
 /// triage, rather than being claimed on evidence that does not name it.
 pub async fn looked_up_headwords(k: &Knowledge) -> Result<HashSet<String>, sqlx::Error> {
-    let rows: Vec<(String,)> = sqlx::query_as("SELECT DISTINCT term FROM lookups WHERE term <> ''")
-        .fetch_all(k.pool())
-        .await?;
-    Ok(rows.into_iter().map(|(t,)| t).collect())
+    // Both spellings, deliberately. This is a veto, and the doc above commits
+    // to erring toward vetoing: a seed keyed on either spelling should be
+    // stopped by a lookup recorded under the other. `sync_lookup_counts` takes
+    // the normalized one alone, because a count may not have it both ways.
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT DISTINCT term, headword FROM lookups WHERE term <> ''")
+            .fetch_all(k.pool())
+            .await?;
+    Ok(rows
+        .into_iter()
+        .flat_map(|(term, headword)| [term, headword])
+        .filter(|s| !s.is_empty())
+        .collect())
 }
 
 /// Recompute the three dictionary flags from `dictionary_entries` + the roles.
