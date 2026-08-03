@@ -34,7 +34,7 @@ const UNDERLINED = ["new", "unknown"];
 /** Where the common-word underline sits and how thick it is. Drawn inside the
  *  mark's rectangle, which sits behind the text, so it reads as an underline
  *  under the glyphs rather than a second bar. */
-const UNDERLINE_PX = 2;
+const UNDERLINE_PX = 3;
 /** How far a mark is held back from its word on each side. Japanese sets
  *  without spaces, so two adjacent marked words have touching rects: a mark
  *  that reached *past* its word overlapped its neighbour and the two read as

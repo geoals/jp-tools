@@ -47,7 +47,7 @@
   --vocab-new: hsl(211 88% 84%);
   --vocab-seen: hsl(276 62% 89%);
   --vocab-unknown: hsl(28 92% 84%);
-  --vocab-ink: var(--text-primary);
+  --vocab-ink: var(--text-secondary);
 }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
@@ -69,7 +69,7 @@
     --vocab-new: hsl(211 62% 33%);
     --vocab-seen: hsl(276 38% 29%);
     --vocab-unknown: hsl(28 55% 31%);
-    --vocab-ink: var(--text-primary);
+    --vocab-ink: var(--text-secondary);
   }
 }
 :root[data-theme="dark"] {
@@ -91,7 +91,7 @@
   --vocab-new: hsl(211 62% 33%);
   --vocab-seen: hsl(276 38% 29%);
   --vocab-unknown: hsl(28 55% 31%);
-  --vocab-ink: var(--text-primary);
+  --vocab-ink: var(--text-secondary);
 }
 
 * {
