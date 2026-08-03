@@ -49,7 +49,7 @@ pub async fn anki_refresh(
     // Normalized before the snapshot lands, so every join against a tokenizer
     // lemma has a key to use rather than the card's own spelling.
     let spellings = crate::ingest::normalized_spellings(
-        &state.sudachi_dict_path,
+        &state,
         notes.iter().map(|n| n.vocab.clone()).collect(),
     )
     .await?;

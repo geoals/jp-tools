@@ -132,6 +132,29 @@ impl Highlighter {
             .copied()
     }
 
+    /// The ledger key a spelling from outside the tokenizer stands for — an
+    /// Anki card's `VocabKanji`, the term Yomitan sends to the proxy.
+    ///
+    /// Asked of *this* tokenizer rather than a fresh one, for the reason the
+    /// five inputs above are listed: a bare `SudachiTokenizer` is a second
+    /// pipeline and answers differently. It normalizes しゃくりあげる to
+    /// しゃくり上げる where this one, which knows Sankoku's spelling, gives
+    /// 噦り上げる — and a key resolved by the wrong one matches no ledger row,
+    /// which is the exact failure it was written to repair.
+    ///
+    /// A spelling that does not resolve to exactly one token is returned
+    /// unchanged: a card can hold a phrase (心おきなく, 見よう見まね), and the
+    /// base form of whichever fragment came back first is not that word.
+    pub fn ledger_key(&self, spelling: &str) -> String {
+        match self.tokenizer.tokenize(spelling) {
+            Ok(tokens) => match tokens.as_slice() {
+                [t] => t.base_form.clone(),
+                _ => spelling.to_string(),
+            },
+            Err(_) => spelling.to_string(),
+        }
+    }
+
     /// Every token in `text`, with its span — everything before the ledger is
     /// consulted.
     fn candidates(&self, text: &str) -> Vec<Candidate> {

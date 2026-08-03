@@ -482,7 +482,7 @@ pub async fn vocab_anki_import(
     };
 
     let spellings = crate::ingest::normalized_spellings(
-        &state.sudachi_dict_path,
+        &state,
         notes.iter().map(|n| n.vocab.clone()).collect(),
     )
     .await?;

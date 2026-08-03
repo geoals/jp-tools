@@ -353,37 +353,31 @@ pub(crate) async fn conjugatable(state: &AppState) -> Result<HashSet<String>, Ap
     Ok(dictionaries::master_conjugatable(state.knowledge.pool()).await?)
 }
 
-/// Each spelling as this module would key it — Sudachi's normalized form.
+/// Each spelling as the ingest would key it — the resolved ledger key.
 ///
-/// The bridge between a deck and a ledger: a card is spelt the way the text
-/// spelt it, and everything derived from reading is keyed on the normalized
-/// form, so anything joining the two has to normalize first or lose 検死 to
-/// 検屍.
+/// The bridge between a deck or a popup and the ledger: a card is spelt the way
+/// the text spelt it, Yomitan sends what the text spelt, and everything derived
+/// from reading is keyed on the tokenizer's answer. Anything joining the two has
+/// to resolve first or lose 検死 to 検屍.
 ///
-/// A spelling the tokenizer does not resolve to exactly one token is returned
-/// unchanged: a card can hold a phrase (心おきなく, 見よう見まね), and the base
-/// form of whichever fragment came back first is not that word.
+/// Goes through the shared `Highlighter`, which is the reader's own tokenizer
+/// with all five of its inputs, **not** a fresh `SudachiTokenizer`: see
+/// [`crate::routes::reader::highlight::Highlighter::ledger_key`]. A key
+/// resolved by a second pipeline matches nothing, which is the failure this is
+/// here to repair.
 pub(crate) async fn normalized_spellings(
-    dict_path: &std::path::Path,
+    state: &AppState,
     spellings: Vec<String>,
 ) -> Result<Vec<String>, AppError> {
-    let dict_path = dict_path.to_path_buf();
-    tokio::task::spawn_blocking(move || -> Result<Vec<String>, AppError> {
-        let tokenizer = SudachiTokenizer::new(&dict_path, Default::default())
-            .map_err(|e| AppError::Upstream(format!("sudachi: {e}")))?;
-        Ok(spellings
-            .into_iter()
-            .map(|s| match tokenizer.tokenize(&s) {
-                Ok(tokens) => match tokens.as_slice() {
-                    [t] => t.base_form.clone(),
-                    _ => s,
-                },
-                Err(_) => s,
-            })
-            .collect())
-    })
-    .await
-    .map_err(|e| AppError::Upstream(format!("tokenize task panicked: {e}")))?
+    let Some(h) = crate::routes::reader::highlight::shared(state).await else {
+        return Err(AppError::Upstream(
+            "tokenizer unavailable — check the Sudachi dictionary path".into(),
+        ));
+    };
+    // Thousands of short strings on the first pass; tokenizing is CPU-bound.
+    tokio::task::spawn_blocking(move || spellings.iter().map(|s| h.ledger_key(s)).collect())
+        .await
+        .map_err(|e| AppError::Upstream(format!("tokenize task panicked: {e}")))
 }
 
 /// The mined deck. The tokenizer's *second* wordhood source, behind the master
@@ -660,7 +654,7 @@ async fn normalize_new_lookups(state: &AppState) -> Result<u64, AppError> {
     if terms.is_empty() {
         return Ok(0);
     }
-    let headwords = normalized_spellings(&state.sudachi_dict_path, terms.clone()).await?;
+    let headwords = normalized_spellings(state, terms.clone()).await?;
     let resolved: Vec<(String, String)> = terms.into_iter().zip(headwords).collect();
     let rows = db::set_lookup_headwords(&state.knowledge, &resolved).await?;
     info!(
