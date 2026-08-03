@@ -52,7 +52,7 @@ pub struct Span {
     /// spelling, not the surface under the finger: 振っ is judged as 振る.
     pub headword: String,
     pub reading: String,
-    /// BCCWJ rank, `None` for a word the corpus does not list. The client marks
+    /// Frequency rank, `None` for a word the list does not carry. The client marks
     /// a common word it does not know more loudly than a rare one — a rare word
     /// unknown is expected, a common one is the gap worth seeing.
     pub freq_rank: Option<i64>,
@@ -98,7 +98,7 @@ pub struct Highlighter {
     /// the wordhood gate. Ingest asks the identical question, which keeps a tint
     /// and a ledger row from disagreeing about 達.
     master: MasterWords,
-    /// BCCWJ rank per `(headword, reading)`, for the master headwords. Held
+    /// Frequency rank per `(headword, reading)`, for the master headwords. Held
     /// rather than queried per line: the reader would otherwise pay a
     /// `dictionary_frequency` lookup per word on the path that draws a line as
     /// it is being read.
@@ -120,9 +120,10 @@ impl Highlighter {
         }
     }
 
-    /// How common the word is in BCCWJ. A kana headword stores no reading, so
-    /// its own spelling is the reading to match; a corpus row that carries no
-    /// reading answers for every reading of the spelling.
+    /// How common the word is. A kana headword stores no reading, so its own
+    /// spelling is the reading to match; a list row that carries no reading —
+    /// which is how jiten files a kana headword — answers for every reading of
+    /// the spelling.
     fn rank(&self, term: &Term) -> Option<i64> {
         let key = (term.headword.clone(), term.display_reading().to_string());
         self.ranks
@@ -216,7 +217,7 @@ pub struct Analyzed {
     /// How often the ledger has met this term, or `None` when it has no row.
     pub encounter_count: Option<i64>,
     pub lookup_count: Option<i64>,
-    /// BCCWJ rank of the term, `None` when the corpus does not list it.
+    /// Frequency rank of the term, `None` when the list does not carry it.
     pub freq_rank: Option<i64>,
 }
 

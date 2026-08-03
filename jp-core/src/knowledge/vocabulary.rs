@@ -143,7 +143,7 @@ pub struct VocabRow {
     pub in_master: bool,
     pub in_name: bool,
     pub in_reference: bool,
-    /// BCCWJ rank, only where the query asked for it ([`QueueOrder::Frequency`]).
+    /// Frequency rank, only where the query asked for it ([`QueueOrder::Frequency`]).
     /// `None` also means "the frequency list does not carry this word", so it
     /// cannot be read as a rank on its own.
     pub freq_rank: Option<i64>,
@@ -399,7 +399,7 @@ pub async fn set_status_bulk(
     Ok(n)
 }
 
-/// One row of a frequency-triage page: a term, its BCCWJ rank, and its single
+/// One row of a frequency-triage page: a term, its rank, and its single
 /// resolved master-dictionary reading. Always resolvable — [`frequency_queue`]
 /// only returns rows with exactly one reading; a homograph never reaches this
 /// struct at all; see [`frequency_pending`]'s `ambiguous` count for those.
@@ -410,7 +410,7 @@ pub struct FrequencyCandidate {
     pub reading: String,
 }
 
-/// The shared filter behind both frequency-triage functions: BCCWJ rows within
+/// The shared filter behind both frequency-triage functions: frequency rows within
 /// `dictionary_id`, restricted to master-dictionary terms, excluding any
 /// headword already judged under *any* of its readings — `UNJUDGED_HEADWORD`'s
 /// rule, simpler here because no ledger row need exist yet.
@@ -436,7 +436,7 @@ pub struct FrequencyPending {
     pub ambiguous: i64,
 }
 
-/// How many BCCWJ terms at or under `max_rank` are still unjudged master
+/// How many ranked terms at or under `max_rank` are still unjudged master
 /// vocabulary — the count a threshold slider shows before a preview is asked
 /// for.
 ///
@@ -444,12 +444,12 @@ pub struct FrequencyPending {
 /// with `INDEXED BY`, and must stay pinned.** `COUNT(DISTINCT de.reading)` gives
 /// the planner a reason to prefer `idx_dictionary_entries_reading`, which is
 /// keyed `(dictionary_id, reading)` and so can only seek on `dictionary_id` —
-/// turning the `term` filter into a scan per BCCWJ row. Unpinned this hung past
+/// turning the `term` filter into a scan per frequency row. Unpinned this hung past
 /// 15s; pinned it runs in 0.6s. Check `EXPLAIN QUERY PLAN` says SEARCH with
 /// **both** key columns bound, not a bare `dictionary_id` seek.
 pub async fn frequency_pending(
     k: &Knowledge,
-    bccwj_id: i64,
+    freq_id: i64,
     master_id: i64,
     max_rank: i64,
 ) -> Result<FrequencyPending, sqlx::Error> {
@@ -467,7 +467,7 @@ pub async fn frequency_pending(
              GROUP BY df.term HAVING MIN(df.frequency) <= ?)"
     ))
     .bind(master_id)
-    .bind(bccwj_id)
+    .bind(freq_id)
     .bind(master_id)
     .bind(max_rank)
     .fetch_one(k.pool())
@@ -488,7 +488,7 @@ pub async fn frequency_pending(
 /// `idx_dictionary_entries_lookup` for the reason [`frequency_pending`]'s is.
 pub async fn frequency_queue(
     k: &Knowledge,
-    bccwj_id: i64,
+    freq_id: i64,
     master_id: i64,
     max_rank: i64,
     limit: i64,
@@ -510,7 +510,7 @@ pub async fn frequency_queue(
     ))
     .bind(master_id)
     .bind(master_id)
-    .bind(bccwj_id)
+    .bind(freq_id)
     .bind(master_id)
     .bind(max_rank)
     .bind(limit)
@@ -672,11 +672,11 @@ fn queue_where(since_ts: Option<f64>) -> String {
 #[derive(Debug, Clone, Copy)]
 pub enum QueueOrder {
     Encounters,
-    /// BCCWJ rank, commonest first. A row the frequency list does not carry
+    /// Frequency rank, commonest first. A row the frequency list does not carry
     /// sorts last rather than dropping out: the ordering is a view of the
     /// queue, and must not hide rows the count promises.
     Frequency {
-        bccwj_id: i64,
+        freq_id: i64,
     },
 }
 
@@ -689,9 +689,9 @@ pub async fn triage_queue(
 ) -> Result<Vec<VocabRow>, sqlx::Error> {
     let (select, order_by) = match order {
         QueueOrder::Encounters => ("SELECT *".to_string(), "encounter_count DESC, headword"),
-        QueueOrder::Frequency { bccwj_id } => {
+        QueueOrder::Frequency { freq_id } => {
             let lex = super::dictionaries::lexeme_dictionary(k.pool()).await?;
-            let rank = word_rank_sql(lex, Some(bccwj_id), "vocabulary");
+            let rank = word_rank_sql(lex, Some(freq_id), "vocabulary");
             (
                 format!("SELECT *, {rank} AS freq_rank"),
                 "freq_rank IS NULL, freq_rank, encounter_count DESC, headword",
@@ -2050,7 +2050,7 @@ mod tests {
         .unwrap();
         refresh_dictionary_flags(&k).await.unwrap();
 
-        let bccwj = QueueOrder::Frequency { bccwj_id: 2 };
+        let bccwj = QueueOrder::Frequency { freq_id: 2 };
         let words: Vec<String> = triage_queue(&k, 1, None, bccwj, 100)
             .await
             .unwrap()

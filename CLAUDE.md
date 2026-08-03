@@ -92,6 +92,29 @@ variant of a technical term each get their own headword — so a vocabulary coun
 against it would be meaningless. Adding a dictionary should change
 classification, never the denominator.
 
+**There are two frequency dictionaries, and which one to ask depends on whether
+the question has a reading in it.**
+
+- **BCCWJ ranks a `(spelling, reading)` pair**, and that is all the tokenizer
+  ever asks it: which spelling of うかがう is the commoner one, which reading of
+  一 the text meant. Every BCCWJ row carries a reading, which is exactly what
+  makes it usable here. `frequency_ranks` and `preferred_readings` stay on it.
+- **Jiten (jpdb) ranks a word**, and that is what everything reader-facing asks:
+  the underline in `#read`, frequency triage, the jiten import's rarity gate.
+  BCCWJ answers this one badly twice over. It files a word only under the
+  corpus's orthography with no kana row, so いただく exists as 頂く/いただく
+  alone and a kana-written line gets no rank at all — 2,872 of 16,003 ledger
+  rows were unrankable that way against 849 under Jiten. And its corpus is
+  newspapers and government prose: 船舶 ranks 3,843 and 心掛ける 3,106 there,
+  against 32,370 and 24,006 in Jiten. "Common in Japanese" has to mean common in
+  the fiction being read.
+
+`read-stats`'s `ingest::READER_FREQUENCY` names the second one, and every
+reader-facing rank resolves through it — they are one claim about which words
+are common, made in several places, and they must not drift apart. The two lists
+are the same size at the head (about 6,200 terms inside rank 5,000 each), so a
+threshold means roughly the same thing under either.
+
 ## Working here
 
 - Commit straight to `master`.

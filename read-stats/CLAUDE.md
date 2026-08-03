@@ -218,7 +218,7 @@ The reading view:
   is what makes the marks readable — but a `known` span is still sent, since a
   span is also the region a tap judges.
 - **A common word not known is underlined on top of its tint.** Each span
-  carries its BCCWJ rank and the client underlines `new`/`unknown` at or under
+  carries its jiten rank and the client underlines `new`/`unknown` at or under
   `reader_common_max_freq_rank` — not knowing a rare word is expected, not
   knowing a common one is the gap worth seeing. The threshold is applied in the
   client, so changing it repaints what is already on screen; an unranked word is
@@ -341,7 +341,7 @@ add to when the question is "does the SQL select what the derivation assumes".
   request that asked (`advance_sweep`); and it is a filter and nothing else —
   `scoped=0` still reaches every ready row.
 - **The sweep's two orderings are one batch, seen from either end.**
-  `order=frequency` sorts the same rows by BCCWJ rank instead of encounter
+  `order=frequency` sorts the same rows by jiten rank instead of encounter
   count, so the page reaches words common in Japanese rather than common in
   what was read. It changes nothing about the filter, the counts or what a
   submit writes; an unranked word sorts last rather than dropping out.

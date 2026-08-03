@@ -97,7 +97,7 @@ pub struct QueueParams {
     /// default); `scoped=0` asks for the whole backlog. A string because
     /// `serde`'s `bool` accepts only `true`/`false` and would 400 on `0`.
     scoped: Option<String>,
-    /// `frequency` sorts the same batch by BCCWJ rank instead of by encounter
+    /// `frequency` sorts the same batch by frequency rank instead of by encounter
     /// count. Anything else is the encounter order.
     order: Option<String>,
 }
@@ -118,7 +118,7 @@ async fn sweep_watermark(state: &AppState) -> Result<Option<f64>, AppError> {
 }
 
 /// The triage queue: untriaged vocabulary to judge, most-encountered first, or
-/// commonest in BCCWJ first with `order=frequency`. The ordering is a view of
+/// commonest first with `order=frequency`. The ordering is a view of
 /// one batch: it changes which rows the page limit reaches, nothing about what
 /// the queue offers or what a submit writes.
 ///
@@ -147,10 +147,8 @@ pub async fn vocab_queue(
     // pending counts below hold for both.
     let by_frequency = params.order.as_deref() == Some("frequency");
     let order = if by_frequency {
-        let bccwj = dictionaries::by_title(state.knowledge.pool(), "BCCWJ")
-            .await?
-            .ok_or_else(|| AppError::Upstream("BCCWJ frequency dictionary not loaded".into()))?;
-        vocabulary::QueueOrder::Frequency { bccwj_id: bccwj.id }
+        let freq = reader_frequency(&state).await?;
+        vocabulary::QueueOrder::Frequency { freq_id: freq }
     } else {
         vocabulary::QueueOrder::Encounters
     };
@@ -819,7 +817,7 @@ pub async fn vocab_repair_empty_readings(
     })))
 }
 
-/// How many BCCWJ terms at or under a rank threshold are unjudged master
+/// How many ranked terms at or under a rank threshold are unjudged master
 /// vocabulary — the cheap count the threshold slider previews against.
 pub async fn vocab_frequency_summary(
     State(state): State<AppState>,
@@ -922,17 +920,35 @@ pub async fn vocab_frequency_commit(
     ))
 }
 
-/// The two dictionary ids frequency triage joins against — BCCWJ (by title,
-/// since it carries no role) and the master dictionary. Both load at startup,
-/// so a missing one is a deployment problem, not a retryable request error.
+/// The frequency list triage ranks against, by title since it carries no role.
+/// It loads at startup, so a missing one is a deployment problem, not a
+/// retryable request error.
+///
+/// Triage and the reader's underline must rank off the *same* list — they are
+/// one claim about which words are common, made in two places — and it is not
+/// the tokenizer's BCCWJ. `ingest::READER_FREQUENCY` says why.
+async fn reader_frequency(state: &AppState) -> Result<i64, AppError> {
+    Ok(
+        dictionaries::by_title(state.knowledge.pool(), crate::ingest::READER_FREQUENCY)
+            .await?
+            .ok_or_else(|| {
+                AppError::Upstream(format!(
+                    "{} frequency dictionary not loaded",
+                    crate::ingest::READER_FREQUENCY
+                ))
+            })?
+            .id,
+    )
+}
+
+/// The two dictionary ids frequency triage joins against — the frequency list
+/// and the master dictionary.
 async fn frequency_dictionaries(state: &AppState) -> Result<(i64, i64), AppError> {
-    let bccwj = dictionaries::by_title(state.knowledge.pool(), "BCCWJ")
-        .await?
-        .ok_or_else(|| AppError::Upstream("BCCWJ frequency dictionary not loaded".into()))?;
+    let freq = reader_frequency(state).await?;
     let master = dictionaries::master(state.knowledge.pool())
         .await?
         .ok_or_else(|| AppError::Upstream("no master dictionary set".into()))?;
-    Ok((bccwj.id, master.id))
+    Ok((freq, master.id))
 }
 
 /// Rebuild the ledger's counts from the whole reading history.

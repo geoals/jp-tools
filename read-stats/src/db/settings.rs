@@ -40,11 +40,11 @@ pub struct Settings {
     /// reached by words never looked up — see
     /// `jp_core::knowledge::vocabulary::preselects_known`.
     pub triage_min_encounters: i64,
-    /// Highest BCCWJ frequency rank frequency-triage will mark `known` in one
+    /// Highest frequency rank frequency-triage will mark `known` in one
     /// sweep, persisted across visits. Default 6000, a rough top of "common
     /// enough that I probably know it", for the reader to widen.
     pub triage_max_freq_rank: i64,
-    /// Highest BCCWJ rank the reading view calls *common*. A word at or above
+    /// Highest rank the reading view calls *common*. A word at or above
     /// this rank that is `new` or `unknown` is underlined: not knowing a rare
     /// word is expected, not knowing a common one is the gap worth seeing.
     pub reader_common_max_freq_rank: i64,
