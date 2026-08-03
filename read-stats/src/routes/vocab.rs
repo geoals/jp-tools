@@ -326,6 +326,34 @@ async fn carry_stranded_judgements(state: &AppState) -> Result<usize, AppError> 
     Ok(carried)
 }
 
+/// Each spelling as the ingest would key it — Sudachi's normalized form.
+///
+/// A spelling the tokenizer does not resolve to exactly one token is returned
+/// unchanged: a card can hold a phrase (心おきなく, 見よう見まね), and the base
+/// form of whichever fragment came back first is not that word.
+async fn normalized_spellings(
+    dict_path: &std::path::Path,
+    spellings: Vec<String>,
+) -> Result<Vec<String>, AppError> {
+    let dict_path = dict_path.to_path_buf();
+    tokio::task::spawn_blocking(move || -> Result<Vec<String>, AppError> {
+        let tokenizer = SudachiTokenizer::new(&dict_path, Default::default())
+            .map_err(|e| AppError::Upstream(format!("sudachi: {e}")))?;
+        Ok(spellings
+            .into_iter()
+            .map(|s| match tokenizer.tokenize(&s) {
+                Ok(tokens) => match tokens.as_slice() {
+                    [t] => t.base_form.clone(),
+                    _ => s,
+                },
+                Err(_) => s,
+            })
+            .collect())
+    })
+    .await
+    .map_err(|e| AppError::Upstream(format!("tokenize task panicked: {e}")))?
+}
+
 /// What `blacklist-non-words` would blacklist, before it does.
 ///
 /// It is a bulk write over rows the queue never shows, so the reader would
@@ -445,6 +473,14 @@ pub async fn vocab_blacklist_non_words(
 /// Anki carries no reading beside the vocab field, so each term is resolved
 /// against the master dictionary: no match stores an empty reading, and a
 /// homograph is skipped and counted rather than guessed at.
+///
+/// The card's spelling is normalized first, because a card is spelt the way the
+/// text spelt it and the ledger keys on Sudachi's normalized form. 検死 imported
+/// as its own row while every reading of it landed on 検屍, so the word was
+/// known and marked unjudged at the same time — 91 cards were split that way.
+/// Only the spelling is normalized: the reading still comes from the master
+/// dictionary, so a homograph is still skipped rather than resolved by whatever
+/// reading Sudachi picks for a word standing on its own.
 pub async fn vocab_anki_import(
     State(state): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -475,13 +511,27 @@ pub async fn vocab_anki_import(
         return Err(last_err);
     };
 
+    let spellings = normalized_spellings(
+        &state.sudachi_dict_path,
+        notes.iter().map(|n| n.vocab.clone()).collect(),
+    )
+    .await?;
+
     let mut judgements = Vec::with_capacity(notes.len());
     let mut ambiguous_skipped = 0i64;
-    for note in &notes {
-        let readings = dictionaries::master_readings(state.knowledge.pool(), &note.vocab).await?;
+    for (note, spelling) in notes.iter().zip(&spellings) {
+        let mut headword = spelling;
+        let mut readings = dictionaries::master_readings(state.knowledge.pool(), headword).await?;
+        // Normalizing onto a spelling the master does not list would trade a
+        // reading for nothing — ボウガン becomes ボーガン, which Sankoku has no
+        // entry for. Keep the card's own spelling in that case.
+        if readings.is_empty() && headword != &note.vocab {
+            headword = &note.vocab;
+            readings = dictionaries::master_readings(state.knowledge.pool(), headword).await?;
+        }
         match readings.as_slice() {
-            [] => judgements.push((Term::new(note.vocab.clone(), ""), Status::Known)),
-            [reading] => judgements.push((Term::new(note.vocab.clone(), reading), Status::Known)),
+            [] => judgements.push((Term::new(headword.clone(), ""), Status::Known)),
+            [reading] => judgements.push((Term::new(headword.clone(), reading), Status::Known)),
             _ => ambiguous_skipped += 1,
         }
     }
