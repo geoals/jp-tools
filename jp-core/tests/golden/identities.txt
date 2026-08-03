@@ -1,4 +1,4 @@
-# 250 lines, 3195 counted tokens, 980 distinct identities
+# 250 lines, 3194 counted tokens, 979 distinct identities
 # 325 counted tokens (10.2%) are identities the master does not list
 # regenerate: cargo run --example golden -p jp-core --features test-support
 
@@ -228,7 +228,7 @@
     だって/だって さ/さ もう/もう 死人/しにん に/に 花/はな を/を 手向ける/たむける 必要/ひつよう は/は 無い/ない だ/だ
 
 ちなみに銀のエンジェル五枚でもおもちゃの缶詰はもらえる。
-    ちなみに/ちなみに 銀/ぎん の/の エンジェル/えんじぇる 五/ご 枚/まい で/で も/も 玩具/おもちゃ の/の 缶詰め/かんづめ は/は 貰う/もらえる?
+    ちなみに/ちなみに 銀/ぎん の/の エンジェル/えんじぇる 五/ご で/で も/も 玩具/おもちゃ の/の 缶詰め/かんづめ は/は 貰う/もらえる?
 
 その後を羽咲が追いかける。
     その後/そのあと? を/を 羽咲/うさ? が/が 追う/おう かける/かける

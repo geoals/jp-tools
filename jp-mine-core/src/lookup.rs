@@ -101,6 +101,7 @@ mod tests {
                 pos: "動詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                counter: false,
                 inflected: true,
             },
             Token {
@@ -110,6 +111,7 @@ mod tests {
                 pos: "名詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                counter: false,
                 inflected: false,
             },
         ];
@@ -127,6 +129,7 @@ mod tests {
                 pos: "名詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                counter: false,
                 inflected: false,
             },
             Token {
@@ -136,6 +139,7 @@ mod tests {
                 pos: "助詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                counter: false,
                 inflected: false,
             },
             Token {
@@ -145,6 +149,7 @@ mod tests {
                 pos: "動詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                counter: false,
                 inflected: false,
             },
         ];
@@ -164,6 +169,7 @@ mod tests {
                 pos: "動詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                counter: false,
                 inflected: false,
             },
             Token {
@@ -173,6 +179,7 @@ mod tests {
                 pos: "助動詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                counter: false,
                 inflected: false,
             },
         ];
@@ -191,6 +198,7 @@ mod tests {
             pos: "名詞".into(),
             proper_noun: false,
             subsidiary: false,
+            counter: false,
             inflected: false,
         }];
         assert_eq!(bold_target_in_sentence(&tokens, "別の語"), None);
@@ -206,6 +214,7 @@ mod tests {
                 pos: "動詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                counter: false,
                 inflected: false,
             },
             Token {
@@ -215,6 +224,7 @@ mod tests {
                 pos: "助詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                counter: false,
                 inflected: false,
             },
             Token {
@@ -224,6 +234,7 @@ mod tests {
                 pos: "動詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                counter: false,
                 inflected: false,
             },
             Token {
@@ -233,6 +244,7 @@ mod tests {
                 pos: "助動詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                counter: false,
                 inflected: false,
             },
         ];

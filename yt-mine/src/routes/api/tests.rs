@@ -26,6 +26,7 @@ fn mock_tokenizer() -> MockTokenizer {
                 pos: "名詞".into(),
                 proper_noun: false,
                 subsidiary: false,
+                counter: false,
                 inflected: false,
             })
             .collect())

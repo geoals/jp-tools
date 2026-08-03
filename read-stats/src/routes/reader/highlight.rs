@@ -541,6 +541,7 @@ mod tests {
             pos: pos.to_string(),
             proper_noun: false,
             subsidiary: false,
+            counter: false,
             inflected: false,
         }
     }

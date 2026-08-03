@@ -688,6 +688,7 @@ mod tests {
             pos: "名詞".to_string(),
             proper_noun: proper,
             subsidiary: false,
+            counter: false,
             inflected: false,
         }
     }

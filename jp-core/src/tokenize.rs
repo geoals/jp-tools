@@ -41,6 +41,12 @@ pub struct Token {
     /// headwords, separate from the kanji verb, so the identity ladder can send
     /// them there instead of to 見る and 居る.
     pub subsidiary: bool,
+    /// Whether Sudachi calls this 助数詞 — a counter, the bound half of a
+    /// quantity: 一**つ**, 二**個**, 三**日**(か), 二**匹**.
+    ///
+    /// Not 助数詞可能, which is a noun that can *also* count — 回, 名, 時間, 分,
+    /// 年 are words in their own right and stay words.
+    pub counter: bool,
     /// Whether the surface is a *stem* rather than the word itself — 続い for
     /// 続く, 許せ for 許す, なれ for 慣れる.
     ///
@@ -555,6 +561,7 @@ impl SudachiTokenizer {
                 pos: last.pos.clone(),
                 proper_noun: false,
                 subsidiary: false,
+                counter: false,
                 inflected: false,
             },
         })
@@ -1172,6 +1179,7 @@ impl SudachiTokenizer {
             pos: m.part_of_speech()[0].clone(),
             proper_noun: subclass == "固有名詞",
             subsidiary,
+            counter: m.part_of_speech().get(2).is_some_and(|c| c == "助数詞"),
             inflected: *m.surface() != *m.dictionary_form(),
         }
     }
@@ -1335,12 +1343,17 @@ impl MasterWords {
 /// was used with. The pair rather than the headword, because 鬼/き and 鬼/おに
 /// are both Sankoku entries.
 ///
+/// A counter is neither, whatever the master says. Sankoku lists つ, and the
+/// dropped quantity beside it is what makes the listing wrong here: 1つ counts
+/// as 1 + つ, the figure goes as a number, and つ is left standing as a word on
+/// its own. It is not one, in 1つ or in 一つ.
+///
 /// Admitting a word here is not counting it: [`COUNTS_AS_VOCAB`] takes master
 /// terms only.
 ///
 /// [`COUNTS_AS_VOCAB`]: crate::knowledge::vocabulary::COUNTS_AS_VOCAB
 pub fn counts_as_word(t: &Token, master: &MasterWords) -> bool {
-    if has_impossible_onset(&t.surface) {
+    if has_impossible_onset(&t.surface) || t.counter {
         return false;
     }
     (is_content_word(&t.pos) && !is_figures(&t.surface)) || master.lists(&t.base_form, &t.reading)
@@ -1409,6 +1422,7 @@ mod tests {
             pos: pos.to_string(),
             proper_noun: false,
             subsidiary: false,
+            counter: false,
             inflected: false,
         }
     }
@@ -1435,6 +1449,17 @@ mod tests {
         let m = master();
         assert!(counts_as_word(&affix("達", "達", "タチ", "接尾辞"), &m));
         assert!(counts_as_word(&affix("鬼", "鬼", "キ", "接尾辞"), &m));
+    }
+
+    #[test]
+    fn a_counter_is_not_a_word_even_when_the_master_lists_it() {
+        let m = MasterWords::new(
+            ["つ".to_string()].into_iter().collect(),
+            &[("つ".to_string(), "つ".to_string())],
+        );
+        let mut counter = affix("つ", "つ", "ツ", "接尾辞");
+        counter.counter = true;
+        assert!(!counts_as_word(&counter, &m));
     }
 
     #[test]
