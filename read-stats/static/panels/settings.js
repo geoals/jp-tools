@@ -24,6 +24,9 @@ import { THEMES, setTheme, storedTheme } from "../lib/theme.js";
  * One numeric setting. `step` and `unit` are presentation; `hint` is the part
  * that matters — a threshold nobody can explain is a threshold nobody should
  * be turning.
+ *
+ * `min` must be a multiple of `step`: the browser validates values as
+ * `min + n*step`, so `min: 1, step: 5` silently refuses to save 60.
  */
 const FIELDS = [
   {
@@ -41,7 +44,7 @@ const FIELDS = [
     label: "Streak minimum",
     unit: "minutes",
     step: 5,
-    min: 1,
+    min: 5,
     hint: "Minutes a day needs to extend the streak. Separate from the target on purpose: the streak asks whether you showed up, the target asks whether you did the day's work.",
   },
   {
@@ -78,7 +81,7 @@ const FIELDS = [
     label: "Characters per page",
     unit: "chars",
     step: 10,
-    min: 1,
+    min: 10,
     hint: "Used to turn a physical book's page count into characters when logging a session by hand. 550 is a typical bunkobon page.",
   },
   {
