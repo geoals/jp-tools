@@ -167,6 +167,20 @@ are all cases where Sudachi's lexicon lacks the word, and every repair further
 down the pipeline is either a hand-list or a loosening that costs more than it
 buys.
 
+What that dictionary would cost, measured (`jp-core/examples/missing.rs` counts
+it): 13,834 of Sankoku's 81,884 headwords do not survive Mode C as one morpheme.
+Only ~7,363 belong in a segmenter — 2–3 morphemes, containing kanji, no particle
+or auxiliary inside. The rest are phrases and idioms (ああ言えばこう言う,
+あがきが取れない), and putting those in the lexicon makes Sudachi merge them
+wherever their morphemes co-occur; they are recomposition's expression path,
+which has structural guards a Viterbi cost does not. Two things make it work
+rather than backfire: **sudachi.rs's `ubuild` has no cost estimation** — unlike
+the Java tooling, `left_id`, `right_id` and `cost` are required `i16`
+(`dic/build/lexicon.rs`), so each entry needs them cribbed from an exemplar
+system entry of the same POS — and Sankoku carries no POS, its `rules` column
+being empty for 82,271 of its rows, so POS has to come from the final morpheme's
+Sudachi tag. It also moves wordhood into costs `#tokenize` cannot explain.
+
 - **待ちたまえ → 待ち + た + まえ**, and まえ becomes the noun 前. たまえ is 給え,
   which Sankoku lists, so `recompose` could rejoin on the reading — but that
   fence must stay shut. 3,016 adjacent pairs in the corpus have readings

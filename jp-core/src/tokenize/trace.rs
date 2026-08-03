@@ -20,6 +20,14 @@ pub enum Step {
     /// The pipeline's one edit to its input: emphatic っ removed. Absent when
     /// the line had none.
     Rewrite { from: String, to: String },
+    /// Sudachi's own segmentation, before any of our rules run. Every later
+    /// step is about these pieces, so a boundary that was never ours to make
+    /// has to be visible as such — otherwise the trace reads as if the
+    /// pipeline chose to start there.
+    Segment {
+        mode: &'static str,
+        parts: Vec<String>,
+    },
     /// The wordhood gate: is this compound a word in its own right, so the
     /// C→B→A pass should stop here rather than take it apart?
     Gate {

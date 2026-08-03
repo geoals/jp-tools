@@ -410,6 +410,19 @@ impl SudachiTokenizer {
         }
         let (last, head) = run.split_last()?;
         let content = run.iter().all(|t| is_content_word(&t.pos));
+        // The spelling join admits a trailing 接尾辞, which `content` does not.
+        // 度し難い is the case: Sudachi has no entry for it, so it arrives as
+        // 度し (動詞) + 難い (接尾辞), the parts spell the Sankoku headword
+        // exactly, and requiring every part to be a content word was the only
+        // thing refusing it — the run then fell through to the expression path
+        // and was turned down for holding a bound stem, which was never the
+        // real reason. `reading_join_admitted` already allows a 接尾辞 on the
+        // *weak* signal; the strong one must not be the stricter of the two.
+        //
+        // Trailing only: a suffix attaches to what precedes it, so a run that
+        // begins with one begins inside a word rather than at its edge.
+        let spellable = head.iter().all(|t| is_content_word(&t.pos))
+            && (is_content_word(&last.pos) || last.pos == "接尾辞");
         let surfaces: String = run.iter().map(|t| t.surface.as_str()).collect();
 
         let written: String = head
@@ -423,7 +436,7 @@ impl SudachiTokenizer {
         let mut signal = "Spelling match: parts as written form a listed headword";
         let uninflected_run = run.iter().all(|t| !t.inflected);
         let mid_conjugation = before.is_some_and(|t| conjugation_continues(t, &run[0]));
-        let term = if content && self.lexicon.contains(&written) {
+        let term = if spellable && self.lexicon.contains(&written) {
             Some(written)
         } else if uninflected_run && !mid_conjugation && self.lexicon.contains(&surfaces) {
             // The expression join, and the one place function words are allowed
@@ -650,6 +663,19 @@ fn spoken_form(t: &Token) -> String {
     } else {
         crate::text::kana::to_hiragana(&t.reading)
     }
+}
+
+/// Sudachi's segmentation, recorded before the first rule of ours sees it.
+fn record_segmentation<T: DictionaryAccess>(
+    mode: &'static str,
+    morphemes: &sudachi::prelude::MorphemeList<T>,
+    trace: &mut Trace,
+) {
+    if !trace.is_recording() {
+        return;
+    }
+    let parts: Vec<String> = morphemes.iter().map(|m| m.surface().to_string()).collect();
+    trace.push(|| Step::Segment { mode, parts });
 }
 
 /// A run that named no word at all. Free functions rather than closures over
@@ -1201,6 +1227,7 @@ impl SudachiTokenizer {
             let morphemes = tokenizer
                 .tokenize(text, Mode::B, false)
                 .map_err(|e| TokenizeError::Failed(e.to_string()))?;
+            record_segmentation("B", &morphemes, trace);
             let plain: Vec<Token> = morphemes.iter().map(|m| self.to_token(&m, trace)).collect();
             // Still recomposed: having no wordhood gate is a reason to skip it,
             // not a reason to shred every compound the master lists.
@@ -1213,6 +1240,7 @@ impl SudachiTokenizer {
         let morphemes = tokenizer
             .tokenize(text, Mode::C, false)
             .map_err(|e| TokenizeError::Failed(e.to_string()))?;
+        record_segmentation("C", &morphemes, trace);
 
         let err = |e: sudachi::error::SudachiError| TokenizeError::Failed(e.to_string());
         let mut buf_b = morphemes.empty_clone();

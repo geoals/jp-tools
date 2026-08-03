@@ -16,6 +16,36 @@ fn parse_headwords(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// Sudachi has no entry for these, so they arrive as a content word plus a
+/// trailing 接尾辞 — 度し(動詞) + 難い(接尾辞). The parts spell the master
+/// headword exactly, which is the strongest signal recomposition has, and it
+/// was being refused because the suffix is not a content word.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_trailing_suffix_may_spell_a_listed_headword() {
+    let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
+        .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+    // Each is spelt by its parts as written, the last one in its base form —
+    // 怖がり would need 怖がる listed instead, which is a different rung.
+    let listed = ["度し難い", "言い難い", "得難い", "行き方"];
+    let tokenizer = SudachiTokenizer::new(Path::new(&dict_path), HashSet::new())
+        .unwrap()
+        .with_lexicon(listed.iter().map(|w| w.to_string()).collect());
+
+    for word in listed {
+        let tokens = tokenizer.tokenize(word).unwrap();
+        let surfaces: Vec<_> = tokens.iter().map(|t| t.surface.as_str()).collect();
+        assert_eq!(surfaces, [word], "{word} should survive as one token");
+    }
+
+    // The lexicon is what admits the join, not the suffix tag: an unlisted
+    // compound of the same shape still comes apart.
+    let bare = SudachiTokenizer::new(Path::new(&dict_path), HashSet::new())
+        .unwrap()
+        .with_lexicon(HashSet::from(["難い".to_string()]));
+    assert!(bare.tokenize("度し難い").unwrap().len() > 1);
+}
+
 #[test]
 #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
 fn mode_c_with_headwords_keeps_compounds_that_mode_b_splits() {

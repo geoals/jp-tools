@@ -198,6 +198,10 @@ function decisive(s) {
   switch (s.kind) {
     case "rewrite":
     case "stutter":
+    // Always shown: it is where the boundaries came from, and every later step
+    // only regroups them. Without it the trace reads as if the pipeline chose
+    // to start at the first gate's surface.
+    case "segment":
       return true;
     case "join":
       return s.verdict !== "no_signal";
@@ -268,6 +272,9 @@ function TraceStep({ step }) {
   if (s.kind === "rewrite") {
     main = `${s.from} → ${s.to}`;
     note = "Emphatic っ removed before analysis";
+  } else if (s.kind === "segment") {
+    main = s.parts.join(" + ");
+    note = `Sudachi's own segmentation at mode ${s.mode}. A boundary here is one its dictionary made, not a rule below.`;
   } else if (s.kind === "gate") {
     main = s.surface;
     note = s.why;
