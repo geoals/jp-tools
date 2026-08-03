@@ -270,6 +270,14 @@ Mining:
   because a truncated clip of the right line beats a whole clip of the wrong
   one; `vn-mine/vn-calibrate.py` is the tool that would replace the rule, and
   it needs a real session's data first.
+- **CompactDef is told the surface, never the headword.** The tag axes rate the
+  spelling the reader met, so the prompt gets the `<b>` span out of the sentence
+  field (`anki::bolded_span`) and the vocab field only as a fallback. Measured on
+  one sentence: すえた comes back UNCOMMON · PLAIN and 饐えた RARE · LITERARY —
+  the headword prices its kanji, and a phrase people say gets tagged as if it
+  were literary. Withholding it costs the model the word's identity, which it has
+  to infer from the sentence; that is the accepted trade, and the reason the
+  sentence keeps its bold markers.
 - **Note ids are epoch milliseconds**, so they double as card creation times.
 - **Only engagement actions leave `reader_marks`.** Explain does; clear does not.
 

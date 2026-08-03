@@ -152,6 +152,35 @@ async fn note_field(
         .to_string())
 }
 
+/// The text Yomitan bolded inside a sentence field — the target word *as the
+/// page actually spelt it*, conjugated and in whatever orthography the author
+/// used.
+///
+/// This is the only place the surface form survives: the vocab field holds the
+/// dictionary headword (饐える) while the sentence says すえた, and the
+/// CompactDef call is tagged on the latter. Yomitan's card template wraps the
+/// match in `<b>`, so the span is a parse rather than a re-tokenization.
+///
+/// Returns `None` when there is no bold span — a hand-made note, or a template
+/// without the markers — leaving the caller to fall back to the headword.
+pub fn bolded_span(raw: &str) -> Option<String> {
+    let start = raw.find("<b>")? + "<b>".len();
+    let end = raw[start..].find("</b>")? + start;
+    let span = clean_field(&raw[start..end]);
+    (!span.is_empty()).then_some(span)
+}
+
+/// `clean_field`, but keeping Yomitan's `<b>` markers around the target word.
+///
+/// The CompactDef prompt is given no headword, so the bold is how the model
+/// finds which span of the sentence it is glossing.
+pub fn clean_field_keep_bold(raw: &str) -> String {
+    let marked = raw.replace("<b>", "\u{1}").replace("</b>", "\u{2}");
+    clean_field(&marked)
+        .replace('\u{1}', "<b>")
+        .replace('\u{2}', "</b>")
+}
+
 /// Strip HTML tags and surrounding whitespace from a field value.
 pub fn clean_field(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
@@ -263,6 +292,29 @@ mod tests {
             "http://192.168.1.7:8765",
         );
         assert_eq!(urls, vec!["http://192.168.1.7:8765"]);
+    }
+
+    #[test]
+    fn bolded_span_is_the_written_surface() {
+        assert_eq!(
+            bolded_span("湿度が高く、<b>すえた</b>臭いがする。").as_deref(),
+            Some("すえた")
+        );
+        // Furigana inside the span is markup, not spelling.
+        assert_eq!(
+            bolded_span("<b>節<rt>ふし</rt>穴</b>じゃない").as_deref(),
+            Some("節ふし穴")
+        );
+        assert_eq!(bolded_span("markerless sentence"), None);
+        assert_eq!(bolded_span("<b></b>"), None);
+    }
+
+    #[test]
+    fn clean_field_keep_bold_keeps_only_the_markers() {
+        assert_eq!(
+            clean_field_keep_bold(" <div>疑心暗鬼に陥らせる<b>流言飛語</b>……。</div> "),
+            "疑心暗鬼に陥らせる<b>流言飛語</b>……。"
+        );
     }
 
     #[test]

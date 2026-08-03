@@ -8,6 +8,10 @@
 //! question "can you be certain EVERY native adult recognizes it?", with COMMON
 //! vs UNCOMMON split by active-vs-passive vocabulary and RARE as the first tier
 //! where universal recognition can no longer be assumed.
+//!
+//! It is rated on the spelling the reader actually met, which is why both
+//! callers send a surface form and never a dictionary headword: 饐える is a rare
+//! kanji, すえた臭い is a phrase people say, and the card is about the second.
 
 /// The FAMILIARITY axis — one tier, recognition-on-sight across the population.
 pub const FAMILIARITY_RUBRIC: &str = "\
@@ -26,7 +30,10 @@ readers only a portion recognize it.\n\
 A transparent compound of common parts with a predictable meaning (等価値 = \
 等価+価値) is understood first-encounter → COMMON or higher. Spoken/colloquial \
 words are more familiar than their rarity in writing suggests; don't demote them \
-for being informal.";
+for being informal.\n\
+Rate the word AS IT IS WRITTEN in front of you. A word usually met in kana is \
+as familiar as the kana makes it, however rare the kanji spelling would be — \
+すえた臭い is not rated on 饐える. Do not import an orthography that is not there.";
 
 /// The FLAVOR axis — one baseline formality plus up to two independent marks.
 pub const FLAVOR_RUBRIC: &str = "\

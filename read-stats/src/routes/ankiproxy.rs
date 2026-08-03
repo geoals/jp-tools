@@ -209,11 +209,18 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_t
         .and_then(Value::as_str)
         .map(crate::services::anki::clean_field)
         .unwrap_or_default();
-    let sentence = fields
+    let raw_sentence = fields
         .and_then(|f| f.get(&state.anki_sentence_field))
         .and_then(Value::as_str)
-        .map(crate::services::anki::clean_field)
         .unwrap_or_default();
+    let sentence = crate::services::anki::clean_field_keep_bold(raw_sentence);
+
+    // The gloss is tagged on the spelling the page used, not on the headword —
+    // 饐える reads RARE where its own sentence's すえた does not. The bold span
+    // Yomitan leaves in the sentence is that spelling; the vocab field is the
+    // fallback for a note that has no markers to parse.
+    let target =
+        crate::services::anki::bolded_span(raw_sentence).unwrap_or_else(|| word.clone());
 
     // Auto-capture: fold the mine button into the add. The note id and the
     // anchor both come from the add itself, so neither depends on what has
@@ -247,14 +254,15 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_t
     // is awaited so the capture never waits on a call that was not going to
     // happen.
     let api_key =
-        if state.anki_compact_def_field.is_empty() || word.is_empty() || sentence.is_empty() {
+        if state.anki_compact_def_field.is_empty() || target.is_empty() || sentence.is_empty() {
             warn!(
                 note_id,
                 word = %word,
-                word_empty = word.is_empty(),
+                target = %target,
+                target_empty = target.is_empty(),
                 sentence_empty = sentence.is_empty(),
                 compact_field_empty = state.anki_compact_def_field.is_empty(),
-                "enrich: skipped CompactDef — empty word, sentence, or field"
+                "enrich: skipped CompactDef — empty target, sentence, or field"
             );
             None
         } else if state.anthropic_api_key.is_none() {
@@ -274,7 +282,7 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_t
     };
 
     let (def, captured) = tokio::join!(
-        crate::services::compactdef::compact_def(&state.http, api_key, &word, &sentence),
+        crate::services::compactdef::compact_def(&state.http, api_key, &target, &sentence),
         capture,
     );
 

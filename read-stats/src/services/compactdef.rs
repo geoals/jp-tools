@@ -27,6 +27,11 @@ You write a compact ENGLISH gloss (\"CompactDef\") for a Japanese vocab \
 flashcard. It sits at the top of the card back as a fast recognition check; the \
 full Japanese dictionary entry is shown below it. The learner is a native \
 English speaker. Gloss the sense the word carries IN THE GIVEN SENTENCE.\n\n\
+You are given the target as it is WRITTEN in the sentence — conjugated, and in \
+whatever script the author used — and marked with <b> tags in the sentence \
+itself. No dictionary headword is supplied, deliberately. Work out which word it \
+is from the sentence; gloss that word's sense, but rate FAMILIARITY on the \
+written form you were given.\n\n\
 Output exactly two lines and nothing else — no preamble, no markdown, and never \
 an XML or HTML tag of your own (do NOT write <meaning>, </meaning>, <usage>, \
 <br>, or any angle-bracket tag or label):\n\
@@ -47,14 +52,17 @@ data, no dictionary tags. No preamble, no markdown."
     )
 });
 
-/// Generate the CompactDef gloss for `word` as used in `sentence`.
+/// Generate the CompactDef gloss for `target` as used in `sentence`.
 ///
-/// `sentence` is the plain sentence text — strip any `<b>`/furigana HTML before
-/// calling so the model sees what the card shows, not markup.
+/// `target` is the surface form — the spelling the page used, not the
+/// dictionary headword. The headword is withheld on purpose: shown 饐える, the
+/// model prices the kanji and tags a phrase people say as RARE. The sentence
+/// keeps its `<b>` markers around the target and nothing else, so the model can
+/// find the span when the surface is short or repeated.
 pub async fn compact_def(
     http: &reqwest::Client,
     api_key: &str,
-    word: &str,
+    target: &str,
     sentence: &str,
 ) -> Result<String, AppError> {
     let body = serde_json::json!({
@@ -65,7 +73,7 @@ pub async fn compact_def(
         "system": SYSTEM_PROMPT.as_str(),
         "messages": [{
             "role": "user",
-            "content": format!("Word: {word}\nSentence: {sentence}"),
+            "content": format!("Sentence: {sentence}\nTarget: {target}"),
         }],
     });
 
@@ -192,6 +200,40 @@ mod tests {
         );
     }
 
+    /// The case the surface-only shape was built for: a word whose kanji is rare
+    /// and whose kana phrase is not. Prints both so the anchoring can be seen;
+    /// asserts only that the written form is not tagged *below* the headword,
+    /// since a tag tier is a model judgement and not a fixture.
+    #[tokio::test]
+    #[ignore = "requires JP_TOOLS_ANTHROPIC_API_KEY"]
+    async fn the_written_form_is_not_priced_as_its_kanji() {
+        let api_key = std::env::var("JP_TOOLS_ANTHROPIC_API_KEY").expect("set key");
+        let http = reqwest::Client::new();
+        let sentence = |t: &str| {
+            format!("湿度が高く、薄暗く、ベッドなどの家具は硬く、<b>{t}</b>臭いがする。")
+        };
+        let tier = |gloss: &str| {
+            let tags = gloss.rsplit_once("<br>").expect("tag line").1.to_string();
+            let fam = tags.split('·').next().unwrap().trim().to_string();
+            ["OBSCURE", "RARE", "UNCOMMON", "COMMON", "CORE"]
+                .iter()
+                .position(|t| *t == fam)
+                .unwrap_or_else(|| panic!("unknown familiarity: {gloss}"))
+        };
+
+        let surface = compact_def(&http, &api_key, "すえた", &sentence("すえた"))
+            .await
+            .unwrap();
+        let kanji = compact_def(&http, &api_key, "饐えた", &sentence("饐えた"))
+            .await
+            .unwrap();
+        println!("すえた: {surface}\n饐えた: {kanji}");
+        assert!(
+            tier(&surface) >= tier(&kanji),
+            "the kana spelling should not be rarer than the kanji one"
+        );
+    }
+
     #[tokio::test]
     #[ignore = "requires JP_TOOLS_ANTHROPIC_API_KEY"]
     async fn compact_def_integration() {
@@ -200,8 +242,8 @@ mod tests {
         let out = compact_def(
             &http,
             &api_key,
-            "減退",
-            "見た目も味も最悪な料理に食欲は減退するが、エマも口に運ぶ。",
+            "減退する",
+            "見た目も味も最悪な料理に食欲は<b>減退する</b>が、エマも口に運ぶ。",
         )
         .await
         .unwrap();
