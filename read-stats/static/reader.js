@@ -27,6 +27,14 @@ const MARKED_ONLY_KEY = "reader-marked-only";
  *  makes the marks readable. Anything unrecognised is ignored rather than
  *  drawn — that is version skew, not a word. */
 const PAINTED = ["seen", "new", "unknown"];
+/** The statuses an underline is added to when the word is common: the two that
+ *  say the reader has not got it yet. `seen` is left out — never judged and met
+ *  before is most of a line, and underlining it would underline the page. */
+const UNDERLINED = ["new", "unknown"];
+/** Where the common-word underline sits and how thick it is. Drawn inside the
+ *  mark's rectangle, which sits behind the text, so it reads as an underline
+ *  under the glyphs rather than a second bar. */
+const UNDERLINE_PX = 2;
 /** How far a mark is held back from its word on each side. Japanese sets
  *  without spaces, so two adjacent marked words have touching rects: a mark
  *  that reached *past* its word overlapped its neighbour and the two read as
@@ -69,6 +77,11 @@ export function Reader() {
   const [explain, setExplain] = useState(null);
   const [toast, setToast] = useState(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  /** BCCWJ rank at or below which an unknown word is called common and gets an
+   *  underline. Held here rather than applied server-side so changing the
+   *  setting repaints the feed already on screen. 0 until the settings arrive,
+   *  which underlines nothing — the safe way to be wrong for one paint. */
+  const [commonMaxRank, setCommonMaxRank] = useState(0);
   /** Set once a backscroll page comes back empty, to stop the trigger firing.
    *  A ref rather than state: nothing on screen changes when it flips. */
   const historyExhausted = useRef(false);
@@ -119,6 +132,12 @@ export function Reader() {
    *  `spanAtPoint`) takes *this* list: those index into elements, and a hidden
    *  line has none. */
   const visible = markedOnly ? lines.filter((l) => keptIds.has(l.id)) : lines;
+
+  useEffect(() => {
+    api("/api/settings")
+      .then((s) => setCommonMaxRank(s.reader_common_max_freq_rank || 0))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     // EventSource reconnects on its own and replays from Last-Event-ID, so a
@@ -261,8 +280,8 @@ export function Reader() {
   // What the painter reads, held in a ref rather than captured: the frame it
   // runs in is not the render that asked for it, and the observer below is
   // built once and must still see the current feed.
-  const paintInput = useRef({ visible, highlightOn });
-  paintInput.current = { visible, highlightOn };
+  const paintInput = useRef({ visible, highlightOn, commonMaxRank });
+  paintInput.current = { visible, highlightOn, commonMaxRank };
 
   /** Ask for a repaint, at most one per frame.
    *
@@ -281,13 +300,14 @@ export function Reader() {
     paintPending.current = true;
     requestAnimationFrame(() => {
       paintPending.current = false;
-      const { visible, highlightOn } = paintInput.current;
+      const { visible, highlightOn, commonMaxRank } = paintInput.current;
       paintMarks(
         visible,
         lineEls.current,
         highlightOn,
         listRef.current,
         marksRef.current,
+        commonMaxRank,
       );
     });
   }, []);
@@ -308,6 +328,7 @@ export function Reader() {
     highlightOn,
     fontPx,
     markedOnly,
+    commonMaxRank,
   ]);
 
   // The other way the text reflows: the window or the split pane changing width.
@@ -872,6 +893,19 @@ function hasMark(line) {
   return (line.tokens || []).some((t) => PAINTED.includes(t.status));
 }
 
+/** Whether a word is one worth stopping on: not known, and common enough in
+ *  the corpus that not knowing it is a real gap. A word BCCWJ does not rank is
+ *  never common — the underline says "you should have this one", and an
+ *  unranked word is the case where that cannot be claimed. */
+function isCommonGap(token, commonMaxRank) {
+  return (
+    UNDERLINED.includes(token.status) &&
+    commonMaxRank > 0 &&
+    token.freq_rank != null &&
+    token.freq_rank <= commonMaxRank
+  );
+}
+
 /** Draw the marks: one rounded, padded rectangle behind each flagged word, in a
  *  layer underneath the text.
  *
@@ -887,7 +921,7 @@ function hasMark(line) {
  *  Every rect is measured before a node is inserted: interleaving reads and
  *  writes would force a layout per mark, on the path that runs while a line is
  *  being read. */
-function paintMarks(lines, els, enabled, listEl, layerEl) {
+function paintMarks(lines, els, enabled, listEl, layerEl, commonMaxRank) {
   if (!listEl || !layerEl) return;
   const boxes = [];
   if (enabled) {
@@ -915,6 +949,7 @@ function paintMarks(lines, els, enabled, listEl, layerEl) {
           if (!r.width) continue;
           boxes.push({
             tier: t.status,
+            common: isCommonGap(t, commonMaxRank),
             left: r.left + dx + MARK_INSET_PX,
             top: r.top + dy,
             width: Math.max(1, r.width - MARK_INSET_PX * 2),
@@ -929,8 +964,8 @@ function paintMarks(lines, els, enabled, listEl, layerEl) {
   layerEl.replaceChildren(
     ...boxes.map((b) => {
       const div = document.createElement("div");
-      div.className = `reader-mark ${b.tier}`;
-      div.style.cssText = `left:${b.left}px;top:${b.top}px;width:${b.width}px;height:${b.height}px`;
+      div.className = `reader-mark ${b.tier}${b.common ? " common" : ""}`;
+      div.style.cssText = `left:${b.left}px;top:${b.top}px;width:${b.width}px;height:${b.height}px;--underline-px:${UNDERLINE_PX}px`;
       return div;
     }),
   );

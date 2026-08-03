@@ -22,7 +22,7 @@
 //! [`Tier`] splits the ledger's `new` on `encounter_count`, since it covers both
 //! "met fifty times, never judged" and "never met at all".
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use jp_core::knowledge::Knowledge;
 use jp_core::knowledge::vocabulary::{self, Status, Term, VocabRow};
@@ -52,6 +52,10 @@ pub struct Span {
     /// spelling, not the surface under the finger: 振っ is judged as 振る.
     pub headword: String,
     pub reading: String,
+    /// BCCWJ rank, `None` for a word the corpus does not list. The client marks
+    /// a common word it does not know more loudly than a rare one — a rare word
+    /// unknown is expected, a common one is the gap worth seeing.
+    pub freq_rank: Option<i64>,
 }
 
 /// What a word is to the reader.
@@ -94,6 +98,11 @@ pub struct Highlighter {
     /// the wordhood gate. Ingest asks the identical question, which keeps a tint
     /// and a ledger row from disagreeing about 達.
     master: MasterWords,
+    /// BCCWJ rank per `(headword, reading)`, for the master headwords. Held
+    /// rather than queried per line: the reader would otherwise pay a
+    /// `dictionary_frequency` lookup per word on the path that draws a line as
+    /// it is being read.
+    ranks: HashMap<(String, String), i64>,
 }
 
 impl Highlighter {
@@ -101,12 +110,25 @@ impl Highlighter {
         tokenizer: SudachiTokenizer,
         lexicon: HashSet<String>,
         master: MasterWords,
+        ranks: HashMap<(String, String), i64>,
     ) -> Highlighter {
         Highlighter {
             tokenizer,
             lexicon,
             master,
+            ranks,
         }
+    }
+
+    /// How common the word is in BCCWJ. A kana headword stores no reading, so
+    /// its own spelling is the reading to match; a corpus row that carries no
+    /// reading answers for every reading of the spelling.
+    fn rank(&self, term: &Term) -> Option<i64> {
+        let key = (term.headword.clone(), term.display_reading().to_string());
+        self.ranks
+            .get(&key)
+            .or_else(|| self.ranks.get(&(term.headword.clone(), String::new())))
+            .copied()
     }
 
     /// Every token in `text`, with its span — everything before the ledger is
@@ -194,6 +216,8 @@ pub struct Analyzed {
     /// How often the ledger has met this term, or `None` when it has no row.
     pub encounter_count: Option<i64>,
     pub lookup_count: Option<i64>,
+    /// BCCWJ rank of the term, `None` when the corpus does not list it.
+    pub freq_rank: Option<i64>,
 }
 
 /// Pair each token with where it sits in the line.
@@ -236,6 +260,7 @@ fn locate(
             status: Tier::Seen.as_str(),
             headword: term.headword.clone(),
             reading: term.reading.clone(),
+            freq_rank: None,
         };
         out.push(Candidate {
             term,
@@ -281,6 +306,8 @@ pub async fn shared(state: &crate::app::AppState) -> Option<std::sync::Arc<Highl
             let preferred = crate::ingest::preferred_readings(state).await?;
             let conjugatable = crate::ingest::conjugatable(state).await?;
             let master = MasterWords::new(lexicon.clone(), &readings);
+            let headwords: Vec<String> = lexicon.iter().cloned().collect();
+            let word_ranks = crate::ingest::all_frequency_ranks(state, &headwords).await?;
             // Dictionary load is CPU-bound and measured in seconds; it must not
             // sit on the runtime while other readers' streams are polling.
             tokio::task::spawn_blocking(move || {
@@ -292,7 +319,7 @@ pub async fn shared(state: &crate::app::AppState) -> Option<std::sync::Arc<Highl
                     .with_preferred_readings(preferred)
                     .with_conjugatable(conjugatable);
                 Ok(std::sync::Arc::new(Highlighter::new(
-                    tokenizer, lexicon, master,
+                    tokenizer, lexicon, master, word_ranks,
                 )))
             })
             .await
@@ -330,6 +357,7 @@ pub async fn spans(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Span> {
                 // writing to an inflected or homographic row they never chose.
                 // `analyze` keeps the two apart; only the feed folds them.
                 reading: a.judged_as.unwrap_or(a.reading),
+                freq_rank: a.freq_rank,
             })
         })
         .collect()
@@ -400,6 +428,7 @@ pub async fn analyze(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Analyzed
                     None => Err(Excluded::NonWord),
                 }
             };
+            let freq_rank = h.rank(&c.term);
             Analyzed {
                 surface: c.surface,
                 start: c.span.start,
@@ -412,6 +441,7 @@ pub async fn analyze(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Analyzed
                 excluded: verdict.err().map(Excluded::as_str),
                 encounter_count: row.map(|r| r.encounter_count),
                 lookup_count: row.map(|r| r.lookup_count),
+                freq_rank,
             }
         })
         .collect()

@@ -90,6 +90,15 @@ const FIELDS = [
     min: 1,
     hint: "How often a word must have been met before triage offers it, and ticks it as known. It can sit this low because the other half of the rule does the work: only words you have never looked up are ticked. Raise it for a shorter, safer queue; lower it to reach further down the tail.",
   },
+  {
+    group: "Vocabulary",
+    key: "reader_common_max_freq_rank",
+    label: "Common word rank",
+    unit: "BCCWJ rank",
+    step: 500,
+    min: 0,
+    hint: "In #read, a new or unknown word this common or commoner is underlined as well as tinted. Not knowing a rare word is expected; a common one is the gap worth seeing. Words the corpus does not rank are never underlined.",
+  },
 ];
 
 const GROUPS = ["Goal", "Derivation", "Vocabulary"];

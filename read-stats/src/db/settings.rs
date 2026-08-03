@@ -44,6 +44,10 @@ pub struct Settings {
     /// sweep, persisted across visits. Default 6000, a rough top of "common
     /// enough that I probably know it", for the reader to widen.
     pub triage_max_freq_rank: i64,
+    /// Highest BCCWJ rank the reading view calls *common*. A word at or above
+    /// this rank that is `new` or `unknown` is underlined: not knowing a rare
+    /// word is expected, not knowing a common one is the gap worth seeing.
+    pub reader_common_max_freq_rank: i64,
     /// Capture is suspended: vn-ws-logger.py closes its Textractor WebSocket
     /// while this is set, so nothing reaches the line stream at all. Stopping
     /// the source beats the old interval log, which left the raw stream full of
@@ -72,6 +76,7 @@ impl Default for Settings {
             // queue. Tune it from the settings page against a real queue.
             triage_min_encounters: 3,
             triage_max_freq_rank: 6000,
+            reader_common_max_freq_rank: 5000,
             capture_paused: false,
         }
     }
@@ -89,6 +94,7 @@ pub const SETTING_KEYS: &[&str] = &[
     "vn_window",
     "triage_min_encounters",
     "triage_max_freq_rank",
+    "reader_common_max_freq_rank",
     "capture_paused",
 ];
 
@@ -130,6 +136,11 @@ pub async fn load_settings(pool: &SqlitePool) -> Result<Settings, sqlx::Error> {
             "triage_max_freq_rank" => {
                 settings.triage_max_freq_rank =
                     value.parse().unwrap_or(settings.triage_max_freq_rank)
+            }
+            "reader_common_max_freq_rank" => {
+                settings.reader_common_max_freq_rank = value
+                    .parse()
+                    .unwrap_or(settings.reader_common_max_freq_rank)
             }
             "capture_paused" => settings.capture_paused = value == "1",
             _ => {}

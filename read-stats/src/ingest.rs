@@ -281,6 +281,23 @@ pub(crate) async fn frequency_ranks(
     Ok(jp_core::knowledge::dictionaries::frequency_ranks(pool, bccwj.id, &terms).await?)
 }
 
+/// BCCWJ ranks for every one of `headwords`, keyed `(headword, reading)` — what
+/// the reading view needs to tell a common unknown word from a rare one.
+///
+/// Wider than [`frequency_ranks`], which only ranks the headwords that share a
+/// reading with another: there the rank arbitrates between two spellings, here
+/// it is the answer itself.
+pub(crate) async fn all_frequency_ranks(
+    state: &AppState,
+    headwords: &[String],
+) -> Result<HashMap<(String, String), i64>, AppError> {
+    let pool = state.knowledge.pool();
+    let Some(bccwj) = jp_core::knowledge::dictionaries::by_title(pool, "BCCWJ").await? else {
+        return Ok(HashMap::new());
+    };
+    Ok(jp_core::knowledge::dictionaries::frequency_ranks(pool, bccwj.id, headwords).await?)
+}
+
 /// Which reading to believe where Sudachi's is not the word's living one — the
 /// 私/わたくし problem. Needs all three dictionaries: Sankoku says which readings
 /// exist, Jitendex which are current, BCCWJ which of the current ones is

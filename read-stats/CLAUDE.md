@@ -217,6 +217,15 @@ The reading view:
   Three tiers are painted and `known` is not one of them — the absence of a mark
   is what makes the marks readable — but a `known` span is still sent, since a
   span is also the region a tap judges.
+- **A common word not known is underlined on top of its tint.** Each span
+  carries its BCCWJ rank and the client underlines `new`/`unknown` at or under
+  `reader_common_max_freq_rank` — not knowing a rare word is expected, not
+  knowing a common one is the gap worth seeing. The threshold is applied in the
+  client, so changing it repaints what is already on screen; an unranked word is
+  never underlined, since that is the case where the claim cannot be made. The
+  ranks are preloaded into the `Highlighter` for the master headwords — a
+  `dictionary_frequency` query per word would sit on the path that draws a line
+  as it is being read.
 - **The feed re-pins to the bottom on a new _line_, not on a new `lines`** —
   judging a word rebuilds the array without adding to it, and an id-keyed pin
   kept yanking the word out from under the finger. A reflow re-pins too, on a

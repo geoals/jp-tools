@@ -151,6 +151,13 @@
 .reader-mark.unknown {
   background: var(--vocab-unknown);
 }
+/* A word not known that is common enough that not knowing it is a real gap.
+ * An inset bottom edge rather than a border: the mark sits *behind* the text,
+ * so a line inside its own rectangle reads as an underline under the glyphs,
+ * and the rect keeps its size so nothing else on the line moves. */
+.reader-mark.common {
+  box-shadow: inset 0 calc(-1 * var(--underline-px)) 0 var(--vocab-ink);
+}
 
 .reader-empty {
   color: var(--muted);
