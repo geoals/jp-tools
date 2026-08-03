@@ -174,3 +174,26 @@ it fits. Not a tour of its contents.
 
 All prose here — comments, doc comments, README, this file — is plain simple
 English, as short as it can be. One pass to say the thing, then stop.
+
+## Tone and language
+
+- **Write plain, direct English.** Clear, high-signal, actionable phrasing over
+  literary, conversational or complicated expressions.
+- **No literary metaphors.** Never explain a technical concept, a pipeline state
+  or a piece of logic with a figurative idiom, narrative filler or a poetic
+  analogy.
+- **UI and system messages are action/state + context.**
+  - Lead with the outcome, status or decision: `Phonetic match`,
+    `Blocked from merging`, `Invalid expression`.
+  - Keep the description short. Cut the connectives — _so_, _it turns out_,
+    _hardly anyone_.
+  - Use the precise standard term over an informal description: _bound stem_,
+    _fallback_, _mora_. **But never a piece of jargon the reader would have to
+    look up** — spell it out instead, or say it plainly. `Not in any dictionary`
+    beats `OOV`.
+- **Default to plain language.** The simplest words that keep the exact
+  technical meaning. If a sentence can be cut in half without losing
+  information, cut it.
+
+The trace strings in `jp_core::tokenize::trace` and `read-stats`'s `#tokenize`
+panel are the worked example of all of this.

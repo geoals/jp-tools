@@ -281,7 +281,7 @@ function TraceStep({ step }) {
         : `Split at mode ${s.mode}`;
   } else if (s.kind === "stutter") {
     main = `${s.fragment} 、 ${s.into}`;
-    note = `Stammer dropped: ${s.fragment} repeats the onset of ${s.into}`;
+    note = `Stammer dropped: ${s.fragment} repeats the start of ${s.into}`;
   } else if (s.kind === "identity") {
     main = `${s.surface} → ${s.headword} / ${s.reading}`;
     note = s.rule;

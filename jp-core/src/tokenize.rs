@@ -285,10 +285,7 @@ impl SudachiTokenizer {
                 None => {
                     let mut forms: Vec<&str> = forms.to_vec();
                     forms.dedup();
-                    format!(
-                        "Out of vocabulary: {} not found in any dictionary",
-                        forms.join(", ")
-                    )
+                    format!("Not in any dictionary: {}", forms.join(", "))
                 }
             };
             let kept = listed.is_some();
@@ -774,7 +771,7 @@ impl SudachiTokenizer {
             return (
                 surface,
                 m.reading_form().to_string(),
-                "Impossible onset: fragment preserved as written",
+                "Invalid word start: fragment preserved as written",
                 Vec::new(),
             );
         }
