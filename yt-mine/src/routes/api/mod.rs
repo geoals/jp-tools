@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tracing::warn;
 
 use jp_core::dictionary::format_furigana;
-use jp_mine_core::lookup::{bold_target_in_sentence, lookup_word};
+use jp_mine_core::lookup::{bold_target_in_sentence, lookup_word, target_surface};
 
 use crate::app::AppState;
 use crate::db;
@@ -274,8 +274,17 @@ pub async fn llm_definition(
         return Err(AppError::NotFound);
     }
 
+    // Same rule as the export path: the definer rates the spelling that was
+    // said, not the base form the click carries.
+    let written = state
+        .tokenizer
+        .tokenize(&sentence.text)
+        .ok()
+        .and_then(|tokens| target_surface(&tokens, &query.word))
+        .unwrap_or_else(|| query.word.clone());
+
     let definition = if let Some(definer) = &state.llm_definer {
-        match definer.define(&query.word, &sentence.text).await {
+        match definer.define(&written, &sentence.text).await {
             Ok(def) => Some(def),
             Err(e) => {
                 warn!(word = query.word, error = %e, "LLM definition failed");
@@ -383,21 +392,30 @@ pub async fn export_sentences(
                 (None, None, None, None)
             };
 
+        // Tokenized once and shared: the bolded sentence and the LLM's spelling
+        // of the target are two questions about the same analysis.
+        let tokens = target_word
+            .as_ref()
+            .and_then(|_| state.tokenizer.tokenize(&sentence.text).ok());
+
         let mut llm_definition = None;
         if let (Some(word), Some(definer)) = (&target_word, &state.llm_definer) {
-            match definer.define(word, &sentence.text).await {
+            // The definer rates how common the word is, so it is given the
+            // spelling the video used, not the base form the click selected.
+            let written = tokens
+                .as_deref()
+                .and_then(|t| target_surface(t, word))
+                .unwrap_or_else(|| word.clone());
+            match definer.define(&written, &sentence.text).await {
                 Ok(def) => llm_definition = Some(def),
                 Err(e) => warn!(word, error = %e, "LLM definition failed, exporting without"),
             }
         }
 
-        let sentence_html = target_word.as_ref().and_then(|word| {
-            state
-                .tokenizer
-                .tokenize(&sentence.text)
-                .ok()
-                .and_then(|tokens| bold_target_in_sentence(&tokens, word))
-        });
+        let sentence_html = target_word
+            .as_ref()
+            .zip(tokens.as_deref())
+            .and_then(|(word, tokens)| bold_target_in_sentence(tokens, word));
 
         export_sentences.push(ExportSentence {
             source: format!("{source} ({})", format_seconds(sentence.start_time)),

@@ -54,6 +54,21 @@ pub async fn lookup_word(dictionaries: &[Arc<Dictionary>], word: &str) -> WordLo
     }
 }
 
+/// The target word as the line actually spelt it — conjugated, and in whatever
+/// script the speaker's transcript used.
+///
+/// A word is picked in the UI by its base form, which is Sudachi's *normalized*
+/// spelling: a transcript saying できる selects 出来る, and a kana-written ateji
+/// selects its kanji. That is the right key for a dictionary lookup and the
+/// wrong one to ask an LLM how common a word is — shown the kanji it rates the
+/// kanji. Everything that judges the word as it was met takes this instead.
+pub fn target_surface(tokens: &[Token], target_base_form: &str) -> Option<String> {
+    tokens
+        .iter()
+        .find(|t| t.base_form == target_base_form)
+        .map(|t| t.surface.clone())
+}
+
 /// Build sentence HTML with the target word's surface form(s) wrapped in `<b></b>`.
 pub fn bold_target_in_sentence(tokens: &[Token], target_base_form: &str) -> Option<String> {
     if !tokens.iter().any(|t| t.base_form == target_base_form) {
@@ -75,6 +90,32 @@ pub fn bold_target_in_sentence(tokens: &[Token], target_base_form: &str) -> Opti
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn target_surface_is_what_the_line_said() {
+        let tokens = vec![
+            Token {
+                surface: "すえた".into(),
+                base_form: "饐える".into(),
+                reading: "スエ".into(),
+                pos: "動詞".into(),
+                proper_noun: false,
+                subsidiary: false,
+                inflected: true,
+            },
+            Token {
+                surface: "臭い".into(),
+                base_form: "臭い".into(),
+                reading: "ニオイ".into(),
+                pos: "名詞".into(),
+                proper_noun: false,
+                subsidiary: false,
+                inflected: false,
+            },
+        ];
+        assert_eq!(target_surface(&tokens, "饐える").as_deref(), Some("すえた"));
+        assert_eq!(target_surface(&tokens, "別の語"), None);
+    }
 
     #[test]
     fn bold_target_wraps_matching_token() {
