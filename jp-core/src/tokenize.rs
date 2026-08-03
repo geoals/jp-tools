@@ -280,12 +280,12 @@ impl SudachiTokenizer {
         if trace.is_recording() {
             let surface = m.surface().to_string();
             let why = match listed {
-                Some(f) if self.lexicon.contains(*f) => format!("the master lists {f}"),
-                Some(f) => format!("{f} is mined into Anki"),
+                Some(f) if self.lexicon.contains(*f) => format!("the master dictionary lists {f}"),
+                Some(f) => format!("{f} is a word you have mined into Anki"),
                 None => {
                     let mut forms: Vec<&str> = forms.to_vec();
                     forms.dedup();
-                    format!("no listed word: {}", forms.join(", "))
+                    format!("no dictionary lists {}", forms.join(", "))
                 }
             };
             let kept = listed.is_some();
@@ -399,7 +399,7 @@ impl SudachiTokenizer {
             return no_signal(
                 trace,
                 parts(),
-                "a part is a proper noun — a name beside a noun is not a compound",
+                "one part is a name, and a name next to a noun is not a compound",
             );
         }
         let (last, head) = run.split_last()?;
@@ -414,7 +414,7 @@ impl SudachiTokenizer {
         // Whether the parts *spell* the headword, as opposed to merely sounding
         // like it. The length floor below turns on this.
         let mut spelled = true;
-        let mut signal = "spelling — the parts as written spell a master headword";
+        let mut signal = "the parts, as written, spell a word the master lists";
         let uninflected_run = run.iter().all(|t| !t.inflected);
         let mid_conjugation = before.is_some_and(|t| conjugation_continues(t, &run[0]));
         let term = if content && self.lexicon.contains(&written) {
@@ -443,11 +443,11 @@ impl SudachiTokenizer {
             // only looks free because the stem it hangs off sits outside it. An
             // expression never begins on the tail of the previous word's
             // inflection.
-            signal = "expression — the surfaces spell a master headword";
+            signal = "the parts together spell an expression the master lists";
             Some(surfaces.clone())
         } else if self.reading_join_admitted(run, head, content) {
             spelled = false;
-            signal = "reading — the parts read as one master headword";
+            signal = "the parts, read aloud, sound out a word the master lists";
             let read: String = head
                 .iter()
                 .map(spoken_form)
@@ -463,7 +463,7 @@ impl SudachiTokenizer {
                     return no_signal(
                         trace,
                         parts(),
-                        "the parts' reading names several headwords, and a join may not guess",
+                        "these parts sound like more than one word, and a join is never a guess",
                     );
                 }
                 None => None,
@@ -477,21 +477,21 @@ impl SudachiTokenizer {
             // anyway, which is the case that looks like a bug and so is the one
             // that must not be folded away with the runs that spelt nothing.
             let blocked = if !uninflected_run {
-                "a part is a stem, and an expression may not glue one in"
+                "one part is a stem, not a whole word, and an expression cannot be built out of one"
             } else if mid_conjugation {
-                "the run starts on the tail of the previous word's inflection"
+                "this run starts on the tail of the word before it, so the parts are not free words"
             } else {
                 return no_signal(
                     trace,
                     parts(),
-                    "the parts spell no master headword, and their reading names none",
+                    "the parts spell no word the master lists, and they do not sound like one either",
                 );
             };
             if !self.lexicon.contains(&surfaces) {
                 return no_signal(
                     trace,
                     parts(),
-                    "the parts spell no master headword, and their reading names none",
+                    "the parts spell no word the master lists, and they do not sound like one either",
                 );
             }
             return refused(trace, parts(), surfaces, blocked.into());
@@ -516,7 +516,7 @@ impl SudachiTokenizer {
                 trace,
                 parts(),
                 term,
-                "under three characters and not spelled in kanji — two kana spell so many words that a join finds one by accident".into(),
+                "under three characters and not written in kanji — two kana spell so many words that a join would find one by accident".into(),
             );
         }
         if NEVER_JOIN.contains(&term.as_str()) {
@@ -524,7 +524,7 @@ impl SudachiTokenizer {
                 trace,
                 parts(),
                 term,
-                "a reviewed judgement: this string is a phrase the master happens to list, never the word the sentence used".into(),
+                "on the never-join list: the master does list this string, but as a phrase, and it is not what the sentence used".into(),
             );
         }
         let reading = self
@@ -771,7 +771,7 @@ impl SudachiTokenizer {
             return (
                 surface,
                 m.reading_form().to_string(),
-                "no Japanese word begins with this kana — a shred, kept as written",
+                "no Japanese word starts with this kana, so this is a fragment — kept as written",
                 Vec::new(),
             );
         }
@@ -780,7 +780,7 @@ impl SudachiTokenizer {
             return (
                 t,
                 r,
-                "no master dictionary loaded — Sudachi's own answer",
+                "no master dictionary loaded, so Sudachi's answer stands",
                 Vec::new(),
             );
         }
@@ -853,9 +853,9 @@ impl SudachiTokenizer {
         {
             let overruled = self.preferred_reading(term, reading, &surface, m.part_of_speech());
             let rule = if overruled.is_some() {
-                "the master lists this pair, but its reading is one the language has moved off"
+                "the master lists this spelling and reading, but hardly anyone reads it that way now — swapped for the usual reading"
             } else {
-                "the first candidate the master lists as a pair"
+                "the master lists this spelling with this reading"
             };
             let reading = overruled.unwrap_or_else(|| reading.clone());
             return (term.clone(), reading, rule, show(&candidates));
@@ -875,7 +875,7 @@ impl SudachiTokenizer {
                 return (
                     term.clone(),
                     reading,
-                    "no candidate pair listed; this spelling is listed, so its reading was taken from the spelling alone",
+                    "the master lists this spelling but not with that reading, so the reading was looked up from the spelling on its own",
                     show(&candidates),
                 );
             }
@@ -912,7 +912,7 @@ impl SudachiTokenizer {
                 return (
                     term.clone(),
                     spoken,
-                    "written in kana and no spelling listed — the headword its reading names",
+                    "written in kana, and no spelling matched — so it was matched on the reading alone",
                     show(&candidates),
                 );
             }
@@ -922,7 +922,7 @@ impl SudachiTokenizer {
             return (
                 surface,
                 m.reading_form().to_string(),
-                "one mora of kana spells nothing — kept as the text wrote it",
+                "one kana on its own could be almost any word — kept exactly as the text wrote it",
                 show(&candidates),
             );
         }
@@ -930,7 +930,7 @@ impl SudachiTokenizer {
         (
             t,
             r,
-            "nothing the master lists — Sudachi's own answer, off the master scale",
+            "the master lists none of these, so Sudachi's answer stands — this word is off the master scale",
             show(&candidates),
         )
     }

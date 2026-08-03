@@ -181,8 +181,12 @@ function Result({ result }) {
  *    doesn't, the split underneath says so and says what came out.
  *  - an **identity** with more than one candidate, or one that fell past the
  *    plain "the master lists this pair" rung. Choosing 奇麗 over 綺麗 is a fork;
- *    filing を under を is not. */
-const ROUTINE_IDENTITY = "the first candidate the master lists as a pair";
+ *    filing を under を is not.
+ *
+ *  The constant below has to stay the exact string `identity_ladder` returns
+ *  for that rung — it is a filter keyed on prose, and rewording one end alone
+ *  silently floods the default view. */
+const ROUTINE_IDENTITY = "the master lists this spelling with this reading";
 
 /** Kana or kanji — anything that could be a word. A comma also gets an identity
  *  and always falls all the way down the ladder, which reads like a fork and is
@@ -221,8 +225,8 @@ function Trace({ steps }) {
   const shown = showAll ? steps : steps.filter(decisive);
   const count = `${shown.length} of ${steps.length} decisions`;
   const toggle = showAll
-    ? "show only the decisions with a fork in them"
-    : `show all ${steps.length}, including the pipeline agreeing with itself`;
+    ? "show only the decisions that could have gone another way"
+    : `show all ${steps.length} steps, including the routine ones`;
   return html`
     <div class="card">
       <div class="card-head">
@@ -257,12 +261,12 @@ function TraceStep({ step }) {
 
   if (s.kind === "rewrite") {
     main = `${s.from} → ${s.to}`;
-    note = "the emphatic っ, removed before Sudachi saw the line";
+    note = "the emphatic っ, taken off before Sudachi read the line";
   } else if (s.kind === "gate") {
     main = s.surface;
     note = s.why;
     tone = s.kept ? "kept" : "";
-    stage = s.kept ? "kept whole" : "gate";
+    stage = s.kept ? "kept whole" : "taken apart";
   } else if (s.kind === "split") {
     stage = s.mode === "none" ? "no split" : `split ${s.mode}`;
     main =
@@ -271,7 +275,7 @@ function TraceStep({ step }) {
         : `${s.surface} → ${s.parts.join(" + ")}`;
   } else if (s.kind === "stutter") {
     main = `${s.fragment} 、 ${s.into}`;
-    note = `the stammer's ${s.fragment} dropped — a fragment, not a word`;
+    note = `${s.fragment} repeats the start of ${s.into}, so it is a stammer, not a word — dropped`;
   } else if (s.kind === "identity") {
     main = `${s.surface} → ${s.headword} / ${s.reading}`;
     note = s.rule;
@@ -295,7 +299,7 @@ function TraceStep({ step }) {
 
   const candidates =
     s.kind === "identity" && s.candidates.length
-      ? `tried: ${s.candidates.join("  ·  ")}`
+      ? `spellings tried, best first: ${s.candidates.join("  ·  ")}`
       : "";
 
   return html`

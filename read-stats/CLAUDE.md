@@ -360,6 +360,9 @@ add to when the question is "does the SQL select what the derivation assumes".
   time. Those are true and they are not why anything happened. What is left is a
   rewrite, a stammer drop, a join taken or refused, a split, and an identity
   that had more than one candidate — 綺麗 → 奇麗 is a fork, を → を is not.
+  `ROUTINE_IDENTITY` there is the one string the two languages share: it must
+  stay character-identical to the rung `identity_ladder` returns for a plainly
+  listed pair, or the default view silently fills up with every particle.
 - **A bulk write shows its rows first.** `blacklist-non-words` judges rows the
   queue never displays, so `GET /api/vocab/non-words` lists them and the button
   only appears once they are on screen.
