@@ -22,6 +22,7 @@ use std::path::Path;
 use jp_core::knowledge::Knowledge;
 use jp_core::knowledge::dictionaries;
 use jp_core::tokenize::Tokenizer;
+use sudachi::analysis::Tokenize;
 
 /// Both sides drop punctuation, so compare on the words alone.
 fn is_punctuation(s: &str) -> bool {
@@ -72,15 +73,19 @@ async fn main() {
         .unwrap();
     let master_dict = dictionaries::master(pool).await.unwrap().unwrap();
     let ambiguous = jp_core::tokenize::ambiguous_headwords(&master);
-    let ranks: HashMap<(String, String), i64> = dictionaries::frequency_ranks(pool, bccwj.id, &ambiguous)
-        .await
-        .unwrap();
+    let ranks: HashMap<(String, String), i64> =
+        dictionaries::frequency_ranks(pool, bccwj.id, &ambiguous)
+            .await
+            .unwrap();
     let prefs = dictionaries::preferred_readings(pool, master_dict.id, jitendex.id, bccwj.id)
         .await
         .unwrap();
     let conjugatable: HashSet<String> = dictionaries::master_conjugatable(pool).await.unwrap();
 
     let tk = jp_core::golden::tokenizer(dict_path, &master, ranks, prefs, conjugatable);
+    let cfg = sudachi::config::Config::new(None, None, Some(dict_path.to_path_buf())).unwrap();
+    let dict = sudachi::dic::dictionary::JapaneseDictionary::from_cfg(&cfg).unwrap();
+    let raw = sudachi::analysis::stateless_tokenizer::StatelessTokenizer::new(&dict);
 
     let mut counts: HashMap<&str, usize> = HashMap::new();
     let mut sections: HashMap<&str, String> = HashMap::new();
@@ -97,14 +102,43 @@ async fn main() {
         if kind == "same" {
             continue;
         }
+        // Mode C unedited, to place the blame: where C already agrees with
+        // jiten, the boundary was ours to lose.
+        let plain: Vec<String> = raw
+            .tokenize(text, sudachi::analysis::Mode::C, false)
+            .map(|ms| {
+                ms.iter()
+                    .map(|m| m.surface().to_string())
+                    .filter(|s| !is_punctuation(s))
+                    .collect()
+            })
+            .unwrap_or_default();
+        // Our own doing when the pipeline moved a boundary Mode C had right.
+        if kind == "cross" && classify(&ours, &plain) == "cross" {
+            *counts.entry("cross-ours").or_default() += 1;
+            sections.entry("cross-ours").or_default().push_str(&format!(
+                "{text}\n  jiten: {}\n  ours : {}\n  sudC : {}\n\n",
+                theirs.join(" | "),
+                ours.join(" | "),
+                plain.join(" | ")
+            ));
+        }
         sections.entry(kind).or_default().push_str(&format!(
-            "{text}\n  jiten: {}\n  ours : {}\n\n",
+            "{text}\n  jiten: {}\n  ours : {}\n  sudC : {}\n\n",
             theirs.join(" | "),
-            ours.join(" | ")
+            ours.join(" | "),
+            plain.join(" | ")
         ));
     }
 
-    let order = ["cross", "unalignable", "we-split", "we-merge", "mixed"];
+    let order = [
+        "cross-ours",
+        "cross",
+        "unalignable",
+        "we-split",
+        "we-merge",
+        "mixed",
+    ];
     let mut head = format!("# {} cases\n", cases.len());
     for kind in ["same"].iter().chain(order.iter()) {
         head.push_str(&format!(
