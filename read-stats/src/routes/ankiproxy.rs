@@ -336,7 +336,7 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_t
 /// The test is a line within `session_gap_secs`, the same threshold that ends a
 /// session everywhere else. It follows that a pause outlasting that gap stops
 /// lookups too, since no lines arrive while `capture_paused` is set.
-async fn record(state: &AppState, term: &str) {
+pub(crate) async fn record(state: &AppState, term: &str) {
     let settings = match db::load_settings(&state.local).await {
         Ok(s) => s,
         Err(e) => {

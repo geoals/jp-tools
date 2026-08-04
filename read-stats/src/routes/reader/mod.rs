@@ -18,13 +18,17 @@
 //! | [`highlight`] | which words in a line are worth marking, and where |
 //! | [`lines`] | clearing lines from the figures, and undoing that |
 //! | [`capture`] | the mine button, and the window picker behind it |
+//! | [`define`] | what a word means, for the overlay's popup |
+//! | [`mine`] | making a card from the overlay, as Yomitan makes one |
 //! | [`explain`] | "what does this line say", via the model |
 //! | [`state`] | what the page can do, in one round trip on open |
 
 pub mod capture;
+pub mod define;
 pub mod explain;
 pub mod highlight;
 pub mod lines;
+pub mod mine;
 pub mod state;
 pub mod stream;
 
