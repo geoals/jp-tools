@@ -129,6 +129,71 @@ lineEl.addEventListener("auxclick", (e) => {
   action(word);
 });
 
+// Dragging the strip. Anywhere on the backdrop that is not a word: the words
+// are the only thing on it with an action of their own.
+//
+// It moves the box inside the surface rather than the window — the surface is
+// layer-shell, anchored to all four screen edges, and has no position to set.
+// The input region follows because it is measured off the box.
+const boxEl = document.getElementById("box");
+const PLACE = "vn-overlay-offset";
+let drag = null;
+let offset = { x: 0, y: 0 };
+
+try {
+  offset = { ...offset, ...JSON.parse(localStorage.getItem(PLACE) ?? "{}") };
+} catch {
+  // Nothing stored, or stored by an older shape. Start where the CSS puts it.
+}
+apply();
+
+/** Move to `x, y`, clamped so the box stays somewhere it can be grabbed back
+ * from — the surface is the whole screen, and a strip pushed off it is gone. */
+function moveTo(x, y) {
+  const rect = lineEl.getBoundingClientRect();
+  const left = rect.left - offset.x;
+  const top = rect.top - offset.y;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(v, hi));
+  offset = {
+    x: clamp(x, -left, Math.max(0, window.innerWidth - rect.width) - left),
+    y: clamp(y, -top, Math.max(0, window.innerHeight - rect.height) - top),
+  };
+  apply();
+}
+
+function apply() {
+  boxEl.style.setProperty("--dx", `${offset.x}px`);
+  boxEl.style.setProperty("--dy", `${offset.y}px`);
+  report();
+}
+
+lineEl.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0 || e.target.closest(".w")) return;
+  drag = { id: e.pointerId, x: e.clientX - offset.x, y: e.clientY - offset.y, moved: false };
+  lineEl.setPointerCapture(e.pointerId);
+});
+
+lineEl.addEventListener("pointermove", (e) => {
+  if (!drag || e.pointerId !== drag.id) return;
+  drag.moved = true;
+  moveTo(e.clientX - drag.x, e.clientY - drag.y);
+  // The popup is placed off the line box, so it has to be re-placed as the box
+  // moves out from under it.
+  if (openWord) place(openWord);
+});
+
+for (const type of ["pointerup", "pointercancel"]) {
+  lineEl.addEventListener(type, (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    lineEl.releasePointerCapture(e.pointerId);
+    // The click that ends a drag is not a click on the overlay — without this
+    // it reaches the document handler and closes the open popup.
+    if (drag.moved) document.addEventListener("click", (c) => c.stopPropagation(), { capture: true, once: true });
+    drag = null;
+    localStorage.setItem(PLACE, JSON.stringify(offset));
+  });
+}
+
 function closePopup() {
   popupEl.hidden = true;
   if (openWord) openWord.classList.remove("open");

@@ -52,6 +52,10 @@
     font-size: clamp(1.35rem, 1.82vw, 2.25rem);
     line-height: 1.8;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+    /* Set by the drag — see moveBy(). The strip is a layer surface pinned to
+       every screen edge, so repositioning it means moving the content inside
+       the surface, not the window. */
+    transform: translate(var(--dx, 0px), var(--dy, 0px));
   }
 
   #line {
