@@ -25,6 +25,11 @@ use crate::ingest::READER_FREQUENCY;
 /// newspaper prose against 32,370 in fiction.
 const CORPUS_FREQUENCY: &str = "BCCWJ";
 
+/// The dictionary the popup opens on, ahead of the master. Named rather than
+/// derived: install order is the order zips were first seen, which says nothing
+/// about which definition is worth reading first.
+const OPENS_WITH: [&str; 1] = ["明鏡国語辞典 第三版"];
+
 #[derive(Deserialize)]
 pub struct DefineQuery {
     /// The ledger's headword, not the surface — see the module docs.
@@ -113,12 +118,22 @@ pub async fn define(
                 .collect(),
         });
     }
-    // The master is the definition the reader wants first; everything else is
-    // there to fill the gaps it leaves.
+    // Meikyou, then the master, then everything else in install order — a
+    // stable sort, so the last tier keeps it. The master decides what counts as
+    // a word and is the vocabulary scale; that is not the same question as
+    // which definition to read first, so the order is named here rather than
+    // taken from the role.
     sources.sort_by_key(|s| {
-        !dicts
+        if OPENS_WITH.contains(&s.dictionary.as_str()) {
+            0
+        } else if dicts
             .iter()
             .any(|d| d.title == s.dictionary && d.role == dictionaries::Role::Master)
+        {
+            1
+        } else {
+            2
+        }
     });
 
     let mut pitch = Vec::new();

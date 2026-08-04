@@ -168,7 +168,7 @@ pub async fn proxy(State(state): State<AppState>, body: Bytes) -> Response {
 
 /// The note id AnkiConnect returns from a successful `addNote`
 /// (`{"result": 12345, "error": null}`), or `None` on a duplicate/error.
-fn new_note_id(resp_bytes: &Bytes) -> Option<i64> {
+pub(crate) fn new_note_id(resp_bytes: &Bytes) -> Option<i64> {
     let json: Value = serde_json::from_slice(resp_bytes).ok()?;
     // AnkiConnect answers two ways. With `"version": 6` it wraps the reply in
     // `{"result": <id>, "error": null}`. Yomitan's addNote omits the version, so

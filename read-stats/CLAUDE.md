@@ -286,6 +286,12 @@ Mining:
   which fires vn-capture.sh once Anki accepts the note. There is no mine button.
   The overlay has no popup button either — a side mouse button mines the word
   under the pointer, and another judges it.
+- **The mined badge asks Anki, not `anki_notes`.** The table is a snapshot taken
+  on demand, and the case that matters is a card made seconds ago;
+  `reader/mined` runs the same duplicate check Yomitan does. It is fetched
+  *after* the definition renders so a shut Anki cannot delay the answer being
+  asked for, and `reader/mine` returns the new note id so a mine raises the
+  badge on an open popup without a second query.
 - **A lookup is the popup opening, and nothing else is one.** `reader/define` is
   the overlay's whole lookup path, so it records; judging and mining from the
   side buttons go nowhere near it. Reaching those two through the popup made

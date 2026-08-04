@@ -245,6 +245,39 @@ async fn notes_vocab(
     Ok(notes)
 }
 
+/// The oldest note whose vocab field is exactly this word, or `None`.
+///
+/// The same duplicate check Yomitan runs before it offers to add — which is
+/// why it is asked of Anki rather than of `anki_notes`: that table is a
+/// snapshot, and a card mined ten seconds ago is not in it. Oldest, because the
+/// note id is the creation time and the first card for a word is the one worth
+/// opening.
+///
+/// Escaped for Anki's search syntax, where `"` and `*` and `_` are operators.
+pub async fn find_note_for_vocab(
+    client: &reqwest::Client,
+    url: &str,
+    vocab_field: &str,
+    term: &str,
+) -> Result<Option<i64>, AppError> {
+    let escaped = term.replace('\\', "\\\\").replace('"', "\\\"");
+    let ids = find_notes(client, url, &format!("\"{vocab_field}:{escaped}\"")).await?;
+    Ok(ids.into_iter().min())
+}
+
+/// Open Anki's card browser on one note. What Yomitan's own "view added note"
+/// does, and it raises the Anki window over the game.
+pub async fn gui_browse(client: &reqwest::Client, url: &str, note_id: i64) -> Result<(), AppError> {
+    call(
+        client,
+        url,
+        "guiBrowse",
+        json!({ "query": format!("nid:{note_id}") }),
+    )
+    .await
+    .map(|_| ())
+}
+
 /// Fetch (note_id, vocab) for every note in the deck.
 pub async fn fetch_deck_vocab(
     client: &reqwest::Client,

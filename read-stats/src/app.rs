@@ -140,6 +140,11 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/reader/state", get(reader::state::reader_state))
         .route("/api/reader/define", get(reader::define::define))
         .route("/api/reader/mine", axum::routing::post(reader::mine::mine))
+        .route("/api/reader/mined", get(reader::mined::mined))
+        .route(
+            "/api/reader/mined/browse",
+            axum::routing::post(reader::mined::browse),
+        )
         .route(
             "/api/lines/discard",
             axum::routing::post(reader::lines::discard_lines),

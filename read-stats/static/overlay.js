@@ -9,6 +9,11 @@
 // Segmentation is not asked for separately: the line event already carries a
 // span per word, each with the `(headword, reading)` the ledger keys on. The
 // popup asks about that pair, so 振っ is defined as 振る.
+//
+// Three actions on a word, and only one of them opens the popup: left-click
+// asks what it means, the back side button judges it known or unknown, the
+// forward one mines it. Splitting them that way is what keeps the lookup count
+// honest — see `SIDE_ACTIONS`.
 
 const params = new URLSearchParams(location.search);
 const root = document.documentElement.style;
@@ -21,6 +26,11 @@ const popupEl = document.getElementById("popup");
 
 let openWord = null;
 let line = null;
+// The overlay shell, once its channel is up. Null in an ordinary browser.
+let shell = null;
+// The open popup's mined badge, hidden until a card for the word is known to
+// exist. Held here so a mine can raise it on a popup already on screen.
+let minedBadge = null;
 // The rank at or under which an unknown word is called common. Fetched once;
 // the same setting the reading view underlines by, so both agree.
 let commonMaxRank = 0;
@@ -72,6 +82,7 @@ function draw(incoming) {
   frag.append(text.slice(at));
 
   lineEl.replaceChildren(frag);
+  report();
 }
 
 lineEl.addEventListener("click", (e) => {
@@ -90,10 +101,40 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest("#popup")) closePopup();
 });
 
+/** The side buttons act on the word under the pointer, without a popup.
+ *
+ * Opening the popup is what a lookup *is* — it is the reader asking what a word
+ * means, and it is recorded as one. Judging a word already understood, or
+ * mining one, is not that, and going through the popup to reach a button
+ * recorded a lookup that never happened. So those two moved off the popup
+ * entirely and onto the buttons already under the thumb.
+ *
+ * Back is `button` 3 and forward 4. Both navigate in Chromium, so the default
+ * has to go — on `mousedown`, which is where that navigation is armed.
+ */
+const SIDE_ACTIONS = {
+  3: (word) => judge(word, word.dataset.status === "known" ? "unknown" : "known"),
+  4: (word) => mine(word),
+};
+
+lineEl.addEventListener("mousedown", (e) => {
+  if (SIDE_ACTIONS[e.button]) e.preventDefault();
+});
+
+lineEl.addEventListener("auxclick", (e) => {
+  const action = SIDE_ACTIONS[e.button];
+  const word = e.target.closest(".w");
+  if (!action || !word) return;
+  e.preventDefault();
+  action(word);
+});
+
 function closePopup() {
   popupEl.hidden = true;
   if (openWord) openWord.classList.remove("open");
   openWord = null;
+  minedBadge = null;
+  report();
 }
 
 async function show(word) {
@@ -102,16 +143,9 @@ async function show(word) {
   openWord = word;
   word.classList.add("open");
 
-  // Anchored to the word rather than centred, and clamped so a word at either
-  // end of the line cannot push the popup off screen.
-  const rect = word.getBoundingClientRect();
   popupEl.hidden = false;
   popupEl.replaceChildren(el("div", "none", "…"));
-  const width = popupEl.offsetWidth;
-  popupEl.style.left = `${Math.max(
-    12,
-    Math.min(rect.left - width / 3, window.innerWidth - width - 12),
-  )}px`;
+  place(word);
 
   const query = new URLSearchParams({ term });
   if (reading) query.set("reading", reading);
@@ -129,10 +163,56 @@ async function show(word) {
   if (openWord !== word) return;
 
   popupEl.replaceChildren(...render(data, word, reading));
+  report();
+
+  // Asked after the definition is on screen, not before it: Anki is a second
+  // process and a slow or shut one must not hold up the answer to the question
+  // actually being asked.
+  try {
+    const res = await fetch(`/api/reader/mined?term=${encodeURIComponent(term)}`);
+    const { note_id } = await res.json();
+    if (openWord === word) markMined(note_id);
+  } catch {
+    // Anki closed, or busy. The badge is an extra, never a report.
+  }
 }
 
-/** Known / unknown, written to the same ledger the reading view writes to. */
-async function judge(word, status, button) {
+/** Raise the open popup's "mined" badge, and point it at the card. */
+function markMined(noteId) {
+  if (!minedBadge || !noteId) return;
+  minedBadge.hidden = false;
+  minedBadge.onclick = () =>
+    fetch("/api/reader/mined/browse", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ note_id: noteId }),
+    }).catch(() => {});
+}
+
+/** Directly above the line box, centred on the word.
+ *
+ * Both edges matter for more than looks. The bottom is the *line box's* top,
+ * not the word's, so the popup never covers the sentence it came from — and
+ * because the two boxes then touch, there is no strip of screen between the
+ * word and its definition where a click would reach the VN and advance the
+ * line out from under the popup. The left is clamped so a word at either end
+ * cannot push the popup off screen.
+ */
+function place(word) {
+  const rect = word.getBoundingClientRect();
+  const box = lineEl.getBoundingClientRect();
+  const width = popupEl.offsetWidth;
+  const left = rect.left + rect.width / 2 - width / 2;
+  popupEl.style.left = `${Math.max(12, Math.min(left, window.innerWidth - width - 12))}px`;
+  popupEl.style.bottom = `${window.innerHeight - box.top}px`;
+  report();
+}
+
+/** Known / unknown, written to the same ledger the reading view writes to.
+ *
+ * The repainted word is the whole report, as in `#read`: no toast, and a
+ * failed write is the tint coming back. */
+async function judge(word, status) {
   const body = {
     judgements: [{ headword: word.dataset.term, reading: word.dataset.reading, status }],
   };
@@ -141,19 +221,17 @@ async function judge(word, status, button) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  button.textContent = res.ok ? `${status} \u2713` : "failed";
-  button.classList.toggle("done", res.ok);
   if (!res.ok) return;
-  // Repaint the word under the popup so the tint agrees with what was just
-  // asserted, without waiting for the next line.
   word.dataset.status = status;
   word.classList.remove("new", "seen", "unknown");
   if (status !== "known") word.classList.add(status);
 }
 
-/** A card, built and added the way Yomitan's own add is. */
-async function mine(word, button) {
-  button.textContent = "mining\u2026";
+/** A card, built and added the way Yomitan's own add is.
+ *
+ * Silent: the chime is the only report a mine gets, here as everywhere, and it
+ * plays once the capture and the CompactDef write have both come back. */
+async function mine(word) {
   const res = await fetch("/api/reader/mine", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -164,9 +242,10 @@ async function mine(word, button) {
       sentence: line ? line.text : "",
     }),
   });
-  const ok = res.ok && (await res.json().catch(() => ({}))).ok;
-  button.textContent = ok ? "mined \u2713" : "mine failed";
-  button.classList.toggle("done", !!ok);
+  // The add answers with the new note's id, so a popup open on this word gets
+  // its badge now rather than the next time it is opened.
+  const { note_id } = await res.json().catch(() => ({}));
+  if (openWord === word) markMined(note_id);
 }
 
 function render(data, word, reading) {
@@ -181,7 +260,14 @@ function render(data, word, reading) {
   // The surface is worth showing only where it differs from the headword —
   // that difference is the conjugation the tokenizer saw through.
   if (surface !== data.term) head.append(el("span", "reading", `— ${surface}`));
-  head.append(el("span", "rank", ranks(data)));
+  head.append(ranks(data));
+  // Built hidden and kept, rather than added when the answer arrives: the
+  // answer can arrive from two directions — Anki's duplicate check, or a mine
+  // made while this popup is open — and both then have one thing to raise.
+  minedBadge = el("button", "mined", "mined");
+  minedBadge.title = "Open the card in Anki";
+  minedBadge.hidden = true;
+  head.append(minedBadge);
 
   const out = [head];
 
@@ -231,34 +317,43 @@ function render(data, word, reading) {
     out.push(el("div", "none", "Not in any dictionary"));
   }
 
-  const actions = el("div", "actions");
-  for (const [label, run] of [
-    ["known", (b) => judge(word, "known", b)],
-    ["unknown", (b) => judge(word, "unknown", b)],
-    ["mine", (b) => mine(word, b)],
-  ]) {
-    const button = document.createElement("button");
-    button.textContent = label;
-    button.addEventListener("click", () => run(button));
-    actions.append(button);
-  }
-  out.push(actions);
   return out;
 }
 
+/** One pill per list, the name filled and the number not — Yomitan's shape.
+ *
+ * Two lists, two answers: jiten ranks the word in the fiction being read,
+ * BCCWJ in newspaper and government prose. They disagree by an order of
+ * magnitude on ordinary words, so the number is worth nothing without the name
+ * attached to it. */
 function ranks(data) {
-  const n = (v) => (v == null ? "—" : v.toLocaleString("en"));
-  return `jiten ${n(data.jiten)} · BCCWJ ${n(data.bccwj)}`;
+  const out = el("div", "rank");
+  for (const [name, rank] of [
+    ["jiten", data.jiten],
+    ["BCCWJ", data.bccwj],
+  ]) {
+    const pill = el("span", "freq");
+    pill.append(el("span", "freq-name", name));
+    pill.append(el("span", "freq-value", rank == null ? "—" : rank.toLocaleString("en")));
+    out.append(pill);
+  }
+  return out;
 }
 
-/** Every rectangle on this page that should take a click, in window pixels.
+/** Tell the shell every rectangle on this page that should take a click.
  *
- * The shell polls this and hands it to `wl_surface.set_input_region`, so the
- * overlay is clickable exactly where a word is and the VN gets everything else
- * — clicking on to the next line never touches the overlay at all. CSS pixels
- * and window pixels are the same thing here: the view fills the surface.
+ * It hands them to `wl_surface.set_input_region`, so the overlay is clickable
+ * exactly where it has drawn something and the VN gets everything else —
+ * clicking on to the next line never touches the overlay at all. CSS pixels and
+ * window pixels are the same thing here: the view fills the surface.
+ *
+ * Pushed the moment the layout changes, not polled. Polling meant the region
+ * lagged whatever was on screen by a tick or two, and that gap is exactly a
+ * click landing on a popup the compositor did not know was there yet — it went
+ * to the VN, advanced the line, and closed the popup being aimed at.
  */
-window.__hitRects = () => {
+function report() {
+  if (!shell) return;
   // The whole visible box, not a rectangle per word: anything drawn over the
   // game should swallow the click that lands on it, or a miss between two
   // words advances the VN from under an open popup. It is also far steadier —
@@ -271,8 +366,26 @@ window.__hitRects = () => {
   //
   // A few pixels of slack, so a click on the very edge of the backdrop is
   // still caught and the region survives a subpixel reflow.
-  return rects.flatMap((r) => [r.left - 4, r.top - 4, r.width + 8, r.height + 8]);
-};
+  shell.setHits(rects.flatMap((r) => [r.left - 4, r.top - 4, r.width + 8, r.height + 8]));
+}
+
+// Anything that moves either box without going through `report` itself: the web
+// font landing, a long line wrapping, a definition arriving and growing the
+// popup upwards.
+const watch = new ResizeObserver(report);
+watch.observe(lineEl);
+watch.observe(popupEl);
+window.addEventListener("resize", report);
+
+// Only under the overlay shell — in an ordinary browser there is no channel and
+// the page is simply a page. qwebchannel.js is injected by the shell, so
+// nothing is served for it here.
+if (window.qt?.webChannelTransport) {
+  new QWebChannel(window.qt.webChannelTransport, (channel) => {
+    shell = channel.objects.shell;
+    report();
+  });
+}
 
 function el(tag, className, text) {
   const node = document.createElement(tag);

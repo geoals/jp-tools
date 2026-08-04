@@ -20,6 +20,7 @@
 //! | [`capture`] | the mine button, and the window picker behind it |
 //! | [`define`] | what a word means, for the overlay's popup |
 //! | [`mine`] | making a card from the overlay, as Yomitan makes one |
+//! | [`mined`] | whether a word is already a card, and the way to it |
 //! | [`explain`] | "what does this line say", via the model |
 //! | [`state`] | what the page can do, in one round trip on open |
 
@@ -29,6 +30,7 @@ pub mod explain;
 pub mod highlight;
 pub mod lines;
 pub mod mine;
+pub mod mined;
 pub mod state;
 pub mod stream;
 

@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Window
+import QtWebChannel
 import QtWebEngine
 import org.kde.layershell as LayerShell
 
@@ -15,11 +16,6 @@ Window {
 
     // Written from Python whenever the input region changes.
     property bool interactive: false
-
-    // Where the page says its words are. Parked here rather than handed
-    // straight to Python: calling a slot from inside a runJavaScript
-    // callback segfaults, so the shell reads this on its own tick.
-    property var hitRects: []
 
     LayerShell.Window.scope: "vn-overlay"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
@@ -40,19 +36,13 @@ Window {
         anchors.fill: parent
         url: overlayUrl
         backgroundColor: "transparent"
-    }
 
-    // The page is the only thing that knows where its words are, so it is
-    // asked rather than guessed at. Polled instead of pushed over a
-    // WebChannel: the answer is a handful of numbers and this avoids
-    // serving qwebchannel.js to a page loaded over http.
-    Timer {
-        interval: 25
-        running: true
-        repeat: true
-        onTriggered: view.runJavaScript(
-            "window.__hitRects ? window.__hitRects() : []",
-            function (rects) { root.hitRects = rects || [] })
+        // The page is the only thing that knows where its words are, and it
+        // says so the moment they move. Registered from here rather than
+        // handed over from Python: the view wants a QQmlWebChannel, which
+        // PySide does not expose.
+        webChannel: WebChannel { id: channel }
+        Component.onCompleted: channel.registerObject("shell", overlay)
     }
 
     Shortcut {

@@ -77,23 +77,55 @@ Needs PySide6, qt6-webengine and layer-shell-qt. The page is read-stats'
 **Clicks are the design.** The page reports the box it has drawn, and Qt hands
 that to `wl_surface.set_input_region`: a click on the overlay looks a word up,
 a click anywhere else reaches the VN and advances the line. No mode to switch.
+The report is **pushed over a WebChannel the instant the layout changes**, and
+the popup opens flush against the top of the line box. Both are the same
+requirement: any lag, and any gap between the two boxes, is a click that was
+aimed at the popup landing on the VN — which advances the line and closes the
+popup being aimed at. `qwebchannel.js` is injected from Qt's own resources, so
+read-stats serves nothing for it.
 `SIGUSR1` (`pkill -USR1 -f vn-overlay.py`) makes the whole surface take input,
 for selecting text rather than advancing.
 
-Clicking a word records a lookup and can mark it known/unknown or mine it. The
-card is built by read-stats and added through the AnkiConnect proxy Yomitan
-uses, so it is enriched and captured identically. `VocabAudio` is the one field
-it cannot fill — Yomitan fetches that from its own audio sources.
+Three actions on a word, and only one of them opens the popup:
+
+| action              | what it does                        | lookup recorded |
+| ------------------- | ----------------------------------- | --------------- |
+| left click          | the definition                      | yes             |
+| back (side button)  | toggle known ⇄ unknown              | no              |
+| forward             | mine it                             | no              |
+
+Opening the popup *is* the lookup, so it is the only thing that counts as one.
+Reaching a button through the popup meant judging a word already understood
+recorded a lookup that never happened, which is why the buttons are gone from
+it. Judging repaints the word; mining reports with the chime and nothing else.
+
+The popup carries a **mined** badge when the word is already a card, and
+clicking it opens that card in Anki. The check is Anki's own duplicate check,
+asked after the definition is drawn so a shut or slow Anki cannot hold it up,
+and a mine made while the popup is open raises the badge from the id the add
+returns — no reopening.
+
+The card is built by read-stats and added through the AnkiConnect proxy Yomitan
+uses, so it is enriched and captured identically. `VocabDefFull` is written with
+Yomitan's own per-dictionary wrapper divs, since the note type styles
+`.dict-<name>-body` rather than the glossary inside it, and carries Sankoku and
+Jitendex only — the two that note type has rules for. `VocabAudio` is the one
+field it cannot fill — Yomitan fetches that from its own audio sources.
 
 Yomitan does not run here, so alt-tab to `#read` when the tokenizer picks the
 wrong boundary.
 
-Two things Qt will not survive, both found the hard way: **calling a PySide slot
-from inside a `runJavaScript` callback segfaults** (the result goes through a
-QML property the shell polls instead), and **QML's `console.log` reaches
-nothing here** — which is why that crash first looked like a timer failing to
-fire. Debug through Python, not the log. `VN_OVERLAY_DEBUG=1` prints the input
-region on every change.
+Three things Qt will not survive, all found the hard way: **calling a PySide
+slot from inside a `runJavaScript` callback segfaults** (a WebChannel slot is a
+different path and is fine); **QML's `console.log` reaches nothing here** —
+which is why that crash first looked like a timer failing to fire; and
+**`WebEngineScript` cannot be declared in QML** (it is a value type), so the
+injected script is built in Python. Also: `WebEngineView.webChannel` wants a
+`QQmlWebChannel`, which PySide does not expose, so the channel is declared in
+QML and the shell object registered into it from there.
+
+Debug through Python, not the log. `VN_OVERLAY_DEBUG=1` prints the input region
+on every change.
 
 - `VN_OVERLAY_URL` — page to show (default read-stats' overlay page).
 - `VN_OVERLAY_HEIGHT` (default 300) — strip height, px. The text is positioned

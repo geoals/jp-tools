@@ -37,6 +37,14 @@ const MODEL: &str = "Japanese sentences";
 /// Yomitan tags its own with, so a search for one finds both.
 const TAG: &str = "yomitan";
 
+/// The dictionaries that go on the card, by [`class_slug`].
+///
+/// The note type styles `.dict-<slug>-title` and `.dict-<slug>-body` for these
+/// two and no others, so a third would land on the card as an unstyled block.
+/// The popup is where a dictionary goes to be read; this field is what the card
+/// keeps, and the two lists are allowed to differ.
+const CARD_DICTIONARIES: [&str; 2] = ["三省堂国語辞典-第八版", "jitendex"];
+
 #[derive(Deserialize)]
 pub struct MineRequest {
     /// The ledger headword — what goes in the vocabulary field.
@@ -63,30 +71,38 @@ pub async fn mine(
         None => None,
     };
 
-    // Every dictionary that holds the term, in the order the popup showed
-    // them — master first. Yomitan writes the same field from the same
-    // dictionaries; the wrapper divs are its markup, kept so existing cards and
-    // new ones style identically.
+    // Sankoku then Jitendex, in install order, which is the order Yomitan
+    // writes them in. The wrapper divs are its markup, reproduced exactly,
+    // because the note type styles them per dictionary — `.dict-jitendex-body`
+    // is what hides Jitendex's star and its ① ② numbering, and it only
+    // matches through the `body` div wrapping the glossary.
     let mut glossary = String::new();
     for dict in dictionaries::list_dictionaries(pool).await? {
-        let entries = dictionaries::lookup_dictionary_entries(pool, dict.id, &req.term).await?;
-        let senses: Vec<_> = entries
-            .iter()
-            .filter(|e| e.reading == req.reading || e.reading.is_empty())
-            .collect();
-        if senses.is_empty() {
+        let slug = class_slug(&dict.title);
+        if !CARD_DICTIONARIES.contains(&slug.as_str()) {
             continue;
         }
-        glossary.push_str(&format!(
-            "<div class=\"dict-title\">{}</div><div class=\"yomitan-glossary\"><ol>",
-            html_escape(&dict.title)
-        ));
-        for sense in senses {
-            for def in &sense.definitions {
-                glossary.push_str(&format!("<li>{def}</li>"));
-            }
+        let entries = dictionaries::lookup_dictionary_entries(pool, dict.id, &req.term).await?;
+        // Same rule as the popup: keep the asked-for reading where the
+        // dictionary lists it, and where it does not, every reading beats
+        // nothing — Sudachi and a dictionary can disagree about how a word is
+        // read, and dropping the entry left the card with no definition at all.
+        let senses: Vec<_> = if entries.iter().any(|e| e.reading == req.reading) {
+            entries
+                .iter()
+                .filter(|e| e.reading == req.reading)
+                .collect()
+        } else {
+            entries.iter().collect()
+        };
+        let definitions: Vec<&str> = senses
+            .iter()
+            .flat_map(|e| e.definitions.iter().map(String::as_str))
+            .collect();
+        if definitions.is_empty() {
+            continue;
         }
-        glossary.push_str("</ol></div>");
+        glossary.push_str(&dict_block(&dict.title, &definitions));
     }
 
     // First dictionary carrying pitch for this reading — NHK here.
@@ -129,7 +145,51 @@ pub async fn mine(
     let body =
         Bytes::from(serde_json::to_vec(&note).map_err(|e| AppError::Upstream(e.to_string()))?);
     let response = crate::routes::ankiproxy::proxy(State(state), body).await;
-    Ok(Json(json!({ "ok": response.status().is_success() })))
+    let ok = response.status().is_success();
+    // The id comes back so the open popup can raise its mined badge without
+    // asking Anki a second time — and a duplicate answers `null`, which is the
+    // honest answer to "did this add a card".
+    let replied = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap_or_default();
+    let note_id = crate::routes::ankiproxy::new_note_id(&replied);
+    Ok(Json(json!({ "ok": ok, "note_id": note_id })))
+}
+
+/// One dictionary's block of `VocabDefFull`, in Yomitan's markup.
+///
+/// The nesting is the load-bearing part: the note type reaches into the
+/// glossary through the body div (`.dict-jitendex-body > div > ol > li > i` is
+/// what hides Jitendex's star), so a glossary that is the body's sibling rather
+/// than its child renders unstyled.
+fn dict_block(title: &str, definitions: &[&str]) -> String {
+    let slug = class_slug(title);
+    let title = html_escape(title);
+    let mut out = format!(
+        "<div class=\"dict-{slug}-title\">{title}</div>\
+         <div class=\"dict-{slug}-body\">\
+         <div style=\"text-align: left;\" class=\"yomitan-glossary\"><ol>"
+    );
+    for def in definitions {
+        out.push_str(&format!("<li data-dictionary=\"{title}\">{def}</li>"));
+    }
+    out.push_str("</ol></div></div>");
+    out
+}
+
+/// The dictionary's half of `dict-<slug>-title` / `dict-<slug>-body`.
+///
+/// Lowercased with whitespace hyphenated, which is what the note type's CSS
+/// already lists beside Yomitan's own shorter aliases:
+/// `.dict-三省堂国語辞典-第八版-body` sits next to `.dict-sanseido-body`. A
+/// dictionary added later has no rule until one is written for it, and falls
+/// back to unstyled rather than to another dictionary's colours.
+fn class_slug(title: &str) -> String {
+    title
+        .split_whitespace()
+        .map(|part| part.to_lowercase())
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 /// Anki's furigana syntax: `寸分[すんぶん]`, and a kana word left bare — a
@@ -267,5 +327,41 @@ mod tests {
     #[test]
     fn pitch_num_keeps_the_digit_markpitch_looks_for() {
         assert!(pitch_num(0).contains(">0<"));
+    }
+
+    /// The two the note type styles today. Sankoku's title carries an
+    /// ideographic space, which is whitespace and hyphenates like any other.
+    #[test]
+    fn class_slug_matches_the_note_types_selectors() {
+        assert_eq!(
+            class_slug("三省堂国語辞典　第八版"),
+            "三省堂国語辞典-第八版"
+        );
+        assert_eq!(class_slug("Jitendex"), "jitendex");
+    }
+
+    /// Byte-for-byte against the wrapper on a card Yomitan itself wrote. The
+    /// nesting is what the note type's selectors descend through, so this is
+    /// the part that has to match exactly; the definition inside it is the
+    /// dictionary's own.
+    #[test]
+    fn dict_block_wraps_what_yomitan_wraps() {
+        assert_eq!(
+            dict_block("Jitendex", &["GLOSS"]),
+            "<div class=\"dict-jitendex-title\">Jitendex</div>\
+             <div class=\"dict-jitendex-body\">\
+             <div style=\"text-align: left;\" class=\"yomitan-glossary\">\
+             <ol><li data-dictionary=\"Jitendex\">GLOSS</li></ol></div></div>"
+        );
+    }
+
+    /// The block is only ever built for a dictionary the note type styles, so
+    /// the slug in the markup is always one the CSS matches.
+    #[test]
+    fn every_card_dictionary_is_a_slug_the_note_type_styles() {
+        for title in ["三省堂国語辞典　第八版", "Jitendex"] {
+            assert!(CARD_DICTIONARIES.contains(&class_slug(title).as_str()));
+        }
+        assert!(!CARD_DICTIONARIES.contains(&class_slug("明鏡国語辞典 第三版").as_str()));
     }
 }
