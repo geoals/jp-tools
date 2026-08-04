@@ -25,12 +25,14 @@ select text rather than advance the VN. Bind it to a KDE shortcut:
     VN_OVERLAY_URL      page to show      (default read-stats' overlay page)
     VN_OVERLAY_HEIGHT   strip height, px  (default 300)
     VN_OVERLAY_BG       backdrop alpha    (default 0.75)
+    VN_OVERLAY_FONT     font for the line (default Noto Sans CJK JP)
 """
 
 import os
 import signal
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 # Turns every window of this process into a layer surface. Must be set before
 # QGuiApplication resolves the platform plugin.
@@ -138,6 +140,9 @@ def main() -> int:
     url = os.environ.get("VN_OVERLAY_URL", DEFAULT_URL)
     if url == DEFAULT_URL:
         url += f"?bg={os.environ.get('VN_OVERLAY_BG', '0.75')}&h={height}"
+        font = os.environ.get("VN_OVERLAY_FONT")
+        if font:
+            url += f"&font={quote(font)}"
 
     inject_webchannel()
 

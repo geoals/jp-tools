@@ -93,6 +93,7 @@ Three actions on a word, and only one of them opens the popup:
 | left click          | the definition                      | yes             |
 | back (side button)  | toggle known ⇄ unknown              | no              |
 | forward             | mine it                             | no              |
+| wheel               | page the open popup's dictionaries  | no              |
 
 Opening the popup *is* the lookup, so it is the only thing that counts as one.
 Reaching a button through the popup meant judging a word already understood
@@ -134,6 +135,9 @@ on every change.
   hidden, which is the only thing that makes the two agree: the VN's line
   breaks are inserted when it renders, so they are not in the hooked text and
   cannot be reproduced.
+- `VN_OVERLAY_FONT` (default `Noto Sans CJK JP`) — the font for the line only.
+  Any family name `fc-list :lang=ja family` prints. The popup keeps the default:
+  a dictionary and the text being tried are hard to judge in the same face.
 
 ## Setup
 

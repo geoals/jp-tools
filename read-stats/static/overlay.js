@@ -13,12 +13,18 @@
 // Three actions on a word, and only one of them opens the popup: left-click
 // asks what it means, the back side button judges it known or unknown, the
 // forward one mines it. Splitting them that way is what keeps the lookup count
-// honest — see `SIDE_ACTIONS`.
+// honest — see `SIDE_ACTIONS`. The wheel over that word pages the popup's
+// dictionaries, which is not a fourth action: the popup is already open, so
+// nothing is looked up and nothing is written.
 
 const params = new URLSearchParams(location.search);
 const root = document.documentElement.style;
 root.setProperty("--backdrop", `rgba(0, 0, 0, ${params.get("bg") ?? "0.55"})`);
 root.setProperty("--strip", `${params.get("h") ?? "300"}px`);
+// Only the line, never the popup: the popup is a dictionary, and reading it in
+// a display face the game text is being tried in makes both harder to judge.
+const font = params.get("font");
+if (font) root.setProperty("--line-font", `"${font}", sans-serif`);
 
 const lineEl = document.getElementById("line");
 const warnEl = document.getElementById("warn");
@@ -31,6 +37,9 @@ let shell = null;
 // The open popup's mined badge, hidden until a card for the word is known to
 // exist. Held here so a mine can raise it on a popup already on screen.
 let minedBadge = null;
+// Set by `render` while the open popup has more than one dictionary in it, so
+// the wheel can page it without reaching into the arrows.
+let stepSource = null;
 // The rank at or under which an unknown word is called common. Fetched once;
 // the same setting the reading view underlines by, so both agree.
 let commonMaxRank = 0;
@@ -129,6 +138,19 @@ lineEl.addEventListener("auxclick", (e) => {
   action(word);
 });
 
+// The wheel over the word the popup is open on pages its dictionaries — the
+// hand is already there, having just clicked it. Only over that word: anywhere
+// else the wheel still scrolls a line too long for the strip.
+lineEl.addEventListener(
+  "wheel",
+  (e) => {
+    if (!stepSource || !openWord || e.target.closest(".w") !== openWord) return;
+    e.preventDefault();
+    stepSource(Math.sign(e.deltaY));
+  },
+  { passive: false },
+);
+
 // Dragging the strip. Anywhere on the backdrop that is not a word: the words
 // are the only thing on it with an action of their own.
 //
@@ -199,6 +221,7 @@ function closePopup() {
   if (openWord) openWord.classList.remove("open");
   openWord = null;
   minedBadge = null;
+  stepSource = null;
   report();
 }
 
@@ -329,6 +352,7 @@ function render(data, word, reading) {
   // Built hidden and kept, rather than added when the answer arrives: the
   // answer can arrive from two directions — Anki's duplicate check, or a mine
   // made while this popup is open — and both then have one thing to raise.
+  stepSource = null;
   minedBadge = el("button", "mined", "mined");
   minedBadge.title = "Open the card in Anki";
   minedBadge.hidden = true;
@@ -369,6 +393,15 @@ function render(data, word, reading) {
     };
     back.addEventListener("click", () => (at--, showSource()));
     next.addEventListener("click", () => (at++, showSource()));
+    // Clamped rather than wrapped: the order is `define::OPENS_WITH`, so the
+    // first entry is the one worth reading first and wrapping past the last
+    // would land back on it as if it were a new answer.
+    stepSource = (by) => {
+      const to = Math.min(Math.max(at + by, 0), data.sources.length - 1);
+      if (to === at) return;
+      at = to;
+      showSource();
+    };
 
     const bar = el("div", "dictbar");
     bar.append(label);
