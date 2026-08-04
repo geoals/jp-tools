@@ -17,7 +17,8 @@ Cargo workspace for Japanese language learning tools.
   Anki, stateless). See `manga-mine/CLAUDE.md`
 - `vn-mine/` — visual novel voiceline capture (bash/python, no Cargo member):
   audio ring-buffer daemon + clipboard-timestamp + silero-VAD hotkey script →
-  Anki. See `vn-mine/README.md`
+  Anki, plus `overlay/` — the line and its dictionary drawn *over* the game,
+  fullscreen included. See `vn-mine/README.md`
 - `read-stats/` — daily reading tracker (Axum + SQLite + Preact, port 3200), and
   `#read`, the live line feed read beside the VN where Yomitan does its lookups
   and mining. See `read-stats/CLAUDE.md`
@@ -66,10 +67,18 @@ Only the reader writes its `status` column, and `new` (never judged) is not
 **Card authoring splits on whether Yomitan is over the content, and the two
 halves must not be unified.** yt-mine and manga-mine build the card themselves
 through `jp-mine-core`, because a YouTube transcript or an OCR crop has no
-texthooker to hover a word in. VN reading has one, so Yomitan authors the card
-and vn-mine only attaches the media Yomitan cannot reach. Routing VN through
-`jp-mine-core` would throw away the popup; routing yt/manga through Yomitan is
-impossible.
+texthooker to hover a word in. VN reading in a browser has one, so Yomitan
+authors the card and vn-mine only attaches the media Yomitan cannot reach.
+Routing that through `jp-mine-core` would throw away the popup; routing
+yt/manga through Yomitan is impossible.
+
+The fullscreen overlay is the third case and does **not** break the rule.
+Yomitan cannot reach a layer surface — no browser can be one, and QtWebEngine
+loads no extensions — so `routes/reader/mine.rs` builds the card itself. It
+then hands it to `ankiproxy::proxy` as an `addNote`, the same entry point
+Yomitan's own add arrives through, so note-id extraction, CompactDef,
+vn-capture and the chime stay one implementation. **A new card path joins at
+the proxy, never past it.**
 
 **Term identity is dictionary-gated, which is why `dictionary` and `knowledge`
 are one subsystem in jp-core rather than separable data.** The ledger keys on a

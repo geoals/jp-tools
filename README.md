@@ -6,7 +6,7 @@ Monorepo for Japanese language learning tools.
 
 - **[yt-mine/](yt-mine/)** — YouTube sentence mining: paste a YouTube URL, get transcribed sentences with tokenization, dictionary lookup, and one-click Anki export.
 - **[manga-mine/](manga-mine/)** — physical manga sentence mining: photo inbox → crop → OCR → Anki, stateless (no database of its own).
-- **[vn-mine/](vn-mine/)** — visual novel voiceline capture: single-hotkey audio + screenshot mining from a Textractor WebSocket hook, no in-game voice replay needed.
+- **[vn-mine/](vn-mine/)** — visual novel voiceline capture: single-hotkey audio + screenshot mining from a Textractor WebSocket hook, no in-game voice replay needed. Includes `overlay/`, which draws the line and its dictionary over the game in fullscreen.
 - **[read-stats/](read-stats/)** — daily reading tracker (chars/time) derived automatically from the vn-mine line stream, plus manual sessions for physical books.
 - **[jp-core/](jp-core/)** and **[jp-mine-core/](jp-mine-core/)** — shared library crates: tokenization + dictionary lookup, and mining back-half (card formatting, AnkiConnect export).
 - **[whisper-service/](whisper-service/)** — Python FastAPI transcription service backing yt-mine and vn-mine's sentence trim.

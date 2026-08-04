@@ -56,6 +56,52 @@ silero-VAD finds where the speech ends.
   reporting that onsets fall within 1.0.
 - `vn-record.sh` / `vn-screenshot.sh` — older replay-based scripts (press
   right-arrow to replay, record 8s). Still work for VNs with a replay key.
+- `overlay/` — the line drawn **over** the game instead of beside it. See below.
+
+## overlay/ — reading in fullscreen
+
+`#read` has to sit beside the VN, because Yomitan needs a browser window and a
+browser window loses to a fullscreen one. KWin puts a `zwlr_layer_shell_v1`
+overlay surface *above* fullscreen windows, so the line can sit on the game.
+
+```sh
+python3 vn-mine/overlay/vn-overlay.py
+```
+
+Needs PySide6, qt6-webengine and layer-shell-qt. The page is read-stats'
+`/static/overlay.html`, so CSS edits are a reload, not a restart.
+
+- `vn-overlay.py` — the shell: a layer surface, and the input region.
+- `Overlay.qml` — the surface itself, holding one `WebEngineView`.
+
+**Clicks are the design.** The page reports the box it has drawn, and Qt hands
+that to `wl_surface.set_input_region`: a click on the overlay looks a word up,
+a click anywhere else reaches the VN and advances the line. No mode to switch.
+`SIGUSR1` (`pkill -USR1 -f vn-overlay.py`) makes the whole surface take input,
+for selecting text rather than advancing.
+
+Clicking a word records a lookup and can mark it known/unknown or mine it. The
+card is built by read-stats and added through the AnkiConnect proxy Yomitan
+uses, so it is enriched and captured identically. `VocabAudio` is the one field
+it cannot fill — Yomitan fetches that from its own audio sources.
+
+Yomitan does not run here, so alt-tab to `#read` when the tokenizer picks the
+wrong boundary.
+
+Two things Qt will not survive, both found the hard way: **calling a PySide slot
+from inside a `runJavaScript` callback segfaults** (the result goes through a
+QML property the shell polls instead), and **QML's `console.log` reaches
+nothing here** — which is why that crash first looked like a timer failing to
+fire. Debug through Python, not the log. `VN_OVERLAY_DEBUG=1` prints the input
+region on every change.
+
+- `VN_OVERLAY_URL` — page to show (default read-stats' overlay page).
+- `VN_OVERLAY_HEIGHT` (default 300) — strip height, px. The text is positioned
+  against it, so changing it moves the line by the same amount.
+- `VN_OVERLAY_BG` (default 0.75) — backdrop alpha. At 1 the game's own text is
+  hidden, which is the only thing that makes the two agree: the VN's line
+  breaks are inserted when it renders, so they are not in the hooked text and
+  cannot be reproduced.
 
 ## Setup
 
