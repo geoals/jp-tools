@@ -121,6 +121,12 @@ and a ledger row cannot disagree):
 - **One word, one row, spelt the way the master dictionary spells it.** Terms
   key on Sudachi's _normalized_ form. Where Sudachi and Sankoku disagree,
   Sankoku wins (`written_form`).
+- **The kana alphabet is part of the spelling.** Sudachi folds ザル onto ざる
+  and マジ onto まじ, and Sankoku lists each as two words — the colander and the
+  slang against the classical negative. A katakana surface Sankoku lists and
+  reads in hiragana keeps its own spelling; a katakana entry read in katakana is
+  a loanword (モノ is monochrome), so モノ still folds onto もの, and サクラ →
+  桜 still folds because that is orthography and not the alphabet.
 - **A compound the master doesn't list stays whole**, and **adjacent parts it
   lists as one word are rejoined** (`recompose`). Splitting such a compound into
   listed parts is what `decompose` used to do, and it was removed: it made 145
@@ -278,6 +284,23 @@ Mining:
 
 - **Mining is implicit.** Yomitan's `addNote` goes through `routes/ankiproxy`,
   which fires vn-capture.sh once Anki accepts the note. There is no mine button.
+  The overlay has no popup button either — a side mouse button mines the word
+  under the pointer, and another judges it.
+- **A lookup is the popup opening, and nothing else is one.** `reader/define` is
+  the overlay's whole lookup path, so it records; judging and mining from the
+  side buttons go nowhere near it. Reaching those two through the popup made
+  every judgement look like a word that had to be looked up, which is the one
+  number the lookup tax is measured from.
+- **`VocabDefFull` carries Yomitan's per-dictionary wrappers**, not just the
+  glossary: the note type styles `.dict-<slug>-title` and `.dict-<slug>-body`,
+  and `.dict-jitendex-body > div > ol > li` is what hides Jitendex's star and
+  its ① ② numbering. The slug is `mine::class_slug` — the title lowercased and
+  hyphenated.
+- **The card's dictionaries and the popup's are two lists.** `CARD_DICTIONARIES`
+  is Sankoku and Jitendex, because those are the two the note type has CSS for
+  and a third would land on the card unstyled. The popup shows everything
+  installed and opens on `define::OPENS_WITH`. Adding a dictionary changes the
+  popup; it changes the card only when the note type gets a rule for it.
 - **A capture is anchored at the add, not at the capture.** The proxy stamps
   `now_ts()` when `addNote` arrives and passes it as `VN_ANCHOR_TS`. Nothing may
   be awaited in front of the capture: in `enrich_added_note` the CompactDef call

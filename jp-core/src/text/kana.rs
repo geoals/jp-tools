@@ -46,6 +46,16 @@ pub fn is_all_kana(s: &str) -> bool {
             .all(|c| matches!(c, 'ぁ'..='ゖ' | 'ァ'..='ヶ' | 'ー' | '・' | 'ﾞ' | 'ﾟ' | '゛' | '゜'))
 }
 
+/// Whether every character is katakana, ー and ・ included.
+pub fn is_all_katakana(s: &str) -> bool {
+    is_all_kana(s) && !s.chars().any(is_hiragana)
+}
+
+/// Whether every character is hiragana, ー and ・ included.
+pub fn is_all_hiragana(s: &str) -> bool {
+    is_all_kana(s) && !s.chars().any(|c| matches!(c, 'ァ'..='ヶ'))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -73,5 +83,14 @@ mod tests {
         assert!(is_all_kana("コーヒー"));
         assert!(!is_all_kana("読む"));
         assert!(!is_all_kana(""));
+    }
+
+    #[test]
+    fn one_alphabet_or_the_other() {
+        assert!(is_all_katakana("コーヒー"));
+        assert!(!is_all_katakana("ざる"));
+        assert!(!is_all_katakana("ハイ会社"));
+        assert!(is_all_hiragana("ざる"));
+        assert!(!is_all_hiragana("ザル"));
     }
 }

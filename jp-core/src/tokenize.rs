@@ -105,6 +105,11 @@ pub struct SudachiTokenizer {
     /// Master headwords the dictionary calls conjugatable lemmas. Empty means
     /// the question cannot be asked, and the structural rule stands alone.
     conjugatable: HashSet<String>,
+    /// Katakana headwords the master reads in hiragana — a Japanese word it
+    /// spells in katakana (ザル, マジ), as against a loanword (モノ, read モノ).
+    /// See the alphabet rung in
+    /// [`identity_ladder`](SudachiTokenizer::identity_ladder).
+    katakana_native: HashSet<String>,
     /// Readings of headwords re-tokenized standalone, for the ladder's last
     /// repair step. It fires rarely, but on words that recur forever.
     rederived: Mutex<HashMap<String, String>>,
@@ -134,6 +139,7 @@ impl SudachiTokenizer {
             frequency_any_reading: HashMap::new(),
             preferred: HashMap::new(),
             conjugatable: HashSet::new(),
+            katakana_native: HashSet::new(),
             rederived: Mutex::new(HashMap::new()),
         })
     }
@@ -160,6 +166,11 @@ impl SudachiTokenizer {
         for (term, reading) in entries {
             if reading.is_empty() {
                 continue;
+            }
+            if crate::text::kana::is_all_katakana(term)
+                && crate::text::kana::is_all_hiragana(reading)
+            {
+                self.katakana_native.insert(term.clone());
             }
             let reading = crate::text::kana::to_hiragana(reading);
             self.pairs.insert((term.clone(), reading.clone()));
@@ -845,6 +856,26 @@ impl SudachiTokenizer {
         // word anyone read.
         let mora_of_kana = crate::text::kana::is_all_kana(&surface)
             && is_one_mora(&crate::text::kana::to_hiragana(&surface));
+        // **The kana alphabet is part of the spelling.** Sudachi normalises ザル
+        // onto ざる, and the master lists those as two words: ザル is the
+        // colander, ざる the classical negative. マジ/まじ is the same pair, 32
+        // tokens of it, and both were reading as the auxiliary.
+        //
+        // Only where the master reads the katakana headword in hiragana. A
+        // katakana entry read in katakana is a loanword — モノ is monochrome —
+        // and a line writing モノ for 物 means the fold, not the entry.
+        //
+        // Only where the normalisation *is* the alphabet swap: サクラ → 桜 is
+        // orthography, one word, and still folds.
+        let alphabet_swap = m.normalized_form() != surface
+            && crate::text::kana::to_hiragana(m.normalized_form())
+                == crate::text::kana::to_hiragana(&surface);
+        if alphabet_swap
+            && surface == *m.dictionary_form()
+            && self.katakana_native.contains(&surface)
+        {
+            candidates.push((surface.clone(), m.reading_form().to_string()));
+        }
         candidates.push(sudachi());
         // The normalised spelling with *its own* reading, where the lemma's is
         // not the same word's. Sudachi normalises 信じ to 信じる but reads it off

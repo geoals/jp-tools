@@ -463,6 +463,28 @@ fn a_normalisation_that_changes_the_sound_is_not_followed() {
     }
 }
 
+/// The kana alphabet is part of the spelling. Sudachi normalises ザル onto ざる
+/// and マジ onto まじ, and the master lists each pair as two words: the colander
+/// against the classical negative, the slang against the classical negative
+/// again. Only the fold that is nothing *but* the alphabet is refused — サクラ
+/// still normalises onto 桜 — and only where the master reads the katakana
+/// headword in hiragana, since a katakana entry read in katakana is a loanword
+/// (モノ is monochrome) and a line writing モノ means 物.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_katakana_word_is_not_folded_onto_its_hiragana_homophone() {
+    let (tk, _) = setup();
+    for (text, surface, term, reading) in [
+        ("ザルで水を切る", "ザル", "ザル", "ざる"),
+        ("マジで言っている", "マジ", "マジ", "まじ"),
+        ("サクラが咲いた", "サクラ", "桜", "さくら"),
+        ("モノは言いよう", "モノ", "もの", "もの"),
+    ] {
+        let tokens = tokens_of(&tk, text);
+        assert_eq!(identity_of(&tokens, surface), pair(term, reading), "{text}");
+    }
+}
+
 /// A bound kanji is a different word that shares the spelling, and it is read
 /// the other way *because* it is bound. The popularity dictionary scored the
 /// free-standing word, so the reading correction has no business here: 数名 is
