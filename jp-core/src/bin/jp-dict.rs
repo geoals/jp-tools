@@ -1,0 +1,285 @@
+//! Dictionary management for the shared `knowledge.db`.
+//!
+//! Importing a Yomitan zip is cache warming, not a service's job: the result is
+//! shared state that yt-mine, manga-mine and read-stats all read. Owned by any
+//! one of them it becomes an ordering dependency between tools that are
+//! otherwise independent — which is how adding a dictionary for the VN overlay
+//! came to require booting yt-mine.
+//!
+//! So the services only open what is already cached (`Dictionary::load_cached`)
+//! and this is the only thing that parses a zip.
+//!
+//!     jp-dict sync                 import every new zip in the dictionaries dir
+//!     jp-dict import <zip>...      import named zips
+//!     jp-dict list                 what is cached, and what each is for
+//!     jp-dict set-role <id> <role> master | name | reference
+
+use std::path::{Path, PathBuf};
+
+use jp_core::dictionary::Dictionary;
+use jp_core::knowledge::Knowledge;
+use jp_core::knowledge::dictionaries::{self as db, DEFAULT_MASTER, Role};
+
+const USAGE: &str = "\
+jp-dict — manage the dictionaries in knowledge.db
+
+usage:
+  jp-dict sync                    import every zip in the dictionaries directory
+  jp-dict import <zip>...         import the named zips
+  jp-dict list                    list cached dictionaries and their roles
+  jp-dict set-role <id> <role>    role is master, name or reference
+
+options:
+  --dir <path>   dictionaries directory (default: $JP_TOOLS_DICTIONARY_DIR,
+                 else <repo>/dictionaries)
+  --db <path>    knowledge.db (default: $JP_TOOLS_KNOWLEDGE_DB_PATH,
+                 else ~/.local/share/jp-tools/knowledge.db)
+";
+
+fn main() -> std::process::ExitCode {
+    // A single-threaded runtime: this is a batch job that awaits one SQLite
+    // write at a time, and the default multi-thread pool buys it nothing.
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("failed to build the async runtime");
+
+    match rt.block_on(run()) {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("jp-dict: {e}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+async fn run() -> Result<(), String> {
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    let dir = take_option(&mut args, "--dir");
+    let db_path = take_option(&mut args, "--db");
+
+    let (command, rest) = args
+        .split_first()
+        .ok_or_else(|| format!("no command given\n\n{USAGE}"))?;
+
+    let knowledge = Knowledge::open(&resolve_db_path(db_path))
+        .await
+        .map_err(|e| format!("cannot open knowledge.db: {e}"))?;
+    let pool = knowledge.pool();
+
+    match command.as_str() {
+        "sync" => {
+            let dir = resolve_dictionary_dir(dir);
+            let zips = zips_in(&dir)?;
+            if zips.is_empty() {
+                println!("no .zip dictionaries in {}", dir.display());
+                return Ok(());
+            }
+            import_all(pool, &zips).await?;
+            ensure_master(pool).await?;
+            list(pool).await
+        }
+        "import" => {
+            if rest.is_empty() {
+                return Err(format!("import needs at least one zip\n\n{USAGE}"));
+            }
+            let zips: Vec<PathBuf> = rest.iter().map(PathBuf::from).collect();
+            for zip in &zips {
+                if !zip.exists() {
+                    return Err(format!("no such file: {}", zip.display()));
+                }
+            }
+            import_all(pool, &zips).await?;
+            ensure_master(pool).await?;
+            list(pool).await
+        }
+        "list" => list(pool).await,
+        "set-role" => {
+            let [id, role] = rest else {
+                return Err(format!("set-role needs an id and a role\n\n{USAGE}"));
+            };
+            let id: i64 = id.parse().map_err(|_| format!("not an id: {id}"))?;
+            // `Role::parse` treats anything unknown as `reference`, which would
+            // silently demote a dictionary on a typo.
+            let parsed = match role.as_str() {
+                "master" => Role::Master,
+                "name" => Role::Name,
+                "reference" => Role::Reference,
+                other => return Err(format!("unknown role: {other} (master, name, reference)")),
+            };
+            let cached = db::list_dictionaries(pool)
+                .await
+                .map_err(|e| format!("cannot read the dictionary list: {e}"))?;
+            let target = cached
+                .iter()
+                .find(|d| d.id == id)
+                .ok_or_else(|| format!("no cached dictionary with id {id}"))?;
+            // Exactly one master, so promoting one demotes the incumbent.
+            if parsed == Role::Master {
+                for other in cached
+                    .iter()
+                    .filter(|d| d.role == Role::Master && d.id != id)
+                {
+                    db::set_role(pool, other.id, Role::Reference)
+                        .await
+                        .map_err(|e| format!("cannot demote {}: {e}", other.title))?;
+                    println!("{} is now reference", other.title);
+                }
+            }
+            db::set_role(pool, id, parsed)
+                .await
+                .map_err(|e| format!("cannot set the role: {e}"))?;
+            println!("{} is now {}", target.title, parsed.as_str());
+            Ok(())
+        }
+        "help" | "--help" | "-h" => {
+            println!("{USAGE}");
+            Ok(())
+        }
+        other => Err(format!("unknown command: {other}\n\n{USAGE}")),
+    }
+}
+
+/// Import every zip that is not cached yet, and repoint any whose file has
+/// moved. Both are keyed on `source_path`, which is the cache key.
+async fn import_all(pool: &sqlx::SqlitePool, zips: &[PathBuf]) -> Result<(), String> {
+    let cached = db::list_dictionaries(pool)
+        .await
+        .map_err(|e| format!("cannot read the dictionary list: {e}"))?;
+
+    for zip in zips {
+        let path = zip
+            .canonicalize()
+            .map_err(|e| format!("cannot resolve {}: {e}", zip.display()))?;
+        let path_str = path.to_string_lossy().to_string();
+
+        // A zip cached under a different path — historically a bare relative
+        // filename, resolved against whichever service's working directory
+        // imported it. Repoint rather than re-import: same dictionary, and
+        // re-importing would cost a 400k-row pass and leave a duplicate row.
+        if !cached.iter().any(|d| d.source_path == path_str) {
+            let name = path.file_name().map(|n| n.to_string_lossy().to_string());
+            if let Some(moved) = name.and_then(|n| {
+                cached.iter().find(|d| {
+                    Path::new(&d.source_path)
+                        .file_name()
+                        .is_some_and(|f| f == n.as_str())
+                })
+            }) {
+                db::set_source_path(pool, moved.id, &path_str)
+                    .await
+                    .map_err(|e| format!("cannot repoint {}: {e}", moved.title))?;
+                println!("{}  repointed to {}", moved.title, path.display());
+                continue;
+            }
+        }
+
+        match Dictionary::load_or_import(pool, &path).await {
+            // Both the cached and freshly-imported cases log through `tracing`,
+            // which is not initialised here; say what happened either way.
+            Ok(dict) => println!("{}  ok", dict.title()),
+            Err(e) => return Err(format!("cannot import {}: {e}", path.display())),
+        }
+    }
+    Ok(())
+}
+
+/// Mark the master unless one is already set. Not forced on every run: the
+/// role is a decision, and `set-role` is how it gets changed — re-asserting the
+/// default here would silently undo it.
+async fn ensure_master(pool: &sqlx::SqlitePool) -> Result<(), String> {
+    let existing = db::master(pool)
+        .await
+        .map_err(|e| format!("cannot read the master dictionary: {e}"))?;
+    if let Some(master) = existing {
+        println!("master: {}", master.title);
+        return Ok(());
+    }
+    let marker =
+        std::env::var("JP_TOOLS_MASTER_DICTIONARY").unwrap_or_else(|_| DEFAULT_MASTER.to_string());
+    match db::ensure_master(pool, &marker).await {
+        Ok(Some(_)) => println!("master: {marker}"),
+        Ok(None) => eprintln!(
+            "warning: no master dictionary — {marker} is not cached. \
+             The vocabulary count will read zero until one is set."
+        ),
+        Err(e) => return Err(format!("cannot set the master dictionary: {e}")),
+    }
+    Ok(())
+}
+
+async fn list(pool: &sqlx::SqlitePool) -> Result<(), String> {
+    let cached = db::list_dictionaries(pool)
+        .await
+        .map_err(|e| format!("cannot read the dictionary list: {e}"))?;
+    if cached.is_empty() {
+        println!("no dictionaries cached — run: jp-dict sync");
+        return Ok(());
+    }
+    // Role before title: a CJK title is double-width, so padding it into a
+    // column by character count misaligns everything after it.
+    for d in &cached {
+        let missing = if Path::new(&d.source_path).exists() {
+            ""
+        } else {
+            "  (zip missing)"
+        };
+        println!(
+            "{:>3}  {:<9}  {}{}",
+            d.id,
+            d.role.as_str(),
+            d.title,
+            missing
+        );
+    }
+    Ok(())
+}
+
+fn zips_in(dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let entries = std::fs::read_dir(dir).map_err(|e| {
+        format!(
+            "cannot read the dictionaries directory {}: {e}",
+            dir.display()
+        )
+    })?;
+    let mut zips: Vec<PathBuf> = entries
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip")))
+        .collect();
+    zips.sort();
+    Ok(zips)
+}
+
+/// `--dir`, else `JP_TOOLS_DICTIONARY_DIR`, else `dictionaries/` beside the
+/// workspace this binary was built from.
+fn resolve_dictionary_dir(flag: Option<String>) -> PathBuf {
+    if let Some(dir) = flag {
+        return PathBuf::from(dir);
+    }
+    if let Ok(dir) = std::env::var("JP_TOOLS_DICTIONARY_DIR") {
+        return PathBuf::from(dir);
+    }
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("jp-core always has a workspace parent")
+        .join("dictionaries")
+}
+
+fn resolve_db_path(flag: Option<String>) -> String {
+    flag.or_else(|| std::env::var("JP_TOOLS_KNOWLEDGE_DB_PATH").ok())
+        .unwrap_or_else(|| {
+            let home = std::env::var("HOME").expect("HOME not set");
+            format!("{home}/.local/share/jp-tools/knowledge.db")
+        })
+}
+
+fn take_option(args: &mut Vec<String>, name: &str) -> Option<String> {
+    let at = args.iter().position(|a| a == name)?;
+    if at + 1 >= args.len() {
+        return None;
+    }
+    let value = args.remove(at + 1);
+    args.remove(at);
+    Some(value)
+}

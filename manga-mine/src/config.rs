@@ -18,11 +18,6 @@ pub struct Config {
     /// jp-core's shared knowledge database: the dictionary cache and the
     /// reading record. Separate from this app's own DB.
     pub knowledge_db_path: String,
-    /// Which loaded dictionary defines the vocabulary scale. Matched against
-    /// the end of a dictionary's source path, or its exact title.
-    pub master_dictionary: String,
-    /// Paths to Yomitan dictionary zip files.
-    pub dictionary_paths: Vec<String>,
     pub anki: AnkiConfig,
     /// When true, use fake implementations of external tools (OCR service,
     /// AnkiConnect, Sudachi) so the server runs without any dependencies.
@@ -55,13 +50,10 @@ impl Config {
                 let home = env::var("HOME").expect("HOME not set");
                 format!("{home}/.local/share/jp-tools/knowledge.db")
             }),
-            master_dictionary: env::var("JP_TOOLS_MASTER_DICTIONARY")
-                .unwrap_or_else(|_| jp_core::knowledge::dictionaries::DEFAULT_MASTER.to_string()),
             db_path: env::var("JP_TOOLS_DB_PATH").unwrap_or_else(|_| {
                 let home = env::var("HOME").expect("HOME not set");
                 format!("{home}/.local/share/jp-tools/yt-mine.db")
             }),
-            dictionary_paths: parse_dictionary_paths(),
             fake_api: matches!(env::var("JP_TOOLS_FAKE_API").as_deref(), Ok("true" | "1"),),
             ocr_service_url: env::var("JP_TOOLS_OCR_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:8200".into()),
@@ -90,19 +82,4 @@ impl Config {
     pub fn database_url(&self) -> String {
         format!("sqlite://{}?mode=rwc", self.db_path)
     }
-}
-
-/// Parse dictionary paths from environment (comma-separated).
-fn parse_dictionary_paths() -> Vec<String> {
-    if let Ok(paths) = env::var("JP_TOOLS_DICTIONARY_PATHS") {
-        return paths
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-    }
-    env::var("JP_TOOLS_DICTIONARY_PATH")
-        .ok()
-        .into_iter()
-        .collect()
 }

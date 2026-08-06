@@ -24,8 +24,7 @@ jp-core tokenization → target word tap → dictionary lookup → Anki export (
   `<inbox>/.sources.json`, most-recent-first; `GET /api/sources` serves them
   and the UI preselects the latest.
 - The dictionary cache lives in the shared `knowledge.db`
-  (`JP_TOOLS_KNOWLEDGE_DB_PATH`); manga-mine only reads/imports dictionaries
-  there.
+  (`JP_TOOLS_KNOWLEDGE_DB_PATH`); manga-mine only *reads* it. `jp-dict` imports.
 
 ## Key design decisions
 

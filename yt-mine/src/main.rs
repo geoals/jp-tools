@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tracing::{info, warn};
+use tracing::info;
 
 use jp_core::dictionary::Dictionary;
 use jp_core::tokenize::{SudachiTokenizer, Tokenizer};
@@ -54,26 +54,23 @@ async fn main() {
         .expect("failed to open knowledge database");
     info!(path = %config.knowledge_db_path, "knowledge database ready");
 
-    let mut dictionaries: Vec<Arc<Dictionary>> = Vec::new();
-    for path in &config.dictionary_paths {
-        info!(path, "loading dictionary");
-        let dict = Dictionary::load_or_import(knowledge.pool(), std::path::Path::new(path))
-            .await
-            .expect("failed to load dictionary");
-        dictionaries.push(Arc::new(dict));
-    }
-    match jp_core::knowledge::dictionaries::ensure_master(
-        knowledge.pool(),
-        &config.master_dictionary,
-    )
-    .await
-    {
-        Ok(Some(id)) => info!(id, marker = %config.master_dictionary, "master dictionary set"),
-        Ok(None) => info!(marker = %config.master_dictionary, "no master dictionary loaded"),
-        Err(e) => warn!(error = %e, "could not mark the master dictionary"),
-    }
+    // Cached only — importing a zip belongs to `jp-dict`, not to a service.
+    // Owned here, it made yt-mine a prerequisite of every other tool: a
+    // dictionary added for the VN overlay stayed invisible until yt-mine
+    // happened to boot.
+    let dictionaries: Vec<Arc<Dictionary>> = Dictionary::load_cached(knowledge.pool())
+        .await
+        .expect("failed to load dictionaries")
+        .into_iter()
+        .map(Arc::new)
+        .collect();
     if dictionaries.is_empty() {
-        info!("no dictionaries configured (set JP_TOOLS_DICTIONARY_PATHS to enable definitions)");
+        info!("no dictionaries cached (run `jp-dict sync` to enable definitions)");
+    } else {
+        info!(
+            count = dictionaries.len(),
+            "dictionaries ready (cached in db)"
+        );
     }
 
     let headwords = jp_core::knowledge::dictionaries::get_all_headwords(knowledge.pool())

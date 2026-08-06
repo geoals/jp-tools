@@ -8,17 +8,11 @@ pub struct Config {
     /// jp-core's shared knowledge database: the dictionary cache and the
     /// reading record. Separate from this app's own DB.
     pub knowledge_db_path: String,
-    /// Which loaded dictionary defines the vocabulary scale. Matched against
-    /// the end of a dictionary's source path, or its exact title.
-    pub master_dictionary: String,
     pub audio_dir: String,
     pub listen_addr: String,
     pub anki_url: String,
     /// Directory for temporary media files (screenshots, audio clips).
     pub media_dir: String,
-    /// Paths to Yomitan dictionary zip files. If empty, VocabDef will be
-    /// left empty on exported Anki cards.
-    pub dictionary_paths: Vec<String>,
     pub anki: AnkiConfig,
     /// When true, use fake implementations of external tools (yt-dlp, whisper,
     /// ffmpeg, AnkiConnect) so the server can run without any dependencies.
@@ -42,8 +36,6 @@ impl Config {
                 let home = env::var("HOME").expect("HOME not set");
                 format!("{home}/.local/share/jp-tools/knowledge.db")
             }),
-            master_dictionary: env::var("JP_TOOLS_MASTER_DICTIONARY")
-                .unwrap_or_else(|_| jp_core::knowledge::dictionaries::DEFAULT_MASTER.to_string()),
             db_path: env::var("JP_TOOLS_DB_PATH").unwrap_or_else(|_| {
                 let home = env::var("HOME").expect("HOME not set");
                 format!("{home}/.local/share/jp-tools/yt-mine.db")
@@ -53,7 +45,6 @@ impl Config {
             anki_url: env::var("JP_TOOLS_ANKI_URL")
                 .unwrap_or_else(|_| "http://localhost:8765".into()),
             media_dir: env::var("JP_TOOLS_MEDIA_DIR").unwrap_or_else(|_| "media".into()),
-            dictionary_paths: parse_dictionary_paths(),
             fake_api: matches!(env::var("JP_TOOLS_FAKE_API").as_deref(), Ok("true" | "1"),),
             anthropic_api_key: env::var("JP_TOOLS_ANTHROPIC_API_KEY").ok(),
             llm_model: env::var("JP_TOOLS_LLM_MODEL").unwrap_or_else(|_| "claude-haiku-4-5".into()),
@@ -72,22 +63,4 @@ impl Config {
     pub fn database_url(&self) -> String {
         format!("sqlite://{}?mode=rwc", self.db_path)
     }
-}
-
-/// Parse dictionary paths from environment.
-/// Supports `JP_TOOLS_DICTIONARY_PATHS` (comma-separated) with fallback
-/// to `JP_TOOLS_DICTIONARY_PATH` (single path) for backward compatibility.
-fn parse_dictionary_paths() -> Vec<String> {
-    if let Ok(paths) = env::var("JP_TOOLS_DICTIONARY_PATHS") {
-        return paths
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-    }
-    // Backward compat: single path
-    env::var("JP_TOOLS_DICTIONARY_PATH")
-        .ok()
-        .into_iter()
-        .collect()
 }

@@ -697,6 +697,25 @@ pub async fn list_dictionaries(pool: &SqlitePool) -> Result<Vec<Dictionary>, sql
         .collect())
 }
 
+/// Repoint a cached dictionary at the zip it now lives in.
+///
+/// `source_path` is the cache key, so moving a zip would otherwise re-import it
+/// from scratch — 400k entries — and leave the old row behind as a duplicate.
+/// `backfill_sequences` also resolves the zip through this column, and skips a
+/// dictionary whose path no longer exists.
+pub async fn set_source_path(
+    pool: &SqlitePool,
+    id: i64,
+    source_path: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE dictionaries SET source_path = ? WHERE id = ?")
+        .bind(source_path)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 pub async fn set_role(pool: &SqlitePool, id: i64, role: Role) -> Result<(), sqlx::Error> {
     sqlx::query("UPDATE dictionaries SET role = ? WHERE id = ?")
         .bind(role.as_str())

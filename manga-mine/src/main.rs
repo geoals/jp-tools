@@ -42,23 +42,25 @@ async fn main() {
             Arc::new(FakeAnkiExporter),
         )
     } else {
-        // The dictionary cache lives in the shared knowledge database
-        // (imported by yt-mine, or on first run here).
+        // The dictionary cache lives in the shared knowledge database, and
+        // `jp-dict` is what fills it. Read here, never imported: a service that
+        // parses zips becomes a prerequisite of the other services.
         let knowledge = jp_core::knowledge::Knowledge::open(&config.knowledge_db_path)
             .await
             .expect("failed to open knowledge database");
 
-        let mut dictionaries: Vec<Arc<Dictionary>> = Vec::new();
-        for path in &config.dictionary_paths {
-            info!(path, "loading dictionary");
-            let dict = Dictionary::load_or_import(knowledge.pool(), std::path::Path::new(path))
-                .await
-                .expect("failed to load dictionary");
-            dictionaries.push(Arc::new(dict));
-        }
+        let dictionaries: Vec<Arc<Dictionary>> = Dictionary::load_cached(knowledge.pool())
+            .await
+            .expect("failed to load dictionaries")
+            .into_iter()
+            .map(Arc::new)
+            .collect();
         if dictionaries.is_empty() {
+            info!("no dictionaries cached (run `jp-dict sync` to enable definitions)");
+        } else {
             info!(
-                "no dictionaries configured (set JP_TOOLS_DICTIONARY_PATHS to enable definitions)"
+                count = dictionaries.len(),
+                "dictionaries ready (cached in db)"
             );
         }
 

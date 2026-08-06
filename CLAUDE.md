@@ -27,7 +27,10 @@ Cargo workspace for Japanese language learning tools.
 - `whisper-service/` — Python FastAPI transcription service for yt-mine
   (port 8100)
 - `scripts/start-all.sh` — start/stop/restart/status for the whole stack, or for
-  named services (`restart read-stats`); see `--help`
+  named services (`restart read-stats`); see `--help`. Runs `jp-dict sync`
+  before starting anything
+- `dictionaries/` — the Yomitan zips (gitignored). Dropping one in and
+  restarting the stack is how a dictionary is added
 - `scripts/dev-instance.sh` — run read-stats in isolation (copy of the data,
   port 3299) and diff its endpoints before/after a change. Use this instead of
   restarting the live one.
@@ -111,6 +114,18 @@ The normalization is deliberately conservative: a spelling that does not
 tokenize to exactly one token is left alone, because a card can hold a phrase
 (心おきなく, 見よう見まね) and the base form of its first fragment is not that
 word.
+
+**Importing a dictionary zip belongs to `jp-dict`, never to a service.** Parsing
+a zip into `knowledge.db` is cache warming: the result is shared state all three
+tools read. Owned by one of them it becomes an ordering dependency between tools
+that are otherwise independent — yt-mine held it, so a dictionary added for the
+VN overlay stayed invisible until yt-mine happened to boot. The services call
+`Dictionary::load_cached` and open what is already there; `jp-core`'s `jp-dict`
+binary (`sync`, `import`, `list`, `set-role`) is the only thing that reads a zip,
+and `start-all.sh` runs `jp-dict sync` before starting them.
+
+`source_path` is the cache key, so a moved zip is *repointed* rather than
+re-imported — re-importing costs a 400k-row pass and leaves a duplicate row.
 
 Three jobs need the dictionaries, and they apply *different* thresholds, which is
 why `dictionaries.role` exists (`master` / `name` / `reference`) and why the

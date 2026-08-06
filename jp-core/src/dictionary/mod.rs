@@ -700,6 +700,26 @@ impl Dictionary {
         Ok(total)
     }
 
+    /// Open every dictionary already cached in the database, master first.
+    ///
+    /// This is what a service uses: it never parses a zip, so it cannot be the
+    /// thing that makes a new dictionary appear. `jp-dict` owns importing.
+    ///
+    /// Master first because the lookup order is a priority order — the first
+    /// dictionary holding a reading, pitch or frequency for a term is the one
+    /// that answers. Ordering by row id would make that priority an accident of
+    /// which zip was imported first.
+    pub async fn load_cached(pool: &sqlx::SqlitePool) -> Result<Vec<Self>, DictionaryError> {
+        use crate::knowledge::dictionaries::{self as db, Role};
+
+        let mut rows = db::list_dictionaries(pool).await?;
+        rows.sort_by_key(|d| (d.role != Role::Master, d.id));
+        Ok(rows
+            .into_iter()
+            .map(|d| Self::from_sqlite(pool.clone(), d.id, d.title))
+            .collect())
+    }
+
     /// Load a dictionary from the SQLite cache, or import from the zip file if not cached.
     /// On first load the zip is parsed and entries are stored in the database.
     /// Subsequent loads return a lazy SQLite-backed handle — no data is loaded into memory.
