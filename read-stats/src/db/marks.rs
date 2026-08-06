@@ -1,14 +1,17 @@
 //! `reader_marks` — deliberate actions taken on the #read page.
 //!
 //! Presence evidence only. Tapping explain, mine or clear proves the reader was
-//! at the keyboard at that instant, which is exactly what
+//! at the keyboard at that instant — and so does a retracted lookup, which
+//! leaves one of these behind in place of the row it deleted
+//! ([`crate::db::retract_lookup`]) — which is exactly what
 //! [`crate::stats::Presence`] needs to credit the surrounding gap — but unlike
 //! a lookup it says nothing about a word, so these rows are kept out of every
 //! word metric on purpose and can't inflate the lookup count.
 
 use sqlx::{Row, SqlitePool};
 
-/// Record a presence mark from a #read action (explain / mine / clear). Best-
+/// Record a presence mark from a #read action (explain / mine / clear / a
+/// judgement that retracted its lookup). Best-
 /// effort: the caller logs and swallows any error, since a missed mark only
 /// costs a little presence credit and must never fail the action itself.
 pub async fn insert_reader_mark(pool: &SqlitePool, ts: f64, kind: &str) -> Result<(), sqlx::Error> {

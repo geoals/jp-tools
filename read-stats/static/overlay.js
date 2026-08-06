@@ -21,6 +21,13 @@ const params = new URLSearchParams(location.search);
 const root = document.documentElement.style;
 root.setProperty("--backdrop", `rgba(0, 0, 0, ${params.get("bg") ?? "0.55"})`);
 root.setProperty("--strip", `${params.get("h") ?? "300"}px`);
+const scale = params.get("scale") ?? "1";
+root.setProperty("--scale", scale);
+// `mobile=1` — the overlay read off a phone. The line is not being fitted over
+// the game's own text any more, so it sits on the bottom edge instead; see
+// #box's rules.
+const mobile = params.get("mobile") === "1";
+if (mobile) document.documentElement.dataset.mobile = "";
 // Only the line, never the popup: the popup is a dictionary, and reading it in
 // a display face the game text is being tried in makes both harder to judge.
 const font = params.get("font");
@@ -37,6 +44,10 @@ let shell = null;
 // The open popup's mined badge, hidden until a card for the word is known to
 // exist. Held here so a mine can raise it on a popup already on screen.
 let minedBadge = null;
+// The lookup row the open popup was recorded as, so marking the word known can
+// take it back. Cleared with the popup: a retraction is only ever the popup
+// that made the row undoing itself.
+let openLookup = null;
 // Set by `render` while the open popup has more than one dictionary in it, so
 // the wheel can page it without reaching into the arrows.
 let stepSource = null;
@@ -158,7 +169,9 @@ lineEl.addEventListener(
 // layer-shell, anchored to all four screen edges, and has no position to set.
 // The input region follows because it is measured off the box.
 const boxEl = document.getElementById("box");
-const PLACE = "vn-overlay-offset";
+// Per layout: the two start from different places in the strip, so one stored
+// drag would carry the mobile line off the bottom edge it is pinned to.
+const PLACE = `vn-overlay-offset${mobile ? "-mobile" : ""}`;
 let drag = null;
 let offset = { x: 0, y: 0 };
 
@@ -222,6 +235,7 @@ function closePopup() {
   openWord = null;
   minedBadge = null;
   stepSource = null;
+  openLookup = null;
   report();
 }
 
@@ -250,6 +264,7 @@ async function show(word) {
   // A new line landed, or another word was clicked, while the fetch was out.
   if (openWord !== word) return;
 
+  openLookup = data.lookup_id ?? null;
   popupEl.replaceChildren(...render(data, word, reading));
   report();
 
@@ -309,10 +324,11 @@ async function judge(word, status) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) return;
+  if (!res.ok) return false;
   word.dataset.status = status;
   word.classList.remove("new", "seen", "unknown");
   if (status !== "known") word.classList.add(status);
+  return true;
 }
 
 /** A card, built and added the way Yomitan's own add is.
@@ -357,6 +373,7 @@ function render(data, word, reading) {
   minedBadge.title = "Open the card in Anki";
   minedBadge.hidden = true;
   head.append(minedBadge);
+  head.append(actions(word));
 
   const out = [head];
 
@@ -415,6 +432,54 @@ function render(data, word, reading) {
     out.push(el("div", "none", "Not in any dictionary"));
   }
 
+  return out;
+}
+
+/** The three side-button actions, as buttons in the popup head.
+ *
+ * They exist because not every way of reading this has side mouse buttons —
+ * driving the PC's mouse from a phone as a touchpad has none — and they cost
+ * what the side buttons were split off to avoid: opening the popup records a
+ * lookup. Marking a word known takes that row back (see `mark`), so the lookup
+ * count means the same thing however the word was judged. `judge` and `mine`
+ * are otherwise the same calls the side buttons make.
+ *
+ * One character each, on the frequency pills' own metrics: the popup is over a
+ * game, and everything in it costs line.
+ */
+function actions(word) {
+  const out = el("div", "acts");
+  const mark = async (status) => {
+    if (!(await judge(word, status))) return;
+    for (const b of out.children) b.classList.toggle("on", b.dataset.status === status);
+    // Known means the popup was opened to reach this button, not to read the
+    // definition, so the row it recorded goes. Only known: not knowing a word
+    // whose definition is on screen is exactly what a lookup is. Retracted by
+    // id rather than re-derived, and nulled after, so this can only ever undo
+    // the one row this popup made.
+    if (status !== "known" || openLookup === null) return;
+    const lookup_id = openLookup;
+    openLookup = null;
+    fetch("/api/reader/lookup/retract", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ lookup_id, term: word.dataset.term }),
+    }).catch(() => {});
+  };
+  for (const [label, status, title] of [
+    ["✓", "known", "Known"],
+    ["✗", "unknown", "Unknown"],
+  ]) {
+    const b = el("button", word.dataset.status === status ? "on" : "", label);
+    b.dataset.status = status;
+    b.title = title;
+    b.addEventListener("click", () => mark(status));
+    out.append(b);
+  }
+  const add = el("button", "", "＋");
+  add.title = "Mine";
+  add.addEventListener("click", () => mine(word));
+  out.append(add);
   return out;
 }
 

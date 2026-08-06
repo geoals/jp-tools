@@ -65,12 +65,19 @@ browser window loses to a fullscreen one. KWin puts a `zwlr_layer_shell_v1`
 overlay surface *above* fullscreen windows, so the line can sit on the game.
 
 ```sh
-python3 vn-mine/overlay/vn-overlay.py
+vn-mine/overlay/vn-overlay.sh                  # start, or restart what is up
+vn-mine/overlay/vn-overlay.sh --mobile         # 1.75x, read off a phone
+vn-mine/overlay/vn-overlay.sh stop|status|reload
 ```
 
 Needs PySide6, qt6-webengine and layer-shell-qt. The page is read-stats'
-`/static/overlay.html`, so CSS edits are a reload, not a restart.
+`/static/overlay.html`, served from disk, so an edit to it needs no restart —
+`vn-overlay.sh reload` (SIGHUP) redraws the view.
 
+- `vn-overlay.sh` — start it from anywhere, including over ssh: it fills in the
+  Wayland socket, the runtime dir and the Qt platform plugin a login shell
+  would have had, and `setsid` with closed stdio keeps it alive when that shell
+  goes. Starting stops whatever is already running, so there is only ever one.
 - `vn-overlay.py` — the shell: a layer surface, and the input region.
 - `Overlay.qml` — the surface itself, holding one `WebEngineView`.
 
@@ -84,7 +91,9 @@ aimed at the popup landing on the VN — which advances the line and closes the
 popup being aimed at. `qwebchannel.js` is injected from Qt's own resources, so
 read-stats serves nothing for it.
 `SIGUSR1` (`pkill -USR1 -f vn-overlay.py`) makes the whole surface take input,
-for selecting text rather than advancing.
+for selecting text rather than advancing. `SIGHUP` reloads the page.
+`vn-overlay.py` runs perfectly well by hand; the wrapper only handles being
+started from somewhere without a desktop session attached.
 
 Three actions on a word, and only one of them opens the popup:
 
@@ -97,8 +106,23 @@ Three actions on a word, and only one of them opens the popup:
 
 Opening the popup *is* the lookup, so it is the only thing that counts as one.
 Reaching a button through the popup meant judging a word already understood
-recorded a lookup that never happened, which is why the buttons are gone from
-it. Judging repaints the word; mining reports with the chime and nothing else.
+recorded a lookup that never happened, which is why the side buttons carry those
+two. Judging repaints the word; mining reports with the chime and nothing else.
+
+The popup head carries the same three actions as small ✓ / ✗ / ＋ buttons, sized
+and bordered like the frequency pills beside them — not every way of reading
+this has side mouse buttons, and driving the PC's mouse from a phone as a
+touchpad has none. Marking a word **known** there posts
+`/api/reader/lookup/retract`, which deletes the row that opening the popup
+recorded: the popup was opened to reach the button, not
+to read the definition. Only known retracts — not knowing a word whose
+definition is on screen is what a lookup *is*, and so is mining one. The client
+hands back the id `define` returned, so a retraction can only ever undo the one
+row that popup made. The side buttons still cost nothing at all and stay the
+way to judge a word without asking what it means.
+
+`--mobile` draws the overlay at 1.75x with the line on the bottom edge, for
+reading the screen off a phone.
 
 The popup carries a **mined** badge when the word is already a card, and
 clicking it opens that card in Anki. The check is Anki's own duplicate check,
@@ -129,8 +153,9 @@ Debug through Python, not the log. `VN_OVERLAY_DEBUG=1` prints the input region
 on every change.
 
 - `VN_OVERLAY_URL` — page to show (default read-stats' overlay page).
-- `VN_OVERLAY_HEIGHT` (default 300) — strip height, px. The text is positioned
-  against it, so changing it moves the line by the same amount.
+- `VN_OVERLAY_HEIGHT` (default 300, 525 under `--mobile`) — strip height, px. The
+  text is positioned against it, so changing it moves the line by the same
+  amount.
 - `VN_OVERLAY_BG` (default 0.75) — backdrop alpha. At 1 the game's own text is
   hidden, which is the only thing that makes the two agree: the VN's line
   breaks are inserted when it renders, so they are not in the hooked text and

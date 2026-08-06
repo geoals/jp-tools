@@ -73,6 +73,10 @@ pub struct Definition {
     /// to the asked-for reading when it lists it, since the accent is a
     /// property of the reading and 空/そら's is not 空/から's.
     pub pitch: Vec<Pitch>,
+    /// The lookup row this popup was recorded as, for the client to hand back
+    /// if the popup turns out not to have been a lookup — see [`retract`].
+    /// `None` when nothing was recorded (outside a reading session).
+    pub lookup_id: Option<i64>,
 }
 
 /// `GET /api/reader/define?term=<headword>&reading=<reading>`
@@ -158,7 +162,7 @@ pub async fn define(
     // AnkiConnect duplicate-check passing through the proxy to count.
     // `record` gates on a line having arrived recently and dedupes, so a
     // second click on the same word inside the window is one lookup.
-    crate::routes::ankiproxy::record(&state, &q.term).await;
+    let lookup_id = crate::routes::ankiproxy::record(&state, &q.term).await;
 
     Ok(Json(Definition {
         term: q.term.clone(),
@@ -166,5 +170,42 @@ pub async fn define(
         bccwj: rank_from(CORPUS_FREQUENCY).await,
         sources,
         pitch,
+        lookup_id,
     }))
+}
+
+#[derive(Deserialize)]
+pub struct RetractRequest {
+    /// From the [`Definition`] this popup was drawn from. Paired with the term
+    /// so a stale id cannot delete an unrelated row.
+    pub lookup_id: i64,
+    pub term: String,
+}
+
+/// `POST /api/reader/lookup/retract` — this popup was not a lookup after all.
+///
+/// The mobile overlay has to put the known/unknown buttons *in* the popup,
+/// because a finger has no side mouse buttons to carry them. Marking a word
+/// known there means the popup was opened to reach the button, not to read the
+/// definition, and the row recorded on open would otherwise say the reader did
+/// not know a word they just asserted they know — the one figure the lookup
+/// tax is measured from.
+///
+/// Only `known` retracts. Marking a word *unknown* after reading its
+/// definition is a lookup and stays one, and so does mining.
+///
+/// A lookup is also presence evidence, so the row is replaced by a reader mark
+/// at the same instant: the popup was not a lookup, but the reader was
+/// certainly at the screen when it opened.
+pub async fn retract(
+    State(state): State<AppState>,
+    Json(req): Json<RetractRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let ts = crate::db::retract_lookup(&state.knowledge, req.lookup_id, &req.term).await?;
+    if let Some(ts) = ts
+        && let Err(e) = crate::db::insert_reader_mark(&state.local, ts, "judge").await
+    {
+        tracing::warn!(error = %e, "retracted a lookup without leaving its presence mark");
+    }
+    Ok(Json(serde_json::json!({ "retracted": ts.is_some() })))
 }

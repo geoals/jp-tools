@@ -297,6 +297,20 @@ Mining:
   side buttons go nowhere near it. Reaching those two through the popup made
   every judgement look like a word that had to be looked up, which is the one
   number the lookup tax is measured from.
+- **The popup carries those actions as buttons too, and retracts what they
+  cost.** Not every way of reading the overlay has side mouse buttons — driving
+  the PC's mouse from a phone has none — so ✓ / ✗ / ＋ sit in the popup head as
+  well. Marking a word `known` there posts
+  `reader/define::retract` with the id `define` returned, which **deletes** that
+  row. Deleted and not flagged on purpose: every figure over `lookups` is
+  derived from the rows at query time, so a row that is gone is gone from all of
+  them, while a `retracted` column would keep counting in whichever reader
+  forgot to filter it. The id is paired with the term in the delete, so a stale
+  id cannot take out an unrelated row, and only `known` retracts — `unknown` and
+  a mine both mean the definition was read. **A lookup is presence evidence too,
+  so the delete leaves a `reader_marks` row at the lookup's own timestamp**:
+  the popup was not a lookup, but the reader was demonstrably at the screen, and
+  without the mark the surrounding gap would quietly stop counting as reading.
 - **`VocabDefFull` carries Yomitan's per-dictionary wrappers**, not just the
   glossary: the note type styles `.dict-<slug>-title` and `.dict-<slug>-body`,
   and `.dict-jitendex-body > div > ol > li` is what hides Jitendex's star and
@@ -335,7 +349,9 @@ Mining:
   to infer from the sentence; that is the accepted trade, and the reason the
   sentence keeps its bold markers.
 - **Note ids are epoch milliseconds**, so they double as card creation times.
-- **Only engagement actions leave `reader_marks`.** Explain does; clear does not.
+- **Only engagement actions leave `reader_marks`.** Explain does; clear does
+  not. A retracted lookup leaves one in place of the row it deleted, which is
+  the only writer that backdates a mark rather than stamping `now`.
 
 ## Working on it
 

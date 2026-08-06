@@ -1275,3 +1275,77 @@ async fn a_lookup_credits_the_ledger_key_not_the_spelling_it_was_made_under() {
         "the spelling Yomitan sent is not a second word"
     );
 }
+
+/// Marking a word known from the mobile popup takes back the lookup that
+/// opening the popup recorded — the popup was the only way to reach the button.
+///
+/// Deleted, not flagged: every figure is derived from these rows at query time,
+/// so the retracted lookup has to be absent rather than marked.
+#[tokio::test]
+async fn a_retracted_lookup_is_gone_from_the_table() {
+    let app = TestApp::new().await;
+    let id = read_stats::db::insert_lookup(&app.knowledge, 1000.0, "夥しい", None, 0.0)
+        .await
+        .unwrap()
+        .expect("a fresh lookup is its own row");
+
+    let (status, body) = app
+        .send(
+            "POST",
+            "/api/reader/lookup/retract",
+            serde_json::json!({ "lookup_id": id, "term": "違う" }),
+        )
+        .await;
+    assert_eq!(status, 200);
+    assert_eq!(body["retracted"], false, "the term guards the id");
+    assert_eq!(rows(&app).await, 1);
+
+    let (status, body) = app
+        .send(
+            "POST",
+            "/api/reader/lookup/retract",
+            serde_json::json!({ "lookup_id": id, "term": "夥しい" }),
+        )
+        .await;
+    assert_eq!(status, 200);
+    assert_eq!(body["retracted"], true);
+    assert_eq!(rows(&app).await, 0);
+    // A lookup is presence evidence as well as a lookup. Taking the row away
+    // must not take away the proof that the reader was at the screen.
+    assert_eq!(
+        read_stats::db::fetch_reader_marks(&app.local, 0.0, f64::MAX)
+            .await
+            .unwrap(),
+        vec![1000.0],
+        "the deleted lookup leaves its presence mark, at its own instant"
+    );
+
+    async fn rows(app: &TestApp) -> i64 {
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM lookups")
+            .fetch_one(app.knowledge.pool())
+            .await
+            .unwrap()
+    }
+}
+
+/// A second popup on the same word inside the dedupe window writes no row, and
+/// must still name the row it is accounted to — otherwise that popup's known
+/// mark has nothing to retract and the lookup survives.
+#[tokio::test]
+async fn a_deduped_lookup_names_the_row_it_folded_into() {
+    let app = TestApp::new().await;
+    let first = read_stats::db::insert_lookup(&app.knowledge, 1000.0, "所謂", None, 60.0)
+        .await
+        .unwrap();
+    let second = read_stats::db::insert_lookup(&app.knowledge, 1010.0, "所謂", None, 60.0)
+        .await
+        .unwrap();
+    assert_eq!(first, second);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM lookups")
+            .fetch_one(app.knowledge.pool())
+            .await
+            .unwrap(),
+        1
+    );
+}

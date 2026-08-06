@@ -336,7 +336,9 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_t
 /// The test is a line within `session_gap_secs`, the same threshold that ends a
 /// session everywhere else. It follows that a pause outlasting that gap stops
 /// lookups too, since no lines arrive while `capture_paused` is set.
-pub(crate) async fn record(state: &AppState, term: &str) {
+/// Returns the id of the row this lookup is accounted to, for the one caller
+/// that may have to take it back — see [`crate::routes::reader::define`].
+pub(crate) async fn record(state: &AppState, term: &str) -> Option<i64> {
     let settings = match db::load_settings(&state.local).await {
         Ok(s) => s,
         Err(e) => {
@@ -344,7 +346,7 @@ pub(crate) async fn record(state: &AppState, term: &str) {
             // to stamp. Dropping the lookup is the safe half of the trade: a
             // missed lookup understates a rate, a stray one corrupts a work.
             warn!(error = %e, term, "settings unavailable, not recording lookup");
-            return;
+            return None;
         }
     };
 
@@ -352,7 +354,7 @@ pub(crate) async fn record(state: &AppState, term: &str) {
         Ok(true) => {}
         Ok(false) => {
             debug!(term, "lookup outside a reading session, not recorded");
-            return;
+            return None;
         }
         // Counting lookups must never break mining, and it must not silently
         // drop them either: if the question cannot be asked, keep the row.
@@ -370,10 +372,15 @@ pub(crate) async fn record(state: &AppState, term: &str) {
     )
     .await
     {
-        Ok(true) => debug!(term, "lookup recorded"),
-        Ok(false) => debug!(term, "lookup deduped"),
+        Ok(id) => {
+            debug!(term, id = ?id, "lookup recorded");
+            id
+        }
         // Counting lookups must never break mining: log and forward anyway.
-        Err(e) => warn!(error = %e, term, "failed to record lookup"),
+        Err(e) => {
+            warn!(error = %e, term, "failed to record lookup");
+            None
+        }
     }
 }
 

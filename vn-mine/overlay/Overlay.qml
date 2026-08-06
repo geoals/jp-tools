@@ -43,6 +43,13 @@ Window {
         // PySide does not expose.
         webChannel: WebChannel { id: channel }
         Component.onCompleted: channel.registerObject("shell", overlay)
+
+        // SIGHUP. Bypasses the cache: the point of it is an edit to the page
+        // read-stats is serving from disk.
+        Connections {
+            target: overlay
+            function onReloadRequested() { view.reloadAndBypassCache() }
+        }
     }
 
     Shortcut {

@@ -19,6 +19,14 @@
     --backdrop: rgba(0, 0, 0, 0.55);
     --strip: 300px;
     --line-font: "Noto Sans CJK JP", "Noto Sans JP", sans-serif;
+    /* `?scale=` — everything below is in `rem` or in `em` under something that
+       is, so one root font-size takes the whole overlay with it. The few
+       viewport-relative lengths carry the factor themselves. */
+    --scale: 1;
+  }
+
+  html {
+    font-size: calc(16px * var(--scale));
   }
 
   html,
@@ -42,8 +50,10 @@
      keeps the first glyph exactly where it was measured to sit. */
   #box {
     position: absolute;
-    left: calc(22.7vw - 0.7rem);
-    right: 23vw;
+    /* The insets shrink as the type grows: a line drawn much larger than the
+       game's own would wrap inside a column sized for the game's. */
+    left: calc(22.7vw / var(--scale) - 0.7rem);
+    right: calc(23vw / var(--scale));
     bottom: 0;
     height: var(--strip);
     display: flex;
@@ -51,13 +61,24 @@
     box-sizing: border-box;
     padding: 4.23rem 0 0;
     font-family: var(--line-font);
-    font-size: clamp(1.35rem, 1.82vw, 2.25rem);
+    font-size: clamp(1.35rem, calc(1.82vw * var(--scale)), 2.25rem);
     line-height: 1.8;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
     /* Set by the drag — see moveBy(). The strip is a layer surface pinned to
        every screen edge, so repositioning it means moving the content inside
        the surface, not the window. */
     transform: translate(var(--dx, 0px), var(--dy, 0px));
+  }
+
+  /* Scaled up, the line is read off the screen rather than fitted over the
+     game's own text, so it goes to the bottom edge: nothing of the game is
+     worth covering less, and the popup gets the whole screen above it. */
+  html[data-mobile] #box {
+    left: 0;
+    right: 0;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
   }
 
   #line {
@@ -126,9 +147,9 @@
   #popup {
     position: absolute;
     bottom: var(--strip);
-    width: min(41.25rem, 57.5vw);
+    width: min(41.25rem, calc(57.5vw * var(--scale)));
     min-height: 8.75rem;
-    max-height: min(57.5vh, 575px);
+    max-height: min(57.5vh, calc(575px * var(--scale)));
     overflow-y: auto;
     box-sizing: border-box;
     padding: 0.875rem 1.06rem 1rem;
@@ -210,6 +231,34 @@
   }
   .mined:hover {
     background: rgba(94, 196, 94, 0.28);
+  }
+
+  /* Known, unknown, mine. One character each and the frequency pills' own
+     metrics — same border, radius, size and line box — so the head reads as one
+     row of badges rather than a toolbar bolted to it. */
+  .acts {
+    display: flex;
+    gap: 0.375rem;
+  }
+  .acts button {
+    padding: 0 0.5em;
+    border: 1px solid #3a4152;
+    border-radius: 0.3em;
+    background: #1b1f29;
+    color: #cbd5e1;
+    font: inherit;
+    font-size: 0.9rem;
+    line-height: 1.55;
+    cursor: pointer;
+  }
+  .acts button:hover {
+    background: #262c3a;
+  }
+  /* The status the word is on now. */
+  .acts button.on {
+    border-color: #3f6ea8;
+    background: #223247;
+    color: #cfe3ff;
   }
 
   /* Which dictionary is showing, and the way to the next one. */

@@ -27,14 +27,16 @@ use sqlx::Row;
 /// duplicate check per definition entry), and paging through a popup re-fires
 /// them; collapsing by term over a short window makes one popup one lookup.
 ///
-/// Returns whether a row was written.
+/// Returns the row this popup is accounted to — the one just written, or the
+/// one it deduped onto. That is what [`retract_lookup`] needs a name for, and
+/// both cases answer the same question: which row is this popup's lookup?
 pub async fn insert_lookup(
     k: &Knowledge,
     ts: f64,
     term: &str,
     work: Option<&str>,
     dedupe_secs: f64,
-) -> Result<bool, sqlx::Error> {
+) -> Result<Option<i64>, sqlx::Error> {
     let result = sqlx::query(
         "INSERT INTO lookups (ts, term, work)
          SELECT ?, ?, ?
@@ -49,7 +51,43 @@ pub async fn insert_lookup(
     .bind(ts - dedupe_secs)
     .execute(k.pool())
     .await?;
-    Ok(result.rows_affected() > 0)
+    if result.rows_affected() > 0 {
+        return Ok(Some(result.last_insert_rowid()));
+    }
+    let existing: Option<(i64,)> =
+        sqlx::query_as("SELECT id FROM lookups WHERE term = ? AND ts > ? ORDER BY ts DESC LIMIT 1")
+            .bind(term)
+            .bind(ts - dedupe_secs)
+            .fetch_optional(k.pool())
+            .await?;
+    Ok(existing.map(|r| r.0))
+}
+
+/// Delete one lookup by id, and only if it is still the lookup of that term.
+///
+/// Deleted rather than flagged. Every figure over this table is derived from
+/// its rows at query time — `sync_lookup_counts` recomputes `lookup_count`
+/// wholesale — so a row that is gone is gone everywhere, and no query has to
+/// remember to filter. A `retracted` column would silently keep counting in
+/// whichever of the dozen readers forgot it, which is exactly how `headword`
+/// cost four defects.
+///
+/// The term is in the predicate so a stale id cannot delete an unrelated row.
+///
+/// Returns the deleted row's timestamp, or `None` if nothing matched. The
+/// caller needs it: a lookup is also a *presence mark*, so deleting one takes
+/// away the evidence that the reader was at the screen at that moment, and the
+/// surrounding gap would stop being credited as reading. They were — they just
+/// pressed a button. The mark is put back through `reader_marks`, which carries
+/// presence and nothing about a word.
+pub async fn retract_lookup(k: &Knowledge, id: i64, term: &str) -> Result<Option<f64>, sqlx::Error> {
+    let row: Option<(f64,)> =
+        sqlx::query_as("DELETE FROM lookups WHERE id = ? AND term = ? RETURNING ts")
+            .bind(id)
+            .bind(term)
+            .fetch_optional(k.pool())
+            .await?;
+    Ok(row.map(|r| r.0))
 }
 
 /// Lookup timestamps in a window, oldest first.

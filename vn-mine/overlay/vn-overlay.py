@@ -22,12 +22,23 @@ select text rather than advance the VN. Bind it to a KDE shortcut:
 
     pkill -USR1 -f vn-overlay.py
 
+`SIGHUP` reloads the page, cache bypassed — the view has no keyboard reload and
+the page is edited on disk:
+
+    pkill -HUP -f vn-overlay.py
+
+`--mobile` is the overlay read off a phone: everything at 1.75x, the line on
+the bottom edge, and the popup carrying known / unknown / mine buttons, since
+driving the PC's mouse from the phone leaves no side buttons for them. The
+strip grows with the type; `VN_OVERLAY_HEIGHT` still wins if it is set.
+
     VN_OVERLAY_URL      page to show      (default read-stats' overlay page)
-    VN_OVERLAY_HEIGHT   strip height, px  (default 300)
+    VN_OVERLAY_HEIGHT   strip height, px  (default 300, 525 with --mobile)
     VN_OVERLAY_BG       backdrop alpha    (default 0.75)
     VN_OVERLAY_FONT     font for the line (default Noto Sans CJK JP)
 """
 
+import argparse
 import os
 import signal
 import sys
@@ -38,7 +49,7 @@ from urllib.parse import quote
 # QGuiApplication resolves the platform plugin.
 os.environ.setdefault("QT_WAYLAND_SHELL_INTEGRATION", "layer-shell")
 
-from PySide6.QtCore import QFile, QIODevice, QObject, QTimer, QUrl, Slot
+from PySide6.QtCore import QFile, QIODevice, QObject, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication, QRegion
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWebChannel import QWebChannel  # noqa: F401  registers the qrc below
@@ -50,6 +61,8 @@ DEFAULT_URL = "http://localhost:3200/static/overlay.html"
 
 class Overlay(QObject):
     """Owns which parts of the strip take clicks."""
+
+    reloadRequested = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -109,6 +122,70 @@ class Overlay(QObject):
         self._window.setProperty("interactive", self.interactive)
 
 
+class Surface:
+    """Keeps a layer surface on screen across output changes.
+
+    A layer surface belongs to an output. When that output goes away — which is
+    what Moonlight/Sunshine disconnecting does, it removes the virtual one KWin
+    added — the compositor closes the surface, and with it the process's only
+    window. Nothing errors and nothing is logged; Qt just runs out of windows.
+    So: don't quit on that, and build a new window instead. `Screen.width` is
+    read once per window, so a rebuild is also what picks up a mode change.
+    """
+
+    def __init__(self, app, overlay, qml, context) -> None:
+        self._app = app
+        self._overlay = overlay
+        self._qml = qml
+        self._context = context
+        self._engine = None
+        self._quitting = False
+        app.setQuitOnLastWindowClosed(False)
+        app.aboutToQuit.connect(self._stop)
+
+        # Output churn arrives as a burst of signals; rebuild once after it.
+        self._rebuild = QTimer()
+        self._rebuild.setSingleShot(True)
+        self._rebuild.setInterval(500)
+        self._rebuild.timeout.connect(self.build)
+        for signal_ in (app.screenAdded, app.screenRemoved, app.primaryScreenChanged):
+            signal_.connect(self._schedule)
+
+    def _stop(self) -> None:
+        self._quitting = True
+        self._rebuild.stop()
+
+    def _closed(self, window) -> None:
+        if window is self._engine.rootObjects()[0] and not window.isVisible():
+            self._schedule()
+
+    def _schedule(self, *_) -> None:
+        if not self._quitting:
+            self._rebuild.start()
+
+    def build(self) -> bool:
+        if self._quitting:
+            return True
+        old = self._engine
+        engine = QQmlApplicationEngine()
+        ctx = engine.rootContext()
+        for name, value in self._context.items():
+            ctx.setContextProperty(name, value)
+        engine.load(QUrl.fromLocalFile(self._qml))
+        if not engine.rootObjects():
+            self._engine = old
+            return False
+        self._engine = engine
+        window = engine.rootObjects()[0]
+        # The compositor closing the surface shows up here as the window going
+        # invisible, with no screen signal to go with it.
+        window.visibleChanged.connect(lambda *_: self._closed(window))
+        self._overlay.attach(window)
+        if old is not None:
+            old.deleteLater()
+        return True
+
+
 def inject_webchannel() -> None:
     """Put Qt's own `qwebchannel.js` in the page before it runs.
 
@@ -133,13 +210,20 @@ def main() -> int:
     # helper processes go with it.
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
-    QtWebEngineQuick.initialize()  # has to precede QGuiApplication
-    app = QGuiApplication(sys.argv)
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--mobile", action="store_true", help="1.75x, with touch buttons")
+    args, qt_args = ap.parse_known_args()
+    scale = 1.75 if args.mobile else 1
 
-    height = int(os.environ.get("VN_OVERLAY_HEIGHT", "300"))
+    QtWebEngineQuick.initialize()  # has to precede QGuiApplication
+    app = QGuiApplication([sys.argv[0], *qt_args])
+
+    height = int(os.environ.get("VN_OVERLAY_HEIGHT", 300 * scale))
     url = os.environ.get("VN_OVERLAY_URL", DEFAULT_URL)
     if url == DEFAULT_URL:
-        url += f"?bg={os.environ.get('VN_OVERLAY_BG', '0.75')}&h={height}"
+        url += f"?bg={os.environ.get('VN_OVERLAY_BG', '0.75')}&h={height}&scale={scale}"
+        if args.mobile:
+            url += "&mobile=1"
         font = os.environ.get("VN_OVERLAY_FONT")
         if font:
             url += f"&font={quote(font)}"
@@ -147,19 +231,18 @@ def main() -> int:
     inject_webchannel()
 
     overlay = Overlay()
-    engine = QQmlApplicationEngine()
-    ctx = engine.rootContext()
-    ctx.setContextProperty("overlay", overlay)
-    ctx.setContextProperty("overlayUrl", url)
-    ctx.setContextProperty("overlayHeight", height)
-
-    engine.load(QUrl.fromLocalFile(str(Path(__file__).resolve().parent / "Overlay.qml")))
-    if not engine.rootObjects():
+    surface = Surface(
+        app,
+        overlay,
+        str(Path(__file__).resolve().parent / "Overlay.qml"),
+        {"overlay": overlay, "overlayUrl": url, "overlayHeight": height},
+    )
+    if not surface.build():
         print("QML failed to load", file=sys.stderr)
         return 1
-    overlay.attach(engine.rootObjects()[0])
 
     signal.signal(signal.SIGUSR1, lambda *_: overlay.toggle())
+    signal.signal(signal.SIGHUP, lambda *_: overlay.reloadRequested.emit())
     # Python only runs a signal handler between bytecodes and Qt's event loop
     # is C, so nothing above would ever land without a tick that returns to the
     # interpreter. It has no other work.

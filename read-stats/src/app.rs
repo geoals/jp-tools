@@ -139,6 +139,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/lines/before", get(reader::lines::lines_before))
         .route("/api/reader/state", get(reader::state::reader_state))
         .route("/api/reader/define", get(reader::define::define))
+        .route(
+            "/api/reader/lookup/retract",
+            axum::routing::post(reader::define::retract),
+        )
         .route("/api/reader/mine", axum::routing::post(reader::mine::mine))
         .route("/api/reader/mined", get(reader::mined::mined))
         .route(
