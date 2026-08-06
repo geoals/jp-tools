@@ -73,7 +73,9 @@ async fn run() -> Result<(), String> {
         None => HashMap::new(),
     };
     let preferred = match (
-        dictionaries::master(pool).await.map_err(|e| e.to_string())?,
+        dictionaries::master(pool)
+            .await
+            .map_err(|e| e.to_string())?,
         dictionaries::by_title(pool, "Jitendex")
             .await
             .map_err(|e| e.to_string())?,
@@ -164,15 +166,17 @@ async fn run() -> Result<(), String> {
         rows.len(),
         lines.len()
     );
-    eprintln!(
-        "{new_to_master} of them the master does not list — the ones this rule would add",
-    );
+    eprintln!("{new_to_master} of them the master does not list — the ones this rule would add",);
 
     println!("count\tterm\tmaster\tdeinflected\tparts");
     for (term, n, deinflected, parts) in &rows {
         println!(
             "{n}\t{term}\t{}\t{}\t{parts}",
-            if lexicon.contains(term) { "master" } else { "-" },
+            if lexicon.contains(term) {
+                "master"
+            } else {
+                "-"
+            },
             if *deinflected { "deinflected" } else { "-" },
         );
     }
@@ -190,7 +194,8 @@ fn joinable(run: &[Token]) -> bool {
     for (i, t) in run.iter().enumerate() {
         let last = i + 1 == run.len();
         match t.pos.as_str() {
-            "助動詞" | "補助記号" | "記号" | "空白" | "接続詞" | "感動詞" | "フィラー" => {
+            "助動詞" | "補助記号" | "記号" | "空白" | "接続詞" | "感動詞" | "フィラー" =>
+            {
                 return false;
             }
             "助詞" => {
@@ -212,7 +217,10 @@ fn joinable(run: &[Token]) -> bool {
 
 /// The run as written, and again with its last token in canonical form.
 fn forms(run: &[Token]) -> Vec<(String, bool)> {
-    let head: String = run[..run.len() - 1].iter().map(|t| t.surface.as_str()).collect();
+    let head: String = run[..run.len() - 1]
+        .iter()
+        .map(|t| t.surface.as_str())
+        .collect();
     let last = &run[run.len() - 1];
     let written = format!("{head}{}", last.surface);
     let canonical = format!("{head}{}", last.base_form);

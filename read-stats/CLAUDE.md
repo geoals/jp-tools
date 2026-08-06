@@ -136,6 +136,17 @@ and a ledger row cannot disagree):
   place name, 医務室 because Sankoku lists it now. It destroyed words and
   produced fragments. An unlisted compound is a word the reader has not judged,
   and belongs in the ledger as one. Names are never rejoined.
+- **A rejoined expression is matched with its last word in dictionary form**, so
+  気になって and 気になる are one identity. Matching the surfaces alone could
+  only ever find the uninflected sentence, which is why 気になる, 声をかける,
+  口を開く and 158 more idioms Sankoku already lists sat split — 587 occurrences
+  over the corpus, and the dictionary was never the obstacle. Three fences hold
+  it, each one measured: the head may still not be a bound stem (続い + て must
+  not spell 続いて), the conjugated word must be a content word (a conjugated
+  auxiliary is the previous word's inflection — そう + な would spell そうだ),
+  and **the run must begin on a content word**. That last one is what keeps
+  と + し out of the listed とする; without it the quotative particle was
+  swallowed on eight lines of the golden corpus.
 - **A name is not vocabulary** — 固有名詞 keeps a work's cast out of the ledger.
   The verdict is per _term_ over a whole pass, never per occurrence.
 - **The name filter is the tokenizer's largest known error, and it needs a name

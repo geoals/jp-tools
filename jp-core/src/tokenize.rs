@@ -365,7 +365,9 @@ impl SudachiTokenizer {
     /// joined on either signal:
     ///
     /// - **spelling** — the parts as written spell a master headword
-    ///   (振り + 返る → 振り返る).
+    ///   (振り + 返る → 振り返る), the last of them in dictionary form, so an
+    ///   expression the sentence conjugated still matches: 気 + に + なっ is
+    ///   気になる.
     /// - **reading** — the parts read as one (しゃくり + あげる → 噦り上げる),
     ///   needed because the text writes in kana what the dictionary spells in
     ///   kanji.
@@ -447,9 +449,33 @@ impl SudachiTokenizer {
         let mut signal = "Spelling match: parts as written form a listed headword";
         let uninflected_run = run.iter().all(|t| !t.inflected);
         let mid_conjugation = before.is_some_and(|t| conjugation_continues(t, &run[0]));
+        // An expression the sentence conjugated: 気になって is 気になる, and no
+        // concatenation of the surfaces spells that. The run is matched by its
+        // *canonical* spelling instead — the head as written, the last word in
+        // dictionary form — which is the same string the spelling path uses.
+        //
+        // Three things keep this from reopening what `uninflected_run` closed.
+        // The stem rule still holds the head, so 続い + て cannot spell the
+        // conjunction 続いて. The conjugated word has to be a content word: a
+        // conjugated *auxiliary* is the previous word's inflection rather than
+        // a word of its own, which is what would otherwise turn そう + な into
+        // the hearsay そうだ. And **the run has to begin on a content word** —
+        // an expression is built around one, while a run that opens on a
+        // particle is a construction hanging off the word before it. Sankoku
+        // lists とする, so without that rule と + し swallowed the quotative
+        // particle in 走りだそうとする, 囚人として and six more lines of the
+        // golden corpus.
+        let conjugated_tail =
+            last.inflected && is_content_word(&last.pos) && is_content_word(&run[0].pos);
+        let expression = if conjugated_tail { &written } else { &surfaces };
+        let expression_shaped = if conjugated_tail {
+            head.iter().all(|t| !t.inflected)
+        } else {
+            uninflected_run
+        };
         let term = if spellable && self.lexicon.contains(&written) {
-            Some(written)
-        } else if uninflected_run && !mid_conjugation && self.lexicon.contains(&surfaces) {
+            Some(written.clone())
+        } else if expression_shaped && !mid_conjugation && self.lexicon.contains(expression) {
             // The expression join, and the one place function words are allowed
             // in: それどころか is a Sankoku headword whose parts are two
             // particles. What it produces must itself be a listed headword — the
@@ -473,8 +499,12 @@ impl SudachiTokenizer {
             // only looks free because the stem it hangs off sits outside it. An
             // expression never begins on the tail of the previous word's
             // inflection.
-            signal = "Expression match: surfaces form a listed headword";
-            Some(surfaces.clone())
+            signal = if conjugated_tail {
+                "Expression match: parts form a listed headword, its last word conjugated"
+            } else {
+                "Expression match: surfaces form a listed headword"
+            };
+            Some(expression.clone())
         } else if self.reading_join_admitted(run, head, content) {
             spelled = false;
             signal = "Phonetic match: combined component readings form a listed headword";
@@ -506,7 +536,7 @@ impl SudachiTokenizer {
             // not misses: the run *does* spell a headword and was turned down
             // anyway, which is the case that looks like a bug and so is the one
             // that must not be folded away with the runs that spelt nothing.
-            let blocked = if !uninflected_run {
+            let blocked = if !expression_shaped {
                 "Invalid expression: contains a bound stem rather than a full word"
             } else if mid_conjugation {
                 "Invalid expression: run begins on the previous word's inflection"
@@ -517,14 +547,14 @@ impl SudachiTokenizer {
                     "No match: parts form no listed headword by spelling or by reading",
                 );
             };
-            if !self.lexicon.contains(&surfaces) {
+            if !self.lexicon.contains(expression) {
                 return no_signal(
                     trace,
                     parts(),
                     "No match: parts form no listed headword by spelling or by reading",
                 );
             }
-            return refused(trace, parts(), surfaces, blocked.into());
+            return refused(trace, parts(), expression.clone(), blocked.into());
         };
 
         // **Three characters minimum, unless the parts spell it in kanji.**
@@ -1051,16 +1081,19 @@ impl SudachiTokenizer {
 /// named string cannot cost anything that is not named. Everything else the
 /// join builds — ところが, まずは, 実は, 本当に, ために, すぐに, 同時に,
 /// ちなみに, ところで, 医務室 — is the word the sentence used.
-const NEVER_JOIN: [&str; 7] = [
-    "それは", // それ + は: 「それは幸か不幸か」
-    "それが", // それ + が: 「それがいつまで続くのか」
-    "これは", // これ + は: 「たしかにこれは厄介ね」
-    "ここに", // ここ + に: 「ここにいてほしい」
-    "ものを", // もの + を: 「そぐわないものを目にし」
-    "今日は", // 今日 + は — the greeting is こんにちは, and this is not it
+const NEVER_JOIN: [&str; 8] = [
+    "それは",     // それ + は: 「それは幸か不幸か」
+    "それが",     // それ + が: 「それがいつまで続くのか」
+    "これは",     // これ + は: 「たしかにこれは厄介ね」
+    "ここに",     // ここ + に: 「ここにいてほしい」
+    "ものを",     // もの + を: 「そぐわないものを目にし」
+    "今日は",     // 今日 + は — the greeting is こんにちは, and this is not it
+    "ものとする", // もの + と + する: the set phrase means "deem it so", and the
+    // three sightings are all 「入れるものとしては」 — a thing to
+    // put in, which is もの + として.
     "たらしい", // た + らしい: the suffix of 憎たらしい, never the hearsay after
-              // a past tense. Sudachi is right here and the join is not:
-              // all 30 sightings are 襲われたらしい, 死んだらしい.
+                // a past tense. Sudachi is right here and the join is not:
+                // all 30 sightings are 襲われたらしい, 死んだらしい.
 ];
 
 /// Remove the emphatic っ — the one written for a hard stop at the end of an
@@ -1891,6 +1924,65 @@ mod tests {
         assert!(!bases("読んでいた").contains(&"訂".to_string()));
         // A name beside a word is not a compound, in either direction.
         assert_eq!(bases("東京"), vec!["東京"]);
+    }
+
+    /// An expression whose last word the sentence conjugated is still that
+    /// expression: 気になって is 気になる, and the surfaces spell nothing.
+    #[test]
+    #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+    fn a_conjugated_expression_is_the_expression_it_conjugates() {
+        let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
+            .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+        // 気 and なる are listed for the same reason production lists them:
+        // without the master's own spelling the identity ladder leaves
+        // Sudachi's 成る, and the run then spells 気に成る, which is nothing.
+        let entries: Vec<(String, String)> = [
+            ("気になる", "きになる"),
+            ("気", "き"),
+            ("なる", "なる"),
+            ("とする", "とする"),
+            ("する", "する"),
+            ("そうだ", "そうだ"),
+            ("続いて", "つづいて"),
+            ("続く", "つづく"),
+        ]
+        .iter()
+        .map(|(t, r)| (t.to_string(), r.to_string()))
+        .collect();
+        let lexicon: HashSet<String> = entries.iter().map(|(t, _)| t.clone()).collect();
+        let tokenizer = SudachiTokenizer::new(Path::new(&dict_path), HashSet::from(["x".into()]))
+            .unwrap()
+            .with_lexicon(lexicon)
+            .with_master_readings(&entries);
+        let bases = |text: &str| {
+            tokenizer
+                .tokenize(text)
+                .unwrap()
+                .into_iter()
+                .map(|t| t.base_form)
+                .collect::<Vec<_>>()
+        };
+
+        // Every inflection of it, filed under the one identity.
+        for line in ["気になる話だ", "気になって仕方ない", "あんまり気にならない"]
+        {
+            assert!(
+                bases(line).contains(&"気になる".to_string()),
+                "{line} must yield 気になる"
+            );
+        }
+
+        // The three fences. A run opening on a particle is a construction
+        // hanging off the word before it, not an expression — と + し puts the
+        // listed とする within reach of the conjugated path, and it must not
+        // swallow the quotative.
+        assert!(!bases("囚人としては").contains(&"とする".to_string()));
+        // A conjugated auxiliary is the previous word's inflection: そう + な
+        // spells the listed そうだ.
+        assert!(!bases("大変そうな顔").contains(&"そうだ".to_string()));
+        // And the head still may not be a bound stem: 続い + て spells the
+        // conjunction 続いて, which is not what the sentence said.
+        assert!(!bases("雨が続いている").contains(&"続いて".to_string()));
     }
 
     /// An expression join may not start on a past た, which belongs to the verb
