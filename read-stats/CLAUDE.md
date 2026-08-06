@@ -314,13 +314,20 @@ Mining:
 - **`VocabDefFull` carries Yomitan's per-dictionary wrappers**, not just the
   glossary: the note type styles `.dict-<slug>-title` and `.dict-<slug>-body`,
   and `.dict-jitendex-body > div > ol > li` is what hides Jitendex's star and
-  its ① ② numbering. The slug is `mine::class_slug` — the title lowercased and
-  hyphenated.
+  its ① ② numbering.
 - **The card's dictionaries and the popup's are two lists.** `CARD_DICTIONARIES`
   is Sankoku and Jitendex, because those are the two the note type has CSS for
   and a third would land on the card unstyled. The popup shows everything
   installed and opens on `define::OPENS_WITH`. Adding a dictionary changes the
   popup; it changes the card only when the note type gets a rule for it.
+- **The class name is fixed per dictionary, never derived from its title.**
+  `CARD_DICTIONARIES` pairs a title prefix with the class (`sanseido`,
+  `jitendex`), because both titles carry a version the release moves — Sankoku's
+  edition, and Jitendex's date in Yomitan's own copy of it
+  (`Jitendex.org [2026-02-05]`). A slug built from the title stops matching on
+  the next update, and the star and ① ② rules are written against
+  `.dict-jitendex-body` alone, so the block would come back unstyled with the
+  field still looking full.
 - **A capture is anchored at the add, not at the capture.** The proxy stamps
   `now_ts()` when `addNote` arrives and passes it as `VN_ANCHOR_TS`. Nothing may
   be awaited in front of the capture: in `enrich_added_note` the CompactDef call

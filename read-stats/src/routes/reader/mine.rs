@@ -38,13 +38,31 @@ const MODEL: &str = "Japanese sentences";
 /// Yomitan tags its own with, so a search for one finds both.
 const TAG: &str = "yomitan";
 
-/// The dictionaries that go on the card, by [`class_slug`].
+/// The dictionaries that go on the card: a title prefix, and the class name the
+/// note type's CSS lists for it.
 ///
-/// The note type styles `.dict-<slug>-title` and `.dict-<slug>-body` for these
+/// The note type styles `.dict-<class>-title` and `.dict-<class>-body` for these
 /// two and no others, so a third would land on the card as an unstyled block.
 /// The popup is where a dictionary goes to be read; this field is what the card
 /// keeps, and the two lists are allowed to differ.
-const CARD_DICTIONARIES: [&str; 2] = ["三省堂国語辞典-第八版", "jitendex"];
+///
+/// The class name is not derived from the title. Yomitan's own Jitendex is
+/// titled `Jitendex.org [2026-02-05]`, so a slug built from a title changes on
+/// every release and stops matching, and the rules that hide Jitendex's star
+/// and its ① ② numbering are written against `.dict-jitendex-body` alone. The
+/// match is on prefix for the same reason: the version moves, the dictionary
+/// does not.
+const CARD_DICTIONARIES: [(&str, &str); 2] =
+    [("三省堂国語辞典", "sanseido"), ("Jitendex", "jitendex")];
+
+/// The class name the note type styles this dictionary under, if the card
+/// carries it at all.
+fn card_class(title: &str) -> Option<&'static str> {
+    CARD_DICTIONARIES
+        .iter()
+        .find(|(prefix, _)| title.starts_with(prefix))
+        .map(|(_, class)| *class)
+}
 
 #[derive(Deserialize)]
 pub struct MineRequest {
@@ -79,10 +97,9 @@ pub async fn mine(
     // matches through the `body` div wrapping the glossary.
     let mut glossary = String::new();
     for dict in dictionaries::list_dictionaries(pool).await? {
-        let slug = class_slug(&dict.title);
-        if !CARD_DICTIONARIES.contains(&slug.as_str()) {
+        let Some(class) = card_class(&dict.title) else {
             continue;
-        }
+        };
         let entries = dictionaries::lookup_dictionary_entries(pool, dict.id, &req.term).await?;
         // Same rule as the popup: keep the asked-for reading where the
         // dictionary lists it, and where it does not, every reading beats
@@ -103,7 +120,7 @@ pub async fn mine(
         if definitions.is_empty() {
             continue;
         }
-        glossary.push_str(&dict_block(&dict.title, &definitions));
+        glossary.push_str(&dict_block(class, &dict.title, &definitions));
     }
 
     // First dictionary carrying pitch for this reading — NHK here.
@@ -163,12 +180,11 @@ pub async fn mine(
 /// glossary through the body div (`.dict-jitendex-body > div > ol > li > i` is
 /// what hides Jitendex's star), so a glossary that is the body's sibling rather
 /// than its child renders unstyled.
-fn dict_block(title: &str, definitions: &[&str]) -> String {
-    let slug = class_slug(title);
+fn dict_block(class: &str, title: &str, definitions: &[&str]) -> String {
     let title = html_escape(title);
     let mut out = format!(
-        "<div class=\"dict-{slug}-title\">{title}</div>\
-         <div class=\"dict-{slug}-body\">\
+        "<div class=\"dict-{class}-title\">{title}</div>\
+         <div class=\"dict-{class}-body\">\
          <div style=\"text-align: left;\" class=\"yomitan-glossary\"><ol>"
     );
     for def in definitions {
@@ -176,21 +192,6 @@ fn dict_block(title: &str, definitions: &[&str]) -> String {
     }
     out.push_str("</ol></div></div>");
     out
-}
-
-/// The dictionary's half of `dict-<slug>-title` / `dict-<slug>-body`.
-///
-/// Lowercased with whitespace hyphenated, which is what the note type's CSS
-/// already lists beside Yomitan's own shorter aliases:
-/// `.dict-三省堂国語辞典-第八版-body` sits next to `.dict-sanseido-body`. A
-/// dictionary added later has no rule until one is written for it, and falls
-/// back to unstyled rather than to another dictionary's colours.
-fn class_slug(title: &str) -> String {
-    title
-        .split_whitespace()
-        .map(|part| part.to_lowercase())
-        .collect::<Vec<_>>()
-        .join("-")
 }
 
 /// Anki's furigana syntax: `寸分[すんぶん]`, and a kana word left bare — a
@@ -324,15 +325,14 @@ mod tests {
         assert!(pitch_num(0).contains(">0<"));
     }
 
-    /// The two the note type styles today. Sankoku's title carries an
-    /// ideographic space, which is whitespace and hyphenates like any other.
+    /// Both dictionaries are titled with a version the release moves —
+    /// Sankoku's edition, Jitendex's date — and the class name must not.
     #[test]
-    fn class_slug_matches_the_note_types_selectors() {
-        assert_eq!(
-            class_slug("三省堂国語辞典　第八版"),
-            "三省堂国語辞典-第八版"
-        );
-        assert_eq!(class_slug("Jitendex"), "jitendex");
+    fn a_versioned_title_still_finds_its_class() {
+        assert_eq!(card_class("三省堂国語辞典　第八版"), Some("sanseido"));
+        assert_eq!(card_class("Jitendex"), Some("jitendex"));
+        assert_eq!(card_class("Jitendex.org [2026-02-05]"), Some("jitendex"));
+        assert_eq!(card_class("明鏡国語辞典 第三版"), None);
     }
 
     /// Byte-for-byte against the wrapper on a card Yomitan itself wrote. The
@@ -342,7 +342,7 @@ mod tests {
     #[test]
     fn dict_block_wraps_what_yomitan_wraps() {
         assert_eq!(
-            dict_block("Jitendex", &["GLOSS"]),
+            dict_block("jitendex", "Jitendex", &["GLOSS"]),
             "<div class=\"dict-jitendex-title\">Jitendex</div>\
              <div class=\"dict-jitendex-body\">\
              <div style=\"text-align: left;\" class=\"yomitan-glossary\">\
@@ -350,13 +350,12 @@ mod tests {
         );
     }
 
-    /// The block is only ever built for a dictionary the note type styles, so
-    /// the slug in the markup is always one the CSS matches.
+    /// The class in the markup is the one the note type styles, never a slug
+    /// of the title — the title is only what the block is labelled with.
     #[test]
-    fn every_card_dictionary_is_a_slug_the_note_type_styles() {
-        for title in ["三省堂国語辞典　第八版", "Jitendex"] {
-            assert!(CARD_DICTIONARIES.contains(&class_slug(title).as_str()));
-        }
-        assert!(!CARD_DICTIONARIES.contains(&class_slug("明鏡国語辞典 第三版").as_str()));
+    fn the_block_is_classed_by_the_note_type_not_the_title() {
+        let block = dict_block("jitendex", "Jitendex.org [2026-02-05]", &["GLOSS"]);
+        assert!(block.contains("class=\"dict-jitendex-body\""));
+        assert!(block.contains(">Jitendex.org [2026-02-05]<"));
     }
 }
