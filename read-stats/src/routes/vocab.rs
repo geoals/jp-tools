@@ -5,6 +5,7 @@
 //! request the reader made.** No sync touches it, so the ledger cannot demote a
 //! word behind their back and an encounter count cannot promote one.
 
+use std::collections::HashMap;
 use std::net::SocketAddr;
 
 use axum::Json;
@@ -20,9 +21,10 @@ use jp_core::tokenize::{SudachiTokenizer, Tokenizer};
 use tracing::info;
 
 use crate::app::AppState;
-use crate::clock::now_ts;
+use crate::clock::{now_ts, tz_offset_secs};
 use crate::db;
 use crate::error::AppError;
+use crate::stats;
 
 /// Rows per queue page — one sweep of attention.
 const QUEUE_LIMIT: i64 = 200;
@@ -85,6 +87,44 @@ pub async fn vocab_summary(State(state): State<AppState>) -> Result<Json<Value>,
         "swept_through": since,
         "ready_min_encounters": settings.triage_min_encounters,
         "by_status": by_status,
+    })))
+}
+
+/// `/api/vocab/history` — the vocabulary count as a daily curve.
+///
+/// Counts **words**, not ledger rows, so the last point equals `known_words` on
+/// the summary tile rather than the larger spelling count. A word's day is the
+/// earliest day any of its spellings was called known: learning 辛い and then
+/// calling つらい known months later is one word learnt once.
+///
+/// The curve only reaches back as far as `vocabulary_events` does. Everything
+/// asserted before the log existed lands on the day the log's first entry
+/// carries, which is the seeding — the first days are a bulk import, not a
+/// week of reading.
+pub async fn vocab_history(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
+    let settings = db::load_settings(&state.local).await?;
+    let tz = tz_offset_secs();
+
+    let forms = lexeme::resolved_forms(&state.knowledge).await?;
+    let mut earliest: HashMap<lexeme::Lexeme, f64> = HashMap::new();
+    for (term, ts) in vocabulary::first_known_at(&state.knowledge).await? {
+        let Some(word) = forms.get(&term) else {
+            continue;
+        };
+        let slot = earliest.entry(word.clone()).or_insert(ts);
+        *slot = slot.min(ts);
+    }
+
+    let dates: Vec<_> = earliest
+        .values()
+        .map(|ts| stats::date_key(*ts, settings.day_rollover_hour, tz))
+        .collect();
+    let today = stats::date_key(now_ts(), settings.day_rollover_hour, tz);
+    let days = stats::growth_days(&dates, today);
+
+    Ok(Json(json!({
+        "days": days,
+        "words": days.last().map(|d| d.cumulative).unwrap_or(0),
     })))
 }
 

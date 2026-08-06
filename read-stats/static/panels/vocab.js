@@ -13,8 +13,9 @@
 // zero, which is the honest picture of where the ledger stands.
 
 import { html } from "htm/preact";
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { api } from "../api.js";
+import { DiscoveryChart } from "../charts.js";
 import { SegmentedControl } from "../components/controls.js";
 import { fmtTsDate } from "../lib/format.js";
 import { BrowseView } from "./browse.js";
@@ -291,6 +292,8 @@ function StatusSummary({ vocab, onImported }) {
       </div>
     </div>
 
+    <${GrowthCard} knownWords=${vocab.known_words} />
+
     <div class="card">
       <h2>by status</h2>
       <table class="days">
@@ -318,5 +321,55 @@ function StatusSummary({ vocab, onImported }) {
         </tbody>
       </table>
     </div>
+  `;
+}
+
+/** Known words over time. `knownWords` is a dependency, not a display value:
+ *  an import or a sweep changes the curve, so refetch when the tile's figure
+ *  moves. */
+function GrowthCard({ knownWords }) {
+  const [history, setHistory] = useState(null);
+
+  useEffect(() => {
+    let live = true;
+    api("/api/vocab/history")
+      .then((h) => live && setHistory(h))
+      .catch(() => live && setHistory({ days: [] }));
+    return () => {
+      live = false;
+    };
+  }, [knownWords]);
+
+  return html`
+    <div class="card">
+      <h2>Words learnt per day</h2>
+      <p class="meta-hint">
+        Dated by the first time each word was called known, so a re-import
+        cannot redraw the past. The history starts where the ledger's event log
+        does — the first days are the jiten and Anki imports, not reading.
+      </p>
+      ${
+        history
+          ? html`<${DiscoveryChart}
+              days=${history.days}
+              label="Words marked known for the first time, per day"
+              empty="No judgements recorded yet."
+              barLabel="new that day"
+              lineLabel="known words"
+              tip=${VocabDayTip}
+            />`
+          : html`<p class="chart-empty">Loading…</p>`
+      }
+    </div>
+  `;
+}
+
+function VocabDayTip({ day }) {
+  const newLine = `${day.new} new words`;
+  const totalLine = `${day.cumulative.toLocaleString("en")} known so far`;
+  return html`
+    <strong>${day.date}</strong><br />
+    ${newLine}<br />
+    <span class="tooltip-sub">${totalLine}</span>
   `;
 }

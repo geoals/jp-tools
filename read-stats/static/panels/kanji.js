@@ -15,7 +15,7 @@
 import { html } from "htm/preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { api } from "../api.js";
-import { KanjiDiscoveryChart } from "../charts.js";
+import { DiscoveryChart } from "../charts.js";
 import { SegmentedControl } from "../components/controls.js";
 
 const SORTS = [
@@ -106,7 +106,14 @@ export function KanjiView() {
 
     <div class="card">
       <h2>New kanji per day</h2>
-      <${KanjiDiscoveryChart} days=${kanji.days} />
+      <${DiscoveryChart}
+        days=${kanji.days}
+        label="Kanji met for the first time, per day"
+        empty="No kanji read yet."
+        barLabel="new that day"
+        lineLabel="distinct kanji so far"
+        tip=${KanjiDayTip}
+      />
     </div>
   `;
 }
@@ -306,5 +313,17 @@ function GradeCard({ grades, solidAt }) {
         </span>
       </div>
     </div>
+  `;
+}
+
+function KanjiDayTip({ day }) {
+  const newLine = `${day.new} new kanji`;
+  const totalLine = `${day.cumulative.toLocaleString("en")} distinct so far`;
+  const encLine = `${day.encounters.toLocaleString("en")} kanji read`;
+  return html`
+    <strong>${day.date}</strong><br />
+    ${newLine}<br />
+    <span class="tooltip-sub">${totalLine}</span><br />
+    <span class="tooltip-sub">${encLine}</span>
   `;
 }

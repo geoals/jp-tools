@@ -1,15 +1,19 @@
-// New kanji per day, and the running total of distinct kanji read.
+// New things per day, and the running total of distinct ones.
 //
 // Two marks on one plot because they are the same fact at two integrations:
-// the bars are how many kanji were met for the first time that day, the line is
-// their sum. The bars decay as the corpus grows — that decay *is* the progress
+// the bars are how many were met for the first time that day, the line is their
+// sum. The bars decay as the corpus grows — that decay *is* the progress
 // signal, and it only reads as progress next to a line that keeps climbing.
+//
+// Kanji and vocabulary are the same shape, so they share the chart. Each caller
+// supplies its own wording and its own tooltip body; nothing about the two
+// marks differs.
 
 import { html } from "htm/preact";
 import { useState } from "preact/hooks";
 import { Tooltip, W, barPath, niceTicks, shortDate } from "./svg.js";
 
-export function KanjiDiscoveryChart({ days }) {
+export function DiscoveryChart({ days, label, empty, barLabel, lineLabel, tip }) {
   const [hover, setHover] = useState(null);
   const H = 260;
   const m = { top: 16, right: 46, bottom: 24, left: 40 };
@@ -17,7 +21,7 @@ export function KanjiDiscoveryChart({ days }) {
   const plotH = H - m.top - m.bottom;
 
   if (!days.length) {
-    return html`<p class="chart-empty">No kanji read yet.</p>`;
+    return html`<p class="chart-empty">${empty}</p>`;
   }
 
   const bars = niceTicks(Math.max(...days.map((d) => d.new), 1), 4);
@@ -40,7 +44,7 @@ export function KanjiDiscoveryChart({ days }) {
       <svg
         viewBox="0 0 ${W} ${H}"
         role="img"
-        aria-label="Kanji met for the first time, per day"
+        aria-label=${label}
       >
         ${bars.ticks.map(
           (t) => html`
@@ -110,33 +114,21 @@ export function KanjiDiscoveryChart({ days }) {
       <div class="chart-legend">
         <span class="legend-item legend-static">
           <span class="legend-swatch" style="background:var(--series-1)"></span
-          >new that day
+          >${barLabel}
         </span>
         <span class="legend-item legend-static">
           <span class="legend-swatch" style="background:var(--series-2)"></span
-          >distinct kanji so far
+          >${lineLabel}
         </span>
       </div>
       ${
         hover !== null &&
         html`
           <${Tooltip} x=${m.left + band * hover + band / 2} y=${8}>
-            <${DayTip} day=${days[hover]} />
+            <${tip} day=${days[hover]} />
           <//>
         `
       }
     </div>
-  `;
-}
-
-function DayTip({ day }) {
-  const newLine = `${day.new} new kanji`;
-  const totalLine = `${day.cumulative.toLocaleString("en")} distinct so far`;
-  const encLine = `${day.encounters.toLocaleString("en")} kanji read`;
-  return html`
-    <strong>${day.date}</strong><br />
-    ${newLine}<br />
-    <span class="tooltip-sub">${totalLine}</span><br />
-    <span class="tooltip-sub">${encLine}</span>
   `;
 }

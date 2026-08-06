@@ -1017,6 +1017,42 @@ pub struct BrowseRow {
     pub forms: i64,
 }
 
+/// When each currently-known form was **first** asserted known, from the event
+/// log.
+///
+/// First and not last: a rebuild or a re-import re-stamps a word that was
+/// already known, and dating the word by that would collapse the whole history
+/// onto the day of the last bulk pass. Restricted to rows that are known *now*,
+/// so a word taken back leaves no step in the curve — the answer is always what
+/// the ledger says today, decomposed by when each claim was made.
+///
+/// A word known before the event log existed has no row and is absent; the
+/// curve simply starts where the log does.
+pub async fn first_known_at(k: &Knowledge) -> Result<Vec<(Term, f64)>, sqlx::Error> {
+    let rows = sqlx::query(&format!(
+        "SELECT v.headword, v.reading, MIN(e.ts) AS ts \
+         FROM vocabulary v \
+         JOIN vocabulary_events e \
+           ON e.headword = v.headword AND e.reading = v.reading AND e.status = 'known' \
+         WHERE v.status = 'known' AND {COUNTS_AS_VOCAB} \
+         GROUP BY v.headword, v.reading"
+    ))
+    .fetch_all(k.pool())
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| {
+            (
+                Term {
+                    headword: r.get("headword"),
+                    reading: r.get("reading"),
+                },
+                r.get("ts"),
+            )
+        })
+        .collect())
+}
+
 /// Revert the most recent [`seed_status_each`] batch, and only that one.
 ///
 /// A batch is identified by its `status_ts`, which the seed writes identically

@@ -18,6 +18,7 @@
 //! | [`focus`] | how *continuous* the reading was, as opposed to how much |
 //! | [`kanji`] | which kanji the text was made of, and how well each is known |
 //! | [`prose`] | what the writing is like: sentence length |
+//! | [`vocab_growth`] | when the known words were learnt — new per day, running total |
 //!
 //! [`presence`] is the module to read first: every other aggregate credits gap
 //! time through it, and keeping that rule in one place is what stops two views
@@ -32,6 +33,7 @@ pub mod prose;
 pub mod rate;
 pub mod session;
 pub mod timeline;
+pub mod vocab_growth;
 pub mod work;
 
 #[cfg(test)]
@@ -45,4 +47,5 @@ pub use presence::{Presence, measure_effective_pace, measure_pace, presence_mark
 pub use prose::{ProseAcc, ProseStats};
 pub use session::{Session, derive_sessions};
 pub use timeline::{Bucket, EventKind, add_events, bucket_lines};
+pub use vocab_growth::{GrowthDay, growth_days};
 pub use work::{ARTICLES_WORK, WorkAgg, WorkLine, aggregate_works, work_key};
