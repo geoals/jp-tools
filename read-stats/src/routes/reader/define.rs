@@ -241,6 +241,10 @@ pub struct Expansion {
 /// How far to the right a scan reaches, in characters. Yomitan's own default.
 const EXPAND_MAX_CHARS: usize = 10;
 
+/// And in tokens, for the deinflected candidates. Five reaches the shape those
+/// are for — noun + particle + verb, with room for a second particle.
+const EXPAND_MAX_TOKENS: usize = 5;
+
 /// `GET /api/reader/expand?text=<rest of the line>` — every other reading of
 /// this position.
 ///
@@ -254,18 +258,39 @@ const EXPAND_MAX_CHARS: usize = 10;
 /// character, and list every `(term, reading)` any dictionary lists for a prefix
 /// of it, longest first.
 ///
-/// Literal prefixes only. A conjugated tail would need deinflection per
-/// candidate length, and the expression this exists for — a compound noun, an
-/// idiom, a set phrase — is written as it is listed.
+/// Candidates come in two shapes, because the two failures do. A literal
+/// prefix of the line catches the split compound. A prefix ending on a token
+/// boundary with its last token in canonical form
+/// ([`super::highlight::Highlighter::prefix_forms`]) catches the conjugated
+/// expression — しびれを切らした is listed as しびれを切らす, which no literal
+/// prefix of the line spells.
 pub async fn expand(
     State(state): State<AppState>,
     Query(q): Query<ExpandQuery>,
 ) -> Result<Json<Vec<Expansion>>, AppError> {
     let pool = state.knowledge.pool();
+    // The reader's own tokenizer, already warm for the line feed — the second
+    // pipeline a bare `SudachiTokenizer` would be answers differently, and
+    // both halves of this depend on the answer matching the ledger.
+    let highlighter = super::highlight::shared(&state).await;
+
     let chars: Vec<char> = q.text.chars().take(EXPAND_MAX_CHARS).collect();
-    let candidates: Vec<String> = (2..=chars.len())
+    let mut candidates: Vec<String> = (2..=chars.len())
         .map(|n| chars[..n].iter().collect())
         .collect();
+    // Two kinds of candidate. A literal prefix finds a compound the tokenizer
+    // split; a deinflected one finds an expression the sentence conjugated —
+    // しびれを切らした is しびれを切らす in every dictionary that has it, and no
+    // prefix of the line spells that.
+    if let Some(h) = &highlighter {
+        let (h, text) = (h.clone(), q.text.clone());
+        let forms = tokio::task::spawn_blocking(move || h.prefix_forms(&text, EXPAND_MAX_TOKENS))
+            .await
+            .unwrap_or_default();
+        candidates.extend(forms.into_iter().filter(|f| f.chars().count() > 1));
+    }
+    candidates.sort();
+    candidates.dedup();
     if candidates.is_empty() {
         return Ok(Json(Vec::new()));
     }
@@ -305,11 +330,10 @@ pub async fn expand(
 
     found.sort_by_key(|(term, _, _)| std::cmp::Reverse(term.chars().count()));
 
-    // The reader's own tokenizer, already warm for the line feed — a key
-    // resolved by a second pipeline matches no ledger row. Unavailable, every
-    // candidate keys on itself, which is what the ledger did before this
-    // existed.
-    let keys = match super::highlight::shared(&state).await {
+    // A key resolved by a second pipeline matches no ledger row. With no
+    // tokenizer at all, every candidate keys on itself, which is what the
+    // ledger did before this existed.
+    let keys = match highlighter {
         Some(h) => {
             let terms: Vec<String> = found.iter().map(|(t, _, _)| t.clone()).collect();
             tokio::task::spawn_blocking(move || {

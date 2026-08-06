@@ -156,6 +156,29 @@ impl Highlighter {
         }
     }
 
+    /// Each prefix of `text` that ends on a token boundary, with its last
+    /// token put back in its canonical form: しびれを切らした yields
+    /// しびれを切らす.
+    ///
+    /// The deinflected half of the popup's match scan. A literal prefix of the
+    /// line finds a compound the tokenizer split, but never an expression
+    /// whose tail the sentence conjugated — and an expression is most of what
+    /// a dictionary lists and the tokenizer cannot join.
+    pub fn prefix_forms(&self, text: &str, max_tokens: usize) -> Vec<String> {
+        let Ok(tokens) = self.tokenizer.tokenize(text) else {
+            return Vec::new();
+        };
+        (1..=tokens.len().min(max_tokens))
+            .map(|k| {
+                tokens[..k - 1]
+                    .iter()
+                    .map(|t| t.surface.as_str())
+                    .chain(std::iter::once(tokens[k - 1].base_form.as_str()))
+                    .collect()
+            })
+            .collect()
+    }
+
     /// Every token in `text`, with its span — everything before the ledger is
     /// consulted.
     fn candidates(&self, text: &str) -> Vec<Candidate> {

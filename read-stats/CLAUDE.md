@@ -296,8 +296,14 @@ Mining:
   Sankoku one, so its two halves are both right and no rule joins them, and
   素振り is そぶり or すぶり and the tokenizer picks one. Both are the reader
   seeing what the pipeline cannot.
-  - Literal prefixes only. A conjugated tail would need deinflection per
-    candidate, and the expressions this is for are written as they are listed.
+  - **Two kinds of candidate, and the second is the point.** A literal prefix
+    of the line finds a compound the tokenizer split (経年劣化). A prefix that
+    ends on a token boundary with its last token put back in canonical form
+    (`Highlighter::prefix_forms`) finds an expression the sentence conjugated —
+    しびれを切らした is しびれを切らす in every dictionary that lists it, and no
+    literal prefix of the line spells that. Expressions are most of what a
+    dictionary holds and the tokenizer cannot join, so literal-only found
+    almost none of them.
   - **A candidate carries its ledger key beside its spelling**, resolved
     through the shared `Highlighter` — a dictionary headword is text from
     outside the tokenizer, and Jitendex's 素振 would otherwise become a second
