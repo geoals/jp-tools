@@ -17,6 +17,7 @@
 use axum::Json;
 use axum::extract::{Query, State};
 use jp_core::knowledge::dictionaries;
+use jp_core::knowledge::vocabulary::{self, Status, Term};
 use serde::{Deserialize, Serialize};
 
 use crate::app::AppState;
@@ -220,10 +221,11 @@ pub struct ExpandQuery {
     pub text: String,
 }
 
+/// One `(term, reading)` a dictionary offers for this position — a candidate
+/// the popup can be re-opened on, not a match of the text: `term` is the
+/// dictionary's spelling and the line may have conjugated it.
 #[derive(Serialize)]
 pub struct Expansion {
-    /// The headword, which here is also the literal text: nothing is
-    /// deinflected, so the string is a prefix of `text`.
     pub term: String,
     /// The ledger key this spelling resolves to — what judging or mining the
     /// candidate writes, while `term` stays what the dictionary calls it. A
@@ -231,10 +233,14 @@ pub struct Expansion {
     /// Jitendex's spelling and the ledger's row is 素振り, and writing the raw
     /// string would make a second row that reads as never encountered.
     pub key: String,
-    /// Every reading the dictionaries give this spelling, so the popup can
-    /// offer one candidate per reading: 素振り is そぶり or すぶり and they are
+    /// One entry per reading, since 素振り is そぶり or すぶり and they are
     /// different words. Empty for a kana headword, which reads as itself.
-    pub readings: Vec<String>,
+    pub reading: String,
+    /// What the ledger already says about `(key, reading)`. The popup lights
+    /// its ✓ or ✗ from this, so re-opening a candidate shows the judgement
+    /// made on it last time — without it a term judged a moment ago comes back
+    /// looking untouched, which reads as the write having failed.
+    pub status: String,
     pub dictionaries: Vec<String>,
 }
 
@@ -345,14 +351,45 @@ pub async fn expand(
         None => Vec::new(),
     };
 
+    // One candidate per reading, keyed as the ledger keys it.
+    let candidates: Vec<(String, String, String, Vec<String>)> = found
+        .into_iter()
+        .enumerate()
+        .flat_map(|(i, (term, readings, dictionaries))| {
+            let key = keys.get(i).cloned().unwrap_or_else(|| term.clone());
+            let readings = if readings.is_empty() {
+                vec![String::new()]
+            } else {
+                readings
+            };
+            readings
+                .into_iter()
+                .map(|reading| {
+                    (term.clone(), key.clone(), reading, dictionaries.clone())
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    let terms: Vec<Term> = candidates
+        .iter()
+        .map(|(_, key, reading, _)| Term::new(key.clone(), reading))
+        .collect();
+    let rows = vocabulary::fetch_many(&state.knowledge, &terms).await?;
+
     Ok(Json(
-        found
+        candidates
             .into_iter()
-            .enumerate()
-            .map(|(i, (term, readings, dictionaries))| Expansion {
-                key: keys.get(i).cloned().unwrap_or_else(|| term.clone()),
+            .zip(terms)
+            .map(|((term, key, reading, dictionaries), t)| Expansion {
+                status: rows
+                    .get(&t)
+                    .map_or(Status::New, |r| r.status)
+                    .as_str()
+                    .to_string(),
                 term,
-                readings,
+                key,
+                reading,
                 dictionaries,
             })
             .collect(),

@@ -271,6 +271,7 @@ async function show(word, pick = null) {
     key: word.dataset.term,
     reading: word.dataset.reading,
     surface: word.textContent,
+    status: word.dataset.status,
   };
   const { term, reading } = target;
   if (openWord) openWord.classList.remove("open");
@@ -512,18 +513,21 @@ function expansions(word, target, matches) {
   matches.then((found) => {
     // The popup moved on while the scan was out.
     if (openTarget !== target || !Array.isArray(found)) return;
-    // One candidate per reading — a spelling with two readings is two words —
-    // minus the one already showing, which is a prefix match of itself.
-    const others = found
-      .flatMap((e) => (e.readings.length ? e.readings : [""]).map((reading) => ({ ...e, reading })))
-      .filter((e) => !(e.term === target.term && e.reading === target.reading));
+    // Minus the one already showing, which is a match of itself.
+    const others = found.filter((e) => !(e.term === target.term && e.reading === target.reading));
     row.replaceChildren(
       ...others.map((e) => {
         const label = e.reading && e.reading !== e.term ? `${e.term}\u30fb${e.reading}` : e.term;
         const chip = el("button", "", label);
         chip.title = e.dictionaries.join(", ");
         chip.addEventListener("click", () =>
-          show(word, { term: e.term, key: e.key, reading: e.reading, surface: e.term }),
+          show(word, {
+            term: e.term,
+            key: e.key,
+            reading: e.reading,
+            surface: e.term,
+            status: e.status,
+          }),
         );
         return chip;
       }),
@@ -551,6 +555,7 @@ function actions(word, target) {
   const out = el("div", "acts");
   const mark = async (status) => {
     if (!(await judge(word, status, target))) return;
+    target.status = status;
     for (const b of out.children) b.classList.toggle("on", b.dataset.status === status);
     // Known means the popup was opened to reach this button, not to read the
     // definition, so the row it recorded goes. Only known: not knowing a word
@@ -566,9 +571,9 @@ function actions(word, target) {
       body: JSON.stringify({ lookup_id, term: target.term }),
     }).catch(() => {});
   };
-  // The word's own status, and only its own: an expansion is a term the ledger
-  // may never have seen, so neither button starts lit.
-  const at = target.key === word.dataset.term ? word.dataset.status : "";
+  // The status of the term the popup is about, which for a picked match is not
+  // the clicked word's: しびれを切らす can be known while 痺れ is not.
+  const at = target.status;
   for (const [label, status, title] of [
     ["✓", "known", "Known"],
     ["✗", "unknown", "Unknown"],
