@@ -8,10 +8,10 @@
 //
 // Segmentation is not asked for separately: the line event already carries a
 // span per word, each with the `(headword, reading)` the ledger keys on. The
-// popup asks about that pair, so 振っ is defined as 振る. Where that split a
-// word — 経年劣化 into 経年 and 劣化 — the popup's `⤷ longer` button scans
-// the raw line to the right and offers the compounds a dictionary lists; see
-// expansions().
+// popup asks about that pair, so 振っ is defined as 振る. Where the tokenizer
+// got the position wrong — 経年劣化 split into 経年 and 劣化, 素振り read as
+// すぶり where the line means そぶり — the popup's `⤷ other matches` button
+// offers what else the dictionaries read it as; see expansions().
 //
 // Three actions on a word, and only one of them opens the popup: left-click
 // asks what it means, the back side button judges it known or unknown, the
@@ -41,9 +41,11 @@ const warnEl = document.getElementById("warn");
 const popupEl = document.getElementById("popup");
 
 let openWord = null;
-// What the open popup is about: `{ term, reading, surface }`. Not always the
-// clicked word's own pair — an expansion re-opens the popup on the same word
-// with a longer term. Every action in the popup reads this.
+// What the open popup is about: `{ term, key, reading, surface }`. Not always
+// the clicked word's own pair — a picked match re-opens the popup on the same
+// word with another term. Every action in the popup reads this. `key` is what
+// the ledger is keyed on and `term` what the dictionary calls it; they differ
+// only for a picked match, whose spelling comes from outside the tokenizer.
 let openTarget = null;
 let line = null;
 // The overlay shell, once its channel is up. Null in an ordinary browser.
@@ -250,16 +252,17 @@ function closePopup() {
   report();
 }
 
-/** Define the word clicked, or — with `expand` — a longer term starting at it.
+/** Define the word clicked, or — with `pick` — another match at that position.
  *
- * `target` is what everything in the popup acts on: the pair looked up, judged
- * and mined. For a click it is the tokenizer's own `(headword, reading)`; for
- * an expansion it is the compound the reader picked out of the scan, which the
- * tokenizer split and no ledger row exists for yet.
+ * `target` is what everything in the popup acts on: the term looked up, judged
+ * and mined. For a click it is the tokenizer's own `(headword, reading)`; for a
+ * picked match it is what the reader chose out of the scan, which the
+ * tokenizer either split or read another way.
  */
-async function show(word, expand = null) {
-  const target = expand ?? {
+async function show(word, pick = null) {
+  const target = pick ?? {
     term: word.dataset.term,
+    key: word.dataset.term,
     reading: word.dataset.reading,
     surface: word.textContent,
   };
@@ -297,7 +300,9 @@ async function show(word, expand = null) {
   // process and a slow or shut one must not hold up the answer to the question
   // actually being asked.
   try {
-    const res = await fetch(`/api/reader/mined?term=${encodeURIComponent(term)}`);
+    // The key, not the dictionary's spelling: that is what a mine writes into
+    // the card's vocab field, so it is what the duplicate check has to ask.
+    const res = await fetch(`/api/reader/mined?term=${encodeURIComponent(target.key)}`);
     const { note_id } = await res.json();
     if (openTarget === target) markMined(note_id);
   } catch {
@@ -343,9 +348,9 @@ function place(word) {
  * repaint — it spans several — so the button's own state is the report there.
  */
 async function judge(word, status, target = null) {
-  const on = target ?? { term: word.dataset.term, reading: word.dataset.reading };
+  const on = target ?? { key: word.dataset.term, reading: word.dataset.reading };
   const body = {
-    judgements: [{ headword: on.term, reading: on.reading, status }],
+    judgements: [{ headword: on.key, reading: on.reading, status }],
   };
   const res = await fetch("/api/vocab/judge", {
     method: "POST",
@@ -353,7 +358,7 @@ async function judge(word, status, target = null) {
     body: JSON.stringify(body),
   });
   if (!res.ok) return false;
-  if (target && target.term !== word.dataset.term) return true;
+  if (target && target.key !== word.dataset.term) return true;
   word.dataset.status = status;
   word.classList.remove("new", "seen", "unknown");
   if (status !== "known") word.classList.add(status);
@@ -366,7 +371,7 @@ async function judge(word, status, target = null) {
  * plays once the capture and the CompactDef write have both come back. */
 async function mine(word, target = null) {
   const on = target ?? {
-    term: word.dataset.term,
+    key: word.dataset.term,
     reading: word.dataset.reading,
     surface: word.textContent,
   };
@@ -374,7 +379,7 @@ async function mine(word, target = null) {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      term: on.term,
+      term: on.key,
       reading: on.reading,
       surface: on.surface,
       sentence: line ? line.text : "",
@@ -469,15 +474,18 @@ function render(data, word, target) {
   return out;
 }
 
-/** "This is one word, not two" — the escape hatch Yomitan gave for free.
+/** "That is not the word here" — the escape hatch Yomitan gave for free.
  *
- * The tokenizer splits 継年劣化 into 継年 and 劣化 and both halves are real
- * words, so nothing downstream can join them; the compound is a Jitendex
- * headword and not a Sankoku one, and that is exactly the case the reader can
- * see and the pipeline cannot. The button scans the raw line to the right of
- * the clicked word and offers every prefix a dictionary lists, longest first.
- * Picking one re-opens the popup on it, and the popup's own ✓ ✗ ＋ then act on
- * that term.
+ * Two ways the tokenizer can be wrong about a position, and one answer to
+ * both. It splits 経年劣化 into 経年 and 劣化, both real words, so nothing
+ * downstream can join them. And it picks one reading for a spelling that has
+ * several — 素振り as すぶり where the line means そぶり — which is a different
+ * word with a different ledger row.
+ *
+ * So the button scans the raw line from the clicked word rightwards and offers
+ * every `(term, reading)` a dictionary lists for a prefix of it, longest
+ * first. Picking one re-opens the popup on it, and ✓ ✗ ＋ then act on that
+ * term.
  *
  * Behind a button rather than run on open: it is a second round trip, and the
  * popup exists to answer one question fast.
@@ -488,8 +496,8 @@ function expansions(word, target) {
   const rest = line && Number.isInteger(start) ? line.text.slice(start) : "";
   if (!rest) return row;
 
-  const scan = el("button", "", "\u2937 longer");
-  scan.title = "Terms starting here that the tokenizer split";
+  const scan = el("button", "", "\u2937 other matches");
+  scan.title = "What else the dictionaries read this position as";
   scan.addEventListener("click", async () => {
     scan.disabled = true;
     let found;
@@ -500,21 +508,23 @@ function expansions(word, target) {
       scan.disabled = false;
       return;
     }
-    // Only what is longer than what is already showing: the current term is
-    // itself a prefix match, and so is anything the reader has already stepped
-    // past on a second scan.
-    const longer = found.filter((e) => e.term.length > target.surface.length);
-    if (!longer.length) {
-      row.replaceChildren(el("div", "none", "Nothing longer here"));
+    // One candidate per reading — a spelling with two readings is two words —
+    // minus the one already showing, which is a prefix match of itself.
+    const others = found
+      .flatMap((e) => (e.readings.length ? e.readings : [""]).map((reading) => ({ ...e, reading })))
+      .filter((e) => !(e.term === target.term && e.reading === target.reading));
+    if (!others.length) {
+      row.replaceChildren(el("div", "none", "Nothing else here"));
       report();
       return;
     }
     row.replaceChildren(
-      ...longer.map((e) => {
-        const chip = el("button", "", e.term);
+      ...others.map((e) => {
+        const label = e.reading && e.reading !== e.term ? `${e.term}・${e.reading}` : e.term;
+        const chip = el("button", "", label);
         chip.title = e.dictionaries.join(", ");
         chip.addEventListener("click", () =>
-          show(word, { term: e.term, reading: e.reading, surface: e.term }),
+          show(word, { term: e.term, key: e.key, reading: e.reading, surface: e.term }),
         );
         return chip;
       }),
@@ -558,7 +568,7 @@ function actions(word, target) {
   };
   // The word's own status, and only its own: an expansion is a term the ledger
   // may never have seen, so neither button starts lit.
-  const at = target.term === word.dataset.term ? word.dataset.status : "";
+  const at = target.key === word.dataset.term ? word.dataset.status : "";
   for (const [label, status, title] of [
     ["✓", "known", "Known"],
     ["✗", "unknown", "Unknown"],

@@ -225,24 +225,34 @@ pub struct Expansion {
     /// The headword, which here is also the literal text: nothing is
     /// deinflected, so the string is a prefix of `text`.
     pub term: String,
-    /// The one reading the dictionaries agree on, or empty where they list
-    /// several — the popup then shows every one, as it does for a word whose
-    /// reading the tokenizer could not decide.
-    pub reading: String,
+    /// The ledger key this spelling resolves to — what judging or mining the
+    /// candidate writes, while `term` stays what the dictionary calls it. A
+    /// dictionary headword is text from outside the tokenizer: 素振 is
+    /// Jitendex's spelling and the ledger's row is 素振り, and writing the raw
+    /// string would make a second row that reads as never encountered.
+    pub key: String,
+    /// Every reading the dictionaries give this spelling, so the popup can
+    /// offer one candidate per reading: 素振り is そぶり or すぶり and they are
+    /// different words. Empty for a kana headword, which reads as itself.
+    pub readings: Vec<String>,
     pub dictionaries: Vec<String>,
 }
 
 /// How far to the right a scan reaches, in characters. Yomitan's own default.
 const EXPAND_MAX_CHARS: usize = 10;
 
-/// `GET /api/reader/expand?text=<rest of the line>` — what a longer reading of
-/// this position would be.
+/// `GET /api/reader/expand?text=<rest of the line>` — every other reading of
+/// this position.
 ///
-/// The tokenizer splits 継年劣化 into 継年 and 劣化, and both halves are right;
-/// the compound is a Jitendex headword and not a Sankoku one, so no amount of
-/// dictionary validation would have joined them. This is the escape hatch
-/// Yomitan gave for free: take the text from the word's first character and ask
-/// which of its prefixes any dictionary lists, longest first.
+/// Two failures, one answer. The tokenizer splits 経年劣化 into 経年 and 劣化,
+/// and both halves are right; the compound is a Jitendex headword and not a
+/// Sankoku one, so no amount of dictionary validation would have joined them.
+/// And where a spelling has several readings it picks one — 素振り as すぶり
+/// where the line means そぶり — which is a different word with a different
+/// ledger row. Both are the reader seeing what the pipeline cannot, so both get
+/// the escape hatch Yomitan gave for free: take the text from the word's first
+/// character, and list every `(term, reading)` any dictionary lists for a prefix
+/// of it, longest first.
 ///
 /// Literal prefixes only. A conjugated tail would need deinflection per
 /// candidate length, and the expression this exists for — a compound noun, an
@@ -294,15 +304,31 @@ pub async fn expand(
     }
 
     found.sort_by_key(|(term, _, _)| std::cmp::Reverse(term.chars().count()));
+
+    // The reader's own tokenizer, already warm for the line feed — a key
+    // resolved by a second pipeline matches no ledger row. Unavailable, every
+    // candidate keys on itself, which is what the ledger did before this
+    // existed.
+    let keys = match super::highlight::shared(&state).await {
+        Some(h) => {
+            let terms: Vec<String> = found.iter().map(|(t, _, _)| t.clone()).collect();
+            tokio::task::spawn_blocking(move || {
+                terms.iter().map(|t| h.ledger_key(t)).collect::<Vec<_>>()
+            })
+            .await
+            .unwrap_or_default()
+        }
+        None => Vec::new(),
+    };
+
     Ok(Json(
         found
             .into_iter()
-            .map(|(term, readings, dictionaries)| Expansion {
-                reading: match readings.as_slice() {
-                    [one] => one.clone(),
-                    _ => String::new(),
-                },
+            .enumerate()
+            .map(|(i, (term, readings, dictionaries))| Expansion {
+                key: keys.get(i).cloned().unwrap_or_else(|| term.clone()),
                 term,
+                readings,
                 dictionaries,
             })
             .collect(),

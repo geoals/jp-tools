@@ -286,14 +286,21 @@ Mining:
   which fires vn-capture.sh once Anki accepts the note. There is no mine button.
   The overlay has no popup button either — a side mouse button mines the word
   under the pointer, and another judges it.
-- **The popup can look past the tokenizer's split.** `⤷ longer` scans the raw
-  line from the clicked word rightwards (`reader/define::expand`) and lists the
-  prefixes any dictionary holds, longest first; picking one re-opens the popup
-  on it and ✓ ✗ ＋ then act on that term. It exists because 経年劣化 is a
-  Jitendex headword and not a Sankoku one, so the ledger's two halves are both
-  right and no rule joins them — the reader can see it and the pipeline cannot.
-  Literal prefixes only: a conjugated tail would need deinflection per
-  candidate, and the expressions this is for are written as they are listed.
+- **The popup can overrule the tokenizer about a position.** `⤷ other matches`
+  scans the raw line from the clicked word rightwards (`reader/define::expand`)
+  and lists every `(term, reading)` a dictionary holds for a prefix of it,
+  longest first; picking one re-opens the popup on it and ✓ ✗ ＋ then act on
+  that term. Two failures, one answer: 経年劣化 is a Jitendex headword and not a
+  Sankoku one, so its two halves are both right and no rule joins them, and
+  素振り is そぶり or すぶり and the tokenizer picks one. Both are the reader
+  seeing what the pipeline cannot.
+  - Literal prefixes only. A conjugated tail would need deinflection per
+    candidate, and the expressions this is for are written as they are listed.
+  - **A candidate carries its ledger key beside its spelling**, resolved
+    through the shared `Highlighter` — a dictionary headword is text from
+    outside the tokenizer, and Jitendex's 素振 would otherwise become a second
+    ledger row beside 素振り. The popup defines and shows the dictionary's
+    spelling; judge, mine and the duplicate check all send the key.
 - **The mined badge asks Anki, not `anki_notes`.** The table is a snapshot taken
   on demand, and the case that matters is a card made seconds ago;
   `reader/mined` runs the same duplicate check Yomitan does. It is fetched
