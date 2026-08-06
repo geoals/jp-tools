@@ -23,7 +23,7 @@
 
 const params = new URLSearchParams(location.search);
 const root = document.documentElement.style;
-root.setProperty("--backdrop", `rgba(0, 0, 0, ${params.get("bg") ?? "0.55"})`);
+root.setProperty("--backdrop", `rgba(0, 0, 0, ${params.get("bg") ?? "0.88"})`);
 root.setProperty("--strip", `${params.get("h") ?? "300"}px`);
 const scale = params.get("scale") ?? "1";
 root.setProperty("--scale", scale);

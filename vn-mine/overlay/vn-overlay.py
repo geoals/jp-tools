@@ -41,7 +41,7 @@ strip grows with the type; `VN_OVERLAY_HEIGHT` still wins if it is set.
     VN_OVERLAY_URL      page to show      (default overlay.html, over read-stats)
     JP_TOOLS_ANKI_URL   AnkiConnect       (default http://localhost:8765)
     VN_OVERLAY_HEIGHT   strip height, px  (default 300, 525 with --mobile)
-    VN_OVERLAY_BG       backdrop alpha    (default 0.75)
+    VN_OVERLAY_BG       backdrop alpha    (default 0.88)
     VN_OVERLAY_FONT     font for the line (default Noto Sans CJK JP)
 """
 
@@ -273,7 +273,7 @@ def main() -> int:
     height = int(os.environ.get("VN_OVERLAY_HEIGHT", 300 * scale))
     url = os.environ.get("VN_OVERLAY_URL", DEFAULT_URL)
     if url == DEFAULT_URL:
-        url += f"?bg={os.environ.get('VN_OVERLAY_BG', '0.75')}&h={height}&scale={scale}"
+        url += f"?bg={os.environ.get('VN_OVERLAY_BG', '0.88')}&h={height}&scale={scale}"
         if args.mobile:
             url += "&mobile=1"
         font = os.environ.get("VN_OVERLAY_FONT")

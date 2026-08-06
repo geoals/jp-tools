@@ -165,7 +165,7 @@ on every change.
 - `VN_OVERLAY_HEIGHT` (default 300, 525 under `--mobile`) — strip height, px. The
   text is positioned against it, so changing it moves the line by the same
   amount.
-- `VN_OVERLAY_BG` (default 0.75) — backdrop alpha. At 1 the game's own text is
+- `VN_OVERLAY_BG` (default 0.88) — backdrop alpha. At 1 the game's own text is
   hidden, which is the only thing that makes the two agree: the VN's line
   breaks are inserted when it renders, so they are not in the hooked text and
   cannot be reproduced.
