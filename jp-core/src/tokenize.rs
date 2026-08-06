@@ -408,13 +408,25 @@ impl SudachiTokenizer {
     /// contest and handed さっき to 殺気. The fallback is the weaker signal and
     /// is used only where the sharper one is silent — where BCCWJ does rank the
     /// pair, however badly (一/いつ is 536,048th), that number stands.
-    fn headword_for_reading(&self, reading: &str) -> Option<&String> {
-        let terms = self.by_reading.get(reading)?;
+    ///
+    /// `accept` is the caller's structural filter — an inflected token may only
+    /// name a headword that conjugates.
+    fn headword_for_reading(
+        &self,
+        reading: &str,
+        accept: impl Fn(&str) -> bool,
+    ) -> Option<&String> {
+        let terms: Vec<&String> = self
+            .by_reading
+            .get(reading)?
+            .iter()
+            .filter(|t| accept(t))
+            .collect();
         match terms.as_slice() {
             [one] => Some(one),
             many => many
                 .iter()
-                .filter_map(|t| self.rank(t, reading).map(|r| (r, t)))
+                .filter_map(|t| self.rank(t, reading).map(|r| (r, *t)))
                 .min_by_key(|(r, _)| *r)
                 .map(|(_, t)| t),
         }
@@ -1115,8 +1127,14 @@ impl SudachiTokenizer {
             // anyone read. A mora carries no information about which word it
             // is, and a fallback that cannot be wrong about a real word cannot
             // be right about a fragment either.
+            // A form is a form *of* something here too: さばい reads さばく, and
+            // the best-ranked headword with that reading is 砂漠, a noun no
+            // verb ending is a form of. Same rule the candidate ladder applies
+            // above, and it has to be applied inside the arbitration — dropping
+            // 砂漠 afterwards would only lose the match, not hand it to 捌く.
             if !is_one_mora(&spoken)
-                && let Some(term) = self.headword_for_reading(&spoken)
+                && let Some(term) = self
+                    .headword_for_reading(&spoken, |t| uninflected || self.conjugatable_lemma(t))
             {
                 return (
                     term.clone(),

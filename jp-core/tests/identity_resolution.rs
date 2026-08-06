@@ -35,6 +35,11 @@ fn ranks() -> HashMap<(String, String), i64> {
         ("窺う", "うかがう", 2831),
         ("敵", "てき", 1039),
         ("隙", "すき", 4156),
+        // 砂漠 outranks both verbs, which is exactly why the reading-only
+        // fallback has to drop it before arbitrating on an inflected token.
+        ("砂漠", "さばく", 4872),
+        ("裁く", "さばく", 11982),
+        ("捌く", "さばく", 13939),
     ]
     .into_iter()
     .map(|(t, r, n)| ((t.to_string(), r.to_string()), n))
@@ -86,6 +91,8 @@ fn conjugatable() -> HashSet<String> {
         "振り返る",
         "信じる",
         "信ずる",
+        "捌く",
+        "裁く",
     ]
     .into_iter()
     .map(str::to_string)
@@ -379,6 +386,18 @@ fn a_stem_is_never_filed_under_a_word_that_does_not_conjugate() {
             "{text} must not yield {forbidden}: {bases:?}"
         );
     }
+}
+
+/// The same rule inside the reading-only fallback, where the refusal alone is
+/// not enough: さばい reads さばく, and the commonest headword with that reading
+/// is 砂漠. Dropping the nouns has to leave the verbs to be arbitrated between,
+/// or a conjugated verb ends up filed under a noun.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_reading_only_match_on_an_inflected_token_stays_a_verb() {
+    let (tk, _) = setup();
+    let (term, _) = identity_of(&tokens_of(&tk, "魚をさばいている。"), "さばい");
+    assert!(term == "捌く" || term == "裁く", "{term}");
 }
 
 /// The same grammar has to give the same answer. 開いて and 続いて differ only in
