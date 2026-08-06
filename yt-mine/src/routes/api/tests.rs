@@ -22,6 +22,7 @@ fn mock_tokenizer() -> MockTokenizer {
             .map(|c| Token {
                 surface: c.to_string(),
                 base_form: c.to_string(),
+                dictionary_form: c.to_string(),
                 reading: "*".into(),
                 pos: "名詞".into(),
                 proper_noun: false,

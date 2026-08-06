@@ -562,6 +562,7 @@ mod tests {
         Token {
             surface: surface.to_string(),
             base_form: surface.to_string(),
+            dictionary_form: surface.to_string(),
             reading: String::new(),
             pos: pos.to_string(),
             proper_noun: false,

@@ -42,6 +42,7 @@ impl Tokenizer for FakeTokenizer {
                 );
                 Token {
                     surface: s.clone(),
+                    dictionary_form: s.clone(),
                     base_form: s,
                     reading: "*".into(),
                     pos: if is_cjk { "名詞" } else { "記号" }.into(),

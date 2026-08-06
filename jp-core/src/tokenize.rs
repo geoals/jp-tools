@@ -44,6 +44,13 @@ pub struct Token {
     /// makes each spelling a separate word with its own counts and status.
     /// Normalization subsumes inflection too (振っ → 振る).
     pub base_form: String,
+    /// Sudachi's dictionary form — the word uninflected but spelt as the text
+    /// spelt it.
+    ///
+    /// Kept because the expression join needs the tail in dictionary form
+    /// *without* the respelling `base_form` carries: 眉をひそめ resolves ひそめ
+    /// to 潜める, and 眉を潜める is not a headword while 眉をひそめる is.
+    pub dictionary_form: String,
     pub reading: String,
     /// Top-level part of speech (名詞, 動詞, …).
     pub pos: String,
@@ -523,11 +530,21 @@ impl SudachiTokenizer {
             && (is_content_word(&last.pos) || last.pos == "接尾辞");
         let surfaces: String = run.iter().map(|t| t.surface.as_str()).collect();
 
-        let written: String = head
-            .iter()
-            .map(|t| t.surface.as_str())
-            .chain(std::iter::once(last.base_form.as_str()))
-            .collect();
+        let uninflect = |tail: &str| -> String {
+            head.iter()
+                .map(|t| t.surface.as_str())
+                .chain(std::iter::once(tail))
+                .collect()
+        };
+        let written = uninflect(&last.base_form);
+        // The same run with the tail spelt as the text spelt it. `base_form` is
+        // the *identity*, and identity resolution may respell a kana tail in
+        // kanji — ひそめ is filed under 潜める, so the candidate came out
+        // 眉を潜める and the run fell through with 眉をひそめる listed all along.
+        // Offered as a second candidate rather than a replacement: the
+        // respelling is right where the master owns the spelling (言っ → 言う),
+        // and this only reaches runs the first candidate found nothing for.
+        let as_written = uninflect(&last.dictionary_form);
         // Whether the parts *spell* the headword, as opposed to merely sounding
         // like it. The length floor below turns on this.
         let mut spelled = true;
@@ -552,7 +569,11 @@ impl SudachiTokenizer {
         // golden corpus.
         let opens_on_a_word = is_content_word(&run[0].pos);
         let conjugated_tail = last.inflected && is_content_word(&last.pos) && opens_on_a_word;
-        let expression = if conjugated_tail { &written } else { &surfaces };
+        let candidates: Vec<&String> = if conjugated_tail {
+            vec![&written, &as_written]
+        } else {
+            vec![&surfaces]
+        };
         // **A standard dictionary may say what is one word, never how it is
         // spelt.** The join builds its candidate from base forms, and Sudachi's
         // base form for まで is 迄 — which 明鏡 lists, so 今まで came back as
@@ -585,6 +606,11 @@ impl SudachiTokenizer {
                 && (self.lexicon.contains(e) || opens_on_a_word)
                 && spelt_as_read(e)
         };
+        let expression = candidates
+            .iter()
+            .copied()
+            .find(|c| expression_admitted(c))
+            .unwrap_or(candidates[0]);
         let term = if spellable && self.segments.contains(&written) && spelt_as_read(&written) {
             Some(written.clone())
         } else if expression_shaped && !mid_conjugation && expression_admitted(expression) {
@@ -727,6 +753,7 @@ impl SudachiTokenizer {
             token: Token {
                 surface: surfaces,
                 reading,
+                dictionary_form: term.clone(),
                 base_form: term,
                 pos: last.pos.clone(),
                 proper_noun: false,
@@ -1423,6 +1450,7 @@ impl SudachiTokenizer {
         Token {
             surface: m.surface().to_string(),
             base_form,
+            dictionary_form: m.dictionary_form().to_string(),
             reading,
             pos: m.part_of_speech()[0].clone(),
             proper_noun: subclass == "固有名詞",
@@ -1668,6 +1696,7 @@ mod tests {
         Token {
             surface: surface.to_string(),
             base_form: base.to_string(),
+            dictionary_form: base.to_string(),
             reading: reading.to_string(),
             pos: pos.to_string(),
             proper_noun: false,

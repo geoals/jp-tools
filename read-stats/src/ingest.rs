@@ -699,6 +699,7 @@ mod tests {
         Token {
             surface: base.to_string(),
             base_form: base.to_string(),
+            dictionary_form: base.to_string(),
             reading: reading.to_string(),
             pos: "名詞".to_string(),
             proper_noun: proper,

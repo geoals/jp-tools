@@ -97,6 +97,7 @@ mod tests {
             Token {
                 surface: "すえた".into(),
                 base_form: "饐える".into(),
+                dictionary_form: "饐える".into(),
                 reading: "スエ".into(),
                 pos: "動詞".into(),
                 proper_noun: false,
@@ -107,6 +108,7 @@ mod tests {
             Token {
                 surface: "臭い".into(),
                 base_form: "臭い".into(),
+                dictionary_form: "臭い".into(),
                 reading: "ニオイ".into(),
                 pos: "名詞".into(),
                 proper_noun: false,
@@ -125,6 +127,7 @@ mod tests {
             Token {
                 surface: "東京".into(),
                 base_form: "東京".into(),
+                dictionary_form: "東京".into(),
                 reading: "トウキョウ".into(),
                 pos: "名詞".into(),
                 proper_noun: false,
@@ -135,6 +138,7 @@ mod tests {
             Token {
                 surface: "に".into(),
                 base_form: "に".into(),
+                dictionary_form: "に".into(),
                 reading: "ニ".into(),
                 pos: "助詞".into(),
                 proper_noun: false,
@@ -145,6 +149,7 @@ mod tests {
             Token {
                 surface: "行く".into(),
                 base_form: "行く".into(),
+                dictionary_form: "行く".into(),
                 reading: "イク".into(),
                 pos: "動詞".into(),
                 proper_noun: false,
@@ -165,6 +170,7 @@ mod tests {
             Token {
                 surface: "食べ".into(),
                 base_form: "食べる".into(),
+                dictionary_form: "食べる".into(),
                 reading: "タベ".into(),
                 pos: "動詞".into(),
                 proper_noun: false,
@@ -175,6 +181,7 @@ mod tests {
             Token {
                 surface: "た".into(),
                 base_form: "た".into(),
+                dictionary_form: "た".into(),
                 reading: "タ".into(),
                 pos: "助動詞".into(),
                 proper_noun: false,
@@ -194,6 +201,7 @@ mod tests {
         let tokens = vec![Token {
             surface: "テスト".into(),
             base_form: "テスト".into(),
+            dictionary_form: "テスト".into(),
             reading: "テスト".into(),
             pos: "名詞".into(),
             proper_noun: false,
@@ -210,6 +218,7 @@ mod tests {
             Token {
                 surface: "食べ".into(),
                 base_form: "食べる".into(),
+                dictionary_form: "食べる".into(),
                 reading: "タベ".into(),
                 pos: "動詞".into(),
                 proper_noun: false,
@@ -220,6 +229,7 @@ mod tests {
             Token {
                 surface: "て".into(),
                 base_form: "て".into(),
+                dictionary_form: "て".into(),
                 reading: "テ".into(),
                 pos: "助詞".into(),
                 proper_noun: false,
@@ -230,6 +240,7 @@ mod tests {
             Token {
                 surface: "食べ".into(),
                 base_form: "食べる".into(),
+                dictionary_form: "食べる".into(),
                 reading: "タベ".into(),
                 pos: "動詞".into(),
                 proper_noun: false,
@@ -240,6 +251,7 @@ mod tests {
             Token {
                 surface: "た".into(),
                 base_form: "た".into(),
+                dictionary_form: "た".into(),
                 reading: "タ".into(),
                 pos: "助動詞".into(),
                 proper_noun: false,

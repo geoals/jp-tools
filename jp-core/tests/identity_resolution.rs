@@ -93,6 +93,7 @@ fn conjugatable() -> HashSet<String> {
         "信ずる",
         "捌く",
         "裁く",
+        "潜める",
     ]
     .into_iter()
     .map(str::to_string)
@@ -398,6 +399,17 @@ fn a_reading_only_match_on_an_inflected_token_stays_a_verb() {
     let (tk, _) = setup();
     let (term, _) = identity_of(&tokens_of(&tk, "魚をさばいている。"), "さばい");
     assert!(term == "捌く" || term == "裁く", "{term}");
+}
+
+/// An expression whose tail the identity ladder respelt. ひそめ is filed under
+/// 潜める, so the run's canonical spelling came out 眉を潜める — not a headword,
+/// while 眉をひそめる is one. The join has to try the tail as the text spelt it.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn an_expression_is_found_under_the_spelling_the_text_used() {
+    let (tk, _) = setup();
+    let ids = identities(&tokens_of(&tk, "彼は眉をひそめた。"));
+    assert!(ids.iter().any(|(t, _)| t == "眉をひそめる"), "{ids:?}");
 }
 
 /// The same grammar has to give the same answer. 開いて and 続いて differ only in
