@@ -9,6 +9,10 @@
 //! ledger keys on. The client sends that pair back, so the popup describes the
 //! term the tokenizer decided on rather than the surface under the finger —
 //! 振っ is looked up as 振る.
+//!
+//! [`expand`] is the way out of that when the tokenizer split a word: it scans
+//! the raw line to the right of the clicked position, so the reader can pick
+//! the compound out of a segmentation nothing downstream could have joined.
 
 use axum::Json;
 use axum::extract::{Query, State};
@@ -208,4 +212,99 @@ pub async fn retract(
         tracing::warn!(error = %e, "retracted a lookup without leaving its presence mark");
     }
     Ok(Json(serde_json::json!({ "retracted": ts.is_some() })))
+}
+
+#[derive(Deserialize)]
+pub struct ExpandQuery {
+    /// The line from the clicked word's first character to its end.
+    pub text: String,
+}
+
+#[derive(Serialize)]
+pub struct Expansion {
+    /// The headword, which here is also the literal text: nothing is
+    /// deinflected, so the string is a prefix of `text`.
+    pub term: String,
+    /// The one reading the dictionaries agree on, or empty where they list
+    /// several — the popup then shows every one, as it does for a word whose
+    /// reading the tokenizer could not decide.
+    pub reading: String,
+    pub dictionaries: Vec<String>,
+}
+
+/// How far to the right a scan reaches, in characters. Yomitan's own default.
+const EXPAND_MAX_CHARS: usize = 10;
+
+/// `GET /api/reader/expand?text=<rest of the line>` — what a longer reading of
+/// this position would be.
+///
+/// The tokenizer splits 継年劣化 into 継年 and 劣化, and both halves are right;
+/// the compound is a Jitendex headword and not a Sankoku one, so no amount of
+/// dictionary validation would have joined them. This is the escape hatch
+/// Yomitan gave for free: take the text from the word's first character and ask
+/// which of its prefixes any dictionary lists, longest first.
+///
+/// Literal prefixes only. A conjugated tail would need deinflection per
+/// candidate length, and the expression this exists for — a compound noun, an
+/// idiom, a set phrase — is written as it is listed.
+pub async fn expand(
+    State(state): State<AppState>,
+    Query(q): Query<ExpandQuery>,
+) -> Result<Json<Vec<Expansion>>, AppError> {
+    let pool = state.knowledge.pool();
+    let chars: Vec<char> = q.text.chars().take(EXPAND_MAX_CHARS).collect();
+    let candidates: Vec<String> = (2..=chars.len())
+        .map(|n| chars[..n].iter().collect())
+        .collect();
+    if candidates.is_empty() {
+        return Ok(Json(Vec::new()));
+    }
+
+    // One statement per dictionary, keyed on `dictionary_id` so it seeks
+    // `idx_dictionary_entries_lookup` — there is no index on `term` alone, and
+    // a scan of 400k rows here would hold the write lock off every other
+    // writer.
+    let placeholders = vec!["?"; candidates.len()].join(",");
+    let sql = format!(
+        "SELECT DISTINCT term, reading FROM dictionary_entries INDEXED BY idx_dictionary_entries_lookup \
+         WHERE dictionary_id = ? AND term IN ({placeholders})"
+    );
+
+    let mut found: Vec<(String, Vec<String>, Vec<String>)> = Vec::new();
+    for dict in dictionaries::list_dictionaries(pool).await? {
+        let mut query = sqlx::query_as::<_, (String, String)>(&sql).bind(dict.id);
+        for c in &candidates {
+            query = query.bind(c);
+        }
+        for (term, reading) in query.fetch_all(pool).await? {
+            let slot = match found.iter_mut().find(|(t, _, _)| t == &term) {
+                Some(slot) => slot,
+                None => {
+                    found.push((term, Vec::new(), Vec::new()));
+                    found.last_mut().expect("just pushed")
+                }
+            };
+            if !reading.is_empty() && !slot.1.contains(&reading) {
+                slot.1.push(reading);
+            }
+            if !slot.2.contains(&dict.title) {
+                slot.2.push(dict.title.clone());
+            }
+        }
+    }
+
+    found.sort_by_key(|(term, _, _)| std::cmp::Reverse(term.chars().count()));
+    Ok(Json(
+        found
+            .into_iter()
+            .map(|(term, readings, dictionaries)| Expansion {
+                reading: match readings.as_slice() {
+                    [one] => one.clone(),
+                    _ => String::new(),
+                },
+                term,
+                dictionaries,
+            })
+            .collect(),
+    ))
 }

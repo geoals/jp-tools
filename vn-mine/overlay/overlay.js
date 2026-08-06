@@ -8,7 +8,10 @@
 //
 // Segmentation is not asked for separately: the line event already carries a
 // span per word, each with the `(headword, reading)` the ledger keys on. The
-// popup asks about that pair, so 振っ is defined as 振る.
+// popup asks about that pair, so 振っ is defined as 振る. Where that split a
+// word — 経年劣化 into 経年 and 劣化 — the popup's `⤷ longer` button scans
+// the raw line to the right and offers the compounds a dictionary lists; see
+// expansions().
 //
 // Three actions on a word, and only one of them opens the popup: left-click
 // asks what it means, the back side button judges it known or unknown, the
@@ -38,6 +41,10 @@ const warnEl = document.getElementById("warn");
 const popupEl = document.getElementById("popup");
 
 let openWord = null;
+// What the open popup is about: `{ term, reading, surface }`. Not always the
+// clicked word's own pair — an expansion re-opens the popup on the same word
+// with a longer term. Every action in the popup reads this.
+let openTarget = null;
 let line = null;
 // The overlay shell, once its channel is up. Null in an ordinary browser.
 let shell = null;
@@ -96,6 +103,9 @@ function draw(incoming) {
     word.dataset.term = span.headword;
     word.dataset.reading = span.reading ?? "";
     word.dataset.status = span.status;
+    // Where the word starts in the line, for the expansion scan: it reads the
+    // raw text to the right of this point, which the spans do not carry.
+    word.dataset.start = String(span.start);
     frag.append(word);
     at = span.start + span.len;
   }
@@ -233,16 +243,30 @@ function closePopup() {
   popupEl.hidden = true;
   if (openWord) openWord.classList.remove("open");
   openWord = null;
+  openTarget = null;
   minedBadge = null;
   stepSource = null;
   openLookup = null;
   report();
 }
 
-async function show(word) {
-  const { term, reading } = word.dataset;
+/** Define the word clicked, or — with `expand` — a longer term starting at it.
+ *
+ * `target` is what everything in the popup acts on: the pair looked up, judged
+ * and mined. For a click it is the tokenizer's own `(headword, reading)`; for
+ * an expansion it is the compound the reader picked out of the scan, which the
+ * tokenizer split and no ledger row exists for yet.
+ */
+async function show(word, expand = null) {
+  const target = expand ?? {
+    term: word.dataset.term,
+    reading: word.dataset.reading,
+    surface: word.textContent,
+  };
+  const { term, reading } = target;
   if (openWord) openWord.classList.remove("open");
   openWord = word;
+  openTarget = target;
   word.classList.add("open");
 
   popupEl.hidden = false;
@@ -258,14 +282,15 @@ async function show(word) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     data = await res.json();
   } catch (err) {
-    if (openWord === word) popupEl.replaceChildren(el("div", "none", `Lookup failed — ${err.message}`));
+    if (openTarget === target) popupEl.replaceChildren(el("div", "none", `Lookup failed — ${err.message}`));
     return;
   }
-  // A new line landed, or another word was clicked, while the fetch was out.
-  if (openWord !== word) return;
+  // A new line landed, or another word — or another expansion of this one —
+  // was asked about, while the fetch was out.
+  if (openTarget !== target) return;
 
   openLookup = data.lookup_id ?? null;
-  popupEl.replaceChildren(...render(data, word, reading));
+  popupEl.replaceChildren(...render(data, word, target));
   report();
 
   // Asked after the definition is on screen, not before it: Anki is a second
@@ -274,7 +299,7 @@ async function show(word) {
   try {
     const res = await fetch(`/api/reader/mined?term=${encodeURIComponent(term)}`);
     const { note_id } = await res.json();
-    if (openWord === word) markMined(note_id);
+    if (openTarget === target) markMined(note_id);
   } catch {
     // Anki closed, or busy. The badge is an extra, never a report.
   }
@@ -314,10 +339,13 @@ function place(word) {
 /** Known / unknown, written to the same ledger the reading view writes to.
  *
  * The repainted word is the whole report, as in `#read`: no toast, and a
- * failed write is the tint coming back. */
-async function judge(word, status) {
+ * failed write is the tint coming back. An expansion has no span of its own to
+ * repaint — it spans several — so the button's own state is the report there.
+ */
+async function judge(word, status, target = null) {
+  const on = target ?? { term: word.dataset.term, reading: word.dataset.reading };
   const body = {
-    judgements: [{ headword: word.dataset.term, reading: word.dataset.reading, status }],
+    judgements: [{ headword: on.term, reading: on.reading, status }],
   };
   const res = await fetch("/api/vocab/judge", {
     method: "POST",
@@ -325,6 +353,7 @@ async function judge(word, status) {
     body: JSON.stringify(body),
   });
   if (!res.ok) return false;
+  if (target && target.term !== word.dataset.term) return true;
   word.dataset.status = status;
   word.classList.remove("new", "seen", "unknown");
   if (status !== "known") word.classList.add(status);
@@ -335,25 +364,30 @@ async function judge(word, status) {
  *
  * Silent: the chime is the only report a mine gets, here as everywhere, and it
  * plays once the capture and the CompactDef write have both come back. */
-async function mine(word) {
+async function mine(word, target = null) {
+  const on = target ?? {
+    term: word.dataset.term,
+    reading: word.dataset.reading,
+    surface: word.textContent,
+  };
   const res = await fetch("/api/reader/mine", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      term: word.dataset.term,
-      reading: word.dataset.reading,
-      surface: word.textContent,
+      term: on.term,
+      reading: on.reading,
+      surface: on.surface,
       sentence: line ? line.text : "",
     }),
   });
   // The add answers with the new note's id, so a popup open on this word gets
   // its badge now rather than the next time it is opened.
   const { note_id } = await res.json().catch(() => ({}));
-  if (openWord === word) markMined(note_id);
+  if (openTarget === target || (target === null && openWord === word)) markMined(note_id);
 }
 
-function render(data, word, reading) {
-  const surface = word.textContent;
+function render(data, word, target) {
+  const { reading, surface } = target;
   const head = el("div", "head");
   head.append(el("span", "term", data.term));
   if (reading && reading !== data.term) head.append(el("span", "reading", reading));
@@ -373,9 +407,9 @@ function render(data, word, reading) {
   minedBadge.title = "Open the card in Anki";
   minedBadge.hidden = true;
   head.append(minedBadge);
-  head.append(actions(word));
+  head.append(actions(word, target));
 
-  const out = [head];
+  const out = [head, expansions(word, target)];
 
   // One dictionary at a time. Sankoku says the same thing more briefly than
   // Jitendex does, and stacking both makes the popup a page to scroll rather
@@ -435,6 +469,62 @@ function render(data, word, reading) {
   return out;
 }
 
+/** "This is one word, not two" — the escape hatch Yomitan gave for free.
+ *
+ * The tokenizer splits 継年劣化 into 継年 and 劣化 and both halves are real
+ * words, so nothing downstream can join them; the compound is a Jitendex
+ * headword and not a Sankoku one, and that is exactly the case the reader can
+ * see and the pipeline cannot. The button scans the raw line to the right of
+ * the clicked word and offers every prefix a dictionary lists, longest first.
+ * Picking one re-opens the popup on it, and the popup's own ✓ ✗ ＋ then act on
+ * that term.
+ *
+ * Behind a button rather than run on open: it is a second round trip, and the
+ * popup exists to answer one question fast.
+ */
+function expansions(word, target) {
+  const row = el("div", "expansions");
+  const start = Number(word.dataset.start);
+  const rest = line && Number.isInteger(start) ? line.text.slice(start) : "";
+  if (!rest) return row;
+
+  const scan = el("button", "", "\u2937 longer");
+  scan.title = "Terms starting here that the tokenizer split";
+  scan.addEventListener("click", async () => {
+    scan.disabled = true;
+    let found;
+    try {
+      const res = await fetch(`/api/reader/expand?text=${encodeURIComponent(rest)}`);
+      found = await res.json();
+    } catch {
+      scan.disabled = false;
+      return;
+    }
+    // Only what is longer than what is already showing: the current term is
+    // itself a prefix match, and so is anything the reader has already stepped
+    // past on a second scan.
+    const longer = found.filter((e) => e.term.length > target.surface.length);
+    if (!longer.length) {
+      row.replaceChildren(el("div", "none", "Nothing longer here"));
+      report();
+      return;
+    }
+    row.replaceChildren(
+      ...longer.map((e) => {
+        const chip = el("button", "", e.term);
+        chip.title = e.dictionaries.join(", ");
+        chip.addEventListener("click", () =>
+          show(word, { term: e.term, reading: e.reading, surface: e.term }),
+        );
+        return chip;
+      }),
+    );
+    report();
+  });
+  row.append(scan);
+  return row;
+}
+
 /** The three side-button actions, as buttons in the popup head.
  *
  * They exist because not every way of reading this has side mouse buttons —
@@ -447,10 +537,10 @@ function render(data, word, reading) {
  * One character each, on the frequency pills' own metrics: the popup is over a
  * game, and everything in it costs line.
  */
-function actions(word) {
+function actions(word, target) {
   const out = el("div", "acts");
   const mark = async (status) => {
-    if (!(await judge(word, status))) return;
+    if (!(await judge(word, status, target))) return;
     for (const b of out.children) b.classList.toggle("on", b.dataset.status === status);
     // Known means the popup was opened to reach this button, not to read the
     // definition, so the row it recorded goes. Only known: not knowing a word
@@ -463,14 +553,17 @@ function actions(word) {
     fetch("/api/reader/lookup/retract", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ lookup_id, term: word.dataset.term }),
+      body: JSON.stringify({ lookup_id, term: target.term }),
     }).catch(() => {});
   };
+  // The word's own status, and only its own: an expansion is a term the ledger
+  // may never have seen, so neither button starts lit.
+  const at = target.term === word.dataset.term ? word.dataset.status : "";
   for (const [label, status, title] of [
     ["✓", "known", "Known"],
     ["✗", "unknown", "Unknown"],
   ]) {
-    const b = el("button", word.dataset.status === status ? "on" : "", label);
+    const b = el("button", at === status ? "on" : "", label);
     b.dataset.status = status;
     b.title = title;
     b.addEventListener("click", () => mark(status));
@@ -478,7 +571,7 @@ function actions(word) {
   }
   const add = el("button", "", "＋");
   add.title = "Mine";
-  add.addEventListener("click", () => mine(word));
+  add.addEventListener("click", () => mine(word, target));
   out.append(add);
   return out;
 }

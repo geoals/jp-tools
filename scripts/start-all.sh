@@ -102,15 +102,22 @@ fail()  { printf '\033[1;31m ✗ \033[0m %s\n' "$*" >&2; }
 # True if something is listening on the TCP port. Works even when the
 # listener belongs to another user (e.g. a root-owned docker process),
 # where ss hides the pid.
+# Neither of these lets awk `exit` on the matching line. `set -o pipefail` is
+# on, so an awk that stops reading kills `ss` with SIGPIPE and the pipeline
+# reports 141 — which read as "port free" here and aborted the whole script
+# there, but only for a port `ss` happens to list early.
 port_listening() {
-  ss -tln 2>/dev/null | awk -v p=":$1" '$4 ~ p"$" { found=1; exit } END { exit !found }'
+  ss -tln 2>/dev/null | awk -v p=":$1" '$4 ~ p"$" { found=1 } END { exit !found }'
 }
 
 # PID of the process listening on a TCP port; empty if none is visible
 # (not listening, or owned by another user).
 port_pid() {
   ss -tlnp 2>/dev/null | awk -v p=":$1" '
-    $4 ~ p"$" { if (match($0, /pid=[0-9]+/)) { print substr($0, RSTART+4, RLENGTH-4); exit } }'
+    $4 ~ p"$" && !found && match($0, /pid=[0-9]+/) {
+      pid = substr($0, RSTART+4, RLENGTH-4); found = 1
+    }
+    END { if (found) print pid }'
 }
 
 port_proc_name() {
@@ -295,10 +302,10 @@ print_status() {
 }
 
 stop_all() {
-  selected "read-stats"        && stop_port "read-stats" "$PORT_readstats"
-  selected "manga-mine"        && stop_port "manga-mine" "$PORT_mangamine"
-  selected "yt-mine"           && stop_port "yt-mine" "$PORT_ytmine"
-  selected "manga-ocr-service" && stop_port "manga-ocr-service" "$PORT_ocr"
+  selected "read-stats"        && stop_port "read-stats" "$PORT_readstats" || true
+  selected "manga-mine"        && stop_port "manga-mine" "$PORT_mangamine" || true
+  selected "yt-mine"           && stop_port "yt-mine" "$PORT_ytmine" || true
+  selected "manga-ocr-service" && stop_port "manga-ocr-service" "$PORT_ocr" || true
   if selected "whisper-service" && whisper_running; then
     info "stopping whisper-service container"
     docker compose -f "$WHISPER_COMPOSE" down
@@ -314,17 +321,20 @@ start_all() {
   mkdir -p "$LOG_DIR"
   build_rust
   sync_dictionaries
-  selected "whisper-service"   && start_whisper
-  selected "manga-ocr-service" && start_ocr
-  selected "yt-mine"    && start_rust "yt-mine" "$PORT_ytmine" "yt-mine"
-  selected "manga-mine" && start_rust "manga-mine" "$PORT_mangamine" "manga-mine"
-  selected "read-stats" && start_rust "read-stats" "$PORT_readstats" "read-stats"
+  # `|| true` throughout: `set -e` aborts on a bare `a && b` whose `a` is
+  # false, so naming one service used to stop the run at the first service not
+  # named.
+  selected "whisper-service"   && start_whisper || true
+  selected "manga-ocr-service" && start_ocr || true
+  selected "yt-mine"    && start_rust "yt-mine" "$PORT_ytmine" "yt-mine" || true
+  selected "manga-mine" && start_rust "manga-mine" "$PORT_mangamine" "manga-mine" || true
+  selected "read-stats" && start_rust "read-stats" "$PORT_readstats" "read-stats" || true
   echo
   print_status
   echo
-  selected "yt-mine"    && ok "yt-mine:     http://localhost:$PORT_ytmine"
-  selected "manga-mine" && ok "manga-mine:  http://localhost:$PORT_mangamine"
-  selected "read-stats" && ok "read-stats:  http://localhost:$PORT_readstats"
+  selected "yt-mine"    && ok "yt-mine:     http://localhost:$PORT_ytmine" || true
+  selected "manga-mine" && ok "manga-mine:  http://localhost:$PORT_mangamine" || true
+  selected "read-stats" && ok "read-stats:  http://localhost:$PORT_readstats" || true
   return 0
 }
 
