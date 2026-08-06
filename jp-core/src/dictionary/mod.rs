@@ -1,4 +1,4 @@
-mod html;
+pub mod html;
 #[cfg(test)]
 mod tests;
 

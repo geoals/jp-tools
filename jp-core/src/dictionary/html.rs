@@ -3,7 +3,11 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 /// Escape special HTML characters in text content.
-pub(crate) fn html_escape(s: &str) -> String {
+///
+/// Quotes included, so the result is also safe inside an attribute value —
+/// which is where a dictionary title lands on a mined card
+/// (`data-dictionary="…"`).
+pub fn html_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
         match ch {

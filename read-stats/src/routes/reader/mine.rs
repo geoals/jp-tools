@@ -20,6 +20,7 @@
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
+use jp_core::dictionary::html::html_escape;
 use jp_core::knowledge::dictionaries;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -282,12 +283,6 @@ fn morae(reading: &str) -> Vec<String> {
         }
     }
     out
-}
-
-fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
 }
 
 #[cfg(test)]
