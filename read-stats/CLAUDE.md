@@ -345,8 +345,14 @@ Mining:
   defect.** When the next line is unvoiced the previous voice legitimately
   plays past its timestamp and the clip is truncated. It shipped that way
   because a truncated clip of the right line beats a whole clip of the wrong
-  one; `vn-mine/vn-calibrate.py` is the tool that would replace the rule, and
-  it needs a real session's data first.
+  one. Replacing the rule needs measurement first — how closely a voiceline's
+  onset tracks the hook, and how well a line's mora count predicts its
+  duration, over a real session rather than a menu. A script that did that
+  lived here and was deleted unused; if it comes back, two traps it already
+  fell into: letting every line search independently, so unvoiced lines claim
+  the next line's voice and invent rates like 131 morae/s (the tell is
+  duplicate `dur` on neighbouring rows), and selecting the sample by
+  `|onset| < 1.0` before reporting that onsets fall within 1.0.
 - **CompactDef is told the surface, never the headword.** The tag axes rate the
   spelling the reader met, so the prompt gets the `<b>` span out of the sentence
   field (`anki::bolded_span`) and the vocab field only as a fallback. Measured on

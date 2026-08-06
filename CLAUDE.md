@@ -83,6 +83,13 @@ Yomitan's own add arrives through, so note-id extraction, CompactDef,
 vn-capture and the chime stay one implementation. **A new card path joins at
 the proxy, never past it.**
 
+The overlay's page lives in `vn-mine/overlay/` and read-stats serves it from
+there, at `/overlay/`. It shares no code with read-stats' own frontend, so it
+belongs beside the Qt shell that shows it — but it calls eight `/api` routes
+with relative URLs, and neither a `file://` origin nor an absolute URL plus
+CORS is worth paying to pretend otherwise. read-stats is its backend; the
+directory is only where the file sits.
+
 **Term identity is dictionary-gated, which is why `dictionary` and `knowledge`
 are one subsystem in jp-core rather than separable data.** The ledger keys on a
 canonical `(headword, reading)` — the reading is in the key because 空 is そら or

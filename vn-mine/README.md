@@ -42,21 +42,12 @@ silero-VAD finds where the speech ends.
   at the matched span. Falls back to anchoring on `VocabKanji` and expanding
   to punctuation/silence boundaries; on any failure the VAD-trimmed clip is
   kept unchanged. Needs whisper-service running on :8100.
-- `vn-calibrate.py` — measurement tool, not part of a capture. Scores every
-  line in the ring's last ~5 minutes against the speech VAD finds, and reports
-  how closely a voiceline's onset tracks the hook and how well the line's mora
-  count predicts its duration. Those two spreads are what a stricter capture
-  rule would have to be built on; run it **during reading** — idle on a menu
-  gives a loud ring and no speech.
-
-  Two traps it has already fallen into, so don't reintroduce them: letting
-  every line search independently (unvoiced lines then claim the next line's
-  voice and invent rates like 131 morae/s — the tell is duplicate `dur` on
-  neighbouring rows), and selecting the sample by `|onset| < 1.0` before
-  reporting that onsets fall within 1.0.
-- `vn-record.sh` / `vn-screenshot.sh` — older replay-based scripts (press
-  right-arrow to replay, record 8s). Still work for VNs with a replay key.
 - `overlay/` — the line drawn **over** the game instead of beside it. See below.
+- `test_ws_logger.py` — the logger's tests. `python3 -m pytest vn-mine`.
+
+Everything above is on one path: `vn-buffer.service` runs the ring buffer and
+the logger, and a capture reads what they left. Nothing here is optional and
+nothing is a spare copy.
 
 ## overlay/ — reading in fullscreen
 
@@ -70,7 +61,8 @@ vn-mine/overlay/vn-overlay.sh --mobile         # 1.75x, read off a phone
 vn-mine/overlay/vn-overlay.sh stop|status|reload
 ```
 
-Needs PySide6, qt6-webengine and layer-shell-qt.
+Needs PySide6, qt6-webengine and layer-shell-qt — **system packages, not the
+venv**, which is why `vn-overlay.sh` calls bare `python3`.
 
 - `vn-overlay.sh` — start it from anywhere, including over ssh: it fills in the
   Wayland socket, the runtime dir and the Qt platform plugin a login shell
@@ -166,7 +158,10 @@ QML and the shell object registered into it from there.
 Debug through Python, not the log. `VN_OVERLAY_DEBUG=1` prints the input region
 on every change.
 
-- `VN_OVERLAY_URL` — page to show (default read-stats' overlay page).
+- `VN_OVERLAY_URL` — page to show (default `overlay.html` beside it, over
+  read-stats on :3200).
+- `JP_TOOLS_ANKI_URL` (default `http://localhost:8765`) — checked at startup
+  only; the card itself is added by read-stats.
 - `VN_OVERLAY_HEIGHT` (default 300, 525 under `--mobile`) — strip height, px. The
   text is positioned against it, so changing it moves the line by the same
   amount.
@@ -182,7 +177,7 @@ on every change.
 
 ```sh
 python3 -m venv ~/.local/share/vn-mine/venv
-~/.local/share/vn-mine/venv/bin/pip install onnxruntime numpy websockets
+~/.local/share/vn-mine/venv/bin/pip install -r vn-mine/requirements.txt
 curl -sL -o ~/.local/share/vn-mine/silero_vad.onnx \
   https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx
 
