@@ -199,6 +199,66 @@ and a ledger row cannot disagree):
   after the fact works and is what to do meanwhile; it just has to be redone
   every VN, and the encounters are already counted by the time triage sees them.
 
+### Fixing one
+
+A wrong token is diagnosed and repaired in a fixed order. Skipping the first
+two steps is how a rule gets changed for a case that turned out to be something
+else.
+
+1. **Ask the pipeline what it did.** `#tokenize` (⚙ → `#tokenize`) renders
+   `jp_core::tokenize::trace` for the line: the Mode C segmentation, the gate's
+   verdict per morpheme, every join offered and why it was refused, and which
+   rung of the identity ladder named the term. The trace is the real
+   implementation talking, not a reconstruction, so the step that is wrong is
+   the code that is wrong.
+2. **Find out how often it happens.** `jp-core/examples/tokens.rs` dumps every
+   line's tokens; `examples/joins.rs` lists what a wider join rule would do.
+   Both read `knowledge.db` directly, so take a snapshot first rather than
+   reading the live one under a session:
+
+   ```sh
+   sqlite3 ~/.local/share/jp-tools/knowledge.db ".backup /tmp/k.db"
+   cargo run --release --example tokens -p jp-core -- /tmp/k.db system_full.dic > before.tsv
+   # ...change the rule...
+   cargo run --release --example tokens -p jp-core -- /tmp/k.db system_full.dic > after.tsv
+   diff <(cut -f2 before.tsv) <(cut -f2 after.tsv) | head -50
+   ```
+
+   **A rule change is judged on that diff, not on the case that prompted it.**
+   Every rule here trades one mistake for another, and the trade is only
+   visible over the corpus: と + し → とする looked like an improvement in
+   isolation and swallowed the quotative particle on eight lines.
+3. **Reach for the narrowest knob that fits.**
+
+   | the error | the knob |
+   | --- | --- |
+   | one string joins wrongly (思いで, ものとする) | `NEVER_JOIN` in `tokenize.rs` — one reviewed judgement per string, and it cannot cost anything not named |
+   | a standard dictionary is licensing nonsense in bulk | `jp-dict set-role <id> reference` backs it out entirely; nothing else changes |
+   | a name is being counted as vocabulary | blacklist in triage — the tokenizer cannot tell (see the name filter above) |
+   | a word should be kept whole | mine it: the mined deck is the tokenizer's second wordhood source, so tomorrow's lines keep it |
+   | anything structural | a rule in `join_run` or `identity_ladder`, with the golden fixture read line by line |
+
+4. **Run the golden test and read its diff.** It fails on any change and that is
+   the point:
+
+   ```sh
+   JP_TOOLS_SUDACHI_DICT_PATH=$PWD/system_full.dic \
+     cargo test -p jp-core --features test-support -- --ignored
+   ```
+
+   Regenerate only once the diff is the change you meant, and **pass the
+   existing fixture corpus back in** so the sample does not reshuffle:
+
+   ```sh
+   cargo run --release --example golden -p jp-core --features test-support -- \
+     ~/.local/share/jp-tools/knowledge.db jp-core/tests/golden/corpus.txt system_full.dic
+   ```
+
+5. **Re-derive the ledger.** `POST /api/vocab/rebuild` re-ingests every line
+   under the new rules, carries stranded judgements onto their new keys and
+   prunes what the pass no longer produces. Nothing is lost by running it
+   twice; it is the undo for a tokenizer change as much as the commit of one.
+
 ### Known errors, and why they are left alone
 
 A random audit of 240 tokens puts content-word accuracy near 97%. What is left

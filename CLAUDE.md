@@ -148,6 +148,12 @@ boolean:
 - **the vocabulary scale** ("I know N words") — strict: **master only**.
 - **classification** — a term in a name dictionary but not the master is a name.
 
+A role is the coarsest knob on the tokenizer and the way to back one of these
+out: `jp-dict set-role <id> reference` takes a dictionary out of segmentation
+without touching anything else, and `POST /api/vocab/rebuild` re-derives the
+ledger under whatever the rules are now. read-stats' CLAUDE.md has the full
+procedure for a wrong token, under "Fixing one".
+
 **Sankoku is the master dictionary** and its ~82k terms are a real vocabulary
 scale. Jitendex is five times larger and 335k of its terms are absent from
 Sankoku — phrasal expressions, compositional compounds, and every orthographic

@@ -1,3 +1,22 @@
+//! Sudachi, told what a word is.
+//!
+//! One orthographic rewrite of the line, then Mode C validated against the
+//! dictionaries (`keeps_whole`), then recomposition of what came apart
+//! (`recompose`), then an identity per token (`identity_ladder`). Every rule in
+//! here trades one class of mistake for another.
+//!
+//! **Two authorities, and they answer different questions.** `lexicon` is the
+//! master dictionary and says how a word is *spelt* — only it may name an
+//! identity. `segments` is the master plus the standard dictionaries beside it
+//! and says only what is *one word*. Widening the first is how それ becomes
+//! 其れ; see `Role::Standard`.
+//!
+//! **Changing a rule is a measurement, not an argument.** `#tokenize` in
+//! read-stats renders [`trace`] for one line, `jp-core/examples/tokens.rs`
+//! dumps the corpus for a before/after diff, and `tests/golden.rs` fails on any
+//! movement so the diff gets read. read-stats' CLAUDE.md walks the whole
+//! procedure under "Fixing one".
+
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
