@@ -345,14 +345,35 @@
     color: #9ca3af;
   }
 
-  /* Both dictionaries ship Yomitan *structured content*: HTML tagged with
-     data-content/data-class attributes that carries no styling of its own.
-     Yomitan supplies that from its own stylesheet plus a styles.css inside the
-     dictionary zip, and neither travels with the definition — which is why the
-     raw markup reads as "1.(1)nounsuffix". These rules are the same ones the
-     Anki card type uses, so a definition looks the same in both places. */
+  /* Every dictionary here ships Yomitan *structured content*: HTML tagged with
+     data-* attributes that carries no styling of its own. Yomitan supplies that
+     from its own stylesheet plus a styles.css inside the dictionary zip, and
+     neither travels with the definition — which is why the raw markup reads as
+     "1.(1)nounsuffix". The rules below are that styling, rewritten for a popup
+     that is always over a game rather than for white paper.
+
+     They are scoped per dictionary because the attribute names collide:
+     data-headword, data-red and data-num each mean something different in 明鏡
+     and in 小学館. `data-dict` is the slug overlay.js puts on the body. */
+
+  /* An inline image is standing in for a character — 三省堂 sets its part of
+     speech markers and accent bars this way, and hiding them drops content.
+     They are black or red line art drawn for paper: invert to bring them onto
+     a dark background, then turn the hue back so a red bar stays red. */
   #popup img {
-    display: none;
+    filter: invert(1) hue-rotate(180deg);
+  }
+  /* Illustrations and stroke-order diagrams are pictures rather than
+     characters: they get their own line, and paper-white behind them. */
+  #popup img.dict-figure {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0.35rem 0;
+    padding: 0.25rem;
+    background: #fff;
+    border-radius: 0.25rem;
+    filter: none;
   }
   #popup a {
     color: #93c5fd;
@@ -429,70 +450,259 @@
     color: #9ca3af;
   }
 
-  /* 明鏡's own markup, which is not Jitendex's. It ships a styles.css keyed on
-     `data-sc-*`; jp-core stores the same HTML without that prefix, so these are
-     its rules under the names that arrive here. The colours are not its own —
-     it prices its reds and pink boxes against white paper, and this popup is
-     always over a game. */
+  /* One palette for all four, so a sense number means the same colour whichever
+     dictionary is showing and the eye can find it without reading. The paper
+     originals price their reds and pink boxes against white; these are the same
+     distinctions at a brightness that survives being over a game. */
   #popup {
-    --mk-red: hsl(0 75% 70%);
-    --mk-box: rgba(255, 255, 255, 0.06);
+    --d-key: hsl(0 75% 70%); /* headword, sense numbers — the scan targets */
+    --d-tag: #9fb3cc; /* part of speech, register, field labels */
+    --d-note: #9ca3af; /* notes, cross references, anything secondary */
+    --d-ex: #86c986; /* example sentences */
+    --d-box: rgba(255, 255, 255, 0.06);
+    --d-rule: #3a4152;
   }
-  #popup [data-red] {
-    color: var(--mk-red);
-  }
-  #popup [data-headword][data-カナ] {
-    font-size: 1.15em;
-    font-weight: bold;
-  }
-  #popup [data-headword][data-旧かな] {
-    margin-left: 0.5em;
-    color: #9ca3af;
-    font-size: 0.7em;
-  }
-  #popup [data-head2] {
-    margin-top: 0.25em;
-  }
-  /* The ❶ ❷ before each sense, and the ruby it writes readings in. */
-  #popup [data-bc] {
-    margin-right: 0.2em;
-  }
-  #popup [data-rt] {
+  /* Ruby is a reading over a word in every dictionary here, and small in all
+     of them. */
+  #popup [data-rt],
+  #popup rt {
     font-size: 0.55em;
     font-weight: normal;
     vertical-align: top;
   }
-  /* 書き方, 使い方, 注意, 品格 — the labels that head a usage note. */
-  #popup [data-fbox] {
-    display: inline-block;
-    margin-right: 0.25em;
-    padding: 0.05em 0.25em;
-    border: 1px solid var(--mk-red);
-    border-radius: 0.2em;
-    color: var(--mk-red);
-    font-size: 0.8em;
-    word-break: keep-all;
-  }
-  #popup [data-column],
-  #popup [data-hinkaku] {
-    margin-top: 0.5em;
-    padding: 0.25em 0.5em;
-    border-radius: 0.4em;
-    background: var(--mk-box);
-  }
-  #popup [data-columntitle] {
-    color: var(--mk-red);
-    font-weight: bold;
-  }
-  /* 類語, folded away until asked for. */
+  /* Folded-away extras: 明鏡's 類語, 小学館's 筆順. */
   #popup details {
     margin: 0.5em 0;
   }
   #popup summary {
     width: max-content;
-    color: #9ca3af;
+    color: var(--d-note);
     font-size: 0.85em;
     cursor: pointer;
+  }
+
+  /* --- 明鏡国語辞典 第三版 -------------------------------------------------
+     It ships a styles.css keyed on `data-sc-*`; jp-core stores the same HTML
+     without that prefix, so these are its rules under the names that arrive
+     here. */
+  [data-dict="明鏡国語辞典-第三版"] [data-red] {
+    color: var(--d-key);
+  }
+  [data-dict="明鏡国語辞典-第三版"] [data-headword][data-カナ] {
+    font-size: 1.15em;
+    font-weight: bold;
+  }
+  [data-dict="明鏡国語辞典-第三版"] [data-headword][data-旧かな] {
+    margin-left: 0.5em;
+    color: var(--d-note);
+    font-size: 0.7em;
+  }
+  [data-dict="明鏡国語辞典-第三版"] [data-head2] {
+    margin-top: 0.25em;
+  }
+  /* The ❶ ❷ before each sense. */
+  [data-dict="明鏡国語辞典-第三版"] [data-bc] {
+    margin-right: 0.2em;
+  }
+  /* 書き方, 使い方, 注意, 品格 — the labels that head a usage note. */
+  [data-dict="明鏡国語辞典-第三版"] [data-fbox] {
+    display: inline-block;
+    margin-right: 0.25em;
+    padding: 0.05em 0.25em;
+    border: 1px solid var(--d-key);
+    border-radius: 0.2em;
+    color: var(--d-key);
+    font-size: 0.8em;
+    word-break: keep-all;
+  }
+  [data-dict="明鏡国語辞典-第三版"] [data-column],
+  [data-dict="明鏡国語辞典-第三版"] [data-hinkaku] {
+    margin-top: 0.5em;
+    padding: 0.25em 0.5em;
+    border-radius: 0.4em;
+    background: var(--d-box);
+  }
+  [data-dict="明鏡国語辞典-第三版"] [data-columntitle] {
+    color: var(--d-key);
+    font-weight: bold;
+  }
+
+  /* --- 三省堂国語辞典 第八版 -----------------------------------------------
+     Sankoku names its structure in Japanese under a single `data-name`, and
+     ships no colour or weight at all — which is why it arrives as one
+     undifferentiated block. The entry is headword, then numbered senses of
+     gloss and example, and these rules make those three findable. */
+  [data-dict="三省堂国語辞典-第八版"] [data-name="見出部"] {
+    font-size: 1.15em;
+  }
+  [data-dict="三省堂国語辞典-第八版"] [data-name="見出仮名"],
+  [data-dict="三省堂国語辞典-第八版"] [data-name="子見出仮名"],
+  [data-dict="三省堂国語辞典-第八版"] [data-name="句表記"] {
+    font-weight: bold;
+  }
+  /* The 【犬】 spelling beside the reading. */
+  [data-dict="三省堂国語辞典-第八版"] [data-name="表記G"] {
+    color: var(--d-key);
+  }
+  [data-dict="三省堂国語辞典-第八版"] [data-name="表外字マーク"],
+  [data-dict="三省堂国語辞典-第八版"] [data-name="表外音訓マーク"],
+  [data-dict="三省堂国語辞典-第八版"] [data-name="歴史仮名"],
+  [data-dict="三省堂国語辞典-第八版"] [data-name="アクセント"] {
+    color: var(--d-note);
+    font-size: 0.75em;
+  }
+  /* 品詞, 使用域 (口語, 俗語…) and 専門 (the field a sense belongs to) are all
+     labels on the sense rather than part of it. */
+  [data-dict="三省堂国語辞典-第八版"] [data-name="品詞G"],
+  [data-dict="三省堂国語辞典-第八版"] [data-name="使用域G"],
+  [data-dict="三省堂国語辞典-第八版"] [data-name="専門G"] {
+    margin: 0 0.25em;
+    color: var(--d-tag);
+    font-size: 0.8em;
+    word-break: keep-all;
+  }
+  /* The number is the one thing worth finding without reading. */
+  [data-dict="三省堂国語辞典-第八版"] [data-name="語義番号"] {
+    margin-right: 0.15em;
+    color: var(--d-key);
+    font-weight: bold;
+  }
+  [data-dict="三省堂国語辞典-第八版"] [data-name="大語義"],
+  [data-dict="三省堂国語辞典-第八版"] [data-name="語義"] {
+    display: block;
+    margin-top: 0.3em;
+  }
+  /* 用例 runs on from the gloss on paper. Broken out, an entry stops being a
+     wall: the definition is the line, the examples are under it. */
+  [data-dict="三省堂国語辞典-第八版"] [data-name="用例G"] {
+    display: block;
+    margin: 0.25em 0 0.1em;
+    padding-left: 0.5em;
+    border-left: 2px solid var(--d-rule);
+    color: var(--d-ex);
+  }
+  [data-dict="三省堂国語辞典-第八版"] [data-name="注記"],
+  [data-dict="三省堂国語辞典-第八版"] [data-name="注解"],
+  [data-dict="三省堂国語辞典-第八版"] [data-name="言換G"],
+  [data-dict="三省堂国語辞典-第八版"] [data-name="原綴"] {
+    color: var(--d-note);
+    font-size: 0.85em;
+  }
+  [data-dict="三省堂国語辞典-第八版"] [data-name="参照G"],
+  [data-dict="三省堂国語辞典-第八版"] [data-name="対義語G"] {
+    color: #93c5fd;
+    font-size: 0.85em;
+  }
+  [data-dict="三省堂国語辞典-第八版"] [data-name="red"] {
+    color: var(--d-key);
+  }
+  [data-dict="三省堂国語辞典-第八版"] [data-name="ルビ"] {
+    font-size: 0.55em;
+    vertical-align: top;
+  }
+  /* A run-in subentry — 子見出 for a derived form, 句 for a phrase. Its own
+     line, or it reads as the tail of the sense above it. */
+  [data-dict="三省堂国語辞典-第八版"] [data-name="子見出部"],
+  [data-dict="三省堂国語辞典-第八版"] [data-name="句見出部"] {
+    display: block;
+    margin-top: 0.4em;
+  }
+
+  /* --- 小学館例解学習国語 第十二版 ------------------------------------------
+     A school dictionary, so an entry carries more than a gloss: the kanji's
+     grade, radical and stroke count, illustrations, and a 使い分け box telling
+     near-synonyms apart. Its markup names all of that, and the point of styling
+     it is that those parts stay apart. */
+  [data-dict="小学館例解学習国語-第十二版"] [data-headword] {
+    font-size: 1.15em;
+    font-weight: bold;
+  }
+  [data-dict="小学館例解学習国語-第十二版"] [data-標準表記] {
+    color: var(--d-key);
+  }
+  [data-dict="小学館例解学習国語-第十二版"] [data-参考表記],
+  [data-dict="小学館例解学習国語-第十二版"] [data-別読み],
+  [data-dict="小学館例解学習国語-第十二版"] [data-原綴] {
+    color: var(--d-note);
+    font-size: 0.8em;
+  }
+  [data-dict="小学館例解学習国語-第十二版"] [data-head2] {
+    display: block;
+    margin-bottom: 0.15em;
+  }
+  /* 音, 訓, 部首, 総画数 and the grade the kanji is taught in — a header line
+     about the character, not part of any sense. */
+  [data-dict="小学館例解学習国語-第十二版"] [data-配当学年],
+  [data-dict="小学館例解学習国語-第十二版"] [data-音読み],
+  [data-dict="小学館例解学習国語-第十二版"] [data-訓読み],
+  [data-dict="小学館例解学習国語-第十二版"] [data-部首],
+  [data-dict="小学館例解学習国語-第十二版"] [data-総画数],
+  [data-dict="小学館例解学習国語-第十二版"] [data-acc] {
+    color: var(--d-note);
+    font-size: 0.8em;
+    word-break: keep-all;
+  }
+  [data-dict="小学館例解学習国語-第十二版"] [data-POSG] {
+    margin: 0 0.25em;
+    color: var(--d-tag);
+    font-size: 0.8em;
+    word-break: keep-all;
+  }
+  /* Its own colour words come first so the rules below can override them: it
+     paints the ❶ green along with everything else it wants noticed, and a sense
+     number has to read as a sense number in every dictionary here. */
+  [data-dict="小学館例解学習国語-第十二版"] [data-red] {
+    color: var(--d-key);
+  }
+  [data-dict="小学館例解学習国語-第十二版"] [data-blue] {
+    color: #93c5fd;
+  }
+  [data-dict="小学館例解学習国語-第十二版"] [data-green] {
+    color: var(--d-ex);
+  }
+  /* The ❶ ❷ and the 例 / 音 / 訓 markers it sets in grey. */
+  [data-dict="小学館例解学習国語-第十二版"] [data-num] {
+    margin-right: 0.15em;
+    color: var(--d-key);
+    font-weight: bold;
+  }
+  [data-dict="小学館例解学習国語-第十二版"] [data-gray] {
+    margin-right: 0.15em;
+    color: var(--d-tag);
+    font-size: 0.8em;
+  }
+  [data-dict="小学館例解学習国語-第十二版"] [data-level1] {
+    display: block;
+    margin-top: 0.3em;
+  }
+  [data-dict="小学館例解学習国語-第十二版"] [data-ex] {
+    color: var(--d-ex);
+  }
+  /* 使い分け is the reason to open this dictionary on a word you half know:
+     it is the box that says which near-synonym goes where. */
+  [data-dict="小学館例解学習国語-第十二版"] [data-使い分け],
+  [data-dict="小学館例解学習国語-第十二版"] [data-関連],
+  [data-dict="小学館例解学習国語-第十二版"] [data-参考] {
+    display: block;
+    margin-top: 0.4em;
+    padding: 0.25em 0.5em;
+    border-radius: 0.4em;
+    background: var(--d-box);
+  }
+  [data-dict="小学館例解学習国語-第十二版"] [data-caption] {
+    display: block;
+    color: var(--d-note);
+    font-size: 0.8em;
+  }
+  /* 活用 tables, which arrive as a bare table and otherwise run together. */
+  [data-dict="小学館例解学習国語-第十二版"] table {
+    margin: 0.35em 0;
+    border-collapse: collapse;
+    font-size: 0.85em;
+  }
+  [data-dict="小学館例解学習国語-第十二版"] td {
+    padding: 0.1em 0.4em;
+    border: 1px solid var(--d-rule);
   }
 
   /* Silent while the capture pipeline is healthy. It only speaks up to explain

@@ -496,6 +496,23 @@ fn wrap_definitions_produces_title_and_body() {
     );
 }
 
+/// The overlay's stylesheet hardcodes these, and a dictionary whose slug moves
+/// loses its styling silently — it still renders, just flat.
+#[test]
+fn css_slug_matches_the_overlay_stylesheet() {
+    // 三省堂 separates its edition with a fullwidth space, the others with an
+    // ASCII one; both have to reach the same kind of hyphen.
+    assert_eq!(
+        css_slug("三省堂国語辞典\u{3000}第八版"),
+        "三省堂国語辞典-第八版"
+    );
+    assert_eq!(css_slug("明鏡国語辞典 第三版"), "明鏡国語辞典-第三版");
+    assert_eq!(
+        css_slug("小学館例解学習国語 第十二版"),
+        "小学館例解学習国語-第十二版"
+    );
+}
+
 // --- title ---
 
 #[test]
@@ -657,8 +674,29 @@ fn sc_html_img_tag_renders_with_data_uri() {
     let v = serde_json::json!({"tag": "img", "path": "accent.svg"});
     assert_eq!(
         structured_content_to_html(&v, &images),
+        r#"<img class="dict-figure" src="data:image/svg+xml;base64,PHN2Zz4=">"#
+    );
+}
+
+#[test]
+fn sc_html_img_gaiji_stays_inline() {
+    let mut images = HashMap::new();
+    images.insert(
+        "gaiji/int_down.svg".to_string(),
+        "data:image/svg+xml;base64,PHN2Zz4=".to_string(),
+    );
+    let v = serde_json::json!({"tag": "img", "path": "gaiji/int_down.svg"});
+    assert_eq!(
+        structured_content_to_html(&v, &images),
         r#"<img src="data:image/svg+xml;base64,PHN2Zz4=">"#
     );
+}
+
+#[test]
+fn mime_for_image_covers_avif() {
+    assert_eq!(mime_for_image("images/x.avif"), Some("image/avif"));
+    assert_eq!(mime_for_image("images/x.AVIF"), Some("image/avif"));
+    assert_eq!(mime_for_image("term_bank_1.json"), None);
 }
 
 #[test]

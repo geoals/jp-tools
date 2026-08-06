@@ -146,6 +146,48 @@ pub async fn import_dictionary(
     Ok(dict_id)
 }
 
+/// Re-parse of an already-cached zip: replace its entries in place.
+///
+/// Not a delete-and-import, because that mints a new id and drops the role back
+/// to `reference` — silently taking a dictionary out of segmentation.
+pub async fn replace_entries(
+    pool: &SqlitePool,
+    dictionary_id: i64,
+    entries: &[DictionaryEntry],
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
+    sqlx::query("DELETE FROM dictionary_entries WHERE dictionary_id = ?")
+        .bind(dictionary_id)
+        .execute(&mut *tx)
+        .await?;
+
+    for entry in entries {
+        let definitions_json =
+            serde_json::to_string(&entry.definitions).unwrap_or_else(|_| "[]".into());
+        sqlx::query(
+            "INSERT INTO dictionary_entries (dictionary_id, term, reading, score, definitions_json, sequence, rules) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(dictionary_id)
+        .bind(&entry.term)
+        .bind(&entry.reading)
+        .bind(entry.score)
+        .bind(&definitions_json)
+        .bind(entry.sequence)
+        .bind(&entry.rules)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    sqlx::query("UPDATE dictionaries SET seq_checked = 1 WHERE id = ?")
+        .bind(dictionary_id)
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+    Ok(())
+}
+
 /// Whether this dictionary's zip has already been read for entry ids.
 ///
 /// Separate from "has any sequences": a dictionary that publishes none

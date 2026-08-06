@@ -460,6 +460,9 @@ function render(data, word, target, matches) {
           list.append(item);
         }
       }
+      // Each dictionary's markup means something different by the same
+      // attribute, so the stylesheet keys its rules on this.
+      body.dataset.dict = source.slug;
       body.replaceChildren(list);
     };
     back.addEventListener("click", () => (at--, showSource()));

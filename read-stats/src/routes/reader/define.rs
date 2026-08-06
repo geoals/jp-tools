@@ -53,6 +53,11 @@ pub struct Sense {
 #[derive(Serialize)]
 pub struct Source {
     pub dictionary: String,
+    /// What the popup keys its styling on. Each dictionary carries its own
+    /// structure in `data-*` attributes and they collide — `data-headword` and
+    /// `data-red` mean one thing in 明鏡 and another in 小学館 — so the rules
+    /// have to be scoped to the dictionary they were written for.
+    pub slug: String,
     pub senses: Vec<Sense>,
 }
 
@@ -118,6 +123,7 @@ pub async fn define(
         };
         sources.push(Source {
             dictionary: dict.title.clone(),
+            slug: jp_core::dictionary::css_slug(&dict.title),
             senses: matching
                 .into_iter()
                 .map(|e| Sense {

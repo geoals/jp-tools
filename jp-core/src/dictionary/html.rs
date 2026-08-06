@@ -148,7 +148,11 @@ impl HtmlWriter<'_> {
             None => return,
         };
 
-        self.buf.push_str("<img src=\"");
+        self.buf.push_str("<img ");
+        if is_figure(path, obj) {
+            self.buf.push_str("class=\"dict-figure\" ");
+        }
+        self.buf.push_str("src=\"");
         self.buf.push_str(data_uri);
         self.buf.push('"');
 
@@ -177,6 +181,31 @@ impl HtmlWriter<'_> {
         }
 
         self.buf.push('>');
+    }
+}
+
+/// Whether an image is an illustration rather than a character substitute.
+///
+/// Two very different things share the `img` tag, and a reader wants opposite
+/// treatment of them: Sankoku sets a whole page in glyph files under
+/// `sankoku8/` and Meikyou under `gaiji/`, all of them one line tall and
+/// belonging in the run of text, while Shogakukan's illustrations and stroke
+/// order diagrams belong on their own line.
+///
+/// Neither signal is enough alone. Shogakukan declares no size at all, so size
+/// cannot find its figures; Sankoku's inline glyphs are not under a `gaiji`
+/// path, so the path cannot find its glyphs. Together they separate all four
+/// dictionaries cleanly.
+fn is_figure(path: &str, obj: &serde_json::Map<String, Value>) -> bool {
+    if path.contains("gaiji") {
+        return false;
+    }
+    let Some(height) = obj.get("height").and_then(|v| v.as_f64()) else {
+        return true;
+    };
+    match obj.get("sizeUnits").and_then(|v| v.as_str()) {
+        Some("px") => height >= 32.0,
+        _ => height >= 3.0,
     }
 }
 

@@ -261,7 +261,7 @@ pub fn format_furigana(term: &str, reading: &str) -> String {
 /// Convert a dictionary title to a CSS-safe slug for use in class names.
 /// Keeps alphanumeric and non-ASCII (e.g. CJK) characters, replaces everything
 /// else with hyphens, collapses runs, strips leading/trailing hyphens, lowercases ASCII.
-pub(crate) fn css_slug(title: &str) -> String {
+pub fn css_slug(title: &str) -> String {
     let mut slug = String::with_capacity(title.len());
     let mut prev_hyphen = true; // avoid leading hyphen
     for ch in title.chars() {
@@ -312,6 +312,12 @@ fn mime_for_image(name: &str) -> Option<&'static str> {
         Some("image/png")
     } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
         Some("image/jpeg")
+    } else if lower.ends_with(".avif") {
+        Some("image/avif")
+    } else if lower.ends_with(".webp") {
+        Some("image/webp")
+    } else if lower.ends_with(".gif") {
+        Some("image/gif")
     } else {
         None
     }
@@ -797,5 +803,29 @@ impl Dictionary {
             "imported dictionary into cache"
         );
         Ok(Self::from_sqlite(pool.clone(), dict_id, dict.title))
+    }
+
+    /// Re-parse a cached dictionary's zip into the row it already has.
+    ///
+    /// The cache is keyed on `source_path`, so a fixed parser never reaches an
+    /// already-imported dictionary on its own — the entries have to be replaced
+    /// deliberately.
+    pub async fn reimport(
+        pool: &sqlx::SqlitePool,
+        id: i64,
+        path: &Path,
+    ) -> Result<usize, DictionaryError> {
+        use crate::knowledge::dictionaries as db;
+
+        let dict = Self::load_from_zip(path)?;
+        let DictionaryStorage::InMemory { ref entries, .. } = dict.storage else {
+            unreachable!("load_from_zip always creates InMemory");
+        };
+        let entries_vec: Vec<DictionaryEntry> =
+            entries.values().flat_map(|v| v.iter()).cloned().collect();
+
+        db::replace_entries(pool, id, &entries_vec).await?;
+        info!(title = %dict.title, entries = entries_vec.len(), "re-imported dictionary");
+        Ok(entries_vec.len())
     }
 }
