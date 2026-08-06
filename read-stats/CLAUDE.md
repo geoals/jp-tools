@@ -315,6 +315,12 @@ Mining:
     literal prefix of the line spells that. Expressions are most of what a
     dictionary holds and the tokenizer cannot join, so literal-only found
     almost none of them.
+  - **The scan also offers the other kana alphabet.** アレ is a Jitendex
+    redirect and Sankoku has no entry for it, so the popup opened on a
+    cross-reference; the hiragana spelling of every candidate is offered
+    beside it. Not folded in the tokenizer: 23 katakana ledger rows would fold
+    onto a master hiragana headword and 424 of their 549 encounters are ココ,
+    a character in the VN — the pronoun ここ would take all of them.
   - **A candidate carries its ledger key beside its spelling**, resolved
     through the shared `Highlighter` — a dictionary headword is text from
     outside the tokenizer, and Jitendex's 素振 would otherwise become a second

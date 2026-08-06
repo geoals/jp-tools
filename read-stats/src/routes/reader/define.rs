@@ -295,6 +295,21 @@ pub async fn expand(
             .unwrap_or_default();
         candidates.extend(forms.into_iter().filter(|f| f.chars().count() > 1));
     }
+    // The same word in the other kana alphabet. A line writing アレ means あれ,
+    // and only あれ is a headword — アレ is a Jitendex redirect and Sankoku has
+    // no entry for it at all, so the popup opened on a cross-reference.
+    //
+    // Offered here rather than folded by the tokenizer, and that is not
+    // timidity: 23 katakana ledger rows would fold onto a master hiragana
+    // headword, and 424 of their 549 encounters are ココ, a character in the VN
+    // being read. Folding would credit the pronoun ここ with all of them. The
+    // reader can tell a name from a word; the pipeline cannot.
+    let folded: Vec<String> = candidates
+        .iter()
+        .map(|c| jp_core::text::kana::to_hiragana(c))
+        .filter(|f| !candidates.contains(f))
+        .collect();
+    candidates.extend(folded);
     candidates.sort();
     candidates.dedup();
     if candidates.is_empty() {
