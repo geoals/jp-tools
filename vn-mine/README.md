@@ -70,9 +70,7 @@ vn-mine/overlay/vn-overlay.sh --mobile         # 1.75x, read off a phone
 vn-mine/overlay/vn-overlay.sh stop|status|reload
 ```
 
-Needs PySide6, qt6-webengine and layer-shell-qt. The page is read-stats'
-`/static/overlay.html`, served from disk, so an edit to it needs no restart —
-`vn-overlay.sh reload` (SIGHUP) redraws the view.
+Needs PySide6, qt6-webengine and layer-shell-qt.
 
 - `vn-overlay.sh` — start it from anywhere, including over ssh: it fills in the
   Wayland socket, the runtime dir and the Qt platform plugin a login shell
@@ -80,6 +78,22 @@ Needs PySide6, qt6-webengine and layer-shell-qt. The page is read-stats'
   goes. Starting stops whatever is already running, so there is only ever one.
 - `vn-overlay.py` — the shell: a layer surface, and the input region.
 - `Overlay.qml` — the surface itself, holding one `WebEngineView`.
+- `overlay.html` / `overlay.js` — the page. Vanilla JS, no imports and no
+  stylesheet of anyone else's.
+
+**read-stats is the backend, and the page is served from here.** The page calls
+eight `/api` routes — the line stream, the dictionary, the ledger, the card —
+and none of them can be answered locally, since the dictionary and the ledger
+are jp-core's. So read-stats serves `overlay.html` out of this directory at
+`/overlay/overlay.html`: loading it over `file://` instead would break every
+relative `fetch`, and pointing it at an absolute URL would need CORS for
+nothing. It is served straight off disk, so an edit needs no restart —
+`vn-overlay.sh reload` (SIGHUP) redraws the view.
+
+Starting without read-stats warns and carries on; the strip fills in when
+read-stats arrives, because `EventSource` reconnects on its own. Anki down
+warns too — mining is what fails. Textractor is not checked here: the page
+already reports it live in the corner, from the logger's heartbeat.
 
 **Clicks are the design.** The page reports the box it has drawn, and Qt hands
 that to `wl_surface.set_input_region`: a click on the overlay looks a word up,

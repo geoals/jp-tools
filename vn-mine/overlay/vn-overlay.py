@@ -4,9 +4,15 @@
 KWin puts a `zwlr_layer_shell_v1` overlay surface above fullscreen windows, so
 the line can sit on the game instead of beside it.
 
-The page is read-stats' `/static/overlay.html` — the newest line, and a
-dictionary popup for the word clicked in it. Yomitan does not run here
-(QtWebEngine loads no extensions), so the popup is the page's own.
+The page is `overlay.html` beside this file — the newest line, and a dictionary
+popup for the word clicked in it. Yomitan does not run here (QtWebEngine loads
+no extensions), so the popup is the page's own.
+
+read-stats serves that file, from this directory, and is the overlay's backend:
+the page calls eight `/api` routes for the line stream, the dictionary, the
+ledger and the card. Nothing of it can be answered locally — the dictionary and
+the ledger are jp-core's — so the overlay is a client of read-stats and starting
+without it gets a warning, not a failure.
 
 **The surface is clickable only where it has drawn something.** The page pushes
 the box it has drawn the line in, and the popup's own box, over a WebChannel,
@@ -32,18 +38,22 @@ the bottom edge, and the popup carrying known / unknown / mine buttons, since
 driving the PC's mouse from the phone leaves no side buttons for them. The
 strip grows with the type; `VN_OVERLAY_HEIGHT` still wins if it is set.
 
-    VN_OVERLAY_URL      page to show      (default read-stats' overlay page)
+    VN_OVERLAY_URL      page to show      (default overlay.html, over read-stats)
+    JP_TOOLS_ANKI_URL   AnkiConnect       (default http://localhost:8765)
     VN_OVERLAY_HEIGHT   strip height, px  (default 300, 525 with --mobile)
     VN_OVERLAY_BG       backdrop alpha    (default 0.75)
     VN_OVERLAY_FONT     font for the line (default Noto Sans CJK JP)
 """
 
 import argparse
+import json
 import os
 import signal
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 # Turns every window of this process into a layer surface. Must be set before
 # QGuiApplication resolves the platform plugin.
@@ -56,7 +66,49 @@ from PySide6.QtWebChannel import QWebChannel  # noqa: F401  registers the qrc be
 from PySide6.QtWebEngineCore import QWebEngineProfile, QWebEngineScript
 from PySide6.QtWebEngineQuick import QtWebEngineQuick
 
-DEFAULT_URL = "http://localhost:3200/static/overlay.html"
+DEFAULT_URL = "http://localhost:3200/overlay/overlay.html"
+ANKI_URL = os.environ.get("JP_TOOLS_ANKI_URL", "http://localhost:8765")
+
+
+def check_dependencies(page_url: str) -> None:
+    """Say which of the overlay's dependencies are down, and keep going.
+
+    Warn rather than exit, both times: `EventSource` reconnects on its own, so
+    an overlay started before read-stats catches up when read-stats arrives,
+    and Anki is only needed at the moment a word is mined. Exiting would make
+    the start order matter when it does not.
+
+    Textractor is deliberately absent. The page already reports it live from
+    `settings.vn_logger_heartbeat`, in `#warn`, which stays right when it stops
+    mid-session — a check here would be a second answer that goes stale.
+    """
+    origin = urlsplit(page_url)
+    api = f"{origin.scheme}://{origin.netloc}"
+
+    try:
+        with urllib.request.urlopen(f"{api}/api/settings", timeout=2) as r:
+            json.load(r)
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        print(
+            f"read-stats not answering on {api} ({e}) — the strip stays empty "
+            "until it does. scripts/start-all.sh start read-stats",
+            file=sys.stderr,
+        )
+
+    request = urllib.request.Request(
+        ANKI_URL,
+        data=json.dumps({"action": "version", "version": 6}).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=2) as r:
+            json.load(r)
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        print(
+            f"Anki not answering on {ANKI_URL} ({e}) — reading and lookups work, "
+            "mining will fail",
+            file=sys.stderr,
+        )
 
 
 class Overlay(QObject):
@@ -189,9 +241,9 @@ class Surface:
 def inject_webchannel() -> None:
     """Put Qt's own `qwebchannel.js` in the page before it runs.
 
-    The page is served over http by read-stats, which has no reason to carry a
-    copy of it — and it ships inside QtWebChannel as a qrc resource, so the
-    version in the page always matches the one on this side of the channel.
+    The page has no reason to carry a copy of it — and it ships inside
+    QtWebChannel as a qrc resource, so the version in the page always matches
+    the one on this side of the channel.
     """
     f = QFile(":/qtwebchannel/qwebchannel.js")
     f.open(QIODevice.OpenModeFlag.ReadOnly)
@@ -228,6 +280,7 @@ def main() -> int:
         if font:
             url += f"&font={quote(font)}"
 
+    check_dependencies(url)
     inject_webchannel()
 
     overlay = Overlay()

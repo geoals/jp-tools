@@ -1,0 +1,16 @@
+# The venv at ~/.local/share/vn-mine/venv, which vn-buffer.service runs from.
+#
+#   python3 -m venv ~/.local/share/vn-mine/venv
+#   ~/.local/share/vn-mine/venv/bin/pip install -r vn-mine/requirements.txt
+#
+# The overlay is NOT in here. It runs on the system python, because PySide6 and
+# the layer-shell platform plugin are system packages (Arch: pyside6,
+# qt6-wayland, layer-shell-qt) and the venv is built without system site
+# packages. `vn-overlay.sh` calls bare `python3` for that reason.
+
+# vn-ws-logger.py — the Textractor WebSocket client
+websockets
+
+# vn-vad.py — silero VAD over the ring buffer
+onnxruntime
+numpy
