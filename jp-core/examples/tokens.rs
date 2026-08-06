@@ -5,8 +5,12 @@
 //! that it was not meant to move. Run it before and after, diff the two.
 //!
 //! ```text
-//! cargo run --release --example tokens -p jp-core -- <knowledge.db> <sudachi.dic>
+//! cargo run --release --example tokens -p jp-core -- <knowledge.db> <sudachi.dic> [dictionary title...]
 //! ```
+//!
+//! Extra dictionary titles widen the lexicon the tokenizer segments by, which
+//! is the master alone in production. That is the "should 明鏡 decide wordhood
+//! too" question, asked as a diff.
 //!
 //! One line per line read: the text, then the identities, tab separated.
 
@@ -33,9 +37,35 @@ async fn run() {
     // The same five inputs the reader and the ingest build their tokenizer
     // with — a tokenizer missing any of them is a second pipeline and its
     // output is not what production produces.
-    let entries = dictionaries::master_entries(pool).await.unwrap();
+    let mut entries = dictionaries::master_entries(pool).await.unwrap();
+    let mut conjugatable = dictionaries::master_conjugatable(pool).await.unwrap();
+    for title in &a[3..] {
+        let d = dictionaries::by_title(pool, title)
+            .await
+            .unwrap()
+            .unwrap_or_else(|| panic!("no dictionary titled {title}"));
+        let extra: Vec<(String, String)> = sqlx::query_as(
+            "SELECT DISTINCT term, reading FROM dictionary_entries \
+             WHERE dictionary_id = ? AND reading != ''",
+        )
+        .bind(d.id)
+        .fetch_all(pool)
+        .await
+        .unwrap();
+        eprintln!("+ {title}: {} entries", extra.len());
+        entries.extend(extra);
+        let conj: Vec<(String,)> = sqlx::query_as(
+            "SELECT DISTINCT term FROM dictionary_entries WHERE dictionary_id = ? AND rules != ''",
+        )
+        .bind(d.id)
+        .fetch_all(pool)
+        .await
+        .unwrap();
+        conjugatable.extend(conj.into_iter().map(|(t,)| t));
+    }
+    entries.sort();
+    entries.dedup();
     let lexicon: HashSet<String> = entries.iter().map(|(t, _)| t.clone()).collect();
-    let conjugatable = dictionaries::master_conjugatable(pool).await.unwrap();
     let ranks = match dictionaries::by_title(pool, "BCCWJ").await.unwrap() {
         Some(d) => {
             let terms = jp_core::tokenize::ambiguous_headwords(&entries);
