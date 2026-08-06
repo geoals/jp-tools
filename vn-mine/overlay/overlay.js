@@ -130,9 +130,14 @@ lineEl.addEventListener("click", (e) => {
 
 // Anywhere else on the surface dismisses. Not the popup itself, or scrolling a
 // long Jitendex entry would close what is being read.
-document.addEventListener("click", (e) => {
-  if (!e.target.closest("#popup")) closePopup();
-});
+//
+// The popup stops its own clicks rather than the handler below testing where
+// they came from. It used to test, and `closest("#popup")` answers about where
+// the target is *now*: picking another match re-renders the popup from inside
+// the click, which detaches the chip mid-dispatch, and the detached chip then
+// read as a click outside — so every pick closed the popup it had just opened.
+popupEl.addEventListener("click", (e) => e.stopPropagation());
+document.addEventListener("click", () => closePopup());
 
 /** The side buttons act on the word under the pointer, without a popup.
  *
