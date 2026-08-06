@@ -10,8 +10,9 @@
 // span per word, each with the `(headword, reading)` the ledger keys on. The
 // popup asks about that pair, so 振っ is defined as 振る. Where the tokenizer
 // got the position wrong — 経年劣化 split into 経年 and 劣化, 素振り read as
-// すぶり where the line means そぶり — the popup's `⤷ other matches` button
-// offers what else the dictionaries read it as; see expansions().
+// すぶり where the line means そぶり — the popup carries a chip per other match
+// the dictionaries offer, and picking one re-opens it on that term; see
+// expansions().
 //
 // Three actions on a word, and only one of them opens the popup: left-click
 // asks what it means, the back side button judges it known or unknown, the
@@ -279,6 +280,14 @@ async function show(word, pick = null) {
   const query = new URLSearchParams({ term });
   if (reading) query.set("reading", reading);
 
+  // Started with the definition, not behind a button: the row only appears
+  // when there is another match to offer, and that answer has to be in before
+  // the popup can know whether to draw it. An empty list is the common case
+  // and draws nothing.
+  const matches = fetch(`/api/reader/expand?text=${encodeURIComponent(rightOf(word))}`)
+    .then((r) => r.json())
+    .catch(() => []);
+
   let data;
   try {
     const res = await fetch(`/api/reader/define?${query}`);
@@ -293,7 +302,7 @@ async function show(word, pick = null) {
   if (openTarget !== target) return;
 
   openLookup = data.lookup_id ?? null;
-  popupEl.replaceChildren(...render(data, word, target));
+  popupEl.replaceChildren(...render(data, word, target, matches));
   report();
 
   // Asked after the definition is on screen, not before it: Anki is a second
@@ -391,7 +400,7 @@ async function mine(word, target = null) {
   if (openTarget === target || (target === null && openWord === word)) markMined(note_id);
 }
 
-function render(data, word, target) {
+function render(data, word, target, matches) {
   const { reading, surface } = target;
   const head = el("div", "head");
   head.append(el("span", "term", data.term));
@@ -414,7 +423,7 @@ function render(data, word, target) {
   head.append(minedBadge);
   head.append(actions(word, target));
 
-  const out = [head, expansions(word, target)];
+  const out = [head, expansions(word, target, matches)];
 
   // One dictionary at a time. Sankoku says the same thing more briefly than
   // Jitendex does, and stacking both makes the popup a page to scroll rather
@@ -474,6 +483,12 @@ function render(data, word, target) {
   return out;
 }
 
+/** The raw line from this word's first character on — what the scan reads. */
+function rightOf(word) {
+  const start = Number(word.dataset.start);
+  return line && Number.isInteger(start) ? line.text.slice(start) : "";
+}
+
 /** "That is not the word here" — the escape hatch Yomitan gave for free.
  *
  * Two ways the tokenizer can be wrong about a position, and one answer to
@@ -482,45 +497,24 @@ function render(data, word, target) {
  * several — 素振り as すぶり where the line means そぶり — which is a different
  * word with a different ledger row.
  *
- * So the button scans the raw line from the clicked word rightwards and offers
- * every `(term, reading)` a dictionary lists for a prefix of it, longest
- * first. Picking one re-opens the popup on it, and ✓ ✗ ＋ then act on that
- * term.
- *
- * Behind a button rather than run on open: it is a second round trip, and the
- * popup exists to answer one question fast.
+ * So the scan offers every `(term, reading)` a dictionary lists for a prefix
+ * of the line from this word on. Picking one re-opens the popup on it, and
+ * ✓ ✗ ＋ then act on that term. The row draws nothing at all when the only
+ * match is the one already showing, which is most words.
  */
-function expansions(word, target) {
+function expansions(word, target, matches) {
   const row = el("div", "expansions");
-  const start = Number(word.dataset.start);
-  const rest = line && Number.isInteger(start) ? line.text.slice(start) : "";
-  if (!rest) return row;
-
-  const scan = el("button", "", "\u2937 other matches");
-  scan.title = "What else the dictionaries read this position as";
-  scan.addEventListener("click", async () => {
-    scan.disabled = true;
-    let found;
-    try {
-      const res = await fetch(`/api/reader/expand?text=${encodeURIComponent(rest)}`);
-      found = await res.json();
-    } catch {
-      scan.disabled = false;
-      return;
-    }
+  matches.then((found) => {
+    // The popup moved on while the scan was out.
+    if (openTarget !== target || !Array.isArray(found)) return;
     // One candidate per reading — a spelling with two readings is two words —
     // minus the one already showing, which is a prefix match of itself.
     const others = found
       .flatMap((e) => (e.readings.length ? e.readings : [""]).map((reading) => ({ ...e, reading })))
       .filter((e) => !(e.term === target.term && e.reading === target.reading));
-    if (!others.length) {
-      row.replaceChildren(el("div", "none", "Nothing else here"));
-      report();
-      return;
-    }
     row.replaceChildren(
       ...others.map((e) => {
-        const label = e.reading && e.reading !== e.term ? `${e.term}・${e.reading}` : e.term;
+        const label = e.reading && e.reading !== e.term ? `${e.term}\u30fb${e.reading}` : e.term;
         const chip = el("button", "", label);
         chip.title = e.dictionaries.join(", ");
         chip.addEventListener("click", () =>
@@ -529,9 +523,10 @@ function expansions(word, target) {
         return chip;
       }),
     );
+    // The popup just changed height, and the compositor takes the click on it
+    // only where the page says it has drawn.
     report();
   });
-  row.append(scan);
   return row;
 }
 

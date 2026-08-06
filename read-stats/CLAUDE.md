@@ -286,11 +286,13 @@ Mining:
   which fires vn-capture.sh once Anki accepts the note. There is no mine button.
   The overlay has no popup button either — a side mouse button mines the word
   under the pointer, and another judges it.
-- **The popup can overrule the tokenizer about a position.** `⤷ other matches`
-  scans the raw line from the clicked word rightwards (`reader/define::expand`)
-  and lists every `(term, reading)` a dictionary holds for a prefix of it,
-  longest first; picking one re-opens the popup on it and ✓ ✗ ＋ then act on
-  that term. Two failures, one answer: 経年劣化 is a Jitendex headword and not a
+- **The popup can overrule the tokenizer about a position.** It scans the raw
+  line from the clicked word rightwards (`reader/define::expand`) and shows a
+  chip per `(term, reading)` a dictionary holds for a prefix of it, longest
+  first; picking one re-opens the popup on it and ✓ ✗ ＋ then act on that term.
+  The scan runs beside the definition rather than behind a button, because the
+  row has to know whether there is anything to offer before it draws — on most
+  words there is not, and it draws nothing. Two failures, one answer: 経年劣化 is a Jitendex headword and not a
   Sankoku one, so its two halves are both right and no rule joins them, and
   素振り is そぶり or すぶり and the tokenizer picks one. Both are the reader
   seeing what the pipeline cannot.

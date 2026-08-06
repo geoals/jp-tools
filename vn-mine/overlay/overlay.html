@@ -72,9 +72,9 @@
 
   /* Scaled up, the line is read off the screen rather than fitted over the
      game's own text, so it goes to the bottom edge: nothing of the game is
-     worth covering less, and the popup gets the whole screen above it. */
-  /* Left-aligned, not centred: centring moves the first glyph with every change
-     in line length, so the eye has to find where the line starts again. */
+     worth covering less, and the popup gets the whole screen above it. Left
+     edge, not centred — centring moves the first glyph with every change in
+     line length, so the eye has to find where the line starts again. */
   html[data-mobile] #box {
     left: 0;
     right: 0;
@@ -135,8 +135,11 @@
     text-decoration-thickness: 2px;
     text-underline-offset: 4px;
   }
+  /* The word the popup is about. A ring, not a fill: the fills are the status
+     scale, and the word being read about has to stay legible as `new`, `seen`
+     or `unknown` — including while a button in the popup changes it. */
   .w.open {
-    background: rgba(96, 165, 250, 0.42);
+    box-shadow: 0 0 0 2px #fff;
   }
 
   /* `left` and `bottom` are set per word — see place() — and this is only
@@ -263,8 +266,13 @@
     color: #cfe3ff;
   }
 
-  /* The longer readings of this position — see expand() in overlay.js. One
-     chip per candidate, longest first, the text as the line writes it. */
+  /* The other matches at this position — see expansions() in overlay.js. One
+     chip per candidate, longest first. The row is drawn empty and filled when
+     the scan lands, so it takes no room on the words that have no other
+     reading, which is most of them. */
+  .expansions:empty {
+    display: none;
+  }
   .expansions {
     display: flex;
     flex-wrap: wrap;
