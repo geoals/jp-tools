@@ -68,7 +68,10 @@ async fn main() {
                 .unwrap_or_default()
                 .to_string()
         };
-        let (raw_sentence, old) = (field(SENTENCE_FIELD), anki::clean_field(&field(COMPACT_FIELD)));
+        let (raw_sentence, old) = (
+            field(SENTENCE_FIELD),
+            anki::clean_field(&field(COMPACT_FIELD)),
+        );
         let vocab = anki::clean_field(&field(VOCAB_FIELD));
         let Some(surface) = anki::bolded_span(&raw_sentence) else {
             continue;
@@ -112,14 +115,8 @@ async fn main() {
             if moved { "~" } else { " " }
         );
         if write {
-            match anki::update_note_field_verified(
-                &http,
-                ANKI_URL,
-                *note_id,
-                COMPACT_FIELD,
-                &new,
-            )
-            .await
+            match anki::update_note_field_verified(&http, ANKI_URL, *note_id, COMPACT_FIELD, &new)
+                .await
             {
                 Ok(()) => {}
                 Err(e) => {
@@ -134,6 +131,10 @@ async fn main() {
         "\n{}/{} tag line(s) moved, {failed} failure(s){}",
         changed,
         targets.len(),
-        if write { ", written" } else { ", nothing written" }
+        if write {
+            ", written"
+        } else {
+            ", nothing written"
+        }
     );
 }

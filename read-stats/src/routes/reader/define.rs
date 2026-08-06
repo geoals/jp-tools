@@ -379,9 +379,7 @@ pub async fn expand(
             };
             readings
                 .into_iter()
-                .map(|reading| {
-                    (term.clone(), key.clone(), reading, dictionaries.clone())
-                })
+                .map(|reading| (term.clone(), key.clone(), reading, dictionaries.clone()))
                 .collect::<Vec<_>>()
         })
         .collect();

@@ -209,9 +209,8 @@ mod tests {
     async fn the_written_form_is_not_priced_as_its_kanji() {
         let api_key = std::env::var("JP_TOOLS_ANTHROPIC_API_KEY").expect("set key");
         let http = reqwest::Client::new();
-        let sentence = |t: &str| {
-            format!("湿度が高く、薄暗く、ベッドなどの家具は硬く、<b>{t}</b>臭いがする。")
-        };
+        let sentence =
+            |t: &str| format!("湿度が高く、薄暗く、ベッドなどの家具は硬く、<b>{t}</b>臭いがする。");
         let tier = |gloss: &str| {
             let tags = gloss.rsplit_once("<br>").expect("tag line").1.to_string();
             let fam = tags.split('·').next().unwrap().trim().to_string();

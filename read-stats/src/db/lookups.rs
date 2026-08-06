@@ -80,7 +80,11 @@ pub async fn insert_lookup(
 /// surrounding gap would stop being credited as reading. They were — they just
 /// pressed a button. The mark is put back through `reader_marks`, which carries
 /// presence and nothing about a word.
-pub async fn retract_lookup(k: &Knowledge, id: i64, term: &str) -> Result<Option<f64>, sqlx::Error> {
+pub async fn retract_lookup(
+    k: &Knowledge,
+    id: i64,
+    term: &str,
+) -> Result<Option<f64>, sqlx::Error> {
     let row: Option<(f64,)> =
         sqlx::query_as("DELETE FROM lookups WHERE id = ? AND term = ? RETURNING ts")
             .bind(id)

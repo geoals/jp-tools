@@ -86,7 +86,14 @@ The ledger (`vocabulary`):
 - **`new` ≠ `unknown`.** `new` means never judged; collapsing them is
   irreversible and breaks the triage progress figure.
 - **Anki owns mined-state.** `anki_notes` is a snapshot, replaced wholesale,
-  never written back. `vocabulary.mined` is recomputed from it and is a flag
+  never written back. **The proxy adds the one card Anki just accepted**
+  (`db::insert_anki_note`), which does not make the table a source of truth —
+  the refresh still replaces it — but without it the mirror only learns about
+  cards when the dashboard page opens. Every cards-per-hour figure counts rows
+  here, so an evening of mining in the overlay read as zero. It is its own
+  spawned task rather than a step in `enrich_added_note`, because it resolves a
+  ledger key through Sudachi and nothing may be awaited in front of the
+  capture. `vocabulary.mined` is recomputed from it and is a flag
   beside `status`, never written into it.
 - **A word judged under one reading is not asked about again**, and not marked
   under another either. 皆 marked known as みな means 皆/みんな is never offered.

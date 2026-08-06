@@ -5,6 +5,10 @@
 //! re-syncing rather than by reconciling. Nothing here is ever written back to
 //! Anki.
 //!
+//! One card at a time also lands here, from the proxy, the moment Anki accepts
+//! an `addNote` — see [`insert_anki_note`]. That does not make the table a
+//! source of truth: the next refresh still replaces it wholesale.
+//!
 //! The note id doubles as the card's creation time in epoch **milliseconds**,
 //! which is why mined-card timestamps can be derived without a second query —
 //! and why ids are kept sorted, so a window count is a pair of binary searches.
@@ -35,6 +39,27 @@ impl AnkiNote {
             &self.headword
         }
     }
+}
+
+/// Add the one card Anki has just accepted.
+///
+/// The refresh is the only writer that *owns* this table, and it still replaces
+/// it wholesale — this only spares the mirror from being blind until the next
+/// one. It had to be: the refresh runs when the dashboard page opens, mining
+/// happens in the overlay for hours without that, and every cards-per-hour
+/// figure reads this table. Cards mined in a session simply were not there.
+///
+/// One row, not a refresh: a refresh refetches the whole deck and resolves
+/// every spelling through Sudachi, which must not sit on the path that adds a
+/// card.
+pub async fn insert_anki_note(k: &Knowledge, note: &AnkiNote) -> Result<(), sqlx::Error> {
+    sqlx::query("INSERT OR REPLACE INTO anki_notes (note_id, vocab, headword) VALUES (?, ?, ?)")
+        .bind(note.note_id)
+        .bind(&note.vocab)
+        .bind(&note.headword)
+        .execute(k.pool())
+        .await
+        .map(|_| ())
 }
 
 /// Replace the deck snapshot wholesale (it mirrors, never owns, the deck).

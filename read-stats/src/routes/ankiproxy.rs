@@ -147,6 +147,13 @@ pub async fn proxy(State(state): State<AppState>, body: Bytes) -> Response {
 
     match (added_note, new_note_id(&resp_bytes)) {
         (Some((req, anchor_ts)), Some(note_id)) => {
+            // Its own task, not a step inside `enrich_added_note`: nothing may
+            // be awaited in front of the capture there, and this resolves a
+            // ledger key through Sudachi.
+            let (mirror_state, mirror_req) = (state.clone(), req.clone());
+            tokio::spawn(
+                async move { mirror_added_note(&mirror_state, note_id, &mirror_req).await },
+            );
             let state = state.clone();
             // Detached: card creation must not wait on an LLM call or a capture.
             tokio::spawn(async move { enrich_added_note(&state, note_id, &req, anchor_ts).await });
@@ -201,6 +208,41 @@ pub(crate) fn new_note_id(resp_bytes: &Bytes) -> Option<i64> {
 ///
 /// All of this happens behind a tab nobody is watching, so the chime at the end
 /// is the only report, and it plays only when nothing failed.
+/// Tell the deck mirror about the card that was just added.
+///
+/// Every cards-per-hour figure counts rows in `anki_notes`, and the only thing
+/// that used to fill it was the dashboard page opening. An evening of mining in
+/// the overlay left the mirror at whenever the page was last loaded, so the
+/// cards existed in Anki and in no figure. Best-effort: a card that fails to
+/// land here is still a card, and the next refresh picks it up.
+async fn mirror_added_note(state: &AppState, note_id: i64, req: &Value) {
+    let vocab = req
+        .pointer("/params/note/fields")
+        .and_then(|f| f.get(&state.anki_vocab_field))
+        .and_then(Value::as_str)
+        .map(crate::services::anki::clean_field)
+        .unwrap_or_default();
+    if vocab.is_empty() {
+        return;
+    }
+    // The ledger key beside the card's own spelling, resolved the way the
+    // refresh resolves it — a card says 検死 where the ledger row is 検屍, and
+    // a raw spelling joins to nothing.
+    let headword = crate::ingest::normalized_spellings(state, vec![vocab.clone()])
+        .await
+        .ok()
+        .and_then(|mut k| k.pop())
+        .unwrap_or_default();
+    let note = crate::db::AnkiNote {
+        note_id,
+        vocab,
+        headword,
+    };
+    if let Err(e) = crate::db::insert_anki_note(&state.knowledge, &note).await {
+        warn!(note_id, error = %e, "could not add the card to the deck mirror");
+    }
+}
+
 async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_ts: f64) {
     // CompactDef: only when a target field and an API key are configured.
     let fields = req.pointer("/params/note/fields");
@@ -219,8 +261,7 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_t
     // 饐える reads RARE where its own sentence's すえた does not. The bold span
     // Yomitan leaves in the sentence is that spelling; the vocab field is the
     // fallback for a note that has no markers to parse.
-    let target =
-        crate::services::anki::bolded_span(raw_sentence).unwrap_or_else(|| word.clone());
+    let target = crate::services::anki::bolded_span(raw_sentence).unwrap_or_else(|| word.clone());
 
     // Auto-capture: fold the mine button into the add. The note id and the
     // anchor both come from the add itself, so neither depends on what has

@@ -47,7 +47,9 @@ pub mod settings;
 pub mod word_days;
 pub mod works;
 
-pub use anki_notes::{AnkiNote, fetch_anki_note_ids, fetch_anki_notes, replace_anki_notes};
+pub use anki_notes::{
+    AnkiNote, fetch_anki_note_ids, fetch_anki_notes, insert_anki_note, replace_anki_notes,
+};
 pub use covers::{clear_work_cover_vndb, fetch_work_covers, set_work_cover_vndb};
 pub use lines::{
     IngestLine, ReaderLine, WorkedLine, fetch_current_session_lines, fetch_kanji_lines,
