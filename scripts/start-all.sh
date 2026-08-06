@@ -118,14 +118,19 @@ port_proc_name() {
   [[ -n "$pid" ]] && ps -p "$pid" -o comm= 2>/dev/null || true
 }
 
-wait_for_port() { # name port timeout_seconds
-  local name="$1" port="$2" timeout="$3" waited=0
+wait_for_port() { # name port timeout_seconds [log_file]
+  local name="$1" port="$2" timeout="$3" log="${4:-}" waited=0
   while ! port_listening "$port"; do
     if (( waited == 15 )); then
       info "still waiting for $name on :$port..."
     fi
     if (( waited >= timeout )); then
-      fail "$name did not open port $port within ${timeout}s — check its log"
+      fail "$name did not open port $port within ${timeout}s"
+      if [[ -n "$log" && -f "$log" ]]; then
+        fail "last 20 lines of $log:"
+        tail -n 20 "$log" | sed 's/^/      /'
+        fail "full log: tail -f $log"
+      fi
       return 1
     fi
     sleep 1
@@ -235,7 +240,7 @@ start_ocr() {
   start_native "manga-ocr-service" "$PORT_ocr" "$dir" \
     .venv/bin/uvicorn main:app --host 0.0.0.0 --port "$PORT_ocr"
   # Model load happens before the port opens; allow time on cold start.
-  wait_for_port "manga-ocr-service" "$PORT_ocr" 120
+  wait_for_port "manga-ocr-service" "$PORT_ocr" 120 "$LOG_DIR/manga-ocr-service.log"
 }
 
 start_rust() { # name port binary
@@ -243,7 +248,7 @@ start_rust() { # name port binary
   should_start "$name" "$port" || return 0
   stop_port "$name" "$port"
   start_native "$name" "$port" "$REPO_ROOT" "$bin"
-  wait_for_port "$name" "$port" 30
+  wait_for_port "$name" "$port" 30 "$LOG_DIR/$name.log"
 }
 
 build_rust() {
@@ -252,10 +257,23 @@ build_rust() {
     selected "$name" && { pkgs+=(-p "$name"); names+=("$name"); }
   done
   (( ${#pkgs[@]} == 0 )) && return 0
-  info "building ${names[*]} ($CARGO_PROFILE)"
+  info "building ${names[*]} jp-dict ($CARGO_PROFILE)"
   local flags=()
   [[ "$CARGO_PROFILE" == "release" ]] && flags+=(--release)
-  ( cd "$REPO_ROOT" && cargo build "${pkgs[@]}" "${flags[@]}" )
+  # Two invocations: `--bin` filters targets across every selected package, so
+  # asking for jp-dict in the same command would build only that.
+  ( cd "$REPO_ROOT" && cargo build "${pkgs[@]}" "${flags[@]}" \
+      && cargo build -p jp-core --bin jp-dict "${flags[@]}" )
+}
+
+# Import any new dictionary zip before the services start, since they only ever
+# read what is already cached. Runs ahead of them so a zip dropped in
+# dictionaries/ is live on the next restart; a no-op when nothing is new.
+sync_dictionaries() {
+  local bin="$REPO_ROOT/target/$CARGO_PROFILE/jp-dict"
+  [[ -x "$bin" ]] || { warn "jp-dict not built — skipping the dictionary sync"; return 0; }
+  info "syncing dictionaries"
+  "$bin" sync || warn "dictionary sync failed — definitions may be missing"
 }
 
 # ---------------------------------------------------------------- commands --
@@ -295,6 +313,7 @@ stop_all() {
 start_all() {
   mkdir -p "$LOG_DIR"
   build_rust
+  sync_dictionaries
   selected "whisper-service"   && start_whisper
   selected "manga-ocr-service" && start_ocr
   selected "yt-mine"    && start_rust "yt-mine" "$PORT_ytmine" "yt-mine"
