@@ -134,6 +134,23 @@ and a ledger row cannot disagree):
   reads in hiragana keeps its own spelling; a katakana entry read in katakana is
   a loanword (モノ is monochrome), so モノ still folds onto もの, and サクラ →
   桜 still folds because that is orthography and not the alphabet.
+- **Two dictionary authorities, and they answer different questions.** The
+  master (Sankoku) says how a word is *spelt* and is the vocabulary scale; the
+  `standard` role — 明鏡, 小学館 — says only what is *one word*
+  (`SudachiTokenizer::segments` against `lexicon`). 意味ありげ, 何度, 図書室,
+  被害者 and 270 more are words because 明鏡 lists them; それ is still それ
+  because the master alone spells things. Merging the two was measured and is a
+  disaster: 明鏡 lists the archaic kanji of every function word, and admitting
+  those as spellings rewrote 5,064 lines into 其れ, 此の, 迚も. Three rules keep
+  the standard dictionaries inside their remit — they may not respell a word in
+  kanji the text did not use (今まで is not 今迄), may not license an expression
+  opening on a function word (から目 ate 目を離す), and never enter the
+  denominator, so a word only they list stays off the master scale.
+- **A word no dictionary lists is spelt the way it was read.** Sudachi's
+  normalisation is a guess there, and it guessed 御陰 for おかげ, 此奴 for
+  コイツ, 切っ掛け for キッカケ, 紫恵 for シケイ — 121 lines of kanji the
+  reader never saw. The fallback keeps the surface when normalising it would
+  add a kanji that is not in it.
 - **A compound the master doesn't list stays whole**, and **adjacent parts it
   lists as one word are rejoined** (`recompose`). Splitting such a compound into
   listed parts is what `decompose` used to do, and it was removed: it made 145

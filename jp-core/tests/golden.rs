@@ -47,6 +47,12 @@ fn the_identities_a_corpus_yields_have_not_moved() {
         .into_iter()
         .map(|r| (r[0].clone(), r.get(1).cloned().unwrap_or_default()))
         .collect();
+    // The segmentation authority beside the master — 明鏡, 小学館. Absent
+    // fixture means none configured, which is what the tokenizer defaults to.
+    let standard: Vec<(String, String)> = tsv("standard.tsv")
+        .into_iter()
+        .map(|r| (r[0].clone(), r.get(1).cloned().unwrap_or_default()))
+        .collect();
     // term, reading, rank — the rank belongs to the pair, not the spelling.
     let ranks: HashMap<(String, String), i64> = tsv("frequency.tsv")
         .into_iter()
@@ -75,6 +81,7 @@ fn the_identities_a_corpus_yields_have_not_moved() {
         Path::new(&dict_path),
         &corpus,
         &master,
+        &standard,
         ranks,
         preferences,
         conjugatable,

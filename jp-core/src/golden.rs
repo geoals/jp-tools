@@ -20,6 +20,7 @@ use crate::tokenize::{MasterWords, SudachiTokenizer, Tokenizer, counts_as_word};
 pub fn tokenizer(
     dict_path: &Path,
     master: &[(String, String)],
+    standard: &[(String, String)],
     ranks: HashMap<(String, String), i64>,
     preferences: HashMap<String, PreferredReading>,
     conjugatable: HashSet<String>,
@@ -30,6 +31,7 @@ pub fn tokenizer(
         .expect("sudachi dictionary")
         .with_lexicon(lexicon)
         .with_master_readings(master)
+        .with_standard(standard)
         .with_frequency(ranks)
         .with_preferred_readings(preferences)
         .with_conjugatable(conjugatable)
@@ -42,11 +44,19 @@ pub fn snapshot(
     dict_path: &Path,
     corpus: &[String],
     master: &[(String, String)],
+    standard: &[(String, String)],
     ranks: HashMap<(String, String), i64>,
     preferences: HashMap<String, PreferredReading>,
     conjugatable: HashSet<String>,
 ) -> String {
-    let tk = tokenizer(dict_path, master, ranks, preferences, conjugatable);
+    let tk = tokenizer(
+        dict_path,
+        master,
+        standard,
+        ranks,
+        preferences,
+        conjugatable,
+    );
     let lexicon: HashSet<String> = master.iter().map(|(t, _)| t.clone()).collect();
     let words = MasterWords::new(lexicon, master);
 

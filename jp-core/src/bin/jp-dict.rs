@@ -12,7 +12,7 @@
 //!     jp-dict sync                 import every new zip in the dictionaries dir
 //!     jp-dict import <zip>...      import named zips
 //!     jp-dict list                 what is cached, and what each is for
-//!     jp-dict set-role <id> <role> master | name | reference
+//!     jp-dict set-role <id> <role> master | standard | name | reference
 
 use std::path::{Path, PathBuf};
 
@@ -27,7 +27,9 @@ usage:
   jp-dict sync                    import every zip in the dictionaries directory
   jp-dict import <zip>...         import the named zips
   jp-dict list                    list cached dictionaries and their roles
-  jp-dict set-role <id> <role>    role is master, name or reference
+  jp-dict set-role <id> <role>    role is master, standard, name or reference
+                                  (standard: decides segmentation beside the
+                                  master, never spelling or the word count)
 
 options:
   --dir <path>   dictionaries directory (default: $JP_TOOLS_DICTIONARY_DIR,
@@ -103,9 +105,14 @@ async fn run() -> Result<(), String> {
             // silently demote a dictionary on a typo.
             let parsed = match role.as_str() {
                 "master" => Role::Master,
+                "standard" => Role::Standard,
                 "name" => Role::Name,
                 "reference" => Role::Reference,
-                other => return Err(format!("unknown role: {other} (master, name, reference)")),
+                other => {
+                    return Err(format!(
+                        "unknown role: {other} (master, standard, name, reference)"
+                    ));
+                }
             };
             let cached = db::list_dictionaries(pool)
                 .await

@@ -47,6 +47,20 @@ pub async fn master_headwords(pool: &SqlitePool) -> Result<HashSet<String>, sqlx
 /// compounds Sudachi's own lexicon splits. See
 /// `SudachiTokenizer::with_master_readings`, which is what decides how to treat
 /// a reading that names more than one headword.
+/// The `(headword, reading)` pairs of every dictionary that decides
+/// segmentation *beside* the master — see [`Role::Standard`]. Same shape as
+/// [`master_entries`], and deliberately a separate query: the caller has to
+/// hand these to the tokenizer as the weaker authority they are.
+pub async fn standard_entries(pool: &SqlitePool) -> Result<Vec<(String, String)>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT DISTINCT de.term, de.reading FROM dictionary_entries de \
+         JOIN dictionaries d ON d.id = de.dictionary_id \
+         WHERE d.role = 'standard' AND de.reading != ''",
+    )
+    .fetch_all(pool)
+    .await
+}
+
 pub async fn master_entries(pool: &SqlitePool) -> Result<Vec<(String, String)>, sqlx::Error> {
     sqlx::query_as(
         "SELECT DISTINCT de.term, de.reading FROM dictionary_entries de \
@@ -647,6 +661,14 @@ pub enum Role {
     /// The one dictionary whose headword count is a meaningful vocabulary
     /// scale. Exactly one row should hold this.
     Master,
+    /// A standard monolingual dictionary beside the master — 明鏡, 小学館.
+    /// It decides **segmentation** with the master (意味ありげ is one word
+    /// because 明鏡 lists it) and nothing else: not the vocabulary scale, and
+    /// not how a word is spelt. Those two stay the master's, because these
+    /// dictionaries list the archaic kanji of every function word — それ as
+    /// 其れ, この as 此の — and admitting them as spellings rewrote 5,064 lines
+    /// of the corpus.
+    Standard,
     /// A name dictionary: a term in here but not in the master is a name, not
     /// vocabulary. (None loaded yet; the schema is ready for one.)
     Name,
@@ -659,6 +681,7 @@ impl Role {
     pub fn as_str(&self) -> &'static str {
         match self {
             Role::Master => "master",
+            Role::Standard => "standard",
             Role::Name => "name",
             Role::Reference => "reference",
         }
@@ -667,6 +690,7 @@ impl Role {
     pub fn parse(s: &str) -> Role {
         match s {
             "master" => Role::Master,
+            "standard" => Role::Standard,
             "name" => Role::Name,
             _ => Role::Reference,
         }

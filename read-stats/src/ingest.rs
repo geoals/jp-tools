@@ -259,6 +259,17 @@ pub(crate) async fn master_readings(state: &AppState) -> Result<Vec<(String, Str
     Ok(jp_core::knowledge::dictionaries::master_entries(state.knowledge.pool()).await?)
 }
 
+/// The dictionaries that decide segmentation beside the master — 明鏡, 小学館,
+/// anything given `Role::Standard`. They say what is one word and nothing else;
+/// the master stays the spelling authority and the vocabulary scale.
+///
+/// A **sixth** input to the tokenizer, and like the other five it has to be
+/// given to every one of them: the reader's and the ingest's must agree about
+/// where a word ends.
+pub(crate) async fn standard_readings(state: &AppState) -> Result<Vec<(String, String)>, AppError> {
+    Ok(jp_core::knowledge::dictionaries::standard_entries(state.knowledge.pool()).await?)
+}
+
 /// BCCWJ ranks for the master headwords that share a reading with another one,
 /// so the tokenizer can name a word written in kana (うかがう → 伺う over 窺う).
 ///
@@ -451,6 +462,7 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
     let ranks = frequency_ranks(state, &readings).await?;
     let preferred = preferred_readings(state).await?;
     let conjugatable = conjugatable(state).await?;
+    let standard = standard_readings(state).await?;
     let dict_path = state.sudachi_dict_path.clone();
 
     let n_lines = lines.len();
@@ -462,7 +474,8 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
             .with_master_readings(&readings)
             .with_frequency(ranks)
             .with_preferred_readings(preferred)
-            .with_conjugatable(conjugatable);
+            .with_conjugatable(conjugatable)
+            .with_standard(&standard);
         let mut harvest = Harvest::new(MasterWords::new(lexicon, &readings));
         for line in &lines {
             let date = stats::date_key(line.ts, rollover, tz).to_string();
@@ -541,6 +554,7 @@ pub async fn ingest_new_sessions(state: &AppState) -> Result<IngestOutcome, AppE
     let ranks = frequency_ranks(state, &readings).await?;
     let preferred = preferred_readings(state).await?;
     let conjugatable = conjugatable(state).await?;
+    let standard = standard_readings(state).await?;
     let dict_path = state.sudachi_dict_path.clone();
 
     let n_sessions = sessions.len();
@@ -551,7 +565,8 @@ pub async fn ingest_new_sessions(state: &AppState) -> Result<IngestOutcome, AppE
             .with_master_readings(&readings)
             .with_frequency(ranks)
             .with_preferred_readings(preferred)
-            .with_conjugatable(conjugatable);
+            .with_conjugatable(conjugatable)
+            .with_standard(&standard);
         let mut harvest = Harvest::new(MasterWords::new(lexicon, &readings));
         for s in &sessions {
             let date = stats::date_key(s.start_ts, rollover, tz).to_string();

@@ -129,6 +129,23 @@ async fn main() {
     prefs.sort();
     std::fs::write(out.join("preferences.tsv"), prefs.concat()).unwrap();
 
+    // The segmentation authority beside the master, narrowed to what these
+    // lines can reach the same way master.tsv is. A fixture that skipped it
+    // would be a third pipeline, and this one exists to be production.
+    let standard: Vec<(String, String)> = dictionaries::standard_entries(pool)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|(term, reading)| text.contains(term.as_str()) || text.contains(reading.as_str()))
+        .collect();
+    let mut standard_rows: Vec<String> = standard
+        .iter()
+        .map(|(t, r)| format!("{t}\t{r}\n"))
+        .collect();
+    standard_rows.sort();
+    standard_rows.dedup();
+    std::fs::write(out.join("standard.tsv"), standard_rows.concat()).unwrap();
+
     let conjugatable: HashSet<String> = dictionaries::master_conjugatable(pool)
         .await
         .unwrap()
@@ -145,8 +162,15 @@ async fn main() {
 
     // The snapshot itself, produced by the same code the test will run.
     let dict_path = Path::new(&args[3]);
-    let snapshot =
-        jp_core::golden::snapshot(dict_path, &corpus, &master, ranks, all_prefs, conjugatable);
+    let snapshot = jp_core::golden::snapshot(
+        dict_path,
+        &corpus,
+        &master,
+        &standard,
+        ranks,
+        all_prefs,
+        conjugatable,
+    );
     std::fs::write(out.join("identities.txt"), snapshot).unwrap();
     eprintln!(
         "wrote {} lines, {} master entries to {}",

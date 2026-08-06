@@ -75,11 +75,24 @@ pub struct SudachiTokenizer {
     /// [`keeps_whole`](SudachiTokenizer::keeps_whole) — a word the reader has
     /// mined is a word — and never a substitute for `lexicon`.
     mined: HashSet<String>,
-    /// Words the master dictionary lists. The wordhood authority: it decides
-    /// what [`keeps_whole`](SudachiTokenizer::keeps_whole) holds together and
-    /// what [`recompose`](SudachiTokenizer::recompose) may build. Empty leaves
-    /// Sudachi's own analysis untouched.
+    /// Words the master dictionary lists. **The spelling authority**: the
+    /// identity ladder may only produce a word this lists, so the ledger is
+    /// spelt the way one dictionary spells it.
     lexicon: HashSet<String>,
+    /// Words *any* segmentation authority lists — the master and the standard
+    /// dictionaries beside it (`with_standard`). **The wordhood authority**: it
+    /// decides what [`keeps_whole`](SudachiTokenizer::keeps_whole) holds
+    /// together and what [`recompose`](SudachiTokenizer::recompose) may build.
+    /// Empty leaves Sudachi's own analysis untouched.
+    ///
+    /// The two are separate because the questions are: 明鏡 knows that
+    /// 意味ありげ is one word, and also that それ can be written 其れ. The first
+    /// is worth having and the second would rewrite the text the reader read.
+    segments: HashSet<String>,
+    /// `(headword, reading)` for the segmentation authority, and the reading a
+    /// joined token carries. Wider than `pairs` by the standard dictionaries.
+    segment_pairs: HashSet<(String, String)>,
+    segment_reading: HashMap<String, String>,
     /// Master headwords, keyed by their reading. A reading naming several
     /// headwords keeps all of them: joining still refuses to guess, but
     /// [`SudachiTokenizer::resolve_identity`] may arbitrate by frequency.
@@ -132,6 +145,9 @@ impl SudachiTokenizer {
             dict: Arc::new(dict),
             mined,
             lexicon: HashSet::new(),
+            segments: HashSet::new(),
+            segment_pairs: HashSet::new(),
+            segment_reading: HashMap::new(),
             by_reading: HashMap::new(),
             term_reading: HashMap::new(),
             pairs: HashSet::new(),
@@ -147,7 +163,26 @@ impl SudachiTokenizer {
     /// Teach it which words the master dictionary actually lists — the set that
     /// decides whether a compound is a word.
     pub fn with_lexicon(mut self, lexicon: HashSet<String>) -> Self {
+        self.segments.extend(lexicon.iter().cloned());
         self.lexicon = lexicon;
+        self
+    }
+
+    /// Add a standard dictionary's headwords to the **segmentation** authority
+    /// and to nothing else — see [`Role::Standard`](crate::knowledge::dictionaries::Role::Standard).
+    ///
+    /// 意味ありげ is one word because 明鏡 lists it; それ is still それ because
+    /// the master alone says how a word is spelt.
+    pub fn with_standard(mut self, entries: &[(String, String)]) -> Self {
+        for (term, reading) in entries {
+            if reading.is_empty() {
+                continue;
+            }
+            let reading = crate::text::kana::to_hiragana(reading);
+            self.segments.insert(term.clone());
+            self.segment_pairs.insert((term.clone(), reading.clone()));
+            self.segment_reading.entry(term.clone()).or_insert(reading);
+        }
         self
     }
 
@@ -174,7 +209,11 @@ impl SudachiTokenizer {
             }
             let reading = crate::text::kana::to_hiragana(reading);
             self.pairs.insert((term.clone(), reading.clone()));
+            self.segment_pairs.insert((term.clone(), reading.clone()));
             self.term_reading
+                .entry(term.clone())
+                .or_insert_with(|| reading.clone());
+            self.segment_reading
                 .entry(term.clone())
                 .or_insert_with(|| reading.clone());
             let terms = self.by_reading.entry(reading).or_default();
@@ -293,11 +332,14 @@ impl SudachiTokenizer {
         let forms = [m.dictionary_form(), m.normalized_form()];
         let listed = forms
             .iter()
-            .find(|f| self.mined.contains(**f) || self.lexicon.contains(**f));
+            .find(|f| self.mined.contains(**f) || self.segments.contains(**f));
         if trace.is_recording() {
             let surface = m.surface().to_string();
             let why = match listed {
                 Some(f) if self.lexicon.contains(*f) => format!("In master dictionary: {f}"),
+                Some(f) if self.segments.contains(*f) => {
+                    format!("In a standard dictionary: {f}")
+                }
                 Some(f) => format!("Mined in Anki: {f}"),
                 None => {
                     let mut forms: Vec<&str> = forms.to_vec();
@@ -315,10 +357,22 @@ impl SudachiTokenizer {
     /// [`MasterWords::lists`] — a kana headword stores no reading, so it matches
     /// on the headword alone.
     fn lists(&self, headword: &str, reading: &str) -> bool {
+        self.lists_in(&self.pairs, &self.lexicon, headword, reading)
+    }
+
+    /// The same question of whichever authority is being asked — the master for
+    /// an identity, the segmentation set for a join.
+    fn lists_in(
+        &self,
+        pairs: &HashSet<(String, String)>,
+        headwords: &HashSet<String>,
+        headword: &str,
+        reading: &str,
+    ) -> bool {
         if crate::text::kana::is_all_kana(headword) {
-            return self.lexicon.contains(headword);
+            return headwords.contains(headword);
         }
-        self.pairs.contains(&(
+        pairs.contains(&(
             headword.to_string(),
             crate::text::kana::to_hiragana(reading),
         ))
@@ -382,7 +436,7 @@ impl SudachiTokenizer {
     ///
     /// The joined token takes the master's own spelling and reading.
     fn recompose(&self, tokens: Vec<Token>, trace: &mut Trace) -> Vec<Token> {
-        if self.lexicon.is_empty() && self.by_reading.is_empty() {
+        if self.segments.is_empty() && self.by_reading.is_empty() {
             return tokens;
         }
         let mut out: Vec<Token> = Vec::with_capacity(tokens.len());
@@ -465,17 +519,44 @@ impl SudachiTokenizer {
         // lists とする, so without that rule と + し swallowed the quotative
         // particle in 走りだそうとする, 囚人として and six more lines of the
         // golden corpus.
-        let conjugated_tail =
-            last.inflected && is_content_word(&last.pos) && is_content_word(&run[0].pos);
+        let opens_on_a_word = is_content_word(&run[0].pos);
+        let conjugated_tail = last.inflected && is_content_word(&last.pos) && opens_on_a_word;
         let expression = if conjugated_tail { &written } else { &surfaces };
+        // **A standard dictionary may say what is one word, never how it is
+        // spelt.** The join builds its candidate from base forms, and Sudachi's
+        // base form for まで is 迄 — which 明鏡 lists, so 今まで came back as
+        // 今迄. The master is allowed to respell a word, that being what makes
+        // it the spelling authority; a dictionary that only decides wordhood may
+        // not put a kanji on the page the reader did not read.
+        //
+        // Tested where the term is *chosen*, so a candidate refused here falls
+        // through to the next signal rather than taking the run down with it:
+        // もう + すぐ spells the master's もうすぐ and 明鏡's もう直ぐ, and it is
+        // still もうすぐ.
+        let spelt_as_read = |t: &String| {
+            self.lexicon.contains(t)
+                || !t
+                    .chars()
+                    .any(|c| crate::text::kanji::is_kanji(c) && !surfaces.contains(c))
+        };
         let expression_shaped = if conjugated_tail {
             head.iter().all(|t| !t.inflected)
         } else {
             uninflected_run
         };
-        let term = if spellable && self.lexicon.contains(&written) {
+        // A **standard** dictionary may not license an expression that opens on
+        // a function word. The master's own list is trusted there — だから,
+        // ないと and それどころか are what the path exists for — but 明鏡 lists
+        // から目 and より目, and 「相手から目を離す」 joined から + 目 and
+        // destroyed 目を離す.
+        let expression_admitted = |e: &String| {
+            self.segments.contains(e)
+                && (self.lexicon.contains(e) || opens_on_a_word)
+                && spelt_as_read(e)
+        };
+        let term = if spellable && self.segments.contains(&written) && spelt_as_read(&written) {
             Some(written.clone())
-        } else if expression_shaped && !mid_conjugation && self.lexicon.contains(expression) {
+        } else if expression_shaped && !mid_conjugation && expression_admitted(expression) {
             // The expression join, and the one place function words are allowed
             // in: それどころか is a Sankoku headword whose parts are two
             // particles. What it produces must itself be a listed headword — the
@@ -547,7 +628,7 @@ impl SudachiTokenizer {
                     "No match: parts form no listed headword by spelling or by reading",
                 );
             };
-            if !self.lexicon.contains(expression) {
+            if !expression_admitted(expression) {
                 return no_signal(
                     trace,
                     parts(),
@@ -588,14 +669,18 @@ impl SudachiTokenizer {
             );
         }
         let reading = self
-            .term_reading
+            .segment_reading
             .get(&term)
             .cloned()
             .unwrap_or_else(|| last.reading.clone());
-        // The joined token is an identity like any other and has to be one the
-        // master lists; a join that produces something else is a bad join.
-        if !self.pairs.is_empty() && !self.lists(&term, &reading) {
-            let reason = format!("Rejected: master dictionary does not list {term} read {reading}");
+        // The joined token is an identity like any other and has to be one a
+        // dictionary lists; a join that produces something else is a bad join.
+        // Asked of the segmentation authority, since that is what admitted the
+        // join — 意味ありげ is 明鏡's word and 明鏡's reading.
+        if !self.segment_pairs.is_empty()
+            && !self.lists_in(&self.segment_pairs, &self.segments, &term, &reading)
+        {
+            let reason = format!("Rejected: no dictionary lists {term} read {reading}");
             return refused(trace, parts(), term, reason);
         }
         trace.push(|| Step::Join {
@@ -1031,7 +1116,28 @@ impl SudachiTokenizer {
                 show(&candidates),
             );
         }
+        // Nothing listed it, so the spelling is Sudachi's — except where
+        // Sudachi's normalisation puts a kanji on the page the text did not
+        // write. 今まで is kept whole now that a standard dictionary lists it,
+        // and its normalised form is 今迄, which no dictionary of the reader's
+        // spells that way for them. An unlisted word is written the way it was
+        // read.
+        //
+        // Uninflected only: a stem is not the word, and the normalised form is
+        // the only thing that knows which word it is a stem of.
         let (t, r) = sudachi();
+        if *surface == *m.dictionary_form()
+            && t != surface
+            && t.chars()
+                .any(|c| crate::text::kanji::is_kanji(c) && !surface.contains(c))
+        {
+            return (
+                surface,
+                m.reading_form().to_string(),
+                "Not in master dictionary: kept as written, since normalising it would add kanji the text did not use",
+                show(&candidates),
+            );
+        }
         (
             t,
             r,
@@ -1081,13 +1187,17 @@ impl SudachiTokenizer {
 /// named string cannot cost anything that is not named. Everything else the
 /// join builds — ところが, まずは, 実は, 本当に, ために, すぐに, 同時に,
 /// ちなみに, ところで, 医務室 — is the word the sentence used.
-const NEVER_JOIN: [&str; 8] = [
-    "それは",     // それ + は: 「それは幸か不幸か」
-    "それが",     // それ + が: 「それがいつまで続くのか」
-    "これは",     // これ + は: 「たしかにこれは厄介ね」
-    "ここに",     // ここ + に: 「ここにいてほしい」
-    "ものを",     // もの + を: 「そぐわないものを目にし」
-    "今日は",     // 今日 + は — the greeting is こんにちは, and this is not it
+const NEVER_JOIN: [&str; 10] = [
+    "それは", // それ + は: 「それは幸か不幸か」
+    "それが", // それ + が: 「それがいつまで続くのか」
+    "これは", // これ + は: 「たしかにこれは厄介ね」
+    "ここに", // ここ + に: 「ここにいてほしい」
+    "ものを", // もの + を: 「そぐわないものを目にし」
+    "今日は", // 今日 + は — the greeting is こんにちは, and this is not it
+    "思いで", // 思い + で: 「私がどんな思いで……」 — the noun and the
+    // particle, not the kana spelling of 思い出.
+    "見えるか", // 見える + か: 「大丈夫に見えるか？」 is a question, and both
+    // sightings are one.
     "ものとする", // もの + と + する: the set phrase means "deem it so", and the
     // three sightings are all 「入れるものとしては」 — a thing to
     // put in, which is もの + として.
@@ -1297,7 +1407,7 @@ impl SudachiTokenizer {
         let text = &stripped;
         let tokenizer = StatelessTokenizer::new(&self.dict);
 
-        if self.mined.is_empty() && self.lexicon.is_empty() {
+        if self.mined.is_empty() && self.segments.is_empty() {
             // Nothing to ask whether a compound is a word — Mode B.
             let morphemes = tokenizer
                 .tokenize(text, Mode::B, false)

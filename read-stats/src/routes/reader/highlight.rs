@@ -359,8 +359,8 @@ pub async fn shared(state: &crate::app::AppState) -> Option<std::sync::Arc<Highl
             let vocab = crate::ingest::mined_vocab(state).await?;
             let lexicon = crate::ingest::master_lexicon(state).await?;
             let readings = crate::ingest::master_readings(state).await?;
-            // The same five inputs the ingest pass builds its tokenizer with,
-            // and they have to stay the same five. Without the frequency ranks
+            // The same six inputs the ingest pass builds its tokenizer with,
+            // and they have to stay the same six. Without the frequency ranks
             // a word written in kana whose reading names several master
             // headwords is left as the kana — うかがう rather than 窺う, which
             // no dictionary lists as a headword — so the wordhood gate calls it
@@ -370,6 +370,7 @@ pub async fn shared(state: &crate::app::AppState) -> Option<std::sync::Arc<Highl
             let ranks = crate::ingest::frequency_ranks(state, &readings).await?;
             let preferred = crate::ingest::preferred_readings(state).await?;
             let conjugatable = crate::ingest::conjugatable(state).await?;
+            let standard = crate::ingest::standard_readings(state).await?;
             let master = MasterWords::new(lexicon.clone(), &readings);
             let headwords: Vec<String> = lexicon.iter().cloned().collect();
             let word_ranks = crate::ingest::all_frequency_ranks(state, &headwords).await?;
@@ -382,7 +383,8 @@ pub async fn shared(state: &crate::app::AppState) -> Option<std::sync::Arc<Highl
                     .with_master_readings(&readings)
                     .with_frequency(ranks)
                     .with_preferred_readings(preferred)
-                    .with_conjugatable(conjugatable);
+                    .with_conjugatable(conjugatable)
+                    .with_standard(&standard);
                 Ok(std::sync::Arc::new(Highlighter::new(
                     tokenizer, lexicon, master, word_ranks,
                 )))

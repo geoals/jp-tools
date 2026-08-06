@@ -134,11 +134,17 @@ and `start-all.sh` runs `jp-dict sync` before starting them.
 `source_path` is the cache key, so a moved zip is *repointed* rather than
 re-imported — re-importing costs a 400k-row pass and leaves a duplicate row.
 
-Three jobs need the dictionaries, and they apply *different* thresholds, which is
-why `dictionaries.role` exists (`master` / `name` / `reference`) and why the
-ledger stores which dictionaries hold a term rather than one boolean:
+Four jobs need the dictionaries, and they apply *different* thresholds, which is
+why `dictionaries.role` exists (`master` / `standard` / `name` / `reference`)
+and why the ledger stores which dictionaries hold a term rather than one
+boolean:
 
 - **the wordhood gate** (the highlighter, ingest) — lenient: any dictionary.
+- **segmentation** (where a word ends) — the master and the `standard`
+  monolingual dictionaries beside it, 明鏡 and 小学館. They say 意味ありげ is one
+  word; they say nothing about how anything is spelt, because they list the
+  archaic kanji of every function word and admitting those rewrote 5,064 lines
+  of the corpus into 其れ and 此の.
 - **the vocabulary scale** ("I know N words") — strict: **master only**.
 - **classification** — a term in a name dictionary but not the master is a name.
 

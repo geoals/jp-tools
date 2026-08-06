@@ -37,8 +37,11 @@ async fn run() {
     // The same five inputs the reader and the ingest build their tokenizer
     // with — a tokenizer missing any of them is a second pipeline and its
     // output is not what production produces.
-    let mut entries = dictionaries::master_entries(pool).await.unwrap();
-    let mut conjugatable = dictionaries::master_conjugatable(pool).await.unwrap();
+    let entries = dictionaries::master_entries(pool).await.unwrap();
+    let conjugatable = dictionaries::master_conjugatable(pool).await.unwrap();
+    // The segmentation authority, added as what it is: these decide wordhood
+    // beside the master and nothing else.
+    let mut standard: Vec<(String, String)> = Vec::new();
     for title in &a[3..] {
         let d = dictionaries::by_title(pool, title)
             .await
@@ -53,18 +56,8 @@ async fn run() {
         .await
         .unwrap();
         eprintln!("+ {title}: {} entries", extra.len());
-        entries.extend(extra);
-        let conj: Vec<(String,)> = sqlx::query_as(
-            "SELECT DISTINCT term FROM dictionary_entries WHERE dictionary_id = ? AND rules != ''",
-        )
-        .bind(d.id)
-        .fetch_all(pool)
-        .await
-        .unwrap();
-        conjugatable.extend(conj.into_iter().map(|(t,)| t));
+        standard.extend(extra);
     }
-    entries.sort();
-    entries.dedup();
     let lexicon: HashSet<String> = entries.iter().map(|(t, _)| t.clone()).collect();
     let ranks = match dictionaries::by_title(pool, "BCCWJ").await.unwrap() {
         Some(d) => {
@@ -98,7 +91,8 @@ async fn run() {
         .with_master_readings(&entries)
         .with_frequency(ranks)
         .with_preferred_readings(preferred)
-        .with_conjugatable(conjugatable);
+        .with_conjugatable(conjugatable)
+        .with_standard(&standard);
 
     let lines: Vec<String> =
         sqlx::query_scalar("SELECT text FROM lines WHERE discarded = 0 ORDER BY id")
