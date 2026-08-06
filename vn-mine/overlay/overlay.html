@@ -86,10 +86,6 @@
   #line {
     width: fit-content;
     max-width: 100%;
-    /* Two lines' worth even for a one-line text: the backdrop is sized to its
-       content, so without this the box resizes on every line and the text under
-       the pointer jumps. 1.8 is #box's line-height. */
-    min-height: 3.6em;
     max-height: 100%;
     overflow-y: auto;
     scrollbar-width: none;
