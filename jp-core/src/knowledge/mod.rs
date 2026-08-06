@@ -127,6 +127,24 @@ impl Knowledge {
             .execute(&self.0)
             .await?;
         }
+        // The lexeme layer. `sequence` is the dictionary's own entry id, the
+        // only thing that says two spellings are one word; `seq_checked` marks
+        // a cached dictionary whose zip has already been re-read for them, so
+        // one that simply publishes none is not re-parsed every startup.
+        //
+        // Ahead of the `rules` migration below, which clears `seq_checked`.
+        if !has_column(&self.0, "dictionary_entries", "sequence").await? {
+            sqlx::raw_sql("ALTER TABLE dictionary_entries ADD COLUMN sequence INTEGER")
+                .execute(&self.0)
+                .await?;
+        }
+        if !has_column(&self.0, "dictionaries", "seq_checked").await? {
+            sqlx::raw_sql(
+                "ALTER TABLE dictionaries ADD COLUMN seq_checked INTEGER NOT NULL DEFAULT 0",
+            )
+            .execute(&self.0)
+            .await?;
+        }
         // `dictionary_entries` predates reading the word class off the term
         // bank. Existing rows keep an empty `rules` until the dictionary is
         // re-imported, which reads as "not known to be conjugatable" — the same
@@ -241,22 +259,6 @@ impl Knowledge {
                  CREATE INDEX IF NOT EXISTS idx_manual_sessions_start_ts \
                      ON manual_sessions(start_ts);\
                  COMMIT;",
-            )
-            .execute(&self.0)
-            .await?;
-        }
-        // The lexeme layer. `sequence` is the dictionary's own entry id, the
-        // only thing that says two spellings are one word; `seq_checked` marks
-        // a cached dictionary whose zip has already been re-read for them, so
-        // one that simply publishes none is not re-parsed every startup.
-        if !has_column(&self.0, "dictionary_entries", "sequence").await? {
-            sqlx::raw_sql("ALTER TABLE dictionary_entries ADD COLUMN sequence INTEGER")
-                .execute(&self.0)
-                .await?;
-        }
-        if !has_column(&self.0, "dictionaries", "seq_checked").await? {
-            sqlx::raw_sql(
-                "ALTER TABLE dictionaries ADD COLUMN seq_checked INTEGER NOT NULL DEFAULT 0",
             )
             .execute(&self.0)
             .await?;
