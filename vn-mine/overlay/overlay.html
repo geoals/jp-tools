@@ -359,8 +359,15 @@
   /* An inline image is standing in for a character — 三省堂 sets its part of
      speech markers and accent bars this way, and hiding them drops content.
      They are black or red line art drawn for paper: invert to bring them onto
-     a dark background, then turn the hue back so a red bar stays red. */
+     a dark background, then turn the hue back so a red bar stays red.
+
+     The size has to be capped here: 明鏡's markers declare no dimensions and
+     their SVGs carry no intrinsic size either, so without a height they fill
+     the popup. A declared size arrives as an inline style and still wins. */
   #popup img {
+    width: auto;
+    height: 1em;
+    vertical-align: -0.1em;
     filter: invert(1) hue-rotate(180deg);
   }
   /* Illustrations and stroke-order diagrams are pictures rather than
@@ -455,10 +462,11 @@
      originals price their reds and pink boxes against white; these are the same
      distinctions at a brightness that survives being over a game. */
   #popup {
-    --d-key: hsl(0 75% 70%); /* headword, sense numbers — the scan targets */
+    --d-key: hsl(0 75% 70%); /* headword and the spellings beside it */
+    --d-num: #e5e7eb; /* sense numbers — bold and plain, found by weight */
     --d-tag: #9fb3cc; /* part of speech, register, field labels */
     --d-note: #9ca3af; /* notes, cross references, anything secondary */
-    --d-ex: #86c986; /* example sentences */
+    --d-ex: #c8cedb; /* example sentences, set off by their rule not a hue */
     --d-box: rgba(255, 255, 255, 0.06);
     --d-rule: #3a4152;
   }
@@ -564,7 +572,7 @@
   /* The number is the one thing worth finding without reading. */
   [data-dict="三省堂国語辞典-第八版"] [data-name="語義番号"] {
     margin-right: 0.15em;
-    color: var(--d-key);
+    color: var(--d-num);
     font-weight: bold;
   }
   [data-dict="三省堂国語辞典-第八版"] [data-name="大語義"],
@@ -663,7 +671,7 @@
   /* The ❶ ❷ and the 例 / 音 / 訓 markers it sets in grey. */
   [data-dict="小学館例解学習国語-第十二版"] [data-num] {
     margin-right: 0.15em;
-    color: var(--d-key);
+    color: var(--d-num);
     font-weight: bold;
   }
   [data-dict="小学館例解学習国語-第十二版"] [data-gray] {
