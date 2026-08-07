@@ -64,7 +64,7 @@ async fn main() {
         }
     });
 
-    let router = build_router(AppState {
+    let state = AppState {
         local,
         knowledge,
         covers_dir: config.covers_dir.clone(),
@@ -79,11 +79,15 @@ async fn main() {
         vn_capture_script: config.vn_capture_script.clone(),
         anthropic_api_key: config.anthropic_api_key.clone(),
         whisper_url: config.whisper_url.clone(),
-        // Built on the first line the reading view streams, not here: the
-        // dictionary load is seconds of CPU that a dashboard-only start would
-        // spend for nothing.
         highlighter: Default::default(),
-    });
+    };
+
+    // Off the startup path, not on it: the dictionary load is seconds of CPU
+    // that a dashboard-only start should not wait for, and the reader's first
+    // popup should not pay for either.
+    read_stats::routes::reader::highlight::warm(state.clone());
+
+    let router = build_router(state);
 
     let listener = tokio::net::TcpListener::bind(&config.listen_addr)
         .await
