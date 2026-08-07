@@ -85,6 +85,21 @@ impl Knowledge {
         Knowledge(pool)
     }
 
+    /// A migrated, empty database in a throwaway file, for tests.
+    ///
+    /// A file and not `:memory:`: [`open`](Self::open) pools five connections,
+    /// and an in-memory SQLite gives each one a database of its own — a
+    /// dictionary seeded through one is invisible to the next four.
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn temp() -> Knowledge {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("jp-core-knowledge-{nanos}.db"));
+        Knowledge::open(path.to_str().unwrap()).await.unwrap()
+    }
+
     pub fn pool(&self) -> &SqlitePool {
         &self.0
     }
@@ -334,12 +349,7 @@ mod tests {
     use super::*;
 
     async fn temp_knowledge() -> Knowledge {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!("jp-core-knowledge-{nanos}.db"));
-        Knowledge::open(path.to_str().unwrap()).await.unwrap()
+        Knowledge::temp().await
     }
 
     #[tokio::test]

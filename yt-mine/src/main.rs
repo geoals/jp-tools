@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use tracing::info;
 
-use jp_core::dictionary::Dictionary;
 use jp_core::tokenize::{SudachiTokenizer, Tokenizer};
 
 use yt_mine::app::{AppState, build_router};
@@ -53,25 +52,6 @@ async fn main() {
         .await
         .expect("failed to open knowledge database");
     info!(path = %config.knowledge_db_path, "knowledge database ready");
-
-    // Cached only — importing a zip belongs to `jp-dict`, not to a service.
-    // Owned here, it made yt-mine a prerequisite of every other tool: a
-    // dictionary added for the VN overlay stayed invisible until yt-mine
-    // happened to boot.
-    let dictionaries: Vec<Arc<Dictionary>> = Dictionary::load_cached(knowledge.pool())
-        .await
-        .expect("failed to load dictionaries")
-        .into_iter()
-        .map(Arc::new)
-        .collect();
-    if dictionaries.is_empty() {
-        info!("no dictionaries cached (run `jp-dict sync` to enable definitions)");
-    } else {
-        info!(
-            count = dictionaries.len(),
-            "dictionaries ready (cached in db)"
-        );
-    }
 
     let headwords = jp_core::knowledge::dictionaries::get_all_headwords(knowledge.pool())
         .await
@@ -136,7 +116,7 @@ async fn main() {
         exporter,
         media_extractor,
         tokenizer,
-        dictionaries,
+        knowledge,
         llm_definer,
         audio_dir: config.audio_dir,
         media_dir,

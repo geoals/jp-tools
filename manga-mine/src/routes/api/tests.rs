@@ -27,13 +27,16 @@ struct TestEnv {
     _media: tempfile::TempDir,
 }
 
-fn build_env(ocr: MockOcrEngine, exporter: Arc<dyn jp_mine_core::export::AnkiExporter>) -> TestEnv {
+async fn build_env(
+    ocr: MockOcrEngine,
+    exporter: Arc<dyn jp_mine_core::export::AnkiExporter>,
+) -> TestEnv {
     let inbox = tempfile::tempdir().unwrap();
     let media = tempfile::tempdir().unwrap();
 
     let state = AppState {
         tokenizer: Arc::new(FakeTokenizer),
-        dictionaries: vec![],
+        knowledge: jp_core::knowledge::Knowledge::temp().await,
         ocr: Arc::new(ocr),
         exporter,
         inbox_dir: inbox.path().to_path_buf(),
@@ -52,15 +55,15 @@ fn build_env(ocr: MockOcrEngine, exporter: Arc<dyn jp_mine_core::export::AnkiExp
     }
 }
 
-fn default_env() -> TestEnv {
-    build_env(MockOcrEngine::new(), Arc::new(FakeAnkiExporter))
+async fn default_env() -> TestEnv {
+    build_env(MockOcrEngine::new(), Arc::new(FakeAnkiExporter)).await
 }
 
 // --- Queue ---
 
 #[tokio::test]
 async fn queue_lists_only_image_files() {
-    let env = default_env();
+    let env = default_env().await;
     std::fs::write(env.inbox.path().join("a.jpg"), test_jpeg_bytes(10, 10)).unwrap();
     std::fs::write(env.inbox.path().join("b.txt"), b"not an image").unwrap();
     std::fs::write(env.inbox.path().join(".hidden.jpg"), b"dotfile").unwrap();
@@ -76,7 +79,7 @@ async fn queue_lists_only_image_files() {
 
 #[tokio::test]
 async fn queue_empty_inbox_is_empty_list() {
-    let env = default_env();
+    let env = default_env().await;
     let response = env.server.get("/api/queue").await;
     response.assert_status_ok();
     let body: serde_json::Value = response.json();
@@ -87,7 +90,7 @@ async fn queue_empty_inbox_is_empty_list() {
 
 #[tokio::test]
 async fn get_photo_serves_bytes() {
-    let env = default_env();
+    let env = default_env().await;
     let jpeg = test_jpeg_bytes(20, 20);
     std::fs::write(env.inbox.path().join("page.jpg"), &jpeg).unwrap();
 
@@ -99,21 +102,21 @@ async fn get_photo_serves_bytes() {
 
 #[tokio::test]
 async fn get_photo_missing_is_404() {
-    let env = default_env();
+    let env = default_env().await;
     let response = env.server.get("/api/photos/nope.jpg").await;
     response.assert_status_not_found();
 }
 
 #[tokio::test]
 async fn get_photo_rejects_traversal() {
-    let env = default_env();
+    let env = default_env().await;
     let response = env.server.get("/api/photos/..%2Fsecret.jpg").await;
     assert!(response.status_code().is_client_error());
 }
 
 #[tokio::test]
 async fn thumbnail_downscales() {
-    let env = default_env();
+    let env = default_env().await;
     std::fs::write(env.inbox.path().join("big.jpg"), test_jpeg_bytes(1200, 800)).unwrap();
 
     let response = env.server.get("/api/photos/big.jpg/thumb").await;
@@ -126,7 +129,7 @@ async fn thumbnail_downscales() {
 
 #[tokio::test]
 async fn upload_stores_photo_in_inbox() {
-    let env = default_env();
+    let env = default_env().await;
     let jpeg = test_jpeg_bytes(10, 10);
 
     let response = env
@@ -150,7 +153,7 @@ async fn upload_stores_photo_in_inbox() {
 
 #[tokio::test]
 async fn upload_deduplicates_names() {
-    let env = default_env();
+    let env = default_env().await;
     std::fs::write(env.inbox.path().join("IMG_0042.jpg"), b"existing").unwrap();
 
     let response = env
@@ -178,7 +181,7 @@ async fn ocr_crop_returns_tokenized_sentences() {
     let mut ocr = MockOcrEngine::new();
     ocr.expect_recognize()
         .returning(|_| Box::pin(async { Ok("お前は強い。本当？".to_string()) }));
-    let env = build_env(ocr, Arc::new(FakeAnkiExporter));
+    let env = build_env(ocr, Arc::new(FakeAnkiExporter)).await;
 
     std::fs::write(
         env.inbox.path().join("panel.jpg"),
@@ -206,7 +209,7 @@ async fn ocr_crop_returns_tokenized_sentences() {
 
 #[tokio::test]
 async fn ocr_empty_crop_is_client_error() {
-    let env = default_env();
+    let env = default_env().await;
     std::fs::write(env.inbox.path().join("panel.jpg"), test_jpeg_bytes(50, 50)).unwrap();
 
     let response = env
@@ -248,7 +251,7 @@ async fn export_sends_card_with_compressed_image() {
             Box::pin(async move { Ok(count) })
         });
 
-    let env = build_env(MockOcrEngine::new(), Arc::new(exporter));
+    let env = build_env(MockOcrEngine::new(), Arc::new(exporter)).await;
     std::fs::write(
         env.inbox.path().join("panel.jpg"),
         test_jpeg_bytes(2000, 1500),
@@ -285,7 +288,7 @@ async fn export_uses_source_and_remembers_it() {
             Box::pin(async move { Ok(count) })
         });
 
-    let env = build_env(MockOcrEngine::new(), Arc::new(exporter));
+    let env = build_env(MockOcrEngine::new(), Arc::new(exporter)).await;
     std::fs::write(
         env.inbox.path().join("panel.jpg"),
         test_jpeg_bytes(100, 100),
@@ -318,7 +321,7 @@ async fn export_uses_source_and_remembers_it() {
 
 #[tokio::test]
 async fn export_requires_sentence() {
-    let env = default_env();
+    let env = default_env().await;
     std::fs::write(env.inbox.path().join("panel.jpg"), test_jpeg_bytes(50, 50)).unwrap();
 
     let response = env
@@ -333,7 +336,7 @@ async fn export_requires_sentence() {
 
 #[tokio::test]
 async fn mark_deletes_photo() {
-    let env = default_env();
+    let env = default_env().await;
     std::fs::write(env.inbox.path().join("done.jpg"), test_jpeg_bytes(10, 10)).unwrap();
 
     let response = env
@@ -353,7 +356,7 @@ async fn mark_deletes_photo() {
 
 #[tokio::test]
 async fn mark_rejects_unknown_status() {
-    let env = default_env();
+    let env = default_env().await;
     std::fs::write(env.inbox.path().join("x.jpg"), test_jpeg_bytes(10, 10)).unwrap();
 
     let response = env
@@ -366,7 +369,7 @@ async fn mark_rejects_unknown_status() {
 
 #[tokio::test]
 async fn mark_skipped_deletes_photo() {
-    let env = default_env();
+    let env = default_env().await;
     std::fs::write(env.inbox.path().join("skip.jpg"), test_jpeg_bytes(10, 10)).unwrap();
 
     let response = env

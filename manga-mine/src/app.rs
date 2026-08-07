@@ -15,7 +15,7 @@ use axum::routing::{get, post};
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 
-use jp_core::dictionary::Dictionary;
+use jp_core::knowledge::Knowledge;
 use jp_core::tokenize::Tokenizer;
 use jp_mine_core::config::AnkiConfig;
 use jp_mine_core::export::AnkiExporter;
@@ -29,7 +29,8 @@ const STATIC_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
 #[derive(Clone)]
 pub struct AppState {
     pub tokenizer: Arc<dyn Tokenizer>,
-    pub dictionaries: Vec<Arc<Dictionary>>,
+    /// The shared dictionary cache — what a word means, and how common it is.
+    pub knowledge: Knowledge,
     pub ocr: Arc<dyn OcrEngine>,
     pub exporter: Arc<dyn AnkiExporter>,
     /// Watched inbox folder = the mining queue.

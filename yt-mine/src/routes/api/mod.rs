@@ -247,7 +247,7 @@ pub async fn word_preview(
         return Err(AppError::NotFound);
     }
 
-    let result = lookup_word(&state.dictionaries, &query.word).await;
+    let result = lookup_word(&state.knowledge, &query.word, None).await;
 
     Ok(Json(PreviewResponse {
         word: query.word,
@@ -380,7 +380,7 @@ pub async fn export_sentences(
 
         let (definition, vocab_furigana, vocab_pitch_num, vocab_frequency) =
             if let Some(word) = &target_word {
-                let result = lookup_word(&state.dictionaries, word).await;
+                let result = lookup_word(&state.knowledge, word, None).await;
                 let furigana = format_furigana(word, &result.reading);
                 (
                     result.definition_html,

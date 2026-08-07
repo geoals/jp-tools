@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use axum::http::StatusCode;
 
-use jp_core::dictionary::{Dictionary, DictionaryEntry, PitchEntry};
+use jp_core::dictionary::{DictionaryEntry, PitchEntry};
+use jp_core::knowledge::dictionaries;
 use jp_core::tokenize::{MockTokenizer, Token};
 
 use crate::app::{AppState, build_router};
@@ -44,7 +45,7 @@ async fn test_app() -> (axum_test::TestServer, sqlx::SqlitePool) {
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(MockMediaExtractor::new()),
         tokenizer: Arc::new(mock_tokenizer()),
-        dictionaries: vec![],
+        knowledge: jp_core::knowledge::Knowledge::temp().await,
         llm_definer: None,
         audio_dir: "/tmp".into(),
         media_dir: "/tmp/media".into(),
@@ -108,7 +109,7 @@ async fn submit_job_creates_and_returns_video_id() {
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(MockMediaExtractor::new()),
         tokenizer: Arc::new(mock_tokenizer()),
-        dictionaries: vec![],
+        knowledge: jp_core::knowledge::Knowledge::temp().await,
         llm_definer: None,
         audio_dir: "/tmp".into(),
         media_dir: "/tmp/media".into(),
@@ -211,21 +212,40 @@ async fn poll_status_returns_204_when_unchanged() {
 
 #[tokio::test]
 async fn preview_returns_json() {
-    let mut dict = Dictionary::from_entries(vec![DictionaryEntry {
-        term: "食べる".into(),
-        reading: "たべる".into(),
-        definitions: vec!["to eat".into()],
-        score: 100,
-        sequence: None,
-        rules: String::new(),
-    }]);
-    dict.set_pitch(vec![(
-        "食べる".into(),
-        PitchEntry {
+    // A real cached dictionary, because the lookup now goes through
+    // `jp_core::define` and asks `knowledge.db` rather than an in-memory
+    // `Dictionary`.
+    let knowledge = jp_core::knowledge::Knowledge::temp().await;
+    let dict_id = dictionaries::import_dictionary(
+        knowledge.pool(),
+        "Test",
+        "/tmp/test.zip",
+        &[DictionaryEntry {
+            term: "食べる".into(),
             reading: "たべる".into(),
-            positions: vec![2],
-        },
-    )]);
+            definitions: vec!["to eat".into()],
+            score: 100,
+            sequence: None,
+            rules: String::new(),
+        }],
+    )
+    .await
+    .unwrap();
+    let mut tx = knowledge.pool().begin().await.unwrap();
+    dictionaries::insert_pitch_entries(
+        &mut tx,
+        dict_id,
+        &[(
+            "食べる".to_string(),
+            PitchEntry {
+                reading: "たべる".into(),
+                positions: vec![2],
+            },
+        )],
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
 
     let pool = db::create_pool("sqlite::memory:").await.unwrap();
     let state = AppState {
@@ -235,7 +255,7 @@ async fn preview_returns_json() {
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(MockMediaExtractor::new()),
         tokenizer: Arc::new(mock_tokenizer()),
-        dictionaries: vec![Arc::new(dict)],
+        knowledge,
         llm_definer: None,
         audio_dir: "/tmp".into(),
         media_dir: "/tmp/media".into(),
@@ -299,7 +319,7 @@ async fn llm_definition_returns_json() {
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(MockMediaExtractor::new()),
         tokenizer: Arc::new(mock_tokenizer()),
-        dictionaries: vec![],
+        knowledge: jp_core::knowledge::Knowledge::temp().await,
         llm_definer: Some(Arc::new(definer)),
         audio_dir: "/tmp".into(),
         media_dir: "/tmp/media".into(),
@@ -388,7 +408,7 @@ async fn export_returns_count_and_ids() {
         exporter: Arc::new(exporter),
         media_extractor: Arc::new(media_extractor),
         tokenizer: Arc::new(mock_tokenizer()),
-        dictionaries: vec![],
+        knowledge: jp_core::knowledge::Knowledge::temp().await,
         llm_definer: None,
         audio_dir: "/tmp".into(),
         media_dir: "/tmp/media".into(),
@@ -476,7 +496,7 @@ async fn test_app_with_media_dir(
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(media_extractor),
         tokenizer: Arc::new(mock_tokenizer()),
-        dictionaries: vec![],
+        knowledge: jp_core::knowledge::Knowledge::temp().await,
         llm_definer: None,
         audio_dir: "/tmp".into(),
         media_dir,

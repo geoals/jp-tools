@@ -6,7 +6,7 @@ use axum::routing::{get, post};
 use sqlx::SqlitePool;
 use tower_http::services::ServeDir;
 
-use jp_core::dictionary::Dictionary;
+use jp_core::knowledge::Knowledge;
 use jp_core::tokenize::Tokenizer;
 
 use crate::routes::api;
@@ -27,7 +27,8 @@ pub struct AppState {
     pub exporter: Arc<dyn AnkiExporter>,
     pub media_extractor: Arc<dyn MediaExtractor>,
     pub tokenizer: Arc<dyn Tokenizer>,
-    pub dictionaries: Vec<Arc<Dictionary>>,
+    /// The shared dictionary cache — what a word means, and how common it is.
+    pub knowledge: Knowledge,
     pub llm_definer: Option<Arc<dyn LlmDefiner>>,
     pub audio_dir: String,
     pub media_dir: String,

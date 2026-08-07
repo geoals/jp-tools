@@ -30,6 +30,13 @@ Provided by `jp-core` crate. See `jp-core/` for details.
 
 - Sudachi hybrid Mode C/B: tokenizes with Mode C, keeps compounds that exist as dictionary headwords (天気予報, 自己紹介), splits unknown compounds to Mode B sub-morphemes. Falls back to pure Mode B when no dictionaries are loaded
 - Yomitan-format zips, exact headword match, pitch accent, structured-content HTML
+- **Lookup goes through `jp_core::define`**, the same call the VN overlay's
+  popup draws from, via `jp_mine_core::lookup::lookup_word` — which flattens it
+  to the four things a card holds. So a card gets the dictionaries in reading
+  order (明鏡, then the master) rather than install order, and its `Frequency`
+  is `READER_FREQUENCY` — how common the word is in fiction. It used to be
+  whichever frequency dictionary was installed first, which was BCCWJ:
+  newspaper prose, where 素振り ranks 14,117 against 6,157 in fiction.
 
 ## Build & run
 

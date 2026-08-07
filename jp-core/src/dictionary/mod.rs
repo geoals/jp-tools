@@ -135,13 +135,7 @@ impl Dictionary {
     /// Class names are suffixed with a slug derived from the dictionary title,
     /// e.g. `dict-jitendex-title` / `dict-jitendex-body`.
     pub fn wrap_definitions(&self, definitions_html: &str) -> String {
-        let slug = css_slug(&self.title);
-        format!(
-            r#"<div class="dict-section"><div class="dict-{slug}-title dict-title">{title}</div><div class="dict-{slug}-body">{definitions_html}</div></div>"#,
-            slug = slug,
-            title = html::html_escape(&self.title),
-            definitions_html = definitions_html,
-        )
+        wrap_definitions(&css_slug(&self.title), &self.title, definitions_html)
     }
 
     /// Create a dictionary backed by SQLite for lazy per-term lookups.
@@ -256,6 +250,19 @@ pub fn format_furigana(term: &str, reading: &str) -> String {
     } else {
         format!("{term}[{reading}]")
     }
+}
+
+/// Wrap definition HTML in one dictionary's title and body divs, the shape the
+/// mining note type's CSS keys on (`dict-jitendex-title` / `dict-jitendex-body`).
+///
+/// Free-standing as well as a [`Dictionary`] method, because a caller working
+/// from [`crate::define::Source`] has the slug and the title without ever
+/// loading a `Dictionary`.
+pub fn wrap_definitions(slug: &str, title: &str, definitions_html: &str) -> String {
+    format!(
+        r#"<div class="dict-section"><div class="dict-{slug}-title dict-title">{title}</div><div class="dict-{slug}-body">{definitions_html}</div></div>"#,
+        title = html::html_escape(title),
+    )
 }
 
 /// Convert a dictionary title to a CSS-safe slug for use in class names.

@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use tracing::info;
 
-use jp_core::dictionary::Dictionary;
 use jp_core::tokenize::{SudachiTokenizer, Tokenizer};
 use jp_mine_core::export::{AnkiConnectExporter, AnkiExporter};
 
@@ -28,42 +27,25 @@ async fn main() {
         .to_string_lossy()
         .into_owned();
 
-    let (tokenizer, dictionaries, ocr, exporter): (
+    // The dictionary cache lives in the shared knowledge database, and
+    // `jp-dict` is what fills it. Read here, never imported: a service that
+    // parses zips becomes a prerequisite of the other services.
+    let knowledge = jp_core::knowledge::Knowledge::open(&config.knowledge_db_path)
+        .await
+        .expect("failed to open knowledge database");
+
+    let (tokenizer, ocr, exporter): (
         Arc<dyn Tokenizer>,
-        Vec<Arc<Dictionary>>,
         Arc<dyn OcrEngine>,
         Arc<dyn AnkiExporter>,
     ) = if config.fake_api {
         info!("*** DEV MODE — using fake services (no external deps needed) ***");
         (
             Arc::new(FakeTokenizer),
-            vec![],
             Arc::new(FakeOcrEngine),
             Arc::new(FakeAnkiExporter),
         )
     } else {
-        // The dictionary cache lives in the shared knowledge database, and
-        // `jp-dict` is what fills it. Read here, never imported: a service that
-        // parses zips becomes a prerequisite of the other services.
-        let knowledge = jp_core::knowledge::Knowledge::open(&config.knowledge_db_path)
-            .await
-            .expect("failed to open knowledge database");
-
-        let dictionaries: Vec<Arc<Dictionary>> = Dictionary::load_cached(knowledge.pool())
-            .await
-            .expect("failed to load dictionaries")
-            .into_iter()
-            .map(Arc::new)
-            .collect();
-        if dictionaries.is_empty() {
-            info!("no dictionaries cached (run `jp-dict sync` to enable definitions)");
-        } else {
-            info!(
-                count = dictionaries.len(),
-                "dictionaries ready (cached in db)"
-            );
-        }
-
         let headwords = jp_core::knowledge::dictionaries::get_all_headwords(knowledge.pool())
             .await
             .expect("failed to load headwords");
@@ -83,7 +65,6 @@ async fn main() {
         info!(url = %config.ocr_service_url, "using manga-ocr service");
         (
             tokenizer,
-            dictionaries,
             Arc::new(MangaOcrEngine::new(config.ocr_service_url.clone())),
             Arc::new(AnkiConnectExporter::new(
                 config.anki_url.clone(),
@@ -94,7 +75,7 @@ async fn main() {
 
     let state = AppState {
         tokenizer,
-        dictionaries,
+        knowledge,
         ocr,
         exporter,
         inbox_dir,

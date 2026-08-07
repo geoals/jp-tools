@@ -1,56 +1,76 @@
-use std::sync::Arc;
-
-use jp_core::dictionary::Dictionary;
+use jp_core::define;
+use jp_core::dictionary::wrap_definitions;
+use jp_core::knowledge::Knowledge;
 use jp_core::tokenize::Token;
 
 pub struct WordLookupResult {
     pub definition_html: Option<String>,
     pub reading: String,
     pub pitch_num: Option<String>,
-    /// Best (lowest) frequency rank across dictionaries, e.g. 2000 = the
+    /// How common the word is in fiction, by
+    /// [`jp_core::knowledge::dictionaries::READER_FREQUENCY`] — 2000 is the
     /// 2000th most common word.
     pub frequency: Option<i64>,
 }
 
-/// Look a word up across all configured dictionaries. Definitions from every
-/// dictionary that has the word are concatenated (each wrapped in its
-/// dictionary's styling); reading, pitch and frequency come from the first hit.
-pub async fn lookup_word(dictionaries: &[Arc<Dictionary>], word: &str) -> WordLookupResult {
-    let mut def_parts = Vec::new();
-    let mut reading = String::new();
-    let mut pitch_num = None;
-    let mut frequency = None;
+/// One word, flattened into the four things a mined card needs.
+///
+/// [`jp_core::define`] does the asking, so a card gets the same answer the VN
+/// overlay's popup shows: the dictionaries in reading order rather than install
+/// order, narrowed to `reading` where one is known, and ranked by the list the
+/// reader's own underline uses. Ranking on whichever dictionary answered first
+/// is what this used to do, and that was BCCWJ — newspaper prose, where 船舶 is
+/// the 3,843rd commonest word against 32,370th in fiction.
+///
+/// One sense per dictionary, which is what a card has room for. The popup is
+/// where a word goes to be read in full.
+pub async fn lookup_word(k: &Knowledge, word: &str, reading: Option<&str>) -> WordLookupResult {
+    let found = match define::define(k.pool(), word, reading).await {
+        Ok(found) => found,
+        Err(e) => {
+            tracing::warn!(word, error = %e, "dictionary lookup failed");
+            return WordLookupResult {
+                definition_html: None,
+                reading: String::new(),
+                pitch_num: None,
+                frequency: None,
+            };
+        }
+    };
 
-    for dict in dictionaries {
-        let entries = dict.lookup(word).await;
-        if let Some(entry) = entries.first() {
-            let joined = entry.definitions.join("; ");
-            def_parts.push(dict.wrap_definitions(&joined));
-            if reading.is_empty() && !entry.reading.is_empty() {
-                reading = entry.reading.clone();
-            }
-        }
-        if pitch_num.is_none() {
-            let pitch = dict.lookup_pitch(word).await;
-            if !pitch.is_empty() {
-                let nums: Vec<String> = pitch[0].positions.iter().map(|p| p.to_string()).collect();
-                pitch_num = Some(nums.join(","));
-            }
-        }
-        if frequency.is_none() {
-            frequency = dict.lookup_frequency(word).await;
-        }
-    }
+    let def_parts: Vec<String> = found
+        .sources
+        .iter()
+        .filter_map(|s| {
+            let sense = s.senses.first()?;
+            Some(wrap_definitions(
+                &s.slug,
+                &s.dictionary,
+                &sense.definitions.join("; "),
+            ))
+        })
+        .collect();
 
     WordLookupResult {
-        definition_html: if def_parts.is_empty() {
-            None
-        } else {
-            Some(def_parts.join(""))
-        },
-        reading,
-        pitch_num,
-        frequency,
+        definition_html: (!def_parts.is_empty()).then(|| def_parts.join("")),
+        reading: reading.map(str::to_string).unwrap_or_else(|| {
+            found
+                .sources
+                .iter()
+                .flat_map(|s| &s.senses)
+                .map(|sense| &sense.reading)
+                .find(|r| !r.is_empty())
+                .cloned()
+                .unwrap_or_default()
+        }),
+        pitch_num: found.pitch.first().map(|p| {
+            p.positions
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        }),
+        frequency: found.jiten,
     }
 }
 
