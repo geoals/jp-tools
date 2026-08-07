@@ -61,7 +61,10 @@ mod tests {
             &[d("2026-01-01"), d("2026-01-01"), d("2026-01-03")],
             d("2026-01-03"),
         );
-        let seen: Vec<_> = days.iter().map(|g| (&g.date, g.new, g.cumulative)).collect();
+        let seen: Vec<_> = days
+            .iter()
+            .map(|g| (&g.date, g.new, g.cumulative))
+            .collect();
         assert_eq!(
             seen,
             vec![

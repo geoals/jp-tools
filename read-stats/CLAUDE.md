@@ -347,7 +347,7 @@ The reading view:
   badge was once the `EventSource` alone, which sat on "live" through three
   hours of capturing nothing: this stream is healthy whenever read-stats is up,
   and knows nothing about the two hops in front of it.
-- **Marks are drawn, never markup.** `routes/reader/highlight.rs` sends offsets
+- **Marks are drawn, never markup.** `jp_core::highlight` sends offsets
   per line and `paintMarks` draws a rectangle per word into a layer _behind_ the
   text. Yomitan scans this DOM, so one text node per line is a constraint.
   Offsets are UTF-16 code units because that is what a `Range` indexes in.
@@ -443,7 +443,7 @@ Mining:
 - **The card's dictionaries and the popup's are two lists.** `CARD_DICTIONARIES`
   is Sankoku and Jitendex, because those are the two the note type has CSS for
   and a third would land on the card unstyled. The popup shows everything
-  installed and opens on `define::OPENS_WITH`. Adding a dictionary changes the
+  installed and opens on `jp_core::define::OPENS_WITH`. Adding a dictionary changes the
   popup; it changes the card only when the note type gets a rule for it.
 - **The class name is fixed per dictionary, never derived from its title.**
   `CARD_DICTIONARIES` pairs a title prefix with the class (`sanseido`,

@@ -296,27 +296,9 @@ pub(crate) async fn frequency_ranks(
     Ok(jp_core::knowledge::dictionaries::frequency_ranks(pool, bccwj.id, &terms).await?)
 }
 
-/// The frequency list every *reader-facing* rank comes from — the underline in
-/// the feed and both halves of frequency triage. jpdb's list, not BCCWJ.
-///
-/// **Two frequency dictionaries on purpose, and they answer different
-/// questions.** BCCWJ arbitrates *between spellings of one reading* inside the
-/// tokenizer ([`frequency_ranks`], [`preferred_readings`]), which needs a rank
-/// per `(spelling, reading)` and nothing else. These features ask "how common
-/// is this word, at all", and BCCWJ is the wrong list for it twice over:
-///
-/// - It files a word only under the corpus's orthography, with no kana row —
-///   いただく is present as 頂く/いただく alone, so a line that writes it in kana
-///   gets no rank and no underline. 2,872 of 16,003 ledger rows were unrankable
-///   that way, against 849 under Jiten.
-/// - Its corpus is newspapers and government prose. 船舶 ranks 3,843 and
-///   心掛ける 3,106 there, against 32,370 and 24,006 in Jiten. "Common in
-///   Japanese" has to mean common in the fiction being read, or the underline
-///   marks the wrong gaps.
-///
-/// The two lists are the same size at the head — about 6,200 terms inside rank
-/// 5,000 each — so the thresholds carry over unchanged.
-pub(crate) const READER_FREQUENCY: &str = "Jiten";
+/// Named in jp-core, because yt-mine's cards are ranked on the same claim and
+/// two copies of it would drift.
+pub(crate) use jp_core::knowledge::dictionaries::READER_FREQUENCY;
 
 /// Reader-frequency ranks for every one of `headwords`, keyed
 /// `(headword, reading)` — what the reading view needs to tell a common unknown

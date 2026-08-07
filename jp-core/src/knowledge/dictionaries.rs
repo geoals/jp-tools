@@ -799,6 +799,32 @@ pub async fn master(pool: &SqlitePool) -> Result<Option<Dictionary>, sqlx::Error
         .find(|d| d.role == Role::Master))
 }
 
+/// The frequency list every *reader-facing* rank comes from — the underline in
+/// read-stats' feed, both halves of its frequency triage, the popup, and the
+/// rank on a mined card. jpdb's list, not BCCWJ.
+///
+/// **Two frequency dictionaries on purpose, and they answer different
+/// questions.** BCCWJ arbitrates *between spellings of one reading* inside the
+/// tokenizer ([`frequency_ranks`], [`preferred_readings`]), which needs a rank
+/// per `(spelling, reading)` and nothing else. These features ask "how common
+/// is this word, at all", and BCCWJ is the wrong list for it twice over:
+///
+/// - It files a word only under the corpus's orthography, with no kana row —
+///   いただく is present as 頂く/いただく alone, so a line that writes it in kana
+///   gets no rank and no underline. 2,872 of 16,003 ledger rows were unrankable
+///   that way, against 849 under Jiten.
+/// - Its corpus is newspapers and government prose. 船舶 ranks 3,843 and
+///   心掛ける 3,106 there, against 32,370 and 24,006 in Jiten. "Common in
+///   Japanese" has to mean common in the fiction being read, or the underline
+///   marks the wrong gaps.
+///
+/// The two lists are the same size at the head — about 6,200 terms inside rank
+/// 5,000 each — so the thresholds carry over unchanged.
+///
+/// It lives here rather than in whichever tool asked first because it is one
+/// claim about which words are common, made in four places across two binaries.
+pub const READER_FREQUENCY: &str = "Jiten";
+
 /// A loaded dictionary by exact title, for a source with no `role` of its own
 /// to select on — the BCCWJ frequency table is loaded as a plain `reference`
 /// dictionary, so its id has to be found by name.

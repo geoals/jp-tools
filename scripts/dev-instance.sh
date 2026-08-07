@@ -138,6 +138,19 @@ cmd_snapshot() {
   get lookups_summary "/api/lookups/summary"
   get reader_state    "/api/reader/state"
 
+  # The popup's two endpoints and the tokenizer's own report. Last, and in this
+  # order, because `define` records a lookup: taken before `lookups_summary` it
+  # would move a number in it.
+  post() {
+    curl -sS -H 'content-type: application/json' -d "$3" "http://127.0.0.1:$PORT$2" |
+      python3 -m json.tool --sort-keys >"$out/$1.json"
+  }
+  get define_kana     "/api/reader/define?term=%E7%B4%A0%E6%8C%AF%E3%82%8A"
+  get define_reading  "/api/reader/define?term=%E7%A9%BA&reading=%E3%81%9D%E3%82%89"
+  get expand_compound "/api/reader/expand?text=%E7%B5%8C%E5%B9%B4%E5%8A%A3%E5%8C%96%E3%81%8C"
+  get expand_idiom    "/api/reader/expand?text=%E3%81%97%E3%81%B3%E3%82%8C%E3%82%92%E5%88%87%E3%82%89%E3%81%97%E3%81%9F"
+  post tokenize_line  "/api/tokenize" '{"text":"彼女は本を読むのがすえた臭いより好きだ"}'
+
   stop_server
   say "snapshot -> $out ($(ls "$out" | wc -l) endpoints)"
 }
