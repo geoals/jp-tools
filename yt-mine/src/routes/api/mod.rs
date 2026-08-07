@@ -38,12 +38,6 @@ pub struct SubmitResponse {
     at: Option<f64>,
 }
 
-#[derive(Deserialize)]
-pub struct RefineRequest {
-    /// The moment to sharpen around, in seconds.
-    pub at: f64,
-}
-
 #[derive(Serialize)]
 struct JobResponse {
     job_id: i64,
@@ -54,8 +48,6 @@ struct JobResponse {
     error_message: Option<String>,
     progress_percent: Option<u8>,
     sentence_count: usize,
-    refine_state: Option<String>,
-    refine_at: Option<f64>,
     sentences: Vec<SentenceJson>,
 }
 
@@ -65,7 +57,6 @@ struct SentenceJson {
     timestamp: String,
     start_seconds: u64,
     text: String,
-    source: String,
     tokens: Vec<TokenJson>,
 }
 
@@ -85,8 +76,6 @@ pub struct PollQuery {
     sc: Option<usize>,
     #[serde(default)]
     st: Option<String>,
-    #[serde(default)]
-    rf: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -186,9 +175,13 @@ pub async fn submit_job(
 
     let job_id = db::create_job(&state.db, &url, &video_id).await?;
 
-    let p = Arc::clone(&state.pipeline);
+    let pool = state.db.clone();
+    let downloader = Arc::clone(&state.downloader);
+    let transcriber = Arc::clone(&state.transcriber);
+    let audio_dir = state.audio_dir.clone();
+
     tokio::spawn(async move {
-        pipeline::process_job(p, job_id, url).await;
+        pipeline::process_job(pool, job_id, url, audio_dir, downloader, transcriber).await;
     });
 
     Ok((StatusCode::CREATED, Json(SubmitResponse { video_id, at })).into_response())
@@ -229,38 +222,6 @@ pub fn start_seconds_in(url: &str) -> Option<f64> {
     (total > 0.0).then_some(total)
 }
 
-/// `POST /api/{video_id}/refine` — run whisper over the minute around a
-/// timestamp and replace the captions there with what it heard.
-pub async fn refine(
-    State(state): State<AppState>,
-    Path(video_id): Path<String>,
-    Json(body): Json<RefineRequest>,
-) -> Result<Response, AppError> {
-    let job = db::get_latest_job_by_video_id(&state.db, &video_id)
-        .await?
-        .ok_or(AppError::NotFound)?;
-
-    // One at a time: two overlapping windows would each delete lines the other
-    // is about to write.
-    if job.refine_state.as_deref() == Some("running") {
-        return Ok((
-            StatusCode::CONFLICT,
-            Json(serde_json::json!({ "error": "Already sharpening a window." })),
-        )
-            .into_response());
-    }
-
-    let p = Arc::clone(&state.pipeline);
-    let url = job.youtube_url.clone();
-    let at = body.at;
-    db::set_refine_state(&state.db, job.id, Some("running"), Some(at)).await?;
-    tokio::spawn(async move {
-        pipeline::refine_window(p, job.id, url, at).await;
-    });
-
-    Ok((StatusCode::ACCEPTED, Json(serde_json::json!({ "at": at }))).into_response())
-}
-
 pub async fn get_job(
     State(state): State<AppState>,
     Path(video_id): Path<String>,
@@ -269,44 +230,8 @@ pub async fn get_job(
         .await?
         .ok_or(AppError::NotFound)?;
 
-    Ok(Json(job_response(&state, job, video_id).await?).into_response())
-}
+    let (sentence_views, max_end) = build_sentence_views(&state, job.id).await?;
 
-pub async fn poll_status(
-    State(state): State<AppState>,
-    Path(video_id): Path<String>,
-    Query(poll): Query<PollQuery>,
-) -> Result<Response, AppError> {
-    let job = db::get_latest_job_by_video_id(&state.db, &video_id)
-        .await?
-        .ok_or(AppError::NotFound)?;
-
-    // Nothing to send back unless the status, the refine state or the number
-    // of sentences moved. Sharpening a window can leave the count exactly
-    // where it was, which is why the refine state is part of this: it goes
-    // `running` then `done` around every replacement.
-    if let (Some(prev_sc), Some(prev_st)) = (poll.sc, &poll.st) {
-        let count = db::count_sentences_for_job(&state.db, job.id).await? as usize;
-        let unchanged = prev_st == job.status.as_str()
-            && prev_sc == count
-            && poll.rf.as_deref().unwrap_or("") == job.refine_state.as_deref().unwrap_or("");
-        if unchanged {
-            return Ok(StatusCode::NO_CONTENT.into_response());
-        }
-    }
-
-    Ok(Json(job_response(&state, job, video_id).await?).into_response())
-}
-
-async fn job_response(
-    state: &AppState,
-    job: crate::models::Job,
-    video_id: String,
-) -> Result<JobResponse, AppError> {
-    let (sentence_views, max_end) = build_sentence_views(state, job.id).await?;
-
-    // Only means anything while whisper is walking a whole video. A caption
-    // job covers the video the moment it is done.
     let progress_percent = job.video_duration.map(|d| {
         if d > 0.0 {
             (max_end / d * 100.0).min(100.0) as u8
@@ -318,7 +243,7 @@ async fn job_response(
     let sentence_count = sentence_views.len();
     let sentences = sentence_views.into_iter().map(sentence_to_json).collect();
 
-    Ok(JobResponse {
+    Ok(Json(JobResponse {
         job_id: job.id,
         video_id,
         video_title: job.video_title,
@@ -327,10 +252,55 @@ async fn job_response(
         error_message: job.error_message,
         progress_percent,
         sentence_count,
-        refine_state: job.refine_state,
-        refine_at: job.refine_at,
         sentences,
     })
+    .into_response())
+}
+
+pub async fn poll_status(
+    State(state): State<AppState>,
+    Path(video_id): Path<String>,
+    Query(poll): Query<PollQuery>,
+) -> Result<Response, AppError> {
+    let job = db::get_latest_job_by_video_id(&state.db, &video_id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    let status_str = job.status.as_str().to_string();
+
+    // Return 204 if nothing changed
+    if let (Some(prev_sc), Some(prev_st)) = (poll.sc, &poll.st) {
+        let current_count = db::count_sentences_for_job(&state.db, job.id).await? as usize;
+        if prev_st == &status_str && prev_sc == current_count {
+            return Ok(StatusCode::NO_CONTENT.into_response());
+        }
+    }
+
+    let (sentence_views, max_end) = build_sentence_views(&state, job.id).await?;
+
+    let progress_percent = job.video_duration.map(|d| {
+        if d > 0.0 {
+            (max_end / d * 100.0).min(100.0) as u8
+        } else {
+            0
+        }
+    });
+
+    let sentence_count = sentence_views.len();
+    let sentences = sentence_views.into_iter().map(sentence_to_json).collect();
+
+    Ok(Json(JobResponse {
+        job_id: job.id,
+        video_id,
+        video_title: job.video_title,
+        status: status_str,
+        is_terminal: job.status.is_terminal(),
+        error_message: job.error_message,
+        progress_percent,
+        sentence_count,
+        sentences,
+    })
+    .into_response())
 }
 
 /// `GET /api/define?term=<headword>&reading=<reading>`
@@ -414,73 +384,6 @@ pub async fn judge(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
-/// The file a card's media is cut out of, and where in it the line sits.
-///
-/// Three cases, in the order they are cheap: the line already has the window
-/// whisper transcribed it from; the job downloaded the whole video, because
-/// YouTube had no captions for it; or nothing has been downloaded at all and a
-/// few seconds around the line are fetched now and kept on the row, so the
-/// next export or replay of it costs nothing.
-struct Media {
-    video_path: Option<String>,
-    audio_path: Option<String>,
-    /// Subtract this from a stored timestamp to point ffmpeg at the file.
-    offset: f64,
-}
-
-async fn media_for(
-    state: &AppState,
-    job: &crate::models::Job,
-    sentence: &crate::models::Sentence,
-) -> Media {
-    if let (Some(video), Some(audio), Some(start)) = (
-        sentence.clip_path.clone(),
-        sentence.clip_audio_path.clone(),
-        sentence.clip_start,
-    ) {
-        return Media {
-            video_path: Some(video),
-            audio_path: Some(audio),
-            offset: start,
-        };
-    }
-
-    if job.video_path.is_some() || job.audio_path.is_some() {
-        return Media {
-            video_path: job.video_path.clone(),
-            audio_path: job.audio_path.clone(),
-            offset: 0.0,
-        };
-    }
-
-    // Padded on both sides so a line whose caption timing runs a little early
-    // or late is still inside the file.
-    let start = (sentence.start_time - 3.0).max(0.0);
-    let end = sentence.end_time + 3.0;
-    match state
-        .clips
-        .fetch(job.youtube_url.clone(), start, end, state.audio_dir.clone())
-        .await
-    {
-        Ok(clip) => {
-            db::attach_clip(&state.db, sentence.id, &clip).await.ok();
-            Media {
-                video_path: Some(clip.video_path),
-                audio_path: Some(clip.audio_path),
-                offset: clip.start,
-            }
-        }
-        Err(e) => {
-            warn!(sentence_id = sentence.id, error = %e, "clip download failed, exporting without media");
-            Media {
-                video_path: None,
-                audio_path: None,
-                offset: 0.0,
-            }
-        }
-    }
-}
-
 pub async fn export_sentences(
     State(state): State<AppState>,
     Json(body): Json<ExportRequest>,
@@ -515,10 +418,7 @@ pub async fn export_sentences(
         .await?
         .ok_or(AppError::NotFound)?;
 
-    let source = job
-        .video_title
-        .clone()
-        .unwrap_or_else(|| job.youtube_url.clone());
+    let source = job.video_title.unwrap_or_else(|| job.youtube_url.clone());
 
     let mut export_sentences = Vec::with_capacity(sentences.len());
     let mut exported_ids = Vec::with_capacity(sentences.len());
@@ -528,14 +428,12 @@ pub async fn export_sentences(
         let screenshot_path = format!("{}/{screenshot_filename}", state.media_dir);
         let audio_clip_path = format!("{}/{audio_filename}", state.media_dir);
 
-        let media = media_for(&state, &job, &sentence).await;
-
         let mut screenshot_result = None;
-        if let Some(video_path) = &media.video_path {
-            let midpoint = (sentence.start_time + sentence.end_time) / 2.0 - media.offset;
+        if let Some(video_path) = &job.video_path {
+            let midpoint = (sentence.start_time + sentence.end_time) / 2.0;
             match state
                 .media_extractor
-                .extract_screenshot(video_path, midpoint.max(0.0), &screenshot_path)
+                .extract_screenshot(video_path, midpoint, &screenshot_path)
                 .await
             {
                 Ok(()) => screenshot_result = Some(screenshot_path),
@@ -548,13 +446,13 @@ pub async fn export_sentences(
         }
 
         let mut audio_result = None;
-        if let Some(audio_path) = &media.audio_path {
+        if let Some(audio_path) = &job.audio_path {
             match state
                 .media_extractor
                 .extract_audio_clip(
                     audio_path,
-                    (sentence.start_time - media.offset).max(0.0),
-                    (sentence.end_time - media.offset).max(0.0),
+                    sentence.start_time,
+                    sentence.end_time,
                     &audio_clip_path,
                 )
                 .await
@@ -691,15 +589,14 @@ pub async fn sentence_audio(
     if sentence.job_id != job.id {
         return Err(AppError::NotFound);
     }
+    let audio_path = job
+        .audio_path
+        .ok_or(AppError::BadRequest("no audio available".into()))?;
+
     let (_, audio_filename) = media_filenames(job.id, sentence_id);
     let clip_path = format!("{}/{audio_filename}", state.media_dir);
 
     if !tokio::fs::try_exists(&clip_path).await.unwrap_or(false) {
-        let media = media_for(&state, &job, &sentence).await;
-        let audio_path = media
-            .audio_path
-            .ok_or(AppError::BadRequest("no audio available".into()))?;
-
         tokio::fs::create_dir_all(&state.media_dir)
             .await
             .map_err(|e| AppError::Media(format!("failed to create media dir: {e}")))?;
@@ -708,8 +605,8 @@ pub async fn sentence_audio(
             .media_extractor
             .extract_audio_clip(
                 &audio_path,
-                (sentence.start_time - media.offset).max(0.0),
-                (sentence.end_time - media.offset).max(0.0),
+                sentence.start_time,
+                sentence.end_time,
                 &clip_path,
             )
             .await
@@ -741,7 +638,6 @@ fn sentence_to_json(view: crate::routes::mining::SentenceView) -> SentenceJson {
         timestamp: view.timestamp,
         start_seconds: view.start_seconds,
         text: view.text,
-        source: view.source,
         tokens: view
             .tokens
             .into_iter()

@@ -1,6 +1,6 @@
 import { html } from 'htm/preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { fetchJob, pollStatus, refineAt } from '../../api.js';
+import { fetchJob, pollStatus } from '../../api.js';
 import { JobStatus } from './job-status.js';
 import { SentenceList } from './sentence-list.js';
 
@@ -8,8 +8,8 @@ export function VideoPage({ videoId, at }) {
   const [job, setJob] = useState(null);
   const [error, setError] = useState(null);
   const pollRef = useRef(null);
-  // The line the page opened on, and whether it has been scrolled to yet —
-  // the list arrives one fetch after the page does.
+  // The list arrives one fetch after the page does, and grows while whisper
+  // runs, so landing on the line is a one-shot that waits for it to exist.
   const landed = useRef(false);
 
   // Initial fetch
@@ -23,46 +23,32 @@ export function VideoPage({ videoId, at }) {
 
   // Polling
   useEffect(() => {
-    if (!job) return;
-    // A sharpening window keeps the page live after the job itself is done.
-    if (job.is_terminal && job.refine_state !== 'running') return;
+    if (!job || job.is_terminal) return;
 
+    const controller = new AbortController();
     pollRef.current = setInterval(async () => {
       try {
-        const data = await pollStatus(
-          videoId,
-          job.sentence_count,
-          job.status,
-          job.refine_state ?? '',
-        );
+        const data = await pollStatus(videoId, job.sentence_count, job.status);
         if (data) setJob(data);
       } catch (_) {
         // Ignore transient poll errors
       }
     }, 2000);
 
-    return () => clearInterval(pollRef.current);
-  }, [job?.status, job?.sentence_count, job?.refine_state, videoId]);
+    return () => {
+      clearInterval(pollRef.current);
+      controller.abort();
+    };
+  }, [job?.status, job?.sentence_count, videoId]);
 
-  // Open on the line that was being watched, and sharpen it without being
-  // asked: arriving here from "Copy link at current time" means a card is
-  // about to be made from that line.
+  // Whisper transcribes from 0:00, so the line a `t=` link points at may not
+  // be there yet. Every poll is another chance to land on it.
   useEffect(() => {
     if (!at || landed.current || !job?.sentences?.length) return;
+    if (!job.is_terminal && lastStart(job.sentences) < at) return;
     landed.current = true;
     scrollToTime(at);
-    if (job.is_terminal && job.refine_state !== 'running') {
-      refineAt(videoId, at).then((ok) => {
-        if (ok) setJob((j) => ({ ...j, refine_state: 'running', refine_at: at }));
-      });
-    }
-  }, [at, job?.sentences?.length]);
-
-  async function sharpen(seconds) {
-    if (await refineAt(videoId, seconds)) {
-      setJob((j) => ({ ...j, refine_state: 'running', refine_at: seconds }));
-    }
-  }
+  }, [at, job?.sentence_count, job?.is_terminal]);
 
   if (error) {
     return html`<div class="status error"><span class="progress-text">${error}</span></div>`;
@@ -72,28 +58,31 @@ export function VideoPage({ videoId, at }) {
     return html`<div class="status"><span class="progress-text">Loading...</span></div>`;
   }
 
+  const isDone = job.status === 'done';
+  const isTranscribing = job.status === 'transcribing';
+
   return html`
     ${job.video_title && html`<h2>${job.video_title}</h2>`}
     <${JobStatus}
       status=${job.status}
       errorMessage=${job.error_message}
       progressPercent=${job.progress_percent}
-      refineState=${job.refine_state}
-      refineAt=${job.refine_at}
     />
     <${SentenceList}
       sentences=${job.sentences}
       videoId=${videoId}
       jobId=${job.job_id}
-      isTranscribing=${job.status === 'transcribing'}
-      openedAt=${at}
-      refining=${job.refine_state === 'running' ? job.refine_at : null}
-      onSharpen=${sharpen}
+      isDone=${isDone}
+      isTranscribing=${isTranscribing}
     />
   `;
 }
 
-// The first line at or after `seconds`, centred and flashed so it is
+function lastStart(sentences) {
+  return sentences[sentences.length - 1]?.start_seconds ?? 0;
+}
+
+// The first line at or after `seconds`, centred and outlined so it is
 // findable in a list of several hundred.
 function scrollToTime(seconds) {
   requestAnimationFrame(() => {

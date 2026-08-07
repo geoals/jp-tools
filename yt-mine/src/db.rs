@@ -46,18 +46,6 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> 
             .await?;
     }
 
-    if !has_column(&pool, "mining_sentences", "source").await? {
-        sqlx::raw_sql(include_str!("../migrations/007_add_sentence_clips.sql"))
-            .execute(&pool)
-            .await?;
-    }
-
-    if !has_column(&pool, "mining_jobs", "refine_state").await? {
-        sqlx::raw_sql(include_str!("../migrations/008_add_refine_state.sql"))
-            .execute(&pool)
-            .await?;
-    }
-
     Ok(pool)
 }
 
@@ -92,7 +80,7 @@ pub async fn create_job(
 
 pub async fn get_job(pool: &SqlitePool, id: i64) -> Result<Option<Job>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, youtube_url, video_id, video_title, audio_path, video_path, status, error_message, created_at, segments_found, video_duration, refine_state, refine_at FROM mining_jobs WHERE id = ?",
+        "SELECT id, youtube_url, video_id, video_title, audio_path, video_path, status, error_message, created_at, segments_found, video_duration FROM mining_jobs WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -109,7 +97,7 @@ pub async fn get_latest_job_by_video_id(
     video_id: &str,
 ) -> Result<Option<Job>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, youtube_url, video_id, video_title, audio_path, video_path, status, error_message, created_at, segments_found, video_duration, refine_state, refine_at \
+        "SELECT id, youtube_url, video_id, video_title, audio_path, video_path, status, error_message, created_at, segments_found, video_duration \
          FROM mining_jobs \
          WHERE video_id = ? \
          ORDER BY id DESC \
@@ -131,7 +119,7 @@ pub async fn get_job_by_video_id(
     video_id: &str,
 ) -> Result<Option<Job>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, youtube_url, video_id, video_title, audio_path, video_path, status, error_message, created_at, segments_found, video_duration, refine_state, refine_at \
+        "SELECT id, youtube_url, video_id, video_title, audio_path, video_path, status, error_message, created_at, segments_found, video_duration \
          FROM mining_jobs \
          WHERE video_id = ? AND status != 'error' \
          ORDER BY id DESC \
@@ -158,8 +146,6 @@ fn job_from_row(r: sqlx::sqlite::SqliteRow) -> Job {
         created_at: r.get("created_at"),
         segments_found: r.get("segments_found"),
         video_duration: r.get("video_duration"),
-        refine_state: r.get("refine_state"),
-        refine_at: r.get("refine_at"),
     }
 }
 
@@ -199,47 +185,23 @@ pub async fn update_job_download(
     Ok(())
 }
 
-/// Where a line's text came from, and the window it can be cut out of.
-#[derive(Debug, Clone, Default)]
-pub struct SentenceOrigin<'a> {
-    pub source: &'a str,
-    pub clip: Option<&'a crate::services::clip::Clip>,
-}
-
-impl SentenceOrigin<'_> {
-    pub fn captions() -> Self {
-        Self {
-            source: "captions",
-            clip: None,
-        }
-    }
-}
-
-/// The title and duration, learned from the captions pass — which downloads
-/// nothing, so there are no paths to record with them.
-pub async fn update_job_title(
-    pool: &SqlitePool,
-    id: i64,
-    video_title: &str,
-    video_duration: Option<f64>,
-) -> Result<(), sqlx::Error> {
-    sqlx::query("UPDATE mining_jobs SET video_title = ?, video_duration = ? WHERE id = ?")
-        .bind(video_title)
-        .bind(video_duration)
-        .bind(id)
-        .execute(pool)
-        .await?;
-    Ok(())
-}
-
 pub async fn insert_sentences(
     pool: &SqlitePool,
     job_id: i64,
     segments: &[TranscriptSegment],
-    origin: &SentenceOrigin<'_>,
 ) -> Result<(), sqlx::Error> {
+    let now = chrono_now();
     for seg in segments {
-        insert_sentence(pool, job_id, seg, origin).await?;
+        sqlx::query(
+            "INSERT INTO mining_sentences (job_id, text, start_time, end_time, created_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(job_id)
+        .bind(&seg.text)
+        .bind(seg.start)
+        .bind(seg.end)
+        .bind(&now)
+        .execute(pool)
+        .await?;
     }
     Ok(())
 }
@@ -248,80 +210,18 @@ pub async fn insert_sentence(
     pool: &SqlitePool,
     job_id: i64,
     segment: &TranscriptSegment,
-    origin: &SentenceOrigin<'_>,
 ) -> Result<(), sqlx::Error> {
     let now = chrono_now();
     sqlx::query(
-        "INSERT INTO mining_sentences (job_id, text, start_time, end_time, created_at, source, clip_path, clip_audio_path, clip_start) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO mining_sentences (job_id, text, start_time, end_time, created_at) VALUES (?, ?, ?, ?, ?)",
     )
     .bind(job_id)
     .bind(&segment.text)
     .bind(segment.start)
     .bind(segment.end)
     .bind(&now)
-    .bind(origin.source)
-    .bind(origin.clip.map(|c| c.video_path.as_str()))
-    .bind(origin.clip.map(|c| c.audio_path.as_str()))
-    .bind(origin.clip.map(|c| c.start))
     .execute(pool)
     .await?;
-    Ok(())
-}
-
-/// Attach a window to a line that had none — an export fetched one for a
-/// caption line, and the next export or replay should reuse it.
-pub async fn attach_clip(
-    pool: &SqlitePool,
-    sentence_id: i64,
-    clip: &crate::services::clip::Clip,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "UPDATE mining_sentences SET clip_path = ?, clip_audio_path = ?, clip_start = ? WHERE id = ?",
-    )
-    .bind(&clip.video_path)
-    .bind(&clip.audio_path)
-    .bind(clip.start)
-    .bind(sentence_id)
-    .execute(pool)
-    .await?;
-    Ok(())
-}
-
-/// Drop the caption lines a whisper pass is about to replace.
-///
-/// Only caption lines: a window sharpened twice, or overlapping one already
-/// sharpened, must not throw away the better transcript it already has.
-pub async fn delete_caption_sentences_in_window(
-    pool: &SqlitePool,
-    job_id: i64,
-    start: f64,
-    end: f64,
-) -> Result<u64, sqlx::Error> {
-    let result = sqlx::query(
-        "DELETE FROM mining_sentences \
-         WHERE job_id = ? AND source = 'captions' AND start_time < ? AND end_time > ?",
-    )
-    .bind(job_id)
-    .bind(end)
-    .bind(start)
-    .execute(pool)
-    .await?;
-    Ok(result.rows_affected())
-}
-
-pub async fn set_refine_state(
-    pool: &SqlitePool,
-    job_id: i64,
-    state: Option<&str>,
-    at: Option<f64>,
-) -> Result<(), sqlx::Error> {
-    sqlx::query("UPDATE mining_jobs SET refine_state = ?, refine_at = ? WHERE id = ?")
-        .bind(state)
-        .bind(at)
-        .bind(job_id)
-        .execute(pool)
-        .await?;
     Ok(())
 }
 
@@ -351,7 +251,7 @@ pub async fn get_sentences_for_job(
     job_id: i64,
 ) -> Result<Vec<Sentence>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT id, job_id, text, start_time, end_time, created_at, source, clip_path, clip_audio_path, clip_start FROM mining_sentences WHERE job_id = ? ORDER BY start_time",
+        "SELECT id, job_id, text, start_time, end_time, created_at FROM mining_sentences WHERE job_id = ? ORDER BY start_time",
     )
     .bind(job_id)
     .fetch_all(pool)
@@ -366,10 +266,6 @@ pub async fn get_sentences_for_job(
             start_time: r.get("start_time"),
             end_time: r.get("end_time"),
             created_at: r.get("created_at"),
-            source: r.get("source"),
-            clip_path: r.get("clip_path"),
-            clip_audio_path: r.get("clip_audio_path"),
-            clip_start: r.get("clip_start"),
         })
         .collect())
 }
@@ -385,7 +281,7 @@ pub async fn get_sentences_by_ids(
     // Build a query with placeholders for each ID
     let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
     let query_str = format!(
-        "SELECT id, job_id, text, start_time, end_time, created_at, source, clip_path, clip_audio_path, clip_start FROM mining_sentences WHERE id IN ({}) ORDER BY start_time",
+        "SELECT id, job_id, text, start_time, end_time, created_at FROM mining_sentences WHERE id IN ({}) ORDER BY start_time",
         placeholders.join(", ")
     );
 
@@ -405,10 +301,6 @@ pub async fn get_sentences_by_ids(
             start_time: r.get("start_time"),
             end_time: r.get("end_time"),
             created_at: r.get("created_at"),
-            source: r.get("source"),
-            clip_path: r.get("clip_path"),
-            clip_audio_path: r.get("clip_audio_path"),
-            clip_start: r.get("clip_start"),
         })
         .collect())
 }
@@ -419,27 +311,24 @@ pub async fn get_sentences_by_ids(
 pub async fn delete_incomplete_jobs(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
     let statuses = [
         JobStatus::Pending.as_str(),
-        JobStatus::Fetching.as_str(),
         JobStatus::Downloading.as_str(),
         JobStatus::Transcribing.as_str(),
     ];
 
     sqlx::query(
         "DELETE FROM mining_sentences WHERE job_id IN \
-         (SELECT id FROM mining_jobs WHERE status IN (?, ?, ?, ?))",
+         (SELECT id FROM mining_jobs WHERE status IN (?, ?, ?))",
     )
     .bind(statuses[0])
     .bind(statuses[1])
     .bind(statuses[2])
-    .bind(statuses[3])
     .execute(pool)
     .await?;
 
-    let result = sqlx::query("DELETE FROM mining_jobs WHERE status IN (?, ?, ?, ?)")
+    let result = sqlx::query("DELETE FROM mining_jobs WHERE status IN (?, ?, ?)")
         .bind(statuses[0])
         .bind(statuses[1])
         .bind(statuses[2])
-        .bind(statuses[3])
         .execute(pool)
         .await?;
 
@@ -676,9 +565,7 @@ mod tests {
             },
         ];
 
-        insert_sentences(&pool, job_id, &segments, &SentenceOrigin::captions())
-            .await
-            .unwrap();
+        insert_sentences(&pool, job_id, &segments).await.unwrap();
 
         let sentences = get_sentences_for_job(&pool, job_id).await.unwrap();
         assert_eq!(sentences.len(), 2);
@@ -717,9 +604,7 @@ mod tests {
                 text: "C".into(),
             },
         ];
-        insert_sentences(&pool, job_id, &segments, &SentenceOrigin::captions())
-            .await
-            .unwrap();
+        insert_sentences(&pool, job_id, &segments).await.unwrap();
 
         let all = get_sentences_for_job(&pool, job_id).await.unwrap();
         let ids = vec![all[0].id, all[2].id];
@@ -773,18 +658,11 @@ mod tests {
             end: 1.0,
             text: "partial".into(),
         };
-        insert_sentences(
-            &pool,
-            transcribing,
-            &[seg.clone()],
-            &SentenceOrigin::captions(),
-        )
-        .await
-        .unwrap();
-        // And to the done job (should survive)
-        insert_sentences(&pool, done, &[seg], &SentenceOrigin::captions())
+        insert_sentences(&pool, transcribing, &[seg.clone()])
             .await
             .unwrap();
+        // And to the done job (should survive)
+        insert_sentences(&pool, done, &[seg]).await.unwrap();
 
         let deleted = delete_incomplete_jobs(&pool).await.unwrap();
         assert_eq!(deleted, 3);

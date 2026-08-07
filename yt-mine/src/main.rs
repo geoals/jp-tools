@@ -8,17 +8,14 @@ use jp_core::tokenize::Tokenizer;
 use yt_mine::app::{AppState, build_router};
 use yt_mine::config::Config;
 use yt_mine::db;
-use yt_mine::services::captions::{CaptionSource, YtDlpCaptions};
-use yt_mine::services::clip::{ClipFetcher, YtDlpClipFetcher};
 use yt_mine::services::download::{AudioDownloader, YtDlpDownloader};
 use yt_mine::services::export::{AnkiConnectExporter, AnkiExporter};
 use yt_mine::services::fake::{
-    FakeAnkiExporter, FakeCaptions, FakeClipFetcher, FakeDownloader, FakeLlmDefiner,
-    FakeMediaExtractor, FakeTokenizer, FakeTranscriber,
+    FakeAnkiExporter, FakeDownloader, FakeLlmDefiner, FakeMediaExtractor, FakeTokenizer,
+    FakeTranscriber,
 };
 use yt_mine::services::llm::{CompactDefiner, LlmDefiner};
 use yt_mine::services::media::{FfmpegMediaExtractor, MediaExtractor};
-use yt_mine::services::pipeline::Pipeline;
 use yt_mine::services::transcribe::{RemoteTranscriber, Transcriber};
 
 #[tokio::main]
@@ -57,18 +54,7 @@ async fn main() {
         .expect("failed to open knowledge database");
     info!(path = %config.knowledge_db_path, "knowledge database ready");
 
-    let (
-        captions,
-        clips,
-        downloader,
-        transcriber,
-        exporter,
-        media_extractor,
-        tokenizer,
-        highlighter,
-    ): (
-        Arc<dyn CaptionSource>,
-        Arc<dyn ClipFetcher>,
+    let (downloader, transcriber, exporter, media_extractor, tokenizer, highlighter): (
         Arc<dyn AudioDownloader>,
         Arc<dyn Transcriber>,
         Arc<dyn AnkiExporter>,
@@ -78,8 +64,6 @@ async fn main() {
     ) = if config.fake_api {
         info!("*** DEV MODE — using fake services (no external deps needed) ***");
         (
-            Arc::new(FakeCaptions),
-            Arc::new(FakeClipFetcher),
             Arc::new(FakeDownloader),
             Arc::new(FakeTranscriber),
             Arc::new(FakeAnkiExporter),
@@ -104,8 +88,6 @@ async fn main() {
             Arc::new(RemoteTranscriber::new(config.whisper_service_url.clone()));
 
         (
-            Arc::new(YtDlpCaptions),
-            Arc::new(YtDlpClipFetcher),
             Arc::new(YtDlpDownloader),
             transcriber,
             Arc::new(AnkiConnectExporter::new(
@@ -127,19 +109,10 @@ async fn main() {
         })
     };
 
-    let pipeline = Arc::new(Pipeline {
-        pool: pool.clone(),
-        captions,
-        clips: Arc::clone(&clips),
-        downloader,
-        transcriber,
-        audio_dir: config.audio_dir.clone(),
-    });
-
     let state = AppState {
         db: pool,
-        pipeline,
-        clips,
+        downloader,
+        transcriber,
         exporter,
         media_extractor,
         tokenizer,

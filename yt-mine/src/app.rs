@@ -11,10 +11,11 @@ use jp_core::knowledge::Knowledge;
 use jp_core::tokenize::Tokenizer;
 
 use crate::routes::api;
-use crate::services::clip::ClipFetcher;
+use crate::services::download::AudioDownloader;
 use crate::services::export::AnkiExporter;
 use crate::services::llm::LlmDefiner;
 use crate::services::media::MediaExtractor;
+use crate::services::transcribe::Transcriber;
 
 const SPA_HTML: &str = include_str!("../templates/spa.html");
 const STATIC_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
@@ -28,12 +29,8 @@ const SHARED_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../web-shared");
 #[derive(Clone)]
 pub struct AppState {
     pub db: SqlitePool,
-    /// Both passes over a video: YouTube's captions for the whole of it, and
-    /// whisper over one window at a time.
-    pub pipeline: Arc<crate::services::pipeline::Pipeline>,
-    /// Also reachable through `pipeline`, but an export needs one directly:
-    /// a caption line has no window to cut media from until this fetches one.
-    pub clips: Arc<dyn ClipFetcher>,
+    pub downloader: Arc<dyn AudioDownloader>,
+    pub transcriber: Arc<dyn Transcriber>,
     pub exporter: Arc<dyn AnkiExporter>,
     pub media_extractor: Arc<dyn MediaExtractor>,
     pub tokenizer: Arc<dyn Tokenizer>,
@@ -64,7 +61,6 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/jobs", post(api::submit_job))
         .route("/api/{video_id}", get(api::get_job))
         .route("/api/{video_id}/status", get(api::poll_status))
-        .route("/api/{video_id}/refine", post(api::refine))
         // The popup's own endpoints. Not nested under a video: what a word
         // means does not depend on where it was met.
         .route("/api/define", get(api::define))

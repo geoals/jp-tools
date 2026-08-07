@@ -17,9 +17,8 @@ Cargo workspace for Japanese language learning tools.
   read-stats uses `card`, `compactdef` and `tags` and **must not** use `export`
   — see the card-authoring rule below
 - `yt-mine/` — YouTube sentence mining (Axum JSON API + Preact SPA, SQLite, Anki
-  export). Opens on YouTube's own captions — the whole video, in a second, no
-  download — and runs whisper over one window at a time where a card is
-  actually being made. See `yt-mine/CLAUDE.md`
+  export). Whisper over the whole video, never YouTube's auto-captions — see
+  `yt-mine/CLAUDE.md` for why
 - `manga-mine/` — physical manga sentence mining (photo inbox → crop → OCR →
   Anki, stateless). See `manga-mine/CLAUDE.md`
 - `vn-mine/` — visual novel voiceline capture (bash/python, no Cargo member):

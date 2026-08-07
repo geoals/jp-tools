@@ -13,9 +13,6 @@ pub(crate) struct SentenceView {
     pub(crate) start_seconds: u64,
     pub(crate) tokens: Vec<TokenView>,
     pub(crate) text: String,
-    /// `captions` or `whisper`. The page marks the caption lines, since those
-    /// are the ones sharpening would change.
-    pub(crate) source: String,
 }
 
 pub(crate) struct TokenView {
@@ -59,7 +56,6 @@ pub(crate) async fn build_sentence_views(
             start_seconds: s.start_time as u64,
             tokens: tokens_for(state, &s.text).await,
             text: s.text,
-            source: s.source,
         });
     }
     Ok((views, max_end))

@@ -365,51 +365,7 @@ a.timestamp:hover {
   color: var(--danger-text);
 }
 
-/* --- Captions vs whisper --- */
-
-/* Every line starts as YouTube's own captions and is readable immediately;
-   ⟳ replaces the minute around one with whisper's reading of the audio. The
-   marking is deliberately quiet — most lines are never sharpened, and a list
-   of warnings would be unreadable. */
-
-.sharpen-btn {
-  flex-shrink: 0;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  opacity: 0.35;
-  padding: 0 2px;
-  font-size: 0.8rem;
-  line-height: 1;
-  cursor: pointer;
-  border-radius: 4px;
-  transition: opacity 0.12s, color 0.12s;
-}
-
-.sentence-list > li:hover .sharpen-btn {
-  opacity: 1;
-}
-
-.sharpen-btn:hover {
-  color: var(--accent);
-}
-
-.sharpen-btn:disabled {
-  cursor: default;
-  animation: spin 1.2s linear infinite;
-  opacity: 1;
-}
-
-.sentence-list > li.from-whisper {
-  border-left: 2px solid var(--accent);
-  padding-left: calc(0.7rem - 2px);
-}
-
-.sentence-list > li.refining {
-  opacity: 0.55;
-}
-
-/* Where "Copy link at current time" landed. */
+/* Where a "Copy link at current time" paste landed. */
 .sentence-list > li.landed {
   outline: 2px solid var(--accent);
   animation: landed-fade 2.5s ease-out forwards;

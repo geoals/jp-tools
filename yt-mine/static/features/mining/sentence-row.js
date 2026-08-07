@@ -2,7 +2,7 @@ import { html } from 'htm/preact';
 import { exportedIds, audioState, judged } from './state.js';
 import { toggle, wheel } from './popup.js';
 
-export function SentenceRow({ sentence, videoId, jobId, isRefining, onSharpen }) {
+export function SentenceRow({ sentence, videoId, jobId }) {
   const exported = exportedIds.value;
   const audio = audioState.value;
   const marks = judged.value;
@@ -10,7 +10,6 @@ export function SentenceRow({ sentence, videoId, jobId, isRefining, onSharpen })
   const isExported = exported.has(sentence.id);
   const isPlaying = audio.sentenceId === sentence.id && audio.playing;
   const isLoading = audio.sentenceId === sentence.id && audio.loading;
-  const fromCaptions = sentence.source === 'captions';
 
   function open(tok, event) {
     if (isExported) return;
@@ -39,14 +38,8 @@ export function SentenceRow({ sentence, videoId, jobId, isRefining, onSharpen })
     }));
   }
 
-  const cls = [
-    isExported ? 'exported' : '',
-    fromCaptions ? 'from-captions' : 'from-whisper',
-    isRefining ? 'refining' : '',
-  ].filter(Boolean).join(' ');
-
   return html`
-    <li class=${cls} data-start=${sentence.start_seconds}>
+    <li class=${isExported ? 'exported' : ''} data-start=${sentence.start_seconds}>
       <button
         class="play-btn ${isLoading ? 'loading' : ''}"
         onClick=${handlePlay}
@@ -56,14 +49,6 @@ export function SentenceRow({ sentence, videoId, jobId, isRefining, onSharpen })
         ${isPlaying ? '■' : isLoading ? '○' : '▶'}
       </button>
       <span class="timestamp">${sentence.timestamp}</span>
-      ${fromCaptions && html`
-        <button
-          class="sharpen-btn"
-          onClick=${() => onSharpen(sentence.start_seconds)}
-          disabled=${isRefining}
-          title="YouTube's captions. Re-transcribe this part with whisper."
-        >⟳</button>
-      `}
       <span class="sentence-tokens">
         ${sentence.tokens.map((tok) => {
           if (!tok.is_content_word) {
@@ -74,12 +59,12 @@ export function SentenceRow({ sentence, videoId, jobId, isRefining, onSharpen })
           // absence of a mark is what makes the marks readable, same as
           // read-stats' feed.
           const status = marks.get(`${tok.base_form} ${tok.reading}`) ?? tok.status;
-          const tokenCls = ['token content-word', status && status !== 'known' ? `mark-${status}` : '']
+          const cls = ['token content-word', status && status !== 'known' ? `mark-${status}` : '']
             .filter(Boolean)
             .join(' ');
           return html`
             <span
-              class=${tokenCls}
+              class=${cls}
               onClick=${(e) => open(tok, e)}
               onWheel=${(e) => wheel(e, e.currentTarget)}
             >${tok.surface}</span>
