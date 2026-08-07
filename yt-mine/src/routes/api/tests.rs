@@ -9,10 +9,34 @@ use jp_core::tokenize::{MockTokenizer, Token};
 use crate::app::{AppState, build_router};
 use crate::db;
 use crate::models::{JobStatus, TranscriptSegment};
+use crate::services::captions::{CaptionError, MockCaptionSource};
+use crate::services::clip::MockClipFetcher;
 use crate::services::download::MockAudioDownloader;
 use crate::services::export::MockAnkiExporter;
 use crate::services::media::{MockMediaExtractor, media_filenames};
+use crate::services::pipeline::Pipeline;
 use crate::services::transcribe::MockTranscriber;
+
+/// A pipeline whose captions pass finds nothing, so a submitted job takes the
+/// whole-video route the mocks here are set up for.
+fn test_pipeline(
+    pool: sqlx::SqlitePool,
+    downloader: MockAudioDownloader,
+    transcriber: MockTranscriber,
+) -> Arc<Pipeline> {
+    let mut captions = MockCaptionSource::new();
+    captions
+        .expect_fetch()
+        .returning(|_, _| Box::pin(async { Err(CaptionError::None) }));
+    Arc::new(Pipeline {
+        pool,
+        captions: Arc::new(captions),
+        clips: Arc::new(MockClipFetcher::new()),
+        downloader: Arc::new(downloader),
+        transcriber: Arc::new(transcriber),
+        audio_dir: "/tmp".into(),
+    })
+}
 
 fn mock_tokenizer() -> MockTokenizer {
     let mut t = MockTokenizer::new();
@@ -39,8 +63,12 @@ async fn test_app() -> (axum_test::TestServer, sqlx::SqlitePool) {
     let pool = db::create_pool("sqlite::memory:").await.unwrap();
     let state = AppState {
         db: pool.clone(),
-        downloader: Arc::new(MockAudioDownloader::new()),
-        transcriber: Arc::new(MockTranscriber::new()),
+        pipeline: test_pipeline(
+            pool.clone(),
+            MockAudioDownloader::new(),
+            MockTranscriber::new(),
+        ),
+        clips: Arc::new(MockClipFetcher::new()),
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(MockMediaExtractor::new()),
         tokenizer: Arc::new(mock_tokenizer()),
@@ -79,6 +107,7 @@ async fn seed_job(pool: &sqlx::SqlitePool, video_id: &str) -> i64 {
             end: 3.0,
             text: "テスト文".into(),
         }],
+        &db::SentenceOrigin::captions(),
     )
     .await
     .unwrap();
@@ -109,8 +138,8 @@ async fn submit_job_creates_and_returns_video_id() {
     let pool = db::create_pool("sqlite::memory:").await.unwrap();
     let state = AppState {
         db: pool.clone(),
-        downloader: Arc::new(downloader),
-        transcriber: Arc::new(transcriber),
+        pipeline: test_pipeline(pool.clone(), downloader, transcriber),
+        clips: Arc::new(MockClipFetcher::new()),
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(MockMediaExtractor::new()),
         tokenizer: Arc::new(mock_tokenizer()),
@@ -219,6 +248,62 @@ async fn poll_status_returns_204_when_unchanged() {
     response.assert_status(StatusCode::NO_CONTENT);
 }
 
+#[tokio::test]
+async fn poll_status_reports_a_window_whose_line_count_did_not_change() {
+    let (server, pool) = test_app().await;
+    let job_id = seed_job(&pool, "dQw4w9WgXcQ").await;
+
+    // One line out, one line in — the count the page is holding is still right,
+    // and the text under it is not.
+    db::delete_caption_sentences_in_window(&pool, job_id, 0.0, 100.0)
+        .await
+        .unwrap();
+    db::insert_sentences(
+        &pool,
+        job_id,
+        &[TranscriptSegment {
+            start: 0.0,
+            end: 1.0,
+            text: "はっきりした行。".into(),
+        }],
+        &db::SentenceOrigin {
+            source: "whisper",
+            clip: None,
+        },
+    )
+    .await
+    .unwrap();
+    db::set_refine_state(&pool, job_id, Some("done"), Some(0.0))
+        .await
+        .unwrap();
+
+    let response = server.get("/api/dQw4w9WgXcQ/status?sc=1&st=done").await;
+    response.assert_status_ok();
+}
+
+#[test]
+fn a_link_copied_at_the_current_time_carries_it() {
+    use crate::routes::api::start_seconds_in;
+
+    // What YouTube's "Copy link at current time" actually produces.
+    assert_eq!(
+        start_seconds_in("https://youtu.be/dQw4w9WgXcQ?t=930"),
+        Some(930.0)
+    );
+    assert_eq!(
+        start_seconds_in("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=1m30s"),
+        Some(90.0)
+    );
+    assert_eq!(
+        start_seconds_in("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=1h2m3s"),
+        Some(3723.0)
+    );
+    assert_eq!(
+        start_seconds_in("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+        None
+    );
+}
+
 // --- GET /api/define ---
 
 #[tokio::test]
@@ -261,8 +346,12 @@ async fn define_returns_the_popups_shape() {
     let pool = db::create_pool("sqlite::memory:").await.unwrap();
     let state = AppState {
         db: pool.clone(),
-        downloader: Arc::new(MockAudioDownloader::new()),
-        transcriber: Arc::new(MockTranscriber::new()),
+        pipeline: test_pipeline(
+            pool.clone(),
+            MockAudioDownloader::new(),
+            MockTranscriber::new(),
+        ),
+        clips: Arc::new(MockClipFetcher::new()),
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(MockMediaExtractor::new()),
         tokenizer: Arc::new(mock_tokenizer()),
@@ -318,8 +407,12 @@ async fn export_returns_count_and_ids() {
     let pool = db::create_pool("sqlite::memory:").await.unwrap();
     let state = AppState {
         db: pool.clone(),
-        downloader: Arc::new(MockAudioDownloader::new()),
-        transcriber: Arc::new(MockTranscriber::new()),
+        pipeline: test_pipeline(
+            pool.clone(),
+            MockAudioDownloader::new(),
+            MockTranscriber::new(),
+        ),
+        clips: Arc::new(MockClipFetcher::new()),
         exporter: Arc::new(exporter),
         media_extractor: Arc::new(media_extractor),
         tokenizer: Arc::new(mock_tokenizer()),
@@ -365,6 +458,7 @@ async fn export_returns_count_and_ids() {
             end: 1.0,
             text: "テスト".into(),
         }],
+        &db::SentenceOrigin::captions(),
     )
     .await
     .unwrap();
@@ -412,8 +506,12 @@ async fn test_app_with_media_dir(
     let pool = db::create_pool("sqlite::memory:").await.unwrap();
     let state = AppState {
         db: pool.clone(),
-        downloader: Arc::new(MockAudioDownloader::new()),
-        transcriber: Arc::new(MockTranscriber::new()),
+        pipeline: test_pipeline(
+            pool.clone(),
+            MockAudioDownloader::new(),
+            MockTranscriber::new(),
+        ),
+        clips: Arc::new(MockClipFetcher::new()),
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(media_extractor),
         tokenizer: Arc::new(mock_tokenizer()),
@@ -495,6 +593,7 @@ async fn sentence_audio_extracts_and_returns_mp3() {
             end: 3.0,
             text: "audio test".into(),
         }],
+        &db::SentenceOrigin::captions(),
     )
     .await
     .unwrap();
@@ -551,6 +650,7 @@ async fn sentence_audio_serves_cached_clip() {
             end: 1.0,
             text: "cached".into(),
         }],
+        &db::SentenceOrigin::captions(),
     )
     .await
     .unwrap();

@@ -18,15 +18,27 @@ export async function submitUrl(url) {
   return res.json();
 }
 
+// Run whisper over the minute around `at` and replace the captions there.
+// Returns false when a window is already being sharpened.
+export async function refineAt(videoId, at) {
+  const res = await fetch(`${BASE}/${videoId}/refine`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ at }),
+  });
+  return res.ok;
+}
+
 export async function fetchJob(videoId) {
   const res = await request(`${BASE}/${videoId}`);
   return res.json();
 }
 
-export async function pollStatus(videoId, sentenceCount, status) {
+export async function pollStatus(videoId, sentenceCount, status, refineState) {
   const params = new URLSearchParams();
   if (sentenceCount != null) params.set('sc', sentenceCount);
   if (status != null) params.set('st', status);
+  if (refineState != null) params.set('rf', refineState);
   const res = await fetch(`${BASE}/${videoId}/status?${params}`);
   if (res.status === 204) return null;
   if (!res.ok) throw new Error(`HTTP ${res.status}`);

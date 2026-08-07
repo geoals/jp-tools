@@ -12,7 +12,10 @@ function parseRoute() {
   // /{videoId} — everything after the leading slash
   const videoId = path.slice(1);
   if (videoId && !videoId.includes('/')) {
-    return { page: 'video', videoId };
+    // `?t=` is where the page opens. It survives a reload and a copied link,
+    // which a signal would not.
+    const t = Number(new URLSearchParams(window.location.search).get('t'));
+    return { page: 'video', videoId, at: Number.isFinite(t) && t > 0 ? t : null };
   }
 
   return { page: 'home' };

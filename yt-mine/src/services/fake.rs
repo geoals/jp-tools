@@ -11,6 +11,8 @@ use tracing::info;
 use jp_core::tokenize::{Token, TokenizeError, Tokenizer};
 
 use crate::models::TranscriptSegment;
+use crate::services::captions::{CaptionError, CaptionResult, CaptionSource};
+use crate::services::clip::{Clip, ClipError, ClipFetcher};
 use crate::services::download::{AudioDownloader, DownloadError, DownloadResult};
 use crate::services::export::{AnkiExporter, ExportError, ExportSentence};
 use crate::services::llm::{LlmDefiner, LlmError};
@@ -69,6 +71,57 @@ impl Transcriber for FakeTranscriber {
                 }
             }
             Ok(segments)
+        })
+    }
+}
+
+/// Returns the same fake transcript the fake whisper does, so dev mode shows
+/// a full line list a second after submitting.
+pub struct FakeCaptions;
+
+impl CaptionSource for FakeCaptions {
+    fn fetch(
+        &self,
+        _url: String,
+        _output_dir: String,
+    ) -> Pin<Box<dyn Future<Output = Result<CaptionResult, CaptionError>> + Send>> {
+        Box::pin(async {
+            tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+            Ok(CaptionResult {
+                video_title: "[Dev] 日本語の勉強法".into(),
+                video_duration: Some(45.0),
+                segments: fake_segments(),
+                manual: false,
+            })
+        })
+    }
+}
+
+/// Writes placeholder files so the paths stored on a sharpened line exist.
+pub struct FakeClipFetcher;
+
+impl ClipFetcher for FakeClipFetcher {
+    fn fetch(
+        &self,
+        _url: String,
+        start: f64,
+        end: f64,
+        output_dir: String,
+    ) -> Pin<Box<dyn Future<Output = Result<Clip, ClipError>> + Send>> {
+        Box::pin(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            let video_path = format!("{output_dir}/fake_clip_{start:.0}_{end:.0}.mp4");
+            let audio_path = format!("{output_dir}/fake_clip_{start:.0}_{end:.0}.wav");
+            for path in [&video_path, &audio_path] {
+                tokio::fs::write(path, b"fake")
+                    .await
+                    .map_err(|e| ClipError::Failed(format!("failed to write {path}: {e}")))?;
+            }
+            Ok(Clip {
+                video_path,
+                audio_path,
+                start,
+            })
         })
     }
 }

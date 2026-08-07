@@ -6,12 +6,12 @@ import { VideoPage } from './features/mining/video-page.js';
 import { AudioPlayer } from './features/mining/audio-player.js';
 
 function App() {
-  const { page, videoId } = route.value;
+  const { page, videoId, at } = route.value;
 
   return html`
     <h1><a href="/">yt-mine</a></h1>
     ${page === 'home' && html`<${SubmitForm} />`}
-    ${page === 'video' && html`<${VideoPage} videoId=${videoId} />`}
+    ${page === 'video' && html`<${VideoPage} videoId=${videoId} at=${at} />`}
     <${AudioPlayer} />
   `;
 }
