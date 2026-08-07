@@ -45,6 +45,7 @@ async fn test_app() -> (axum_test::TestServer, sqlx::SqlitePool) {
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(MockMediaExtractor::new()),
         tokenizer: Arc::new(mock_tokenizer()),
+        highlighter: None,
         knowledge: jp_core::knowledge::Knowledge::temp().await,
         llm_definer: None,
         audio_dir: "/tmp".into(),
@@ -109,6 +110,7 @@ async fn submit_job_creates_and_returns_video_id() {
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(MockMediaExtractor::new()),
         tokenizer: Arc::new(mock_tokenizer()),
+        highlighter: None,
         knowledge: jp_core::knowledge::Knowledge::temp().await,
         llm_definer: None,
         audio_dir: "/tmp".into(),
@@ -208,10 +210,10 @@ async fn poll_status_returns_204_when_unchanged() {
     response.assert_status(StatusCode::NO_CONTENT);
 }
 
-// --- GET /api/{video_id}/sentences/{id}/preview ---
+// --- GET /api/define ---
 
 #[tokio::test]
-async fn preview_returns_json() {
+async fn define_returns_the_popups_shape() {
     // A real cached dictionary, because the lookup now goes through
     // `jp_core::define` and asks `knowledge.db` rather than an in-memory
     // `Dictionary`.
@@ -255,6 +257,7 @@ async fn preview_returns_json() {
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(MockMediaExtractor::new()),
         tokenizer: Arc::new(mock_tokenizer()),
+        highlighter: None,
         knowledge,
         llm_definer: None,
         audio_dir: "/tmp".into(),
@@ -263,43 +266,21 @@ async fn preview_returns_json() {
     let router = build_router(state);
     let server = axum_test::TestServer::new(router).unwrap();
 
-    let job_id = db::create_job(
-        &pool,
-        "https://youtube.com/watch?v=dQw4w9WgXcQ",
-        "dQw4w9WgXcQ",
-    )
-    .await
-    .unwrap();
-    db::update_job_status(&pool, job_id, &JobStatus::Done, None)
-        .await
-        .unwrap();
-    db::insert_sentences(
-        &pool,
-        job_id,
-        &[TranscriptSegment {
-            start: 0.0,
-            end: 3.0,
-            text: "食べる".into(),
-        }],
-    )
-    .await
-    .unwrap();
-
-    let sentences = db::get_sentences_for_job(&pool, job_id).await.unwrap();
-    let sid = sentences[0].id;
-
     let response = server
-        .get(&format!(
-            "/api/dQw4w9WgXcQ/sentences/{sid}/preview?word=%E9%A3%9F%E3%81%B9%E3%82%8B"
-        ))
+        .get("/api/define?term=%E9%A3%9F%E3%81%B9%E3%82%8B&reading=%E3%81%9F%E3%81%B9%E3%82%8B")
         .await;
 
     response.assert_status_ok();
     let body: serde_json::Value = response.json();
-    assert_eq!(body["word"], "食べる");
-    assert_eq!(body["reading"], "たべる");
-    assert_eq!(body["pitch_num"], "2");
-    assert!(body["definition_html"].as_str().unwrap().contains("to eat"));
+    assert_eq!(body["term"], "食べる");
+    // One source, narrowed to the asked-for reading, with the definition
+    // itself rather than a slab of pre-wrapped HTML.
+    assert_eq!(body["sources"][0]["dictionary"], "Test");
+    assert_eq!(body["sources"][0]["senses"][0]["reading"], "たべる");
+    assert_eq!(body["sources"][0]["senses"][0]["definitions"][0], "to eat");
+    assert_eq!(body["pitch"][0]["positions"][0], 2);
+    // Only read-stats records a lookup; there is no session here to record in.
+    assert!(body["lookup_id"].is_null());
 }
 
 // --- GET /api/{video_id}/sentences/{id}/llm-definition ---
@@ -319,6 +300,7 @@ async fn llm_definition_returns_json() {
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(MockMediaExtractor::new()),
         tokenizer: Arc::new(mock_tokenizer()),
+        highlighter: None,
         knowledge: jp_core::knowledge::Knowledge::temp().await,
         llm_definer: Some(Arc::new(definer)),
         audio_dir: "/tmp".into(),
@@ -408,6 +390,7 @@ async fn export_returns_count_and_ids() {
         exporter: Arc::new(exporter),
         media_extractor: Arc::new(media_extractor),
         tokenizer: Arc::new(mock_tokenizer()),
+        highlighter: None,
         knowledge: jp_core::knowledge::Knowledge::temp().await,
         llm_definer: None,
         audio_dir: "/tmp".into(),
@@ -496,6 +479,7 @@ async fn test_app_with_media_dir(
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(media_extractor),
         tokenizer: Arc::new(mock_tokenizer()),
+        highlighter: None,
         knowledge: jp_core::knowledge::Knowledge::temp().await,
         llm_definer: None,
         audio_dir: "/tmp".into(),

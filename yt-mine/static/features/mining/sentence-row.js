@@ -1,41 +1,47 @@
 import { html } from 'htm/preact';
-import { activePreview, selectedWords, exportedIds, audioState } from './state.js';
+import { activePopup, selectedWords, exportedIds, audioState, judged } from './state.js';
 
 export function SentenceRow({ sentence, videoId, isTranscribing }) {
-  const preview = activePreview.value;
+  const popup = activePopup.value;
   const selected = selectedWords.value;
   const exported = exportedIds.value;
   const audio = audioState.value;
+  const marks = judged.value;
 
   const isExported = exported.has(sentence.id);
-  const hasPreview = preview && preview.sentenceId === sentence.id;
+  const hasPopup = popup && popup.sentenceId === sentence.id;
   const selectedWord = selected.get(sentence.id);
 
-  const liClass = [
-    isExported && 'exported',
-    hasPreview && 'has-preview',
-  ].filter(Boolean).join(' ');
+  const liClass = [isExported && 'exported', hasPopup && 'has-popup']
+    .filter(Boolean)
+    .join(' ');
 
   const isPlaying = audio.sentenceId === sentence.id && audio.playing;
   const isLoading = audio.sentenceId === sentence.id && audio.loading;
 
-  function handleWordClick(baseForm) {
+  function handleWordClick(tok, event) {
     if (isExported) return;
 
-    // Toggle: click same word deselects
-    if (preview && preview.sentenceId === sentence.id && preview.word === baseForm) {
-      activePreview.value = null;
-      const next = new Map(selected);
-      next.delete(sentence.id);
-      selectedWords.value = next;
+    // Clicking the open word closes it, so one control both opens and dismisses.
+    if (hasPopup && popup.target.term === tok.base_form && popup.target.reading === tok.reading) {
+      activePopup.value = null;
       return;
     }
 
-    // Select new word
-    activePreview.value = { sentenceId: sentence.id, word: baseForm };
-    const next = new Map(selected);
-    next.set(sentence.id, baseForm);
-    selectedWords.value = next;
+    activePopup.value = {
+      sentenceId: sentence.id,
+      rect: event.currentTarget.getBoundingClientRect(),
+      target: {
+        term: tok.base_form,
+        // The ledger key and the dictionary's spelling are the same thing for
+        // a token — they only diverge for a match picked out of the scan.
+        key: tok.base_form,
+        reading: tok.reading,
+        surface: tok.surface,
+        status: tok.status,
+        start: tok.start,
+      },
+    };
   }
 
   function handlePlay() {
@@ -53,20 +59,31 @@ export function SentenceRow({ sentence, videoId, isTranscribing }) {
         disabled=${isLoading}
         title="Play audio"
       >
-        ${isPlaying ? '\u25A0' : isLoading ? '\u25CB' : '\u25B6'}
+        ${isPlaying ? '■' : isLoading ? '○' : '▶'}
       </button>
       <span class="timestamp">${sentence.timestamp}</span>
+      ${selectedWord && html`<span class="card-word" title="This sentence's card word">${selectedWord.key}</span>`}
       <span class="sentence-tokens">
         ${sentence.tokens.map((tok) => {
           if (!tok.is_content_word) {
             return html`<span class="token">${tok.surface}</span>`;
           }
-          const isSelected = selectedWord === tok.base_form && hasPreview;
+          // The tint is the ledger's, repainted from `judged` for anything
+          // marked since the page loaded. `known` gets no tint at all — the
+          // absence of a mark is what makes the marks readable, same as
+          // read-stats' feed.
+          const status = marks.get(`${tok.base_form} ${tok.reading}`) ?? tok.status;
+          const isOpen = hasPopup
+            && popup.target.term === tok.base_form
+            && popup.target.reading === tok.reading;
+          const cls = [
+            'token content-word',
+            status && status !== 'known' ? `mark-${status}` : '',
+            selectedWord && selectedWord.key === tok.base_form ? 'selected' : '',
+            isOpen ? 'open' : '',
+          ].filter(Boolean).join(' ');
           return html`
-            <span
-              class="token content-word ${isSelected ? 'selected' : ''}"
-              onClick=${() => handleWordClick(tok.base_form)}
-            >${tok.surface}</span>
+            <span class=${cls} onClick=${(e) => handleWordClick(tok, e)}>${tok.surface}</span>
           `;
         })}
       </span>

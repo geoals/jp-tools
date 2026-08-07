@@ -189,7 +189,7 @@ async fn preferred(
 /// shared by every streaming reader — the dictionary load costs far more than
 /// tokenizing a line, and here the lines arrive one at a time all evening.
 pub struct Highlighter {
-    tokenizer: SudachiTokenizer,
+    tokenizer: std::sync::Arc<SudachiTokenizer>,
     /// The master dictionary's headwords — the wordhood test for a term the
     /// ledger has no row for yet.
     lexicon: HashSet<String>,
@@ -224,11 +224,25 @@ impl Highlighter {
             }
             None => HashMap::new(),
         };
-        Ok(Highlighter::new(p.tokenizer, p.lexicon, p.master, ranks))
+        Ok(Highlighter::new(
+            std::sync::Arc::new(p.tokenizer),
+            p.lexicon,
+            p.master,
+            ranks,
+        ))
+    }
+
+    /// The tokenizer itself, for a caller that needs tokens rather than spans.
+    ///
+    /// Handed out rather than rebuilt: a second `SudachiTokenizer` is a second
+    /// pipeline, and yt-mine bolds its card's target with the same analysis the
+    /// popup was drawn from.
+    pub fn tokenizer(&self) -> std::sync::Arc<SudachiTokenizer> {
+        self.tokenizer.clone()
     }
 
     pub fn new(
-        tokenizer: SudachiTokenizer,
+        tokenizer: std::sync::Arc<SudachiTokenizer>,
         lexicon: HashSet<String>,
         master: MasterWords,
         ranks: HashMap<(String, String), i64>,

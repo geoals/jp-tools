@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 use tracing::warn;
 
 use jp_core::knowledge::dictionaries::{self, READER_FREQUENCY};
-use jp_core::knowledge::vocabulary::Term;
+use jp_core::knowledge::vocabulary::{self, Status, Term};
 use jp_mine_core::card;
-use jp_mine_core::lookup::{bold_target_in_sentence, lookup_word, target_surface};
+use jp_mine_core::lookup::{bold_target_in_sentence, target_surface};
 
 use crate::app::AppState;
 use crate::db;
@@ -59,6 +59,9 @@ struct TokenJson {
     surface: String,
     base_form: String,
     is_content_word: bool,
+    reading: String,
+    start: usize,
+    status: String,
 }
 
 #[derive(Deserialize, Default)]
@@ -74,13 +77,27 @@ pub struct PreviewQuery {
     word: String,
 }
 
-#[derive(Serialize)]
-struct PreviewResponse {
-    word: String,
-    reading: String,
-    pitch_num: Option<String>,
-    frequency: Option<i64>,
-    definition_html: Option<String>,
+#[derive(Deserialize)]
+pub struct DefineQuery {
+    /// The ledger's headword, not the surface — a click sends the pair the
+    /// tokenizer decided on, so 振っ is defined as 振る.
+    pub term: String,
+    pub reading: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct ExpandQuery {
+    /// The line from the clicked word's first character to its end.
+    pub text: String,
+}
+
+#[derive(Deserialize)]
+pub struct JudgeRequest {
+    /// The ledger key, never the surface.
+    pub headword: String,
+    pub reading: String,
+    /// `known` or `unknown`. `new` and `seen` are not reachable by hand.
+    pub status: String,
 }
 
 #[derive(Serialize)]
@@ -99,6 +116,14 @@ pub struct ExportSentenceRequest {
     id: i64,
     #[serde(default)]
     target_word: Option<String>,
+    /// The ledger reading for `target_word`, as the popup had it.
+    ///
+    /// Sent rather than re-derived, because a word picked out of the popup's
+    /// scan need not be a token at all: 経年劣化 is a compound the tokenizer
+    /// split, so looking its reading up among the tokens finds nothing and the
+    /// card loses its pitch and its furigana.
+    #[serde(default)]
+    target_reading: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -234,31 +259,52 @@ pub async fn poll_status(
     .into_response())
 }
 
-pub async fn word_preview(
+/// `GET /api/define?term=<headword>&reading=<reading>`
+///
+/// The overlay's own popup endpoint, minus the lookup recording: a lookup is a
+/// reading-session event and there is no session here.
+pub async fn define(
     State(state): State<AppState>,
-    Path((video_id, sentence_id)): Path<(String, i64)>,
-    Query(query): Query<PreviewQuery>,
-) -> Result<Response, AppError> {
-    let job = db::get_job_by_video_id(&state.db, &video_id)
-        .await?
-        .ok_or(AppError::NotFound)?;
+    Query(q): Query<DefineQuery>,
+) -> Result<Json<jp_core::define::Definition>, AppError> {
+    Ok(Json(
+        jp_core::define::define(state.knowledge.pool(), &q.term, q.reading.as_deref()).await?,
+    ))
+}
 
-    let sentences = db::get_sentences_by_ids(&state.db, &[sentence_id]).await?;
-    let sentence = sentences.into_iter().next().ok_or(AppError::NotFound)?;
-    if sentence.job_id != job.id {
-        return Err(AppError::NotFound);
+/// `GET /api/expand?text=<rest of the line>` — the other readings of a
+/// position, for when the tokenizer split a word or picked the wrong reading.
+pub async fn expand(
+    State(state): State<AppState>,
+    Query(q): Query<ExpandQuery>,
+) -> Result<Json<Vec<jp_core::define::Expansion>>, AppError> {
+    Ok(Json(
+        jp_core::define::expand(&state.knowledge, state.highlighter.clone(), &q.text).await?,
+    ))
+}
+
+/// `POST /api/judge` — mark a word known or unknown, in the shared ledger.
+///
+/// The same write `#read`'s tap makes, against the same rows: a word judged
+/// while mining a video is judged, and the reading view stops marking it.
+pub async fn judge(
+    State(state): State<AppState>,
+    Json(req): Json<JudgeRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let status = Status::parse(&req.status);
+    if !matches!(status, Status::Known | Status::Unknown) {
+        return Err(AppError::BadRequest(format!(
+            "not a judgement: {}",
+            req.status
+        )));
     }
-
-    let result = lookup_word(&state.knowledge, &query.word, None).await;
-
-    Ok(Json(PreviewResponse {
-        word: query.word,
-        reading: result.reading,
-        pitch_num: result.pitch_num,
-        frequency: result.frequency,
-        definition_html: result.definition_html,
-    })
-    .into_response())
+    let term = Term::new(req.headword, &req.reading);
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+    vocabulary::set_status(&state.knowledge, &term, status, ts).await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
 }
 
 pub async fn llm_definition(
@@ -315,10 +361,14 @@ pub async fn export_sentences(
     }
 
     let sentence_ids: Vec<i64> = body.sentences.iter().map(|s| s.id).collect();
-    let target_word_map: std::collections::HashMap<i64, String> = body
+    let target_word_map: std::collections::HashMap<i64, (String, Option<String>)> = body
         .sentences
         .iter()
-        .filter_map(|s| s.target_word.clone().map(|w| (s.id, w)))
+        .filter_map(|s| {
+            s.target_word
+                .clone()
+                .map(|w| (s.id, (w, s.target_reading.clone())))
+        })
         .collect();
 
     let sentences = db::get_sentences_by_ids(&state.db, &sentence_ids).await?;
@@ -378,7 +428,10 @@ pub async fn export_sentences(
             }
         }
 
-        let target_word = target_word_map.get(&sentence.id).cloned();
+        let (target_word, sent_reading) = match target_word_map.get(&sentence.id) {
+            Some((w, r)) => (Some(w.clone()), r.clone()),
+            None => (None, None),
+        };
 
         // Tokenized once and shared: the bolded sentence and the gloss's
         // spelling of the target are two questions about the same analysis.
@@ -394,12 +447,14 @@ pub async fn export_sentences(
         // `Term::new` lowers it to hiragana and blanks it for a kana headword,
         // and read-stats mines with exactly that. Asking the dictionary a
         // differently-shaped question is how a card silently loses its pitch.
-        let reading = target_word
-            .as_ref()
-            .zip(tokens.as_deref())
-            .and_then(|(word, tokens)| tokens.iter().find(|t| &t.base_form == word))
-            .map(|t| Term::new(t.base_form.clone(), &t.reading).reading)
-            .unwrap_or_default();
+        let reading = sent_reading.unwrap_or_else(|| {
+            target_word
+                .as_ref()
+                .zip(tokens.as_deref())
+                .and_then(|(word, tokens)| tokens.iter().find(|t| &t.base_form == word))
+                .map(|t| Term::new(t.base_form.clone(), &t.reading).reading)
+                .unwrap_or_default()
+        });
 
         let (definition, vocab_furigana, vocab_pitch_num, vocab_pitch_pattern, vocab_frequency) =
             match &target_word {
@@ -552,6 +607,9 @@ fn sentence_to_json(view: crate::routes::mining::SentenceView) -> SentenceJson {
                 surface: t.surface,
                 base_form: t.base_form,
                 is_content_word: t.is_content_word,
+                reading: t.reading,
+                start: t.start,
+                status: t.status,
             })
             .collect(),
     }

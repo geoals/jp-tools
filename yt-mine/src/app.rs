@@ -6,6 +6,7 @@ use axum::routing::{get, post};
 use sqlx::SqlitePool;
 use tower_http::services::ServeDir;
 
+use jp_core::highlight::Highlighter;
 use jp_core::knowledge::Knowledge;
 use jp_core::tokenize::Tokenizer;
 
@@ -27,6 +28,11 @@ pub struct AppState {
     pub exporter: Arc<dyn AnkiExporter>,
     pub media_extractor: Arc<dyn MediaExtractor>,
     pub tokenizer: Arc<dyn Tokenizer>,
+    /// The same pipeline as `tokenizer`, kept whole so a sentence's tokens can
+    /// carry their ledger status and the popup can scan for other readings.
+    /// `None` in fake mode, where the tokens are a mock's and there is no
+    /// ledger to ask.
+    pub highlighter: Option<Arc<Highlighter>>,
     /// The shared dictionary cache — what a word means, and how common it is.
     pub knowledge: Knowledge,
     pub llm_definer: Option<Arc<dyn LlmDefiner>>,
@@ -44,10 +50,11 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/jobs", post(api::submit_job))
         .route("/api/{video_id}", get(api::get_job))
         .route("/api/{video_id}/status", get(api::poll_status))
-        .route(
-            "/api/{video_id}/sentences/{sentence_id}/preview",
-            get(api::word_preview),
-        )
+        // The popup's own endpoints. Not nested under a video: what a word
+        // means does not depend on where it was met.
+        .route("/api/define", get(api::define))
+        .route("/api/expand", get(api::expand))
+        .route("/api/judge", post(api::judge))
         .route(
             "/api/{video_id}/sentences/{sentence_id}/llm-definition",
             get(api::llm_definition),
