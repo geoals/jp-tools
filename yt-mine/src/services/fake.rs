@@ -316,9 +316,10 @@ mod tests {
                 definition: None,
                 vocab_furigana: None,
                 vocab_pitch_num: None,
+                vocab_pitch_pattern: None,
                 vocab_frequency: None,
                 sentence_html: None,
-                llm_definition: None,
+                compact_def: None,
             },
             ExportSentence {
                 sentence_text: "test2".into(),
@@ -329,9 +330,10 @@ mod tests {
                 definition: None,
                 vocab_furigana: None,
                 vocab_pitch_num: None,
+                vocab_pitch_pattern: None,
                 vocab_frequency: None,
                 sentence_html: None,
-                llm_definition: None,
+                compact_def: None,
             },
         ];
 

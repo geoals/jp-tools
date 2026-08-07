@@ -13,7 +13,7 @@ use yt_mine::services::fake::{
     FakeAnkiExporter, FakeDownloader, FakeLlmDefiner, FakeMediaExtractor, FakeTokenizer,
     FakeTranscriber,
 };
-use yt_mine::services::llm::{AnthropicDefiner, LlmDefiner};
+use yt_mine::services::llm::{CompactDefiner, LlmDefiner};
 use yt_mine::services::media::{FfmpegMediaExtractor, MediaExtractor};
 use yt_mine::services::transcribe::{RemoteTranscriber, Transcriber};
 
@@ -103,9 +103,8 @@ async fn main() {
         Some(Arc::new(FakeLlmDefiner))
     } else {
         config.anthropic_api_key.as_ref().map(|key| {
-            info!("LLM definitions enabled (model: {})", config.llm_model);
-            Arc::new(AnthropicDefiner::new(key.clone(), config.llm_model.clone()))
-                as Arc<dyn LlmDefiner>
+            info!("CompactDef enabled");
+            Arc::new(CompactDefiner::new(key.clone())) as Arc<dyn LlmDefiner>
         })
     };
 

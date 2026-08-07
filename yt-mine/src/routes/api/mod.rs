@@ -7,7 +7,9 @@ use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
-use jp_core::dictionary::format_furigana;
+use jp_core::knowledge::dictionaries::{self, READER_FREQUENCY};
+use jp_core::knowledge::vocabulary::Term;
+use jp_mine_core::card;
 use jp_mine_core::lookup::{bold_target_in_sentence, lookup_word, target_surface};
 
 use crate::app::AppState;
@@ -378,44 +380,63 @@ pub async fn export_sentences(
 
         let target_word = target_word_map.get(&sentence.id).cloned();
 
-        let (definition, vocab_furigana, vocab_pitch_num, vocab_frequency) =
-            if let Some(word) = &target_word {
-                let result = lookup_word(&state.knowledge, word, None).await;
-                let furigana = format_furigana(word, &result.reading);
-                (
-                    result.definition_html,
-                    Some(furigana),
-                    result.pitch_num,
-                    result.frequency,
-                )
-            } else {
-                (None, None, None, None)
-            };
-
-        // Tokenized once and shared: the bolded sentence and the LLM's spelling
-        // of the target are two questions about the same analysis.
+        // Tokenized once and shared: the bolded sentence and the gloss's
+        // spelling of the target are two questions about the same analysis.
         let tokens = target_word
             .as_ref()
             .and_then(|_| state.tokenizer.tokenize(&sentence.text).ok());
 
-        let mut llm_definition = None;
-        if let (Some(word), Some(definer)) = (&target_word, &state.llm_definer) {
-            // The definer rates how common the word is, so it is given the
-            // spelling the video used, not the base form the click selected.
-            let written = tokens
-                .as_deref()
-                .and_then(|t| target_surface(t, word))
-                .unwrap_or_else(|| word.clone());
-            match definer.define(&written, &sentence.text).await {
-                Ok(def) => llm_definition = Some(def),
-                Err(e) => warn!(word, error = %e, "LLM definition failed, exporting without"),
-            }
-        }
+        // The card's fields, built by `jp_mine_core::card` — the same builders
+        // read-stats mines with, so a transcript card and a VN card are one
+        // note type rather than two shapes of it.
+        //
+        // The ledger's own reading for the pair, not the raw one Sudachi gave:
+        // `Term::new` lowers it to hiragana and blanks it for a kana headword,
+        // and read-stats mines with exactly that. Asking the dictionary a
+        // differently-shaped question is how a card silently loses its pitch.
+        let reading = target_word
+            .as_ref()
+            .zip(tokens.as_deref())
+            .and_then(|(word, tokens)| tokens.iter().find(|t| &t.base_form == word))
+            .map(|t| Term::new(t.base_form.clone(), &t.reading).reading)
+            .unwrap_or_default();
+
+        let (definition, vocab_furigana, vocab_pitch_num, vocab_pitch_pattern, vocab_frequency) =
+            match &target_word {
+                Some(word) => {
+                    let pool = state.knowledge.pool();
+                    let accent = card::accent(pool, word, &reading).await.unwrap_or(None);
+                    (
+                        card::glossary(pool, word, &reading).await.ok(),
+                        Some(card::furigana(word, &reading)),
+                        accent.map(card::pitch_num),
+                        accent.map(|a| card::pitch_pattern(&reading, a)),
+                        reader_rank(pool, word).await,
+                    )
+                }
+                None => (None, None, None, None, None),
+            };
 
         let sentence_html = target_word
             .as_ref()
             .zip(tokens.as_deref())
             .and_then(|(word, tokens)| bold_target_in_sentence(tokens, word));
+
+        let mut compact_def = None;
+        if let (Some(word), Some(definer)) = (&target_word, &state.llm_definer) {
+            // Rated on the spelling the video used, not the base form the click
+            // selected — 饐える prices its kanji where its own sentence's
+            // すえた does not. The bolded sentence is what carries that span.
+            let written = tokens
+                .as_deref()
+                .and_then(|t| target_surface(t, word))
+                .unwrap_or_else(|| word.clone());
+            let marked = sentence_html.as_deref().unwrap_or(&sentence.text);
+            match definer.define(&written, marked).await {
+                Ok(def) => compact_def = Some(def),
+                Err(e) => warn!(word, error = %e, "CompactDef failed, exporting without"),
+            }
+        }
 
         export_sentences.push(ExportSentence {
             source: format!("{source} ({})", format_seconds(sentence.start_time)),
@@ -426,9 +447,10 @@ pub async fn export_sentences(
             definition,
             vocab_furigana,
             vocab_pitch_num,
+            vocab_pitch_pattern,
             vocab_frequency,
             sentence_html,
-            llm_definition,
+            compact_def,
         });
     }
 
@@ -506,6 +528,16 @@ pub async fn sentence_audio(
 }
 
 // --- Helpers ---
+
+/// How common the word is in fiction — the rank the reader's own tools use.
+async fn reader_rank(pool: &sqlx::SqlitePool, term: &str) -> Option<i64> {
+    match dictionaries::by_title(pool, READER_FREQUENCY).await {
+        Ok(Some(d)) => dictionaries::lookup_frequency(pool, d.id, term)
+            .await
+            .unwrap_or(None),
+        _ => None,
+    }
+}
 
 fn sentence_to_json(view: crate::routes::mining::SentenceView) -> SentenceJson {
     SentenceJson {

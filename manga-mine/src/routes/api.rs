@@ -11,8 +11,10 @@ use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
-use jp_core::dictionary::format_furigana;
+use jp_core::knowledge::dictionaries::{self, READER_FREQUENCY};
+use jp_core::knowledge::vocabulary::Term;
 use jp_core::tokenize::is_content_word;
+use jp_mine_core::card;
 use jp_mine_core::export::{AnkiConnectExporter, AnkiExporter, ExportSentence};
 use jp_mine_core::lookup::{bold_target_in_sentence, lookup_word};
 
@@ -559,27 +561,42 @@ pub async fn export_card(
 
     let target_word = body.target_word.filter(|w| !w.trim().is_empty());
 
-    let (definition, vocab_furigana, vocab_pitch_num, vocab_frequency) =
-        if let Some(word) = &target_word {
-            let result = lookup_word(&state.knowledge, word, None).await;
-            let furigana = format_furigana(word, &result.reading);
-            (
-                result.definition_html,
-                Some(furigana),
-                result.pitch_num,
-                result.frequency,
-            )
-        } else {
-            (None, None, None, None)
+    let tokens = target_word
+        .as_ref()
+        .and_then(|_| state.tokenizer.tokenize(&sentence_text).ok());
+
+    // The ledger's own reading for the pair — `Term::new` lowers it to hiragana
+    // and blanks it for a kana headword, which is the shape read-stats mines
+    // with and therefore the shape the dictionary is indexed against here.
+    let reading = target_word
+        .as_ref()
+        .zip(tokens.as_deref())
+        .and_then(|(word, tokens)| tokens.iter().find(|t| &t.base_form == word))
+        .map(|t| Term::new(t.base_form.clone(), &t.reading).reading)
+        .unwrap_or_default();
+
+    // The card's fields, built by `jp_mine_core::card` — one note type across
+    // every surface that mines into it.
+    let (definition, vocab_furigana, vocab_pitch_num, vocab_pitch_pattern, vocab_frequency) =
+        match &target_word {
+            Some(word) => {
+                let pool = state.knowledge.pool();
+                let accent = card::accent(pool, word, &reading).await.unwrap_or(None);
+                (
+                    card::glossary(pool, word, &reading).await.ok(),
+                    Some(card::furigana(word, &reading)),
+                    accent.map(card::pitch_num),
+                    accent.map(|a| card::pitch_pattern(&reading, a)),
+                    reader_rank(pool, word).await,
+                )
+            }
+            None => (None, None, None, None, None),
         };
 
-    let sentence_html = target_word.as_ref().and_then(|word| {
-        state
-            .tokenizer
-            .tokenize(&sentence_text)
-            .ok()
-            .and_then(|tokens| bold_target_in_sentence(&tokens, word))
-    });
+    let sentence_html = target_word
+        .as_ref()
+        .zip(tokens.as_deref())
+        .and_then(|(word, tokens)| bold_target_in_sentence(tokens, word));
 
     let export = ExportSentence {
         sentence_text,
@@ -590,9 +607,12 @@ pub async fn export_card(
         definition,
         vocab_furigana,
         vocab_pitch_num,
+        vocab_pitch_pattern,
         vocab_frequency,
         sentence_html,
-        llm_definition: None,
+        // manga-mine has no LLM configured; the gloss stays read-stats' and
+        // yt-mine's.
+        compact_def: None,
     };
 
     // Prefer the client's own AnkiConnect (phone) when it's up
@@ -669,3 +689,13 @@ pub async fn mark_photo(
 
 #[cfg(test)]
 mod tests;
+
+/// How common the word is in fiction — the rank the reader's own tools use.
+async fn reader_rank(pool: &sqlx::SqlitePool, term: &str) -> Option<i64> {
+    match dictionaries::by_title(pool, READER_FREQUENCY).await {
+        Ok(Some(d)) => dictionaries::lookup_frequency(pool, d.id, term)
+            .await
+            .unwrap_or(None),
+        _ => None,
+    }
+}

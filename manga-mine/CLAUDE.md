@@ -62,4 +62,8 @@ configured as for yt-mine (same env vars).
 ## Config
 
 Env vars, names and defaults in `config.rs`. The `JP_TOOLS_ANKI_*` note
-type/deck/field mapping is shared with yt-mine — same note type.
+type/deck/field mapping is shared with yt-mine — same note type, and now the
+same fields read-stats writes (`VocabDefFull`, `VocabPitchNum` +
+`VocabPitchPattern`, `CompactDef`). The card's fields are built by
+`jp_mine_core::card`. manga-mine has no LLM configured, so `CompactDef` is left
+empty.

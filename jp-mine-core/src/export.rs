@@ -28,14 +28,19 @@ pub struct ExportSentence {
     pub definition: Option<String>,
     /// Anki bracket furigana notation, e.g. `隔週[かくしゅう]`.
     pub vocab_furigana: Option<String>,
-    /// Pitch accent downstep position(s), e.g. `"0"` or `"0,3"`.
+    /// The downstep, in Yomitan's markup — `markPitch()` on the card back
+    /// pulls the first digit out of it with a regex, so it has to survive as
+    /// text rather than arrive as a bare number.
     pub vocab_pitch_num: Option<String>,
+    /// The accent drawn over the reading, in Yomitan's markup.
+    pub vocab_pitch_pattern: Option<String>,
     /// Frequency rank of the target word (lower = more common), e.g. 2000.
     pub vocab_frequency: Option<i64>,
     /// Sentence text with the target word wrapped in `<b></b>` for Anki display.
     pub sentence_html: Option<String>,
-    /// LLM-generated definition/explanation of the target word.
-    pub llm_definition: Option<String>,
+    /// The CompactDef gloss — a short English meaning plus the two-axis tag
+    /// line. See [`crate::compactdef`].
+    pub compact_def: Option<String>,
 }
 
 #[cfg_attr(any(test, feature = "test-support"), mockall::automock)]
@@ -62,9 +67,10 @@ pub struct NoteData {
     pub audio_clip_filename: Option<String>,
     pub vocab_furigana: String,
     pub vocab_pitch_num: String,
+    pub vocab_pitch_pattern: String,
     /// Frequency rank as a plain number string, empty when unknown.
     pub vocab_frequency: String,
-    pub llm_definition: String,
+    pub compact_def: String,
 }
 
 /// Build one AnkiConnect `addNote` request using the configured field mapping.
@@ -111,11 +117,14 @@ pub fn build_add_note_request(n: &NoteData, config: &AnkiConfig) -> Value {
     if let Some(ref f) = config.field_pitch_num {
         fields.insert(f.clone(), json!(n.vocab_pitch_num));
     }
+    if let Some(ref f) = config.field_pitch_pattern {
+        fields.insert(f.clone(), json!(n.vocab_pitch_pattern));
+    }
     if let Some(ref f) = config.field_frequency {
         fields.insert(f.clone(), json!(n.vocab_frequency));
     }
-    if let Some(ref f) = config.field_llm_definition {
-        fields.insert(f.clone(), json!(n.llm_definition));
+    if let Some(ref f) = config.field_compact_def {
+        fields.insert(f.clone(), json!(n.compact_def));
     }
 
     json!({
@@ -153,8 +162,9 @@ fn build_create_model_request(config: &AnkiConfig) -> Value {
         config.field_source.as_deref(),
         config.field_furigana.as_deref(),
         config.field_pitch_num.as_deref(),
+        config.field_pitch_pattern.as_deref(),
         config.field_frequency.as_deref(),
-        config.field_llm_definition.as_deref(),
+        config.field_compact_def.as_deref(),
     ]
     .into_iter()
     .flatten()
@@ -429,11 +439,12 @@ impl AnkiExporter for AnkiConnectExporter {
                     audio_clip_filename,
                     vocab_furigana: es.vocab_furigana.clone().unwrap_or_default(),
                     vocab_pitch_num: es.vocab_pitch_num.clone().unwrap_or_default(),
+                    vocab_pitch_pattern: es.vocab_pitch_pattern.clone().unwrap_or_default(),
                     vocab_frequency: es
                         .vocab_frequency
                         .map(|f| f.to_string())
                         .unwrap_or_default(),
-                    llm_definition: es.llm_definition.clone().unwrap_or_default(),
+                    compact_def: es.compact_def.clone().unwrap_or_default(),
                 };
 
                 let add_note_req = build_add_note_request(&note, &config);
@@ -478,8 +489,9 @@ mod tests {
             audio_clip_filename: Some("yt-mine_1_1.mp3".into()),
             vocab_furigana: "テスト".into(),
             vocab_pitch_num: "0".into(),
+            vocab_pitch_pattern: "0".into(),
             vocab_frequency: "2000".into(),
-            llm_definition: "".into(),
+            compact_def: "".into(),
         };
 
         let request = build_add_note_request(&note, &config);
@@ -502,7 +514,7 @@ mod tests {
         );
         assert_eq!(result_note["fields"]["Document"], "Test Video (0:05)");
         assert_eq!(result_note["fields"]["VocabKanji"], "テスト");
-        assert_eq!(result_note["fields"]["VocabDef"], "test");
+        assert_eq!(result_note["fields"]["VocabDefFull"], "test");
         assert_eq!(result_note["fields"]["VocabFurigana"], "テスト");
         assert_eq!(result_note["fields"]["VocabPitchNum"], "0");
         assert_eq!(result_note["fields"]["Frequency"], "2000");
@@ -528,8 +540,9 @@ mod tests {
             audio_clip_filename: None,
             vocab_furigana: "".into(),
             vocab_pitch_num: "".into(),
+            vocab_pitch_pattern: "".into(),
             vocab_frequency: "".into(),
-            llm_definition: "".into(),
+            compact_def: "".into(),
         };
 
         let request = build_add_note_request(&note, &config);
@@ -538,7 +551,7 @@ mod tests {
         assert_eq!(fields["Image"], "");
         assert_eq!(fields["SentAudio"], "");
         assert_eq!(fields["VocabKanji"], "もう一つ");
-        assert_eq!(fields["VocabDef"], "");
+        assert_eq!(fields["VocabDefFull"], "");
         assert_eq!(fields["VocabFurigana"], "");
         assert_eq!(fields["VocabPitchNum"], "");
         assert_eq!(fields["Frequency"], "");
@@ -557,8 +570,9 @@ mod tests {
             field_source: None,
             field_furigana: None,
             field_pitch_num: None,
+            field_pitch_pattern: None,
             field_frequency: None,
-            field_llm_definition: None,
+            field_compact_def: None,
             tags: vec![],
         };
 
@@ -571,8 +585,9 @@ mod tests {
             audio_clip_filename: Some("clip.mp3".into()),
             vocab_furigana: "テスト".into(),
             vocab_pitch_num: "".into(),
+            vocab_pitch_pattern: "".into(),
             vocab_frequency: "500".into(),
-            llm_definition: "llm def".into(),
+            compact_def: "llm def".into(),
         }];
 
         let request = build_add_note_request(&notes[0], &config);
@@ -580,14 +595,14 @@ mod tests {
 
         assert_eq!(fields["Word"], "テスト");
         assert_eq!(fields["Sentence"], "テスト");
-        assert!(fields.get("VocabDef").is_none());
+        assert!(fields.get("VocabDefFull").is_none());
         assert!(fields.get("Image").is_none());
         assert!(fields.get("SentAudio").is_none());
         assert!(fields.get("Document").is_none());
         assert!(fields.get("VocabFurigana").is_none());
         assert!(fields.get("VocabPitchNum").is_none());
         assert!(fields.get("Frequency").is_none());
-        assert!(fields.get("LLMDef").is_none());
+        assert!(fields.get("CompactDef").is_none());
     }
 
     #[test]
@@ -603,8 +618,9 @@ mod tests {
             field_source: Some("Origin".into()),
             field_furigana: Some("Furigana".into()),
             field_pitch_num: Some("PitchNum".into()),
+            field_pitch_pattern: Some("PitchNum".into()),
             field_frequency: Some("FreqRank".into()),
-            field_llm_definition: Some("AIDef".into()),
+            field_compact_def: Some("AIDef".into()),
             tags: vec![],
         };
 
@@ -617,8 +633,9 @@ mod tests {
             audio_clip_filename: None,
             vocab_furigana: "語[ご]".into(),
             vocab_pitch_num: "1".into(),
+            vocab_pitch_pattern: "1".into(),
             vocab_frequency: "1234".into(),
-            llm_definition: "ai definition".into(),
+            compact_def: "ai definition".into(),
         }];
 
         let request = build_add_note_request(&notes[0], &config);
@@ -659,9 +676,10 @@ mod tests {
             definition: None,
             vocab_furigana: None,
             vocab_pitch_num: None,
+            vocab_pitch_pattern: None,
             vocab_frequency: None,
             sentence_html: None,
-            llm_definition: None,
+            compact_def: None,
         }];
 
         let count = exporter.export_sentences(sentences).await.unwrap();

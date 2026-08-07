@@ -52,4 +52,16 @@ cargo test -p yt-mine -- --ignored                # real subprocess tests
 Via env vars, loaded from `.env` (repo root) via `dotenvy`. See `config.rs` and
 `.env.example`.
 
-Anki export fields are all configurable via `JP_TOOLS_ANKI_*` vars (model, deck, field mapping). Defaults match "Japanese sentences" Yomitan note type.
+Anki export fields are all configurable via `JP_TOOLS_ANKI_*` vars (model, deck,
+field mapping). Defaults match the "Japanese sentences" Yomitan note type — and
+are now the same fields read-stats writes: the glossary goes to `VocabDefFull`
+in Yomitan's per-dictionary markup (`VocabDef` is Yomitan's own short gloss and
+not ours to overwrite), the pitch to `VocabPitchNum` + `VocabPitchPattern` as
+markup rather than a bare number, and the LLM gloss to `CompactDef`.
+
+**The card is built by `jp_mine_core::card`, the gloss by
+`jp_mine_core::compactdef`.** yt-mine's own `LlmDefiner` prompt is gone: it was
+a third paraphrase of the tag rubric, still on a four-tier familiarity scale
+with no FLAVOR axis, which is exactly what `jp_mine_core::tags` exists to
+prevent. `services::llm` is now just the trait and a thin impl, kept so the
+fake and the route tests can stand in for the call.

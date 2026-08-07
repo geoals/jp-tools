@@ -21,7 +21,6 @@ pub struct Config {
     /// definitions are skipped entirely.
     pub anthropic_api_key: Option<String>,
     /// Model to use for LLM definitions.
-    pub llm_model: String,
     /// URL of remote whisper-service for transcription.
     pub whisper_service_url: String,
     /// Path to the Sudachi system dictionary (.dic file).
@@ -47,7 +46,6 @@ impl Config {
             media_dir: env::var("JP_TOOLS_MEDIA_DIR").unwrap_or_else(|_| "media".into()),
             fake_api: matches!(env::var("JP_TOOLS_FAKE_API").as_deref(), Ok("true" | "1"),),
             anthropic_api_key: env::var("JP_TOOLS_ANTHROPIC_API_KEY").ok(),
-            llm_model: env::var("JP_TOOLS_LLM_MODEL").unwrap_or_else(|_| "claude-haiku-4-5".into()),
             whisper_service_url: env::var("JP_TOOLS_WHISPER_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:8100".into()),
             sudachi_dict_path: env::var("JP_TOOLS_SUDACHI_DICT_PATH")

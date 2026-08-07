@@ -41,7 +41,7 @@ bullet list with one-line bullets — but nothing heavier."
 
 /// Pinned to Opus 5 — the explain button is a short interactive lookup, and its
 /// two-axis tags should match the cards' (both on Opus, thinking off). Not driven
-/// by `JP_TOOLS_LLM_MODEL` (which yt-mine still uses for its own definer).
+/// by `JP_TOOLS_LLM_MODEL`.
 const MODEL: &str = "claude-opus-5";
 
 /// Ask the model to explain `context`'s last line. Earlier entries are prior

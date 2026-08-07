@@ -11,8 +11,11 @@ Cargo workspace for Japanese language learning tools.
   `knowledge.db` — and the two modules that join those: `highlight` (what each
   word in a line is worth knowing about, as offsets) and `define` (what a word
   means, as a popup draws it)
-- `jp-mine-core/` — shared mining back half: dictionary lookup, card formatting,
-  AnkiConnect export (used by yt-mine and manga-mine)
+- `jp-mine-core/` — shared mining back half: `card` (the note's fields, in
+  Yomitan's markup), `compactdef` + `tags` (the gloss and its two-axis rubric),
+  `lookup`, and `export` (AnkiConnect). yt-mine and manga-mine use all of it;
+  read-stats uses `card`, `compactdef` and `tags` and **must not** use `export`
+  — see the card-authoring rule below
 - `yt-mine/` — YouTube sentence mining (Axum JSON API + Preact SPA, SQLite, Anki
   export). See `yt-mine/CLAUDE.md`
 - `manga-mine/` — physical manga sentence mining (photo inbox → crop → OCR →
@@ -76,6 +79,14 @@ texthooker to hover a word in. VN reading in a browser has one, so Yomitan
 authors the card and vn-mine only attaches the media Yomitan cannot reach.
 Routing that through `jp-mine-core` would throw away the popup; routing
 yt/manga through Yomitan is impossible.
+
+What the two halves *do* share is what a card is made of, not how it is added:
+`jp_mine_core::card` builds the note type's fields — `dict_block`'s nesting is
+what its CSS descends through — and `jp_mine_core::compactdef` writes the gloss.
+One note type, one implementation of its markup. read-stats therefore depends on
+jp-mine-core, and the line it must not cross is `jp_mine_core::export`: an
+overlay card that went out that way would lose vn-capture, the deck mirror and
+the chime.
 
 The fullscreen overlay is the third case and does **not** break the rule.
 Yomitan cannot reach a layer surface — no browser can be one, and QtWebEngine

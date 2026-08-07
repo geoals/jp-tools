@@ -17,8 +17,9 @@ pub struct AnkiConfig {
     pub field_source: Option<String>,
     pub field_furigana: Option<String>,
     pub field_pitch_num: Option<String>,
+    pub field_pitch_pattern: Option<String>,
     pub field_frequency: Option<String>,
-    pub field_llm_definition: Option<String>,
+    pub field_compact_def: Option<String>,
     /// Tags added to every exported note (set per application).
     pub tags: Vec<String>,
 }
@@ -29,15 +30,20 @@ impl Default for AnkiConfig {
             model_name: "Japanese sentences".into(),
             deck_name: "Japanese".into(),
             field_vocab: Some("VocabKanji".into()),
-            field_definition: Some("VocabDef".into()),
+            // The full glossary, in Yomitan's per-dictionary markup — the same
+            // field read-stats writes, because the note type's CSS is written
+            // against it. `VocabDef` holds Yomitan's own short gloss and is not
+            // ours to overwrite.
+            field_definition: Some("VocabDefFull".into()),
             field_sentence: Some("SentKanji".into()),
             field_image: Some("Image".into()),
             field_audio: Some("SentAudio".into()),
             field_source: Some("Document".into()),
             field_furigana: Some("VocabFurigana".into()),
             field_pitch_num: Some("VocabPitchNum".into()),
+            field_pitch_pattern: Some("VocabPitchPattern".into()),
             field_frequency: Some("Frequency".into()),
-            field_llm_definition: Some("LLMDef".into()),
+            field_compact_def: Some("CompactDef".into()),
             tags: Vec::new(),
         }
     }
@@ -94,13 +100,17 @@ impl AnkiConfig {
                 "JP_TOOLS_ANKI_FIELD_PITCH_NUM",
                 defaults.field_pitch_num.as_deref().unwrap_or(""),
             ),
+            field_pitch_pattern: anki_field(
+                "JP_TOOLS_ANKI_FIELD_PITCH_PATTERN",
+                defaults.field_pitch_pattern.as_deref().unwrap_or(""),
+            ),
             field_frequency: anki_field(
                 "JP_TOOLS_ANKI_FIELD_FREQUENCY",
                 defaults.field_frequency.as_deref().unwrap_or(""),
             ),
-            field_llm_definition: anki_field(
-                "JP_TOOLS_ANKI_FIELD_LLM_DEFINITION",
-                defaults.field_llm_definition.as_deref().unwrap_or(""),
+            field_compact_def: anki_field(
+                "JP_TOOLS_ANKI_FIELD_COMPACT_DEF",
+                defaults.field_compact_def.as_deref().unwrap_or(""),
             ),
             tags: Vec::new(),
         }
