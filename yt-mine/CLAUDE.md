@@ -8,6 +8,19 @@ YouTube URL → yt-dlp download → whisper-service transcription → jp-core to
 
 Jobs run as background `tokio::spawn` tasks. Frontend polls via JSON API.
 
+**A whisper segment is cut into its sentences on the way in** (`into_sentences`).
+whisper-service primes the model with punctuated Japanese so a mined line keeps
+its 。 and 、, and priming also makes it run sentences together — the first
+minute of a video came back as half-minute segments holding eight sentences
+each, which is not a card. The punctuation is whisper's own, so
+`jp_core::text::sentences::split_sentences` cuts on it. Times are shared out by
+character count, which makes a line's audio accurate to a fraction of a second
+rather than exact.
+
+This is not the auto-caption mistake in another form. That took line breaks
+from a transcript that had none to give; this takes them from punctuation the
+model actually emitted.
+
 **Whisper transcribes the whole video from 0:00, and that is deliberate.** It
 was briefly replaced by YouTube's own auto-captions, which arrive for the whole
 video in about a second — but the ASR drops 。 for stretches at a time, so its

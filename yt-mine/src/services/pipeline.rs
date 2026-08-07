@@ -4,8 +4,10 @@ use sqlx::SqlitePool;
 use tokio::task::JoinHandle;
 use tracing::{error, info};
 
+use jp_core::text::sentences::split_sentences;
+
 use crate::db;
-use crate::models::JobStatus;
+use crate::models::{JobStatus, TranscriptSegment};
 use crate::services::download::AudioDownloader;
 use crate::services::transcribe::{ProgressCallback, Transcriber};
 
@@ -62,7 +64,9 @@ pub async fn process_job(
     let on_progress: Option<ProgressCallback> = Some(Box::new(move |segment, _count| {
         let pool = progress_pool.clone();
         let handle = tokio::spawn(async move {
-            db::insert_sentence(&pool, job_id, &segment).await.ok();
+            for line in into_sentences(segment) {
+                db::insert_sentence(&pool, job_id, &line).await.ok();
+            }
         });
         cb_handles.lock().unwrap().push(handle);
     }));
@@ -98,12 +102,88 @@ pub async fn process_job(
         .ok();
 }
 
+/// One whisper segment, cut into the sentences it holds.
+///
+/// Whisper is primed with punctuated Japanese so a mined line keeps its 。 and
+/// 、 — see whisper-service — and priming also makes it run sentences
+/// together: half-minute segments holding eight sentences each, which is not a
+/// card. The punctuation is whisper's own and reliable, so the segment is cut
+/// on it here rather than mined as one line.
+///
+/// Times are shared out by character count, since a segment carries no timing
+/// inside itself. A line's audio is therefore accurate to a fraction of a
+/// second rather than exact — speech rate is near enough uniform within one
+/// segment for that to hold.
+fn into_sentences(segment: TranscriptSegment) -> Vec<TranscriptSegment> {
+    let sentences = split_sentences(&segment.text);
+    if sentences.len() < 2 {
+        return vec![segment];
+    }
+
+    let total: usize = sentences.iter().map(|s| s.chars().count()).sum();
+    if total == 0 {
+        return vec![segment];
+    }
+
+    let span = segment.end - segment.start;
+    let mut out = Vec::with_capacity(sentences.len());
+    let mut seen = 0usize;
+    for text in sentences {
+        let len = text.chars().count();
+        let start = segment.start + span * (seen as f64 / total as f64);
+        seen += len;
+        let end = segment.start + span * (seen as f64 / total as f64);
+        out.push(TranscriptSegment { start, end, text });
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::models::TranscriptSegment;
     use crate::services::download::{DownloadError, DownloadResult, MockAudioDownloader};
     use crate::services::transcribe::{MockTranscriber, TranscribeError};
+
+    #[test]
+    fn a_segment_holding_several_sentences_becomes_several_lines() {
+        // What the opening of a video actually looks like: the initial prompt
+        // conditions the first window, so whisper runs sentences together
+        // there and settles down afterwards.
+        let out = into_sentences(TranscriptSegment {
+            start: 0.0,
+            end: 30.0,
+            text:
+                "執着する今のあなたは、自分の人生を生きていません。あの人が忘れられなくてつらい。"
+                    .into(),
+        });
+
+        assert_eq!(out.len(), 2);
+        assert_eq!(
+            out[0].text,
+            "執着する今のあなたは、自分の人生を生きていません。"
+        );
+        assert_eq!(out[1].text, "あの人が忘れられなくてつらい。");
+        // Shared out by length, and the two together still cover the segment.
+        assert_eq!(out[0].start, 0.0);
+        assert_eq!(out[1].end, 30.0);
+        assert!((out[0].end - out[1].start).abs() < 1e-9);
+        assert!(out[0].end > out[1].end - out[1].start);
+    }
+
+    #[test]
+    fn a_segment_that_is_one_sentence_is_left_exactly_as_it_was() {
+        let one = TranscriptSegment {
+            start: 4.0,
+            end: 7.5,
+            text: "もう本当に久しぶり。".into(),
+        };
+        let out = into_sentences(one.clone());
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].start, 4.0);
+        assert_eq!(out[0].end, 7.5);
+        assert_eq!(out[0].text, "もう本当に久しぶり。");
+    }
 
     async fn test_pool() -> SqlitePool {
         db::create_pool("sqlite::memory:").await.unwrap()
