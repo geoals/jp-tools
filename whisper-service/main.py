@@ -21,6 +21,16 @@ MODEL_SIZE = os.environ.get("WHISPER_MODEL_SIZE", "large-v3")
 DEVICE = os.environ.get("WHISPER_DEVICE", "cuda")
 COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "auto")
 
+# Whisper punctuates by imitation, not by rule: it continues the style of the
+# text it is primed with. large-v3-turbo left to itself returns Japanese with
+# no 。 or 、 at all, which costs a mined sentence its shape. Priming it with a
+# punctuated Japanese sample is what puts them back.
+INITIAL_PROMPT = os.environ.get(
+    "WHISPER_INITIAL_PROMPT",
+    "以下は日本語の書き起こしです。句読点を正しく付けます。"
+    "今日は、いい天気ですね。ええ、そうですね。",
+)
+
 app = FastAPI()
 model: WhisperModel | None = None
 
@@ -49,7 +59,13 @@ async def transcribe(audio: UploadFile = File(...), words: bool = False):
 
     def generate():
         try:
-            segments, _info = model.transcribe(tmp_path, language="ja", vad_filter=True, word_timestamps=words)
+            segments, _info = model.transcribe(
+                tmp_path,
+                language="ja",
+                vad_filter=True,
+                word_timestamps=words,
+                initial_prompt=INITIAL_PROMPT or None,
+            )
             for segment in segments:
                 payload = {"start": round(segment.start, 2), "end": round(segment.end, 2), "text": segment.text.strip()}
                 if words:
