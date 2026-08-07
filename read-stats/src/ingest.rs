@@ -20,13 +20,12 @@
 //! ledger and double-counted days. Separate, resetting one re-tokenizes
 //! everything and writes only the rows that sink is behind on.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-use jp_core::knowledge::dictionaries;
 use jp_core::knowledge::term_surfaces::SurfaceEncounter;
 use jp_core::knowledge::vocabulary::{Encounter, Term};
 use jp_core::knowledge::work_terms::WorkEncounter;
-use jp_core::tokenize::{MasterWords, SudachiTokenizer, Token, Tokenizer, counts_as_word};
+use jp_core::tokenize::{MasterWords, Token, Tokenizer, counts_as_word};
 use tracing::{info, warn};
 
 use crate::app::AppState;
@@ -245,106 +244,9 @@ async fn watermark(state: &AppState, key: &str) -> Result<i64, AppError> {
         .unwrap_or(0))
 }
 
-/// The master dictionary's headwords — the tokenizer's wordhood authority. It
-/// decides which compounds are held whole through the C→B→A pass and which
-/// adjacent tokens may be rejoined.
-pub(crate) async fn master_lexicon(state: &AppState) -> Result<HashSet<String>, AppError> {
-    Ok(jp_core::knowledge::dictionaries::master_headwords(state.knowledge.pool()).await?)
-}
-
-/// The master dictionary's readings, for recomposing the compounds Sudachi's
-/// lexicon splits (しゃくり + あげる → 噦り上げる). See
-/// `SudachiTokenizer::recompose`.
-pub(crate) async fn master_readings(state: &AppState) -> Result<Vec<(String, String)>, AppError> {
-    Ok(jp_core::knowledge::dictionaries::master_entries(state.knowledge.pool()).await?)
-}
-
-/// The dictionaries that decide segmentation beside the master — 明鏡, 小学館,
-/// anything given `Role::Standard`. They say what is one word and nothing else;
-/// the master stays the spelling authority and the vocabulary scale.
-///
-/// A **sixth** input to the tokenizer, and like the other five it has to be
-/// given to every one of them: the reader's and the ingest's must agree about
-/// where a word ends.
-pub(crate) async fn standard_readings(state: &AppState) -> Result<Vec<(String, String)>, AppError> {
-    Ok(jp_core::knowledge::dictionaries::standard_entries(state.knowledge.pool()).await?)
-}
-
-/// BCCWJ ranks for the master headwords that share a reading with another one,
-/// so the tokenizer can name a word written in kana (うかがう → 伺う over 窺う).
-///
-/// Keyed on `(headword, reading)`, since that is the pair being ranked.
-///
-/// Only those headwords, and fetched here rather than inside the tokenizer:
-/// tokenization runs in `spawn_blocking`, which has no runtime to query from.
-///
-/// BCCWJ not being loaded is not an error — the tokenizer then leaves ambiguous
-/// readings unresolved, which is what it did before.
-///
-/// **Stays on BCCWJ** where the reader-facing ranks do not: this asks which
-/// spelling of one reading is the commoner one, and a list carrying kana-only
-/// rows would answer it with the reading's own rank. See [`READER_FREQUENCY`].
-pub(crate) async fn frequency_ranks(
-    state: &AppState,
-    readings: &[(String, String)],
-) -> Result<HashMap<(String, String), i64>, AppError> {
-    let pool = state.knowledge.pool();
-    let Some(bccwj) = jp_core::knowledge::dictionaries::by_title(pool, "BCCWJ").await? else {
-        return Ok(HashMap::new());
-    };
-    let terms = jp_core::tokenize::ambiguous_headwords(readings);
-    Ok(jp_core::knowledge::dictionaries::frequency_ranks(pool, bccwj.id, &terms).await?)
-}
-
 /// Named in jp-core, because yt-mine's cards are ranked on the same claim and
 /// two copies of it would drift.
 pub(crate) use jp_core::knowledge::dictionaries::READER_FREQUENCY;
-
-/// Reader-frequency ranks for every one of `headwords`, keyed
-/// `(headword, reading)` — what the reading view needs to tell a common unknown
-/// word from a rare one.
-///
-/// Wider than [`frequency_ranks`], which only ranks the headwords that share a
-/// reading with another: there the rank arbitrates between two spellings, here
-/// it is the answer itself — see [`READER_FREQUENCY`] for why that is a
-/// different dictionary.
-pub(crate) async fn all_frequency_ranks(
-    state: &AppState,
-    headwords: &[String],
-) -> Result<HashMap<(String, String), i64>, AppError> {
-    let pool = state.knowledge.pool();
-    let Some(freq) = jp_core::knowledge::dictionaries::by_title(pool, READER_FREQUENCY).await?
-    else {
-        return Ok(HashMap::new());
-    };
-    Ok(jp_core::knowledge::dictionaries::frequency_ranks(pool, freq.id, headwords).await?)
-}
-
-/// Which reading to believe where Sudachi's is not the word's living one — the
-/// 私/わたくし problem. Needs all three dictionaries: Sankoku says which readings
-/// exist, Jitendex which are current, BCCWJ which of the current ones is
-/// commonest. Any of them missing means no preferences and Sudachi's answer
-/// stands.
-pub(crate) async fn preferred_readings(
-    state: &AppState,
-) -> Result<HashMap<String, dictionaries::PreferredReading>, AppError> {
-    let pool = state.knowledge.pool();
-    let (Some(master), Some(jitendex), Some(bccwj)) = (
-        dictionaries::master(pool).await?,
-        dictionaries::by_title(pool, "Jitendex").await?,
-        dictionaries::by_title(pool, "BCCWJ").await?,
-    ) else {
-        return Ok(HashMap::new());
-    };
-    Ok(dictionaries::preferred_readings(pool, master.id, jitendex.id, bccwj.id).await?)
-}
-
-/// The master headwords that conjugate, so an inflected token cannot be filed
-/// under an entry that does not. Empty until the dictionaries have been re-read
-/// for their word classes, which leaves the tokenizer on its structural rule.
-pub(crate) async fn conjugatable(state: &AppState) -> Result<HashSet<String>, AppError> {
-    Ok(dictionaries::master_conjugatable(state.knowledge.pool()).await?)
-}
 
 /// Each spelling as the ingest would key it — the resolved ledger key.
 ///
@@ -371,23 +273,6 @@ pub(crate) async fn normalized_spellings(
     tokio::task::spawn_blocking(move || spellings.iter().map(|s| h.ledger_key(s)).collect())
         .await
         .map_err(|e| AppError::Upstream(format!("tokenize task panicked: {e}")))
-}
-
-/// The mined deck. The tokenizer's *second* wordhood source, behind the master
-/// lexicon: a word the reader has mined is a word, but the deck is a couple of
-/// thousand entries and a dictionary is eighty thousand.
-///
-/// The card's own spelling, deliberately, not [`normalized_spellings`]: this
-/// set is tested against a morpheme's dictionary *and* normalized form
-/// (`keeps_whole`), so the literal spelling is the half that answers, and
-/// adding the normalized one would keep compounds whole that are split today —
-/// a new identity for every one of them, and a stranded ledger row behind it.
-pub(crate) async fn mined_vocab(state: &AppState) -> Result<HashSet<String>, AppError> {
-    Ok(db::fetch_anki_notes(&state.knowledge)
-        .await?
-        .into_iter()
-        .map(|n| n.vocab)
-        .collect())
 }
 
 /// Write both sinks and advance both watermarks. `max_id` is the highest id in
@@ -438,27 +323,17 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
     let settings = db::load_settings(&state.local).await?;
     let rollover = settings.day_rollover_hour;
     let tz = tz_offset_secs();
-    let vocab = mined_vocab(state).await?;
-    let lexicon = master_lexicon(state).await?;
-    let readings = master_readings(state).await?;
-    let ranks = frequency_ranks(state, &readings).await?;
-    let preferred = preferred_readings(state).await?;
-    let conjugatable = conjugatable(state).await?;
-    let standard = standard_readings(state).await?;
-    let dict_path = state.sudachi_dict_path.clone();
+    // The same seven inputs the reader's `Highlighter` takes — one call, so a
+    // tint and the ledger row behind it cannot come from two pipelines.
+    let p = jp_core::highlight::pipeline(&state.knowledge, &state.sudachi_dict_path)
+        .await
+        .map_err(|e| AppError::Upstream(e.to_string()))?;
 
     let n_lines = lines.len();
     // Dictionary load + tokenization are CPU-bound; keep them off the runtime.
     let harvest = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
-        let tokenizer = SudachiTokenizer::new(&dict_path, vocab)
-            .map_err(|e| AppError::Upstream(format!("sudachi: {e}")))?
-            .with_lexicon(lexicon.clone())
-            .with_master_readings(&readings)
-            .with_frequency(ranks)
-            .with_preferred_readings(preferred)
-            .with_conjugatable(conjugatable)
-            .with_standard(&standard);
-        let mut harvest = Harvest::new(MasterWords::new(lexicon, &readings));
+        let tokenizer = p.tokenizer;
+        let mut harvest = Harvest::new(p.master);
         for line in &lines {
             let date = stats::date_key(line.ts, rollover, tz).to_string();
             let sinks = Sinks {
@@ -530,26 +405,16 @@ pub async fn ingest_new_sessions(state: &AppState) -> Result<IngestOutcome, AppE
     let settings = db::load_settings(&state.local).await?;
     let rollover = settings.day_rollover_hour;
     let tz = tz_offset_secs();
-    let vocab = mined_vocab(state).await?;
-    let lexicon = master_lexicon(state).await?;
-    let readings = master_readings(state).await?;
-    let ranks = frequency_ranks(state, &readings).await?;
-    let preferred = preferred_readings(state).await?;
-    let conjugatable = conjugatable(state).await?;
-    let standard = standard_readings(state).await?;
-    let dict_path = state.sudachi_dict_path.clone();
+    // The same seven inputs the reader's `Highlighter` takes — one call, so a
+    // tint and the ledger row behind it cannot come from two pipelines.
+    let p = jp_core::highlight::pipeline(&state.knowledge, &state.sudachi_dict_path)
+        .await
+        .map_err(|e| AppError::Upstream(e.to_string()))?;
 
     let n_sessions = sessions.len();
     let harvest = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
-        let tokenizer = SudachiTokenizer::new(&dict_path, vocab)
-            .map_err(|e| AppError::Upstream(format!("sudachi: {e}")))?
-            .with_lexicon(lexicon.clone())
-            .with_master_readings(&readings)
-            .with_frequency(ranks)
-            .with_preferred_readings(preferred)
-            .with_conjugatable(conjugatable)
-            .with_standard(&standard);
-        let mut harvest = Harvest::new(MasterWords::new(lexicon, &readings));
+        let tokenizer = p.tokenizer;
+        let mut harvest = Harvest::new(p.master);
         for s in &sessions {
             let date = stats::date_key(s.start_ts, rollover, tz).to_string();
             // Articles collapse under one synthetic work here exactly as they

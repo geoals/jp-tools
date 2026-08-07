@@ -87,6 +87,104 @@ impl Tier {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum BuildError {
+    #[error("knowledge database: {0}")]
+    Db(#[from] sqlx::Error),
+    #[error("sudachi: {0}")]
+    Sudachi(String),
+}
+
+/// The tokenizer as jp-tools configures it, plus the two dictionary sets its
+/// callers need beside it.
+///
+/// **The seven inputs are one list and every caller takes all of them.** A
+/// tokenizer missing any one is a second pipeline that answers differently, and
+/// the answers are compared: the reader's tint and the ledger row it is drawn
+/// from have to agree about where a word ends and what it is called. Without
+/// the frequency ranks alone, a kana-written word whose reading names several
+/// master headwords stays kana — うかがう rather than 窺う, which no dictionary
+/// lists — so the wordhood gate calls it a non-word and nothing is tinted,
+/// while ingest files the same token under 窺う and counts it.
+///
+/// This existed three times over before it lived here: once for the reader's
+/// [`Highlighter`] and twice inside read-stats' ingest.
+pub struct Pipeline {
+    pub tokenizer: SudachiTokenizer,
+    pub lexicon: HashSet<String>,
+    pub master: MasterWords,
+}
+
+/// Fetch the seven inputs from `knowledge.db` and build the tokenizer.
+///
+/// The dictionary load is CPU-bound and measured in seconds, so it runs on a
+/// blocking thread rather than on the runtime other requests are polling.
+pub async fn pipeline(
+    k: &Knowledge,
+    dict_path: impl AsRef<std::path::Path>,
+) -> Result<Pipeline, BuildError> {
+    let pool = k.pool();
+    let vocab = vocabulary::mined_vocab(pool).await?;
+    let lexicon = crate::knowledge::dictionaries::master_headwords(pool).await?;
+    let readings = crate::knowledge::dictionaries::master_entries(pool).await?;
+    let ranks = ambiguous_ranks(pool, &readings).await?;
+    let preferred = preferred(pool).await?;
+    let conjugatable = crate::knowledge::dictionaries::master_conjugatable(pool).await?;
+    let standard = crate::knowledge::dictionaries::standard_entries(pool).await?;
+
+    let dict_path = dict_path.as_ref().to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let tokenizer = SudachiTokenizer::new(&dict_path, vocab)
+            .map_err(|e| BuildError::Sudachi(e.to_string()))?
+            .with_lexicon(lexicon.clone())
+            .with_master_readings(&readings)
+            .with_frequency(ranks)
+            .with_preferred_readings(preferred)
+            .with_conjugatable(conjugatable)
+            .with_standard(&standard);
+        let master = MasterWords::new(lexicon.clone(), &readings);
+        Ok(Pipeline {
+            tokenizer,
+            lexicon,
+            master,
+        })
+    })
+    .await
+    .map_err(|e| BuildError::Sudachi(format!("pipeline build panicked: {e}")))?
+}
+
+/// BCCWJ ranks for the master headwords that share a reading with another, so
+/// the tokenizer can name a word written in kana (うかがう → 伺う over 窺う).
+///
+/// **Stays on BCCWJ** where the reader-facing ranks do not: this asks which
+/// spelling of one reading is the commoner one, and a list carrying kana-only
+/// rows would answer it with the reading's own rank. Not being loaded is not an
+/// error — ambiguous readings are then left unresolved, as they were before.
+async fn ambiguous_ranks(
+    pool: &sqlx::SqlitePool,
+    readings: &[(String, String)],
+) -> Result<HashMap<(String, String), i64>, sqlx::Error> {
+    let Some(bccwj) = crate::knowledge::dictionaries::by_title(pool, "BCCWJ").await? else {
+        return Ok(HashMap::new());
+    };
+    let terms = crate::tokenize::ambiguous_headwords(readings);
+    crate::knowledge::dictionaries::frequency_ranks(pool, bccwj.id, &terms).await
+}
+
+async fn preferred(
+    pool: &sqlx::SqlitePool,
+) -> Result<HashMap<String, crate::knowledge::dictionaries::PreferredReading>, sqlx::Error> {
+    use crate::knowledge::dictionaries as d;
+    let (Some(master), Some(jitendex), Some(bccwj)) = (
+        d::master(pool).await?,
+        d::by_title(pool, "Jitendex").await?,
+        d::by_title(pool, "BCCWJ").await?,
+    ) else {
+        return Ok(HashMap::new());
+    };
+    d::preferred_readings(pool, master.id, jitendex.id, bccwj.id).await
+}
+
 /// The Sudachi pipeline plus the dictionary sets it needs, built once and
 /// shared by every streaming reader — the dictionary load costs far more than
 /// tokenizing a line, and here the lines arrive one at a time all evening.
@@ -107,6 +205,28 @@ pub struct Highlighter {
 }
 
 impl Highlighter {
+    /// Build one from `knowledge.db` — the [`pipeline`] plus the frequency
+    /// ranks the reader needs to tell a common unknown word from a rare one.
+    pub async fn build(
+        k: &Knowledge,
+        dict_path: impl AsRef<std::path::Path>,
+    ) -> Result<Highlighter, BuildError> {
+        let p = pipeline(k, dict_path).await?;
+        let headwords: Vec<String> = p.lexicon.iter().cloned().collect();
+        let ranks = match crate::knowledge::dictionaries::by_title(
+            k.pool(),
+            crate::knowledge::dictionaries::READER_FREQUENCY,
+        )
+        .await?
+        {
+            Some(d) => {
+                crate::knowledge::dictionaries::frequency_ranks(k.pool(), d.id, &headwords).await?
+            }
+            None => HashMap::new(),
+        };
+        Ok(Highlighter::new(p.tokenizer, p.lexicon, p.master, ranks))
+    }
+
     pub fn new(
         tokenizer: SudachiTokenizer,
         lexicon: HashSet<String>,

@@ -2498,3 +2498,17 @@ mod tests {
         assert_eq!(rank_of(&k).await, Some(13));
     }
 }
+
+/// Every spelling the deck mirror holds — the tokenizer's second wordhood
+/// source, so a word mined yesterday is kept whole in tomorrow's lines.
+///
+/// The raw `vocab` and not `headword`: this feeds Sudachi's user lexicon, which
+/// matches against the text, and the text spells a word the way the card does.
+pub async fn mined_vocab(
+    pool: &sqlx::SqlitePool,
+) -> Result<std::collections::HashSet<String>, sqlx::Error> {
+    let rows: Vec<(String,)> = sqlx::query_as("SELECT vocab FROM anki_notes")
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.into_iter().map(|(v,)| v).collect())
+}
