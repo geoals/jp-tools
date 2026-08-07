@@ -5,8 +5,8 @@
 //! environment the script expects, run it, parse the one JSON object it prints.
 //!
 //! Two callers: the reader's mine button, which marks presence itself, and the
-//! proxy's auto-capture on card add, which relies on the Yomitan lookup that
-//! must have preceded it.
+//! auto-capture on card add, which relies on the lookup that must have preceded
+//! it — Yomitan's popup, or the overlay's.
 
 use std::time::Duration;
 

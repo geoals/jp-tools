@@ -5,7 +5,7 @@
 //! re-syncing rather than by reconciling. Nothing here is ever written back to
 //! Anki.
 //!
-//! One card at a time also lands here, from the proxy, the moment Anki accepts
+//! One card at a time also lands here, from `services::card`, the moment Anki accepts
 //! an `addNote` — see [`insert_anki_note`]. That does not make the table a
 //! source of truth: the next refresh still replaces it wholesale.
 //!

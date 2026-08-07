@@ -3,7 +3,7 @@
 //! something readable in under 2 seconds (~8 Japanese characters).
 //!
 //! Self-contained like `llm.rs`: it needs its own prompt and is called from the
-//! AnkiConnect proxy after a card is added, not from the reader's explain path.
+//! card path after a card is added, not from the reader's explain path.
 
 use std::sync::LazyLock;
 

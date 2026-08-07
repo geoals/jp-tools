@@ -86,7 +86,7 @@ The ledger (`vocabulary`):
 - **`new` ≠ `unknown`.** `new` means never judged; collapsing them is
   irreversible and breaks the triage progress figure.
 - **Anki owns mined-state.** `anki_notes` is a snapshot, replaced wholesale,
-  never written back. **The proxy adds the one card Anki just accepted**
+  never written back. **`card::add_note` adds the one card Anki just accepted**
   (`db::insert_anki_note`), which does not make the table a source of truth —
   the refresh still replaces it — but without it the mirror only learns about
   cards when the dashboard page opens. Every cards-per-hour figure counts rows
@@ -377,10 +377,11 @@ The reading view:
 
 Mining:
 
-- **Mining is implicit.** Yomitan's `addNote` goes through `routes/ankiproxy`,
-  which fires vn-capture.sh once Anki accepts the note. There is no mine button.
-  The overlay has no popup button either — a side mouse button mines the word
-  under the pointer, and another judges it.
+- **Mining is implicit.** Every card path — the overlay's `reader/mine`, and
+  Yomitan's `addNote` through `routes/ankiproxy` — adds through
+  `services::card::add_note`, which fires vn-capture.sh once Anki accepts the
+  note. There is no mine button, and the overlay has no popup button either — a
+  side mouse button mines the word under the pointer, and another judges it.
 - **The popup can overrule the tokenizer about a position.** It scans the raw
   line from the clicked word rightwards (`reader/define::expand`) and shows a
   chip per `(term, reading)` a dictionary holds for a prefix of it, longest
@@ -452,8 +453,8 @@ Mining:
   the next update, and the star and ① ② rules are written against
   `.dict-jitendex-body` alone, so the block would come back unstyled with the
   field still looking full.
-- **A capture is anchored at the add, not at the capture.** The proxy stamps
-  `now_ts()` when `addNote` arrives and passes it as `VN_ANCHOR_TS`. Nothing may
+- **A capture is anchored at the add, not at the capture.** `card::add_note`
+  stamps `now_ts()` before forwarding and passes it as `VN_ANCHOR_TS`. Nothing may
   be awaited in front of the capture: in `enrich_added_note` the CompactDef call
   runs _alongside_ it (`tokio::join!`) with its Anki write after. The two
   `updateNoteFields` stay strictly ordered.

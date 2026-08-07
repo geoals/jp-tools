@@ -18,10 +18,10 @@ pub struct Config {
     pub anki_sentence_field: String,
     /// Field CompactDef is written to. Empty disables CompactDef enrichment.
     pub anki_compact_def_field: String,
-    /// Fire vn-capture.sh (audio + picture) after a card is added through the
-    /// proxy. This *is* mining now — the reader's mine button is gone, because
-    /// every card Yomitan adds through the proxy comes from a line that is on
-    /// screen, which is exactly when a capture is wanted. Set to 0 on a machine
+    /// Fire vn-capture.sh (audio + picture) after a card is added. This *is*
+    /// mining now — the reader's mine button is gone, because every card added
+    /// while reading comes from a line that is on screen, which is exactly when
+    /// a capture is wanted. Set to 0 on a machine
     /// that serves the dashboard but doesn't run the VN; where the capture
     /// script is simply absent it already no-ops with a warning.
     pub auto_capture_on_add: bool,

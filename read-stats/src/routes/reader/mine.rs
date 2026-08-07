@@ -1,12 +1,12 @@
 //! Making a card from the overlay, the way Yomitan makes one.
 //!
-//! The note is built here and then handed to [`crate::routes::ankiproxy::proxy`]
-//! as an `addNote` — the same entry point Yomitan's own add arrives through.
-//! That is deliberate and load-bearing: note-id extraction, the CompactDef
-//! enrichment, vn-capture's screenshot and voiceline, and the chime all hang
-//! off that one function, so routing through it makes an overlay card and a
-//! Yomitan card the same thing downstream rather than a second implementation
-//! that has to be kept in step.
+//! The note is built here and then handed to
+//! [`crate::services::card::add_note`], which every card path calls — Yomitan's
+//! own add arrives there too, through the proxy. That is deliberate and
+//! load-bearing: note-id extraction, the CompactDef enrichment, vn-capture's
+//! screenshot and voiceline, the deck mirror and the chime all hang off that
+//! one function, so an overlay card and a Yomitan card are the same thing
+//! downstream rather than a second implementation kept in step by hand.
 //!
 //! The pitch fields are rebuilt here rather than left empty, because the card
 //! template needs them: `markPitch()` colours the target word by the first
@@ -162,15 +162,14 @@ pub async fn mine(
 
     let body =
         Bytes::from(serde_json::to_vec(&note).map_err(|e| AppError::Upstream(e.to_string()))?);
-    let response = crate::routes::ankiproxy::proxy(State(state), body).await;
-    let ok = response.status().is_success();
+    let (status, replied) = crate::services::card::add_note(&state, body)
+        .await
+        .map_err(AppError::Upstream)?;
+    let ok = status.is_success();
     // The id comes back so the open popup can raise its mined badge without
     // asking Anki a second time — and a duplicate answers `null`, which is the
     // honest answer to "did this add a card".
-    let replied = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap_or_default();
-    let note_id = crate::routes::ankiproxy::new_note_id(&replied);
+    let note_id = crate::services::card::new_note_id(&replied);
     Ok(Json(json!({ "ok": ok, "note_id": note_id })))
 }
 

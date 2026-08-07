@@ -78,10 +78,12 @@ yt/manga through Yomitan is impossible.
 The fullscreen overlay is the third case and does **not** break the rule.
 Yomitan cannot reach a layer surface — no browser can be one, and QtWebEngine
 loads no extensions — so `routes/reader/mine.rs` builds the card itself. It
-then hands it to `ankiproxy::proxy` as an `addNote`, the same entry point
-Yomitan's own add arrives through, so note-id extraction, CompactDef,
-vn-capture and the chime stay one implementation. **A new card path joins at
-the proxy, never past it.**
+then hands it to `services::card::add_note`, which is also where Yomitan's own
+add arrives after the proxy has counted it, so note-id extraction, the deck
+mirror, CompactDef, vn-capture and the chime stay one implementation. **Every
+card path calls `card::add_note`.** The proxy is not that seam and never was —
+it exists to observe Yomitan's popup opening (`LOOKUP_ACTIONS`), which is a
+browser-only concern the overlay answers for itself in `reader/define`.
 
 The overlay's page lives in `vn-mine/overlay/` and read-stats serves it from
 there, at `/overlay/`. It shares no code with read-stats' own frontend, so it

@@ -14,8 +14,9 @@
 //!   [`clock::tz_offset_secs`]), so their reach is greppable.
 //!
 //! Side channels that don't fit the stack: [`anki`] (AnkiConnect client),
-//! [`ankiproxy`] (the endpoint Yomitan points at, which is how lookups become
-//! observable), [`llm`] + [`compactdef`] + [`tags`] (card enrichment),
+//! [`card`] (the one seam every card path adds through), [`ankiproxy`] (the
+//! endpoint Yomitan points at, which is how lookups become observable),
+//! [`llm`] + [`compactdef`] + [`tags`] (card enrichment),
 //! [`covers`] + [`vndb`] (work art), [`ingest`] (tokenizing new lines).
 //!
 //! Character counting is **not** here — it is `jp_core::text`, shared with the

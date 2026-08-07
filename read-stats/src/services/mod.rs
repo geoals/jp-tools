@@ -9,6 +9,7 @@
 //! | module | talks to |
 //! |---|---|
 //! | [`anki`] | AnkiConnect, read-only — snapshots the mined deck |
+//! | [`card`] | AnkiConnect — adds a card, then enriches it; every card path's seam |
 //! | [`capture`] | vn-mine's `vn-capture.sh`, and `xdotool` for window titles |
 //! | [`chime`] | `paplay` — the one sound a finished mine makes |
 //! | [`llm`] | the Anthropic API |
@@ -19,6 +20,7 @@
 
 pub mod anki;
 pub mod capture;
+pub mod card;
 pub mod chime;
 pub mod compactdef;
 pub mod covers;
