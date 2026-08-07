@@ -23,24 +23,29 @@ Jobs run as background `tokio::spawn` tasks. Frontend polls via JSON API.
 
 ## The popup
 
-A word in a sentence is clicked, not hovered, and what opens is the VN
-overlay's popup — `static/features/mining/word-popup.js` against `/api/define`
-and `/api/expand`, both thin wrappers on `jp_core::define`. So a word looked up
-here and a word looked up over the game show the same dictionaries in the same
-order, page the same way, and offer the same escape hatch when the tokenizer
-was wrong about a position (経年劣化 split in two, 素振り read the other way).
+A word in a sentence is clicked and the VN overlay's popup opens on it — the
+*same module*, `web-shared/popup.js`, served at `/shared/` by both apps and
+answering from `/api/define` and `/api/expand`, thin wrappers on
+`jp_core::define`. Same head, same frequency pills, same per-dictionary
+styling, same wheel-to-page, same escape hatch when the tokenizer was wrong
+about a position (経年劣化 split in two, 素振り read the other way).
 
-Three differences from the overlay's, each for a reason:
+`static/features/mining/popup.js` is yt-mine's half — only what is about this
+surface:
 
 - **Nothing records a lookup.** A lookup is a reading-session event and there
-  is no session here, so `define` leaves `lookup_id` null.
-- **＋ picks the card's word, it does not mine.** A video is mined a sentence
-  at a time and the export button commits the batch; the overlay's ＋ adds a
-  card immediately because there is no batch. The picked word rides in
-  `selectedWords` with its reading, because a word picked out of the scan need
-  not be a token at all and the server cannot look its reading back up.
+  is no session here, so `define` leaves `lookup_id` null. No mined badge
+  either: this path has no live Anki duplicate check to ask.
+- **＋ exports the sentence to Anki immediately.** There is no bulk selection
+  and no export button. A video is read a sentence at a time and the word being
+  looked at is the word the card is about, so there was never a batch to
+  assemble. What gets mined is what the popup is *open on*, so a compound
+  picked out of the scan is the card's word rather than the token clicked.
 - **✓ and ✗ are the only judging.** No side mouse buttons: the sentence list is
   an ordinary page, not a layer over a game.
+- **The popup is placed in document coordinates**, appended to `<body>` outside
+  the Preact tree, so it stays on its word as the page scrolls instead of
+  hanging in the viewport where the word used to be.
 
 Tokens carry their ledger status, and the three tints are read-stats' own —
 `known` is deliberately not one of them, because the absence of a mark is what

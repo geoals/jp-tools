@@ -20,6 +20,12 @@ use crate::services::transcribe::Transcriber;
 const SPA_HTML: &str = include_str!("../templates/spa.html");
 const STATIC_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
 
+/// Front-end code shared by more than one app in the workspace: the dictionary
+/// popup, which the VN overlay and yt-mine both draw. Served from both, at the
+/// same path, because there is no build step to copy it with — the two pages
+/// load the identical file over HTTP.
+const SHARED_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../web-shared");
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: SqlitePool,
@@ -55,10 +61,6 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/define", get(api::define))
         .route("/api/expand", get(api::expand))
         .route("/api/judge", post(api::judge))
-        .route(
-            "/api/{video_id}/sentences/{sentence_id}/llm-definition",
-            get(api::llm_definition),
-        )
         .route("/api/export", post(api::export_sentences))
         .route(
             "/{video_id}/sentences/{sentence_id}/audio",
@@ -66,5 +68,6 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/{video_id}", get(spa_shell))
         .nest_service("/static", ServeDir::new(STATIC_DIR))
+        .nest_service("/shared", ServeDir::new(SHARED_DIR))
         .with_state(state)
 }

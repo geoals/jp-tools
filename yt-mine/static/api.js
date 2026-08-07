@@ -61,16 +61,6 @@ export async function judgeWord(headword, reading, status) {
   return res.ok;
 }
 
-export async function fetchLlmDefinition(videoId, sentenceId, word, signal) {
-  const params = new URLSearchParams({ word });
-  const res = await fetch(
-    `${BASE}/${videoId}/sentences/${sentenceId}/llm-definition?${params}`,
-    { signal }
-  );
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
-
 export async function exportSentences(jobId, sentences) {
   const res = await fetch(`${BASE}/export`, {
     method: 'POST',

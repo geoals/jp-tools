@@ -27,6 +27,12 @@ const STATIC_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
 /// copy of the dictionary and the ledger.
 const OVERLAY_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../vn-mine/overlay");
 
+/// Front-end code shared by more than one app in the workspace: the dictionary
+/// popup, which the VN overlay and yt-mine both draw. Served from both, at the
+/// same path, because there is no build step to copy it with — the two pages
+/// load the identical file over HTTP.
+const SHARED_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../web-shared");
+
 #[derive(Clone)]
 pub struct AppState {
     /// read-stats' own database: settings, reader marks, cover sources.
@@ -185,6 +191,7 @@ pub fn build_router(state: AppState) -> Router {
         )
         .nest_service("/static", ServeDir::new(STATIC_DIR))
         .nest_service("/overlay", ServeDir::new(OVERLAY_DIR))
+        .nest_service("/shared", ServeDir::new(SHARED_DIR))
         // Frontend has no build step / cache busting — force revalidation so
         // browsers never serve stale modules.
         .layer(SetResponseHeaderLayer::if_not_present(

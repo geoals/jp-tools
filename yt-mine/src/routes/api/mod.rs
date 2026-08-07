@@ -73,11 +73,6 @@ pub struct PollQuery {
 }
 
 #[derive(Deserialize)]
-pub struct PreviewQuery {
-    word: String,
-}
-
-#[derive(Deserialize)]
 pub struct DefineQuery {
     /// The ledger's headword, not the surface — a click sends the pair the
     /// tokenizer decided on, so 振っ is defined as 振る.
@@ -98,11 +93,6 @@ pub struct JudgeRequest {
     pub reading: String,
     /// `known` or `unknown`. `new` and `seen` are not reachable by hand.
     pub status: String,
-}
-
-#[derive(Serialize)]
-struct LlmDefinitionResponse {
-    definition: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -305,45 +295,6 @@ pub async fn judge(
         .unwrap_or(0.0);
     vocabulary::set_status(&state.knowledge, &term, status, ts).await?;
     Ok(Json(serde_json::json!({ "ok": true })))
-}
-
-pub async fn llm_definition(
-    State(state): State<AppState>,
-    Path((video_id, sentence_id)): Path<(String, i64)>,
-    Query(query): Query<PreviewQuery>,
-) -> Result<Response, AppError> {
-    let job = db::get_job_by_video_id(&state.db, &video_id)
-        .await?
-        .ok_or(AppError::NotFound)?;
-
-    let sentences = db::get_sentences_by_ids(&state.db, &[sentence_id]).await?;
-    let sentence = sentences.into_iter().next().ok_or(AppError::NotFound)?;
-    if sentence.job_id != job.id {
-        return Err(AppError::NotFound);
-    }
-
-    // Same rule as the export path: the definer rates the spelling that was
-    // said, not the base form the click carries.
-    let written = state
-        .tokenizer
-        .tokenize(&sentence.text)
-        .ok()
-        .and_then(|tokens| target_surface(&tokens, &query.word))
-        .unwrap_or_else(|| query.word.clone());
-
-    let definition = if let Some(definer) = &state.llm_definer {
-        match definer.define(&written, &sentence.text).await {
-            Ok(def) => Some(def),
-            Err(e) => {
-                warn!(word = query.word, error = %e, "LLM definition failed");
-                None
-            }
-        }
-    } else {
-        None
-    };
-
-    Ok(Json(LlmDefinitionResponse { definition }).into_response())
 }
 
 pub async fn export_sentences(

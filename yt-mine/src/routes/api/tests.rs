@@ -11,7 +11,6 @@ use crate::db;
 use crate::models::{JobStatus, TranscriptSegment};
 use crate::services::download::MockAudioDownloader;
 use crate::services::export::MockAnkiExporter;
-use crate::services::llm::MockLlmDefiner;
 use crate::services::media::{MockMediaExtractor, media_filenames};
 use crate::services::transcribe::MockTranscriber;
 
@@ -281,87 +280,6 @@ async fn define_returns_the_popups_shape() {
     assert_eq!(body["pitch"][0]["positions"][0], 2);
     // Only read-stats records a lookup; there is no session here to record in.
     assert!(body["lookup_id"].is_null());
-}
-
-// --- GET /api/{video_id}/sentences/{id}/llm-definition ---
-
-#[tokio::test]
-async fn llm_definition_returns_json() {
-    let mut definer = MockLlmDefiner::new();
-    definer
-        .expect_define()
-        .returning(|_word, _ctx| Box::pin(async { Ok("A verb meaning to eat.".into()) }));
-
-    let pool = db::create_pool("sqlite::memory:").await.unwrap();
-    let state = AppState {
-        db: pool.clone(),
-        downloader: Arc::new(MockAudioDownloader::new()),
-        transcriber: Arc::new(MockTranscriber::new()),
-        exporter: Arc::new(MockAnkiExporter::new()),
-        media_extractor: Arc::new(MockMediaExtractor::new()),
-        tokenizer: Arc::new(mock_tokenizer()),
-        highlighter: None,
-        knowledge: jp_core::knowledge::Knowledge::temp().await,
-        llm_definer: Some(Arc::new(definer)),
-        audio_dir: "/tmp".into(),
-        media_dir: "/tmp/media".into(),
-    };
-    let router = build_router(state);
-    let server = axum_test::TestServer::new(router).unwrap();
-
-    let job_id = db::create_job(
-        &pool,
-        "https://youtube.com/watch?v=dQw4w9WgXcQ",
-        "dQw4w9WgXcQ",
-    )
-    .await
-    .unwrap();
-    db::update_job_status(&pool, job_id, &JobStatus::Done, None)
-        .await
-        .unwrap();
-    db::insert_sentences(
-        &pool,
-        job_id,
-        &[TranscriptSegment {
-            start: 0.0,
-            end: 3.0,
-            text: "食べる".into(),
-        }],
-    )
-    .await
-    .unwrap();
-
-    let sentences = db::get_sentences_for_job(&pool, job_id).await.unwrap();
-    let sid = sentences[0].id;
-
-    let response = server
-        .get(&format!(
-            "/api/dQw4w9WgXcQ/sentences/{sid}/llm-definition?word=%E9%A3%9F%E3%81%B9%E3%82%8B"
-        ))
-        .await;
-
-    response.assert_status_ok();
-    let body: serde_json::Value = response.json();
-    assert_eq!(body["definition"], "A verb meaning to eat.");
-}
-
-#[tokio::test]
-async fn llm_definition_without_definer_returns_null() {
-    let (server, pool) = test_app().await;
-    seed_job(&pool, "dQw4w9WgXcQ").await;
-
-    let sentences = db::get_sentences_for_job(&pool, 1).await.unwrap();
-    let sid = sentences[0].id;
-
-    let response = server
-        .get(&format!(
-            "/api/dQw4w9WgXcQ/sentences/{sid}/llm-definition?word=%E3%83%86%E3%82%B9%E3%83%88"
-        ))
-        .await;
-
-    response.assert_status_ok();
-    let body: serde_json::Value = response.json();
-    assert!(body["definition"].is_null());
 }
 
 // --- POST /api/export ---

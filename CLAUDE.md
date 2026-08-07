@@ -34,6 +34,10 @@ Cargo workspace for Japanese language learning tools.
 - `scripts/start-all.sh` — start/stop/restart/status for the whole stack, or for
   named services (`restart read-stats`); see `--help`. Runs `jp-dict sync`
   before starting anything
+- `web-shared/` — front-end code more than one app draws: the dictionary popup
+  (`popup.js` + `popup.css`). read-stats and yt-mine both `ServeDir` it at
+  `/shared/`, so the two pages load the identical file — there is no build step
+  to copy it with, and a copy is what it exists to prevent
 - `dictionaries/` — the Yomitan zips (gitignored). Dropping one in and
   restarting the stack is how a dictionary is added
 - `scripts/dev-instance.sh` — run read-stats in isolation (copy of the data,
@@ -97,6 +101,21 @@ mirror, CompactDef, vn-capture and the chime stay one implementation. **Every
 card path calls `card::add_note`.** The proxy is not that seam and never was —
 it exists to observe Yomitan's popup opening (`LOOKUP_ACTIONS`), which is a
 browser-only concern the overlay answers for itself in `reader/define`.
+
+**The popup is one implementation, `web-shared/popup.js`.** The overlay and
+yt-mine both draw it, because what a word means does not depend on the surface
+that asked: the same head, the same two frequency pills, the same expansion
+chips, the same one-dictionary-at-a-time paging, and the same several hundred
+lines of per-dictionary structured-content CSS — which is the real reason it is
+shared. Yomitan-format dictionaries carry no styling with their definitions, so
+that CSS *is* the definition being readable, and a second copy would drift from
+the dictionaries it was written against.
+
+Each host keeps only what is about its own surface: placement, the writes
+(`judge`, `mine`), and the text the expansion scan reads. The overlay records a
+lookup on open and retracts it when ✓ is used; yt-mine does neither, because a
+lookup is a reading-session event and there is no session. It is vanilla DOM
+because one host is a plain page and the other is Preact.
 
 The overlay's page lives in `vn-mine/overlay/` and read-stats serves it from
 there, at `/overlay/`. It shares no code with read-stats' own frontend, so it

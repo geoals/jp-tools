@@ -21,6 +21,8 @@
 // dictionaries, which is not a fourth action: the popup is already open, so
 // nothing is looked up and nothing is written.
 
+import { createPopup } from "/shared/popup.js";
+
 const params = new URLSearchParams(location.search);
 const root = document.documentElement.style;
 root.setProperty("--backdrop", `rgba(0, 0, 0, ${params.get("bg") ?? "0.88"})`);
@@ -41,26 +43,40 @@ const lineEl = document.getElementById("line");
 const warnEl = document.getElementById("warn");
 const popupEl = document.getElementById("popup");
 
-let openWord = null;
-// What the open popup is about: `{ term, key, reading, surface }`. Not always
-// the clicked word's own pair — a picked match re-opens the popup on the same
-// word with another term. Every action in the popup reads this. `key` is what
-// the ledger is keyed on and `term` what the dictionary calls it; they differ
-// only for a picked match, whose spelling comes from outside the tokenizer.
-let openTarget = null;
+// The popup itself is `web-shared/popup.js`, the same module yt-mine loads —
+// what a word means does not depend on which surface asked. What stays here is
+// everything that is about *this* surface: where the popup sits over a
+// layer-shell strip, the lookup the popup's opening records, and the side
+// mouse buttons that judge and mine without opening it at all.
+const popup = createPopup({
+  el: popupEl,
+  api: {
+    define: (query) => `/api/reader/define?${query}`,
+    expand: (text) => `/api/reader/expand?${new URLSearchParams({ text })}`,
+    mined: (term) => `/api/reader/mined?term=${encodeURIComponent(term)}`,
+    browse: (note_id) =>
+      fetch("/api/reader/mined/browse", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ note_id }),
+      }).catch(() => {}),
+  },
+  scanText: (target) => (line ? line.text.slice(target.start) : ""),
+  judge: (target, status) => judge(popup.anchor(), status, target),
+  mine: (target) => mine(popup.anchor(), target),
+  place,
+  onOpen: (data) => (openLookup = data.lookup_id ?? null),
+  onJudged,
+  onLayout: () => report(),
+});
+
 let line = null;
 // The overlay shell, once its channel is up. Null in an ordinary browser.
 let shell = null;
-// The open popup's mined badge, hidden until a card for the word is known to
-// exist. Held here so a mine can raise it on a popup already on screen.
-let minedBadge = null;
 // The lookup row the open popup was recorded as, so marking the word known can
 // take it back. Cleared with the popup: a retraction is only ever the popup
 // that made the row undoing itself.
 let openLookup = null;
-// Set by `render` while the open popup has more than one dictionary in it, so
-// the wheel can page it without reaching into the arrows.
-let stepSource = null;
 // The rank at or under which an unknown word is called common. Fetched once;
 // the same setting the reading view underlines by, so both agree.
 let commonMaxRank = 0;
@@ -124,8 +140,18 @@ lineEl.addEventListener("click", (e) => {
   e.stopPropagation();
   // A second click on the same word closes it, so one finger both opens and
   // dismisses without reaching anywhere else.
-  if (word === openWord) return closePopup();
-  show(word);
+  if (word === popup.anchor()) return closePopup();
+  const previous = popup.anchor();
+  if (previous) previous.classList.remove("open");
+  word.classList.add("open");
+  popup.show(word, {
+    term: word.dataset.term,
+    key: word.dataset.term,
+    reading: word.dataset.reading,
+    surface: word.textContent,
+    status: word.dataset.status,
+    start: Number(word.dataset.start),
+  });
 });
 
 // Anywhere else on the surface dismisses. Not the popup itself, or scrolling a
@@ -136,7 +162,6 @@ lineEl.addEventListener("click", (e) => {
 // the target is *now*: picking another match re-renders the popup from inside
 // the click, which detaches the chip mid-dispatch, and the detached chip then
 // read as a click outside — so every pick closed the popup it had just opened.
-popupEl.addEventListener("click", (e) => e.stopPropagation());
 document.addEventListener("click", () => closePopup());
 
 /** The side buttons act on the word under the pointer, without a popup.
@@ -173,9 +198,9 @@ lineEl.addEventListener("auxclick", (e) => {
 lineEl.addEventListener(
   "wheel",
   (e) => {
-    if (!stepSource || !openWord || e.target.closest(".w") !== openWord) return;
+    if (!popup.isOpen() || e.target.closest(".w") !== popup.anchor()) return;
     e.preventDefault();
-    stepSource(Math.sign(e.deltaY));
+    popup.step(Math.sign(e.deltaY));
   },
   { passive: false },
 );
@@ -232,7 +257,7 @@ lineEl.addEventListener("pointermove", (e) => {
   moveTo(e.clientX - drag.x, e.clientY - drag.y);
   // The popup is placed off the line box, so it has to be re-placed as the box
   // moves out from under it.
-  if (openWord) place(openWord);
+  if (popup.anchor()) place(popup.anchor());
 });
 
 for (const type of ["pointerup", "pointercancel"]) {
@@ -247,94 +272,29 @@ for (const type of ["pointerup", "pointercancel"]) {
   });
 }
 
+/** Close, and forget the lookup the popup recorded. */
 function closePopup() {
-  popupEl.hidden = true;
-  if (openWord) openWord.classList.remove("open");
-  openWord = null;
-  openTarget = null;
-  minedBadge = null;
-  stepSource = null;
+  const word = popup.anchor();
+  if (word) word.classList.remove("open");
+  popup.close();
   openLookup = null;
-  report();
 }
 
-/** Define the word clicked, or — with `pick` — another match at that position.
+/** Marking a word known means the popup was opened to reach the button, not to
+ * read the definition, so the row it recorded goes.
  *
- * `target` is what everything in the popup acts on: the term looked up, judged
- * and mined. For a click it is the tokenizer's own `(headword, reading)`; for a
- * picked match it is what the reader chose out of the scan, which the
- * tokenizer either split or read another way.
- */
-async function show(word, pick = null) {
-  const target = pick ?? {
-    term: word.dataset.term,
-    key: word.dataset.term,
-    reading: word.dataset.reading,
-    surface: word.textContent,
-    status: word.dataset.status,
-  };
-  const { term, reading } = target;
-  if (openWord) openWord.classList.remove("open");
-  openWord = word;
-  openTarget = target;
-  word.classList.add("open");
-
-  popupEl.hidden = false;
-  popupEl.replaceChildren(el("div", "none", "…"));
-  place(word);
-
-  const query = new URLSearchParams({ term });
-  if (reading) query.set("reading", reading);
-
-  // Started with the definition, not behind a button: the row only appears
-  // when there is another match to offer, and that answer has to be in before
-  // the popup can know whether to draw it. An empty list is the common case
-  // and draws nothing.
-  const matches = fetch(`/api/reader/expand?text=${encodeURIComponent(rightOf(word))}`)
-    .then((r) => r.json())
-    .catch(() => []);
-
-  let data;
-  try {
-    const res = await fetch(`/api/reader/define?${query}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    data = await res.json();
-  } catch (err) {
-    if (openTarget === target) popupEl.replaceChildren(el("div", "none", `Lookup failed — ${err.message}`));
-    return;
-  }
-  // A new line landed, or another word — or another expansion of this one —
-  // was asked about, while the fetch was out.
-  if (openTarget !== target) return;
-
-  openLookup = data.lookup_id ?? null;
-  popupEl.replaceChildren(...render(data, word, target, matches));
-  report();
-
-  // Asked after the definition is on screen, not before it: Anki is a second
-  // process and a slow or shut one must not hold up the answer to the question
-  // actually being asked.
-  try {
-    // The key, not the dictionary's spelling: that is what a mine writes into
-    // the card's vocab field, so it is what the duplicate check has to ask.
-    const res = await fetch(`/api/reader/mined?term=${encodeURIComponent(target.key)}`);
-    const { note_id } = await res.json();
-    if (openTarget === target) markMined(note_id);
-  } catch {
-    // Anki closed, or busy. The badge is an extra, never a report.
-  }
-}
-
-/** Raise the open popup's "mined" badge, and point it at the card. */
-function markMined(noteId) {
-  if (!minedBadge || !noteId) return;
-  minedBadge.hidden = false;
-  minedBadge.onclick = () =>
-    fetch("/api/reader/mined/browse", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ note_id: noteId }),
-    }).catch(() => {});
+ * Only known: not knowing a word whose definition is on screen is exactly what
+ * a lookup is. Retracted by id rather than re-derived, and nulled after, so
+ * this can only ever undo the one row this popup made. */
+function onJudged(target, status) {
+  if (status !== "known" || openLookup === null) return;
+  const lookup_id = openLookup;
+  openLookup = null;
+  fetch("/api/reader/lookup/retract", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ lookup_id, term: target.term }),
+  }).catch(() => {});
 }
 
 /** Directly above the line box, centred on the word.
@@ -380,10 +340,13 @@ async function judge(word, status, target = null) {
   return true;
 }
 
-/** A card, built and added the way Yomitan's own add is.
+/** A card, built and added the way Yomitan's own add is. Answers with the new
+ * note's id, so a popup open on this word can raise its badge now rather than
+ * the next time it is opened.
  *
- * Silent: the chime is the only report a mine gets, here as everywhere, and it
- * plays once the capture and the CompactDef write have both come back. */
+ * Silent otherwise: the chime is the only report a mine gets, here as
+ * everywhere, and it plays once the capture and the CompactDef write have both
+ * come back. */
 async function mine(word, target = null) {
   const on = target ?? {
     key: word.dataset.term,
@@ -403,215 +366,7 @@ async function mine(word, target = null) {
   // The add answers with the new note's id, so a popup open on this word gets
   // its badge now rather than the next time it is opened.
   const { note_id } = await res.json().catch(() => ({}));
-  if (openTarget === target || (target === null && openWord === word)) markMined(note_id);
-}
-
-function render(data, word, target, matches) {
-  const { reading, surface } = target;
-  const head = el("div", "head");
-  head.append(el("span", "term", data.term));
-  if (reading && reading !== data.term) head.append(el("span", "reading", reading));
-  // NHK's downstep for this reading, the accent Yomitan would show.
-  for (const p of data.pitch ?? []) {
-    if (p.positions.length) head.append(el("span", "pitch", `[${p.positions.join("] [")}]`));
-  }
-  // The surface is worth showing only where it differs from the headword —
-  // that difference is the conjugation the tokenizer saw through.
-  if (surface !== data.term) head.append(el("span", "reading", `— ${surface}`));
-  head.append(ranks(data));
-  // Built hidden and kept, rather than added when the answer arrives: the
-  // answer can arrive from two directions — Anki's duplicate check, or a mine
-  // made while this popup is open — and both then have one thing to raise.
-  stepSource = null;
-  minedBadge = el("button", "mined", "mined");
-  minedBadge.title = "Open the card in Anki";
-  minedBadge.hidden = true;
-  head.append(minedBadge);
-  head.append(actions(word, target));
-
-  const out = [head, expansions(word, target, matches)];
-
-  // One dictionary at a time. Sankoku says the same thing more briefly than
-  // Jitendex does, and stacking both makes the popup a page to scroll rather
-  // than an answer to read; the arrows are there for when the first one is the
-  // wrong one.
-  if (data.sources.length) {
-    const body = el("div", "body");
-    const label = el("span", "dict");
-    const paging = el("div", "paging");
-    const back = document.createElement("button");
-    const next = document.createElement("button");
-    back.textContent = "\u2039";
-    next.textContent = "\u203a";
-
-    let at = 0;
-    const showSource = () => {
-      const source = data.sources[at];
-      label.textContent = source.dictionary;
-      back.disabled = at === 0;
-      next.disabled = at === data.sources.length - 1;
-      const list = document.createElement("ol");
-      list.className = "sense";
-      for (const sense of source.senses) {
-        for (const def of sense.definitions) {
-          const item = document.createElement("li");
-          // Jitendex ships HTML in its definitions; the master ships plain text.
-          item.innerHTML = def;
-          list.append(item);
-        }
-      }
-      // Each dictionary's markup means something different by the same
-      // attribute, so the stylesheet keys its rules on this.
-      body.dataset.dict = source.slug;
-      body.replaceChildren(list);
-    };
-    back.addEventListener("click", () => (at--, showSource()));
-    next.addEventListener("click", () => (at++, showSource()));
-    // Clamped rather than wrapped: the order is `jp_core::define::OPENS_WITH`, so the
-    // first entry is the one worth reading first and wrapping past the last
-    // would land back on it as if it were a new answer.
-    stepSource = (by) => {
-      const to = Math.min(Math.max(at + by, 0), data.sources.length - 1);
-      if (to === at) return;
-      at = to;
-      showSource();
-    };
-
-    const bar = el("div", "dictbar");
-    bar.append(label);
-    if (data.sources.length > 1) {
-      paging.append(back, next);
-      bar.append(paging);
-    }
-    showSource();
-    out.push(bar, body);
-  } else {
-    out.push(el("div", "none", "Not in any dictionary"));
-  }
-
-  return out;
-}
-
-/** The raw line from this word's first character on — what the scan reads. */
-function rightOf(word) {
-  const start = Number(word.dataset.start);
-  return line && Number.isInteger(start) ? line.text.slice(start) : "";
-}
-
-/** "That is not the word here" — the escape hatch Yomitan gave for free.
- *
- * Two ways the tokenizer can be wrong about a position, and one answer to
- * both. It splits 経年劣化 into 経年 and 劣化, both real words, so nothing
- * downstream can join them. And it picks one reading for a spelling that has
- * several — 素振り as すぶり where the line means そぶり — which is a different
- * word with a different ledger row.
- *
- * So the scan offers every `(term, reading)` a dictionary lists for a prefix
- * of the line from this word on. Picking one re-opens the popup on it, and
- * ✓ ✗ ＋ then act on that term. The row draws nothing at all when the only
- * match is the one already showing, which is most words.
- */
-function expansions(word, target, matches) {
-  const row = el("div", "expansions");
-  matches.then((found) => {
-    // The popup moved on while the scan was out.
-    if (openTarget !== target || !Array.isArray(found)) return;
-    // Minus the one already showing, which is a match of itself.
-    const others = found.filter((e) => !(e.term === target.term && e.reading === target.reading));
-    row.replaceChildren(
-      ...others.map((e) => {
-        const label = e.reading && e.reading !== e.term ? `${e.term}\u30fb${e.reading}` : e.term;
-        const chip = el("button", "", label);
-        chip.title = e.dictionaries.join(", ");
-        chip.addEventListener("click", () =>
-          show(word, {
-            term: e.term,
-            key: e.key,
-            reading: e.reading,
-            surface: e.term,
-            status: e.status,
-          }),
-        );
-        return chip;
-      }),
-    );
-    // The popup just changed height, and the compositor takes the click on it
-    // only where the page says it has drawn.
-    report();
-  });
-  return row;
-}
-
-/** The three side-button actions, as buttons in the popup head.
- *
- * They exist because not every way of reading this has side mouse buttons —
- * driving the PC's mouse from a phone as a touchpad has none — and they cost
- * what the side buttons were split off to avoid: opening the popup records a
- * lookup. Marking a word known takes that row back (see `mark`), so the lookup
- * count means the same thing however the word was judged. `judge` and `mine`
- * are otherwise the same calls the side buttons make.
- *
- * One character each, on the frequency pills' own metrics: the popup is over a
- * game, and everything in it costs line.
- */
-function actions(word, target) {
-  const out = el("div", "acts");
-  const mark = async (status) => {
-    if (!(await judge(word, status, target))) return;
-    target.status = status;
-    for (const b of out.children) b.classList.toggle("on", b.dataset.status === status);
-    // Known means the popup was opened to reach this button, not to read the
-    // definition, so the row it recorded goes. Only known: not knowing a word
-    // whose definition is on screen is exactly what a lookup is. Retracted by
-    // id rather than re-derived, and nulled after, so this can only ever undo
-    // the one row this popup made.
-    if (status !== "known" || openLookup === null) return;
-    const lookup_id = openLookup;
-    openLookup = null;
-    fetch("/api/reader/lookup/retract", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ lookup_id, term: target.term }),
-    }).catch(() => {});
-  };
-  // The status of the term the popup is about, which for a picked match is not
-  // the clicked word's: しびれを切らす can be known while 痺れ is not.
-  const at = target.status;
-  for (const [label, status, title] of [
-    ["✓", "known", "Known"],
-    ["✗", "unknown", "Unknown"],
-  ]) {
-    const b = el("button", at === status ? "on" : "", label);
-    b.dataset.status = status;
-    b.title = title;
-    b.addEventListener("click", () => mark(status));
-    out.append(b);
-  }
-  const add = el("button", "", "＋");
-  add.title = "Mine";
-  add.addEventListener("click", () => mine(word, target));
-  out.append(add);
-  return out;
-}
-
-/** One pill per list, the name filled and the number not — Yomitan's shape.
- *
- * Two lists, two answers: jiten ranks the word in the fiction being read,
- * BCCWJ in newspaper and government prose. They disagree by an order of
- * magnitude on ordinary words, so the number is worth nothing without the name
- * attached to it. */
-function ranks(data) {
-  const out = el("div", "rank");
-  for (const [name, rank] of [
-    ["jiten", data.jiten],
-    ["BCCWJ", data.bccwj],
-  ]) {
-    const pill = el("span", "freq");
-    pill.append(el("span", "freq-name", name));
-    pill.append(el("span", "freq-value", rank == null ? "—" : rank.toLocaleString("en")));
-    out.append(pill);
-  }
-  return out;
+  return note_id;
 }
 
 /** Tell the shell every rectangle on this page that should take a click.
@@ -659,11 +414,4 @@ if (window.qt?.webChannelTransport) {
     shell = channel.objects.shell;
     report();
   });
-}
-
-function el(tag, className, text) {
-  const node = document.createElement(tag);
-  node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
 }

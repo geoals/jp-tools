@@ -1,47 +1,34 @@
 import { html } from 'htm/preact';
-import { activePopup, selectedWords, exportedIds, audioState, judged } from './state.js';
+import { exportedIds, audioState, judged } from './state.js';
+import { toggle, wheel } from './popup.js';
 
-export function SentenceRow({ sentence, videoId, isTranscribing }) {
-  const popup = activePopup.value;
-  const selected = selectedWords.value;
+export function SentenceRow({ sentence, videoId, jobId }) {
   const exported = exportedIds.value;
   const audio = audioState.value;
   const marks = judged.value;
 
   const isExported = exported.has(sentence.id);
-  const hasPopup = popup && popup.sentenceId === sentence.id;
-  const selectedWord = selected.get(sentence.id);
-
-  const liClass = [isExported && 'exported', hasPopup && 'has-popup']
-    .filter(Boolean)
-    .join(' ');
-
   const isPlaying = audio.sentenceId === sentence.id && audio.playing;
   const isLoading = audio.sentenceId === sentence.id && audio.loading;
 
-  function handleWordClick(tok, event) {
+  function open(tok, event) {
     if (isExported) return;
-
-    // Clicking the open word closes it, so one control both opens and dismisses.
-    if (hasPopup && popup.target.term === tok.base_form && popup.target.reading === tok.reading) {
-      activePopup.value = null;
-      return;
-    }
-
-    activePopup.value = {
-      sentenceId: sentence.id,
-      rect: event.currentTarget.getBoundingClientRect(),
-      target: {
+    // The click must not reach the document handler that dismisses.
+    event.stopPropagation();
+    toggle(
+      event.currentTarget,
+      {
         term: tok.base_form,
         // The ledger key and the dictionary's spelling are the same thing for
-        // a token — they only diverge for a match picked out of the scan.
+        // a token — they diverge only for a match picked out of the scan.
         key: tok.base_form,
         reading: tok.reading,
         surface: tok.surface,
-        status: tok.status,
+        status: marks.get(`${tok.base_form} ${tok.reading}`) ?? tok.status,
         start: tok.start,
       },
-    };
+      { videoId, jobId, sentenceId: sentence.id, text: sentence.text },
+    );
   }
 
   function handlePlay() {
@@ -52,7 +39,7 @@ export function SentenceRow({ sentence, videoId, isTranscribing }) {
   }
 
   return html`
-    <li class=${liClass}>
+    <li class=${isExported ? 'exported' : ''}>
       <button
         class="play-btn ${isLoading ? 'loading' : ''}"
         onClick=${handlePlay}
@@ -62,7 +49,6 @@ export function SentenceRow({ sentence, videoId, isTranscribing }) {
         ${isPlaying ? '■' : isLoading ? '○' : '▶'}
       </button>
       <span class="timestamp">${sentence.timestamp}</span>
-      ${selectedWord && html`<span class="card-word" title="This sentence's card word">${selectedWord.key}</span>`}
       <span class="sentence-tokens">
         ${sentence.tokens.map((tok) => {
           if (!tok.is_content_word) {
@@ -73,17 +59,15 @@ export function SentenceRow({ sentence, videoId, isTranscribing }) {
           // absence of a mark is what makes the marks readable, same as
           // read-stats' feed.
           const status = marks.get(`${tok.base_form} ${tok.reading}`) ?? tok.status;
-          const isOpen = hasPopup
-            && popup.target.term === tok.base_form
-            && popup.target.reading === tok.reading;
-          const cls = [
-            'token content-word',
-            status && status !== 'known' ? `mark-${status}` : '',
-            selectedWord && selectedWord.key === tok.base_form ? 'selected' : '',
-            isOpen ? 'open' : '',
-          ].filter(Boolean).join(' ');
+          const cls = ['token content-word', status && status !== 'known' ? `mark-${status}` : '']
+            .filter(Boolean)
+            .join(' ');
           return html`
-            <span class=${cls} onClick=${(e) => handleWordClick(tok, e)}>${tok.surface}</span>
+            <span
+              class=${cls}
+              onClick=${(e) => open(tok, e)}
+              onWheel=${(e) => wheel(e, e.currentTarget)}
+            >${tok.surface}</span>
           `;
         })}
       </span>

@@ -1,0 +1,583 @@
+/* The dictionary popup, shared by the VN overlay and yt-mine.
+ *
+ * Yomitan-format dictionaries ship *structured content*: HTML tagged with
+ * data-* attributes carrying no styling of its own. Yomitan supplies that from
+ * its own stylesheet plus a styles.css inside each zip, and neither travels
+ * with the definition — which is why the raw markup reads as
+ * "1.(1)nounsuffix". Everything below is that styling, rewritten for a dark
+ * popup. It is the reason this file is shared rather than reimplemented: a
+ * second copy would be several hundred lines of per-dictionary selectors
+ * silently drifting out of step with the dictionaries they were written for.
+ *
+ * Positioning is deliberately absent. The overlay pins the popup above a fixed
+ * strip; yt-mine puts it under a word in a scrolling list. Each host sets
+ * `left`/`top`/`bottom` itself.
+ */
+
+.jp-popup {
+  --scale: 1;
+  position: absolute;
+  width: min(41.25rem, calc(57.5vw * var(--scale)));
+  min-height: 8.75rem;
+  max-height: min(57.5vh, calc(575px * var(--scale)));
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 0.875rem 1.06rem 1rem;
+  border: 1px solid #2b3040;
+  border-radius: 12px;
+  /* Opaque: a definition read against moving artwork is unreadable. */
+  background: #14161d;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.8);
+  font-size: 1.1rem;
+  line-height: 1.55;
+  text-shadow: none;
+}
+.jp-popup[hidden] {
+  display: none;
+}
+
+.jp-popup .head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid #232838;
+}
+.jp-popup .term {
+  font-size: 1.5rem;
+}
+/* Downstep, as Yomitan writes it: [0] heiban, [1] atamadaka, [n] falling
+   after the nth mora. */
+.jp-popup .pitch {
+  color: #93c5fd;
+  font-size: 1rem;
+}
+.jp-popup .reading {
+  color: #9ca3af;
+}
+/* One pill per frequency list, split like Yomitan's: the name carries the
+   fill, the number sits in the same outline unfilled. Same greys as the
+   part-of-speech badges below, so the popup has one badge vocabulary. */
+.jp-popup .rank {
+  display: flex;
+  gap: 0.375rem;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.jp-popup .freq {
+  display: inline-flex;
+  border: 1px solid #3a4152;
+  border-radius: 0.3em;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+.jp-popup .freq-name {
+  padding: 0 0.4em;
+  background-color: #3a4152;
+  color: #e5e7eb;
+  font-weight: bold;
+}
+.jp-popup .freq-value {
+  padding: 0 0.4em;
+  color: #cbd5e1;
+}
+
+/* The word is already a card. Green rather than the badge greys, because it
+   answers a different question from the frequency pills beside it — and it
+   is the one thing in the popup that leaves the overlay, so it is a button
+   and looks like one. */
+.jp-popup .mined {
+  padding: 0 0.4em;
+  border: 1px solid rgba(94, 196, 94, 0.55);
+  border-radius: 0.3em;
+  background: rgba(94, 196, 94, 0.16);
+  color: #86e086;
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  cursor: pointer;
+}
+.jp-popup .mined:hover {
+  background: rgba(94, 196, 94, 0.28);
+}
+
+/* Known, unknown, mine. One character each and the frequency pills' own
+   metrics — same border, radius, size and line box — so the head reads as one
+   row of badges rather than a toolbar bolted to it. */
+.jp-popup .acts {
+  display: flex;
+  gap: 0.375rem;
+}
+.jp-popup .acts button {
+  padding: 0 0.5em;
+  border: 1px solid #3a4152;
+  border-radius: 0.3em;
+  background: #1b1f29;
+  color: #cbd5e1;
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  cursor: pointer;
+}
+.jp-popup .acts button:hover {
+  background: #262c3a;
+}
+/* The status the word is on now. */
+.jp-popup .acts button.on {
+  border-color: #3f6ea8;
+  background: #223247;
+  color: #cfe3ff;
+}
+
+/* The other matches at this position — see expansions() in overlay.js. One
+   chip per candidate, longest first. The row is drawn empty and filled when
+   the scan lands, so it takes no room on the words that have no other
+   reading, which is most of them. */
+.jp-popup .expansions:empty {
+  display: none;
+}
+.jp-popup .expansions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-bottom: 0.5rem;
+}
+.jp-popup .expansions button {
+  padding: 0 0.5em;
+  border: 1px solid #3a4152;
+  border-radius: 0.3em;
+  background: #1b1f29;
+  color: #cbd5e1;
+  font: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.jp-popup .expansions button:hover {
+  background: #262c3a;
+}
+.jp-popup .expansions .none {
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+
+/* Which dictionary is showing, and the way to the next one. */
+.jp-popup .dictbar {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-top: 0.625rem;
+}
+.jp-popup .paging {
+  display: flex;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+.jp-popup .paging button {
+  width: 1.75rem;
+  padding: 0 0.25rem;
+  border: 1px solid #2b3040;
+  border-radius: 5px;
+  background: #1b1f29;
+  color: #cbd5e1;
+  font: inherit;
+  line-height: 1.3;
+  cursor: pointer;
+}
+.jp-popup .paging button:hover:not(:disabled) {
+  background: #262c3a;
+}
+.jp-popup .paging button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.jp-popup .dict {
+  margin-top: 0;
+  color: #7f8ea3;
+  font-size: 0.9rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.jp-popup .body {
+  font-size: 1.275rem;
+}
+.jp-popup .sense {
+  margin: 0.1875rem 0 0;
+  padding-left: 0.25rem;
+}
+.jp-popup .sense li {
+  margin: 0.15rem 0;
+}
+.jp-popup .none {
+  color: #9ca3af;
+}
+
+/* Every dictionary here ships Yomitan *structured content*: HTML tagged with
+   data-* attributes that carries no styling of its own. Yomitan supplies that
+   from its own stylesheet plus a styles.css inside the dictionary zip, and
+   neither travels with the definition — which is why the raw markup reads as
+   "1.(1)nounsuffix". The rules below are that styling, rewritten for a popup
+   that is always over a game rather than for white paper.
+
+   They are scoped per dictionary because the attribute names collide:
+   data-headword, data-red and data-num each mean something different in 明鏡
+   and in 小学館. `data-dict` is the slug overlay.js puts on the body. */
+
+/* An inline image is standing in for a character — 三省堂 sets its part of
+   speech markers and accent bars this way, and hiding them drops content.
+   They are black or red line art drawn for paper: invert to bring them onto
+   a dark background, then turn the hue back so a red bar stays red.
+
+   The size has to be capped here: 明鏡's markers declare no dimensions and
+   their SVGs carry no intrinsic size either, so without a height they fill
+   the popup. A declared size arrives as an inline style and still wins. */
+.jp-popup img {
+  width: auto;
+  height: 1em;
+  vertical-align: -0.1em;
+  filter: invert(1) hue-rotate(180deg);
+}
+/* Illustrations and stroke-order diagrams are pictures rather than
+   characters: they get their own line, and paper-white behind them. */
+.jp-popup img.dict-figure {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0.35rem 0;
+  padding: 0.25rem;
+  background: #fff;
+  border-radius: 0.25rem;
+  filter: none;
+}
+.jp-popup a {
+  color: #93c5fd;
+  text-decoration: none;
+}
+
+/* The dictionaries bring their own numbering; the list markers would be a
+   second one on top of it. */
+.jp-popup ol {
+  list-style-type: none;
+}
+.jp-popup ul {
+  padding-left: 2rem;
+}
+.jp-popup ol ol li {
+  list-style-type: none !important;
+}
+.jp-popup ol ol > li > ul > li {
+  list-style-type: disc !important;
+}
+.jp-popup ol ol > li > ul {
+  padding-left: 2rem !important;
+}
+/* Jitendex's star icon, and its JMdict | Tatoeba links. */
+.jp-popup ol > li > i,
+.jp-popup [data-content="attribution"],
+.jp-popup div[data-sc-content="attribution"] {
+  display: none;
+}
+
+/* Part-of-speech badges, so "nounsuffix" reads as two tags. */
+.jp-popup [data-class="tag"] {
+  display: inline-block;
+  margin-right: 0.25em;
+  padding: 0.15em 0.35em;
+  border-radius: 0.3em;
+  background-color: #3a4152;
+  color: #e5e7eb;
+  font-size: 0.72em;
+  font-weight: bold;
+  vertical-align: text-bottom;
+  word-break: keep-all;
+}
+
+.jp-popup [data-content="glossary"] ul,
+.jp-popup ul[data-content="glossary"]:has(li:only-child) {
+  padding-left: 0;
+  list-style-type: none;
+}
+.jp-popup ul[data-content="sense-groups"] {
+  padding-left: 1rem;
+  list-style-type: none;
+}
+.jp-popup [data-content="extra-info"] {
+  margin-left: 0.5em;
+}
+
+/* Example sentences as their own block, Japanese larger than the gloss. */
+.jp-popup [data-content="example-sentence"] {
+  margin: 0.4rem 0;
+  padding: 0.4rem 0.5rem;
+  border-left: 2px solid #3a4152;
+  border-radius: 0.4rem;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+.jp-popup [data-content="example-sentence-a"] {
+  font-size: 1.25em;
+}
+.jp-popup [data-content="example-keyword"] {
+  color: #5ec45e;
+}
+.jp-popup [data-content="example-sentence-b"] {
+  font-size: 0.85em;
+  color: #9ca3af;
+}
+
+/* One palette for all four, so a sense number means the same colour whichever
+   dictionary is showing and the eye can find it without reading. The paper
+   originals price their reds and pink boxes against white; these are the same
+   distinctions at a brightness that survives being over a game. */
+.jp-popup {
+  --d-key: hsl(0 75% 70%); /* headword and the spellings beside it */
+  --d-num: #e5e7eb; /* sense numbers — bold and plain, found by weight */
+  --d-tag: #9fb3cc; /* part of speech, register, field labels */
+  --d-note: #9ca3af; /* notes, cross references, anything secondary */
+  --d-ex: #9aa3b2; /* example sentences, set off by their rule not a hue */
+  --d-box: rgba(255, 255, 255, 0.06);
+  --d-rule: #3a4152;
+}
+/* Ruby is a reading over a word in every dictionary here, and small in all
+   of them. */
+.jp-popup [data-rt],
+.jp-popup rt {
+  font-size: 0.55em;
+  font-weight: normal;
+  vertical-align: top;
+}
+/* Folded-away extras: 明鏡's 類語, 小学館's 筆順. */
+.jp-popup details {
+  margin: 0.5em 0;
+}
+.jp-popup summary {
+  width: max-content;
+  color: var(--d-note);
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+/* --- 明鏡国語辞典 第三版 -------------------------------------------------
+   It ships a styles.css keyed on `data-sc-*`; jp-core stores the same HTML
+   without that prefix, so these are its rules under the names that arrive
+   here. */
+.jp-popup [data-dict="明鏡国語辞典-第三版"] [data-red] {
+  color: var(--d-key);
+}
+.jp-popup [data-dict="明鏡国語辞典-第三版"] [data-headword][data-カナ] {
+  font-size: 1.15em;
+  font-weight: bold;
+}
+.jp-popup [data-dict="明鏡国語辞典-第三版"] [data-headword][data-旧かな] {
+  margin-left: 0.5em;
+  color: var(--d-note);
+  font-size: 0.7em;
+}
+.jp-popup [data-dict="明鏡国語辞典-第三版"] [data-head2] {
+  margin-top: 0.25em;
+}
+/* The ❶ ❷ before each sense. */
+.jp-popup [data-dict="明鏡国語辞典-第三版"] [data-bc] {
+  margin-right: 0.2em;
+}
+/* 書き方, 使い方, 注意, 品格 — the labels that head a usage note. */
+.jp-popup [data-dict="明鏡国語辞典-第三版"] [data-fbox] {
+  display: inline-block;
+  margin-right: 0.25em;
+  padding: 0.05em 0.25em;
+  border: 1px solid var(--d-key);
+  border-radius: 0.2em;
+  color: var(--d-key);
+  font-size: 0.8em;
+  word-break: keep-all;
+}
+.jp-popup [data-dict="明鏡国語辞典-第三版"] [data-column],
+.jp-popup [data-dict="明鏡国語辞典-第三版"] [data-hinkaku] {
+  margin-top: 0.5em;
+  padding: 0.25em 0.5em;
+  border-radius: 0.4em;
+  background: var(--d-box);
+}
+.jp-popup [data-dict="明鏡国語辞典-第三版"] [data-columntitle] {
+  color: var(--d-key);
+  font-weight: bold;
+}
+
+/* --- 三省堂国語辞典 第八版 -----------------------------------------------
+   Sankoku names its structure in Japanese under a single `data-name`, and
+   ships no colour or weight at all — which is why it arrives as one
+   undifferentiated block. The entry is headword, then numbered senses of
+   gloss and example, and these rules make those three findable. */
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="見出部"] {
+  font-size: 1.15em;
+}
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="見出仮名"],
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="子見出仮名"],
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="句表記"] {
+  font-weight: bold;
+}
+/* The 【犬】 spelling beside the reading. */
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="表記G"] {
+  color: var(--d-key);
+}
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="表外字マーク"],
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="表外音訓マーク"],
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="歴史仮名"],
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="アクセント"] {
+  color: var(--d-note);
+  font-size: 0.75em;
+}
+/* 品詞, 使用域 (口語, 俗語…) and 専門 (the field a sense belongs to) are all
+   labels on the sense rather than part of it. */
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="品詞G"],
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="使用域G"],
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="専門G"] {
+  margin: 0 0.25em;
+  color: var(--d-tag);
+  font-size: 0.8em;
+  word-break: keep-all;
+}
+/* The number is the one thing worth finding without reading. */
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="語義番号"] {
+  margin-right: 0.15em;
+  color: var(--d-num);
+  font-weight: bold;
+}
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="大語義"],
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="語義"] {
+  display: block;
+  margin-top: 0.3em;
+}
+/* 用例 runs on from the gloss on paper. Broken out, an entry stops being a
+   wall: the definition is the line, the examples are under it. */
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="用例G"] {
+  display: block;
+  margin: 0.25em 0 0.1em;
+  padding-left: 0.5em;
+  border-left: 2px solid var(--d-rule);
+  color: var(--d-ex);
+}
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="注記"],
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="注解"],
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="言換G"],
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="原綴"] {
+  color: var(--d-note);
+  font-size: 0.85em;
+}
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="参照G"],
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="対義語G"] {
+  color: #93c5fd;
+  font-size: 0.85em;
+}
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="red"] {
+  color: var(--d-key);
+}
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="ルビ"] {
+  font-size: 0.55em;
+  vertical-align: top;
+}
+/* A run-in subentry — 子見出 for a derived form, 句 for a phrase. Its own
+   line, or it reads as the tail of the sense above it. */
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="子見出部"],
+.jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="句見出部"] {
+  display: block;
+  margin-top: 0.4em;
+}
+
+/* --- 小学館例解学習国語 第十二版 ------------------------------------------
+   A school dictionary, so an entry carries more than a gloss: the kanji's
+   grade, radical and stroke count, illustrations, and a 使い分け box telling
+   near-synonyms apart. Its markup names all of that, and the point of styling
+   it is that those parts stay apart. */
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-headword] {
+  font-size: 1.15em;
+  font-weight: bold;
+}
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-標準表記] {
+  color: var(--d-key);
+}
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-参考表記],
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-別読み],
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-原綴] {
+  color: var(--d-note);
+  font-size: 0.8em;
+}
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-head2] {
+  display: block;
+  margin-bottom: 0.15em;
+}
+/* 音, 訓, 部首, 総画数 and the grade the kanji is taught in — a header line
+   about the character, not part of any sense. */
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-配当学年],
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-音読み],
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-訓読み],
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-部首],
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-総画数],
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-acc] {
+  color: var(--d-note);
+  font-size: 0.8em;
+  word-break: keep-all;
+}
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-POSG] {
+  margin: 0 0.25em;
+  color: var(--d-tag);
+  font-size: 0.8em;
+  word-break: keep-all;
+}
+/* Its own colour words come first so the rules below can override them: it
+   paints the ❶ green along with everything else it wants noticed, and a sense
+   number has to read as a sense number in every dictionary here. */
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-red] {
+  color: var(--d-key);
+}
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-blue] {
+  color: #93c5fd;
+}
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-green] {
+  color: var(--d-ex);
+}
+/* The ❶ ❷ and the 例 / 音 / 訓 markers it sets in grey. */
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-num] {
+  margin-right: 0.15em;
+  color: var(--d-num);
+  font-weight: bold;
+}
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-gray] {
+  margin-right: 0.15em;
+  color: var(--d-tag);
+  font-size: 0.8em;
+}
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-level1] {
+  display: block;
+  margin-top: 0.3em;
+}
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-ex] {
+  color: var(--d-ex);
+}
+/* 使い分け is the reason to open this dictionary on a word you half know:
+   it is the box that says which near-synonym goes where. */
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-使い分け],
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-関連],
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-参考] {
+  display: block;
+  margin-top: 0.4em;
+  padding: 0.25em 0.5em;
+  border-radius: 0.4em;
+  background: var(--d-box);
+}
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-caption] {
+  display: block;
+  color: var(--d-note);
+  font-size: 0.8em;
+}
+/* 活用 tables, which arrive as a bare table and otherwise run together. */
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] table {
+  margin: 0.35em 0;
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+.jp-popup [data-dict="小学館例解学習国語-第十二版"] td {
+  padding: 0.1em 0.4em;
+  border: 1px solid var(--d-rule);
+}
