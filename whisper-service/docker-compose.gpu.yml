@@ -4,7 +4,7 @@ services:
     container_name: whisper-service
     network_mode: host
     environment:
-      - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-large-v3}
+      - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-large-v3-turbo}
       - WHISPER_DEVICE=cuda
       - WHISPER_COMPUTE_TYPE=${WHISPER_COMPUTE_TYPE:-auto}
     volumes:
