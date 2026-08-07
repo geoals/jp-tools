@@ -41,13 +41,14 @@ export function VideoPage({ videoId, at }) {
     };
   }, [job?.status, job?.sentence_count, videoId]);
 
-  // Whisper transcribes from 0:00, so the line a `t=` link points at may not
-  // be there yet. Every poll is another chance to land on it.
+  // Whisper transcribes from 0:00, so the line a `t=` link points at does not
+  // exist for as long as it takes to reach it — minutes, for a timestamp late
+  // in a video. Every poll is another attempt, and `landed` is only set once
+  // the row was actually found and scrolled to.
   useEffect(() => {
     if (!at || landed.current || !job?.sentences?.length) return;
     if (!job.is_terminal && lastStart(job.sentences) < at) return;
-    landed.current = true;
-    scrollToTime(at);
+    landed.current = scrollToTime(at);
   }, [at, job?.sentence_count, job?.is_terminal]);
 
   if (error) {
@@ -67,6 +68,7 @@ export function VideoPage({ videoId, at }) {
       status=${job.status}
       errorMessage=${job.error_message}
       progressPercent=${job.progress_percent}
+      waitingFor=${at && !landed.current ? at : null}
     />
     <${SentenceList}
       sentences=${job.sentences}
@@ -83,13 +85,18 @@ function lastStart(sentences) {
 }
 
 // The first line at or after `seconds`, centred and outlined so it is
-// findable in a list of several hundred.
+// findable in a list of several hundred. Returns whether it found one.
+//
+// The scroll itself is deferred a frame: this runs from an effect, so Preact
+// has committed the rows, but the browser has not laid them out yet and
+// `scrollIntoView` on an unlaid-out list lands nowhere.
 function scrollToTime(seconds) {
+  const rows = [...document.querySelectorAll('.sentence-list > li[data-start]')];
+  const row = rows.find((r) => Number(r.dataset.start) >= seconds - 1);
+  if (!row) return false;
   requestAnimationFrame(() => {
-    const rows = [...document.querySelectorAll('.sentence-list > li[data-start]')];
-    const row = rows.find((r) => Number(r.dataset.start) >= seconds - 1) ?? rows.at(-1);
-    if (!row) return;
     row.scrollIntoView({ block: 'center' });
     row.classList.add('landed');
   });
+  return true;
 }
