@@ -2,24 +2,32 @@
 //! mined card — the sense the target word carries in its sentence, compressed to
 //! something readable in under 2 seconds (~8 Japanese characters).
 //!
-//! Self-contained like `llm.rs`: it needs its own prompt and is called from the
-//! card path after a card is added, not from the reader's explain path.
+//! Shared by every surface that mines a card, because the gloss is a property
+//! of the card and not of where it came from: read-stats writes one after
+//! Yomitan or the overlay adds a note, and yt-mine writes one on export.
 
 use std::sync::LazyLock;
 
 use serde_json::Value;
 
-use crate::error::AppError;
-use crate::services::tags::{FAMILIARITY_RUBRIC, FLAVOR_RUBRIC};
+#[derive(Debug, thiserror::Error)]
+pub enum CompactDefError {
+    #[error("CompactDef failed: {0}")]
+    Failed(String),
+}
+
+use crate::tags::{FAMILIARITY_RUBRIC, FLAVOR_RUBRIC};
 
 /// Pinned to Opus 5. The tag-axis experiment found no thinking and no external
 /// frequency signals to be best, and that request shape carries over unchanged.
 /// Opus is preferred over Sonnet for the meaning/usage prose.
 const MODEL: &str = "claude-opus-5";
 
-/// Built once from the shared tag rubric (`crate::tags`) plus the CompactDef-
-/// specific framing and output format. The FAMILIARITY/FLAVOR definitions live in
-/// `tags.rs` so this and `llm.rs` can never drift apart again.
+/// Built once from the shared tag rubric ([`crate::tags`]) plus the CompactDef-
+/// specific framing and output format. The FAMILIARITY/FLAVOR definitions live
+/// in `tags.rs` so this and read-stats' explain prompt can never drift apart
+/// again — and so yt-mine cannot grow a third paraphrase of them, which is
+/// exactly what its old `LlmDefiner` was.
 static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
     format!(
         "\
@@ -64,7 +72,7 @@ pub async fn compact_def(
     api_key: &str,
     target: &str,
     sentence: &str,
-) -> Result<String, AppError> {
+) -> Result<String, CompactDefError> {
     let body = serde_json::json!({
         "model": MODEL,
         "max_tokens": 300,
@@ -85,19 +93,19 @@ pub async fn compact_def(
         .json(&body)
         .send()
         .await
-        .map_err(|e| AppError::Upstream(format!("Anthropic request failed: {e}")))?;
+        .map_err(|e| CompactDefError::Failed(format!("Anthropic request failed: {e}")))?;
 
     let status = resp.status();
     let json: Value = resp
         .json()
         .await
-        .map_err(|e| AppError::Upstream(format!("Anthropic response unparseable: {e}")))?;
+        .map_err(|e| CompactDefError::Failed(format!("Anthropic response unparseable: {e}")))?;
 
     if !status.is_success() {
         let msg = json["error"]["message"]
             .as_str()
             .unwrap_or("unknown API error");
-        return Err(AppError::Upstream(format!(
+        return Err(CompactDefError::Failed(format!(
             "Anthropic returned {status}: {msg}"
         )));
     }
@@ -138,13 +146,13 @@ fn clean_gloss(raw: &str) -> String {
 /// first block of type `text` rather than blindly taking the first block: this
 /// call disables thinking, but a thinking-capable model could still lead with a
 /// `thinking` block if that ever changes.
-fn extract_text(json: &Value) -> Result<String, AppError> {
+fn extract_text(json: &Value) -> Result<String, CompactDefError> {
     json["content"]
         .as_array()
         .and_then(|blocks| blocks.iter().find(|b| b["type"] == "text"))
         .and_then(|block| block["text"].as_str())
         .map(str::to_string)
-        .ok_or_else(|| AppError::Upstream("no text content in Anthropic response".into()))
+        .ok_or_else(|| CompactDefError::Failed("no text content in Anthropic response".into()))
 }
 
 #[cfg(test)]

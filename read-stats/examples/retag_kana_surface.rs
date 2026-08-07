@@ -14,7 +14,8 @@
 //! Kept in the tree because it is the repair for a defect the notes still
 //! carry, and because a second orthography bug would want the same shape.
 
-use read_stats::services::{anki, compactdef};
+use jp_mine_core::compactdef;
+use read_stats::services::anki;
 use serde_json::{Value, json};
 
 const ANKI_URL: &str = "http://localhost:8765";

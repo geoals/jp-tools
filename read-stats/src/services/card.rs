@@ -237,7 +237,7 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_t
     };
 
     let (def, captured) = tokio::join!(
-        crate::services::compactdef::compact_def(&state.http, api_key, &target, &sentence),
+        jp_mine_core::compactdef::compact_def(&state.http, api_key, &target, &sentence),
         capture,
     );
 

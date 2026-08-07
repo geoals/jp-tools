@@ -22,8 +22,6 @@ pub mod anki;
 pub mod capture;
 pub mod card;
 pub mod chime;
-pub mod compactdef;
 pub mod covers;
 pub mod llm;
-pub mod tags;
 pub mod vndb;
