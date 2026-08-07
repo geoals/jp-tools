@@ -34,11 +34,20 @@ function instance() {
   if (popup) return popup;
   popup = createPopup({
     el: element(),
-    // yt-mine's own routes: no lookup is recorded, and there is no live Anki
-    // duplicate check on this path, so no mined badge.
+    // yt-mine's own routes. No lookup is recorded — that is a reading-session
+    // event and there is no session here — but the mined badge is the same
+    // question and the same answer: does Anki already hold this card, and take
+    // me to it.
     api: {
       define: (query) => `/api/define?${query}`,
       expand: (text) => `/api/expand?${new URLSearchParams({ text })}`,
+      mined: (term) => `/api/mined?term=${encodeURIComponent(term)}`,
+      browse: (note_id) =>
+        fetch('/api/mined/browse', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ note_id }),
+        }).catch(() => {}),
     },
     scanText: (target) => ctx.text.slice(target.start ?? 0),
     judge: async (target, status) => {
@@ -116,11 +125,18 @@ async function exportOne(target) {
     ]);
     exportedIds.value = new Set([...exportedIds.value, ...result.exported_ids]);
     exportResult.value = `${target.key} exported to Anki.`;
-    close();
   } catch (err) {
     exportResult.value = `Error: ${err.message}`;
+    return null;
   }
-  // No note id to answer with: the export goes through AnkiConnect in the
-  // exporter, which reports a count rather than an id.
-  return null;
+  // Left open, as the overlay leaves it: the badge going green on the word just
+  // mined is the report, and it is a link to the card from the moment it
+  // appears. The export answers with a count rather than an id, so the card is
+  // found the same way the badge finds any other — by asking Anki for it.
+  try {
+    const res = await fetch(`/api/mined?term=${encodeURIComponent(target.key)}`);
+    return (await res.json()).note_id;
+  } catch {
+    return null;
+  }
 }

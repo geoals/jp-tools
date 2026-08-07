@@ -97,10 +97,19 @@
   font: inherit;
   font-size: 0.9rem;
   line-height: 1.55;
-  cursor: pointer;
 }
-.jp-popup .mined:hover {
+/* The affordance appears only once the badge has a card to open — it is a
+   status first and a link second, and a hover state on a badge that goes
+   nowhere is a lie about what clicking it does. */
+.jp-popup .mined.to-card {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(134, 224, 134, 0.5);
+  text-underline-offset: 0.2em;
+}
+.jp-popup .mined.to-card:hover {
   background: rgba(94, 196, 94, 0.28);
+  text-decoration-color: #86e086;
 }
 
 /* Known, unknown, mine. One character each and the frequency pills' own

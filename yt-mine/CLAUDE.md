@@ -34,8 +34,9 @@ about a position (経年劣化 split in two, 素振り read the other way).
 surface:
 
 - **Nothing records a lookup.** A lookup is a reading-session event and there
-  is no session here, so `define` leaves `lookup_id` null. No mined badge
-  either: this path has no live Anki duplicate check to ask.
+  is no session here, so `define` leaves `lookup_id` null. The mined badge is
+  the one thing that does carry over: `/api/mined` runs the same duplicate
+  check Yomitan does, and the badge is a link straight to that card.
 - **＋ exports the sentence to Anki immediately.** There is no bulk selection
   and no export button. A video is read a sentence at a time and the word being
   looked at is the word the card is about, so there was never a batch to

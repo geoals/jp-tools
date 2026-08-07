@@ -293,6 +293,45 @@ impl AnkiConnectExporter {
     }
 }
 
+/// The note id of the card already holding `term` in its vocabulary field, if
+/// there is one — the same duplicate check Yomitan runs before offering to add.
+///
+/// The lowest id when several match, which is the oldest: that is the card the
+/// word was first mined on, and the one worth being taken to.
+pub async fn find_note_for_vocab(
+    client: &reqwest::Client,
+    url: &str,
+    vocab_field: &str,
+    term: &str,
+) -> Result<Option<i64>, ExportError> {
+    let escaped = term.replace('\\', "\\\\").replace('"', "\\\"");
+    let body = json!({
+        "action": "findNotes",
+        "version": 6,
+        "params": { "query": format!("\"{vocab_field}:{escaped}\"") },
+    });
+    let reply = send_anki_request(client, url, &body).await?;
+    Ok(reply["result"]
+        .as_array()
+        .map(|ids| ids.iter().filter_map(Value::as_i64).min())
+        .unwrap_or(None))
+}
+
+/// Open Anki's card browser on one note — what Yomitan's own "view added note"
+/// does. It raises the Anki window.
+pub async fn gui_browse(
+    client: &reqwest::Client,
+    url: &str,
+    note_id: i64,
+) -> Result<(), ExportError> {
+    let body = json!({
+        "action": "guiBrowse",
+        "version": 6,
+        "params": { "query": format!("nid:{note_id}") },
+    });
+    send_anki_request(client, url, &body).await.map(|_| ())
+}
+
 /// Send a request to AnkiConnect and check for errors in the response.
 async fn send_anki_request(
     client: &reqwest::Client,

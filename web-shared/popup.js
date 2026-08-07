@@ -115,6 +115,8 @@ export function createPopup(opts) {
   function markMined(noteId) {
     if (!minedBadge || !noteId) return;
     minedBadge.hidden = false;
+    minedBadge.classList.add("to-card");
+    minedBadge.title = "Open this card in Anki";
     minedBadge.onclick = () => api.browse(noteId);
   }
 
@@ -135,8 +137,11 @@ export function createPopup(opts) {
     // answer can arrive from two directions — Anki's duplicate check, or a mine
     // made while this popup is open — and both then have one thing to raise.
     stepSource = null;
-    minedBadge = el("button", "mined", "mined");
-    minedBadge.title = "Open the card in Anki";
+    // An anchor, not a button: it is a way to the card, and it is the only
+    // thing in the head that leaves the page. It carries no `href` — Anki has
+    // no URL — so `markMined` is what makes it a link, and until then it is
+    // inert and styled as inert.
+    minedBadge = el("a", "mined", "mined");
     minedBadge.hidden = true;
     head.append(minedBadge);
     head.append(actions());

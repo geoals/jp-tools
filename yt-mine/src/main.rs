@@ -90,7 +90,10 @@ async fn main() {
         (
             Arc::new(YtDlpDownloader),
             transcriber,
-            Arc::new(AnkiConnectExporter::new(config.anki_url, config.anki)),
+            Arc::new(AnkiConnectExporter::new(
+                config.anki_url.clone(),
+                config.anki.clone(),
+            )),
             Arc::new(FfmpegMediaExtractor),
             highlighter.tokenizer(),
             Some(highlighter),
@@ -115,6 +118,9 @@ async fn main() {
         tokenizer,
         highlighter,
         knowledge,
+        http: reqwest::Client::new(),
+        anki_url: config.anki_url.clone(),
+        anki_vocab_field: config.anki.field_vocab.clone(),
         llm_definer,
         audio_dir: config.audio_dir,
         media_dir,

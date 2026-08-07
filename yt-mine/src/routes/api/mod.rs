@@ -87,6 +87,18 @@ pub struct ExpandQuery {
 }
 
 #[derive(Deserialize)]
+pub struct MinedQuery {
+    /// The word as the card would spell it — what an export writes into the
+    /// vocab field, so this asks exactly "would mining this be a duplicate?".
+    pub term: String,
+}
+
+#[derive(Deserialize)]
+pub struct BrowseRequest {
+    pub note_id: i64,
+}
+
+#[derive(Deserialize)]
 pub struct JudgeRequest {
     /// The ledger key, never the surface.
     pub headword: String,
@@ -271,6 +283,39 @@ pub async fn expand(
     Ok(Json(
         jp_core::define::expand(&state.knowledge, state.highlighter.clone(), &q.text).await?,
     ))
+}
+
+/// `GET /api/mined?term=<term>` — is this word already a card?
+///
+/// Asked of Anki rather than of `anki_notes`: that table is a snapshot taken on
+/// demand, and the case that matters is a card made seconds ago. It is the same
+/// duplicate check Yomitan runs before offering to add, so the popup's badge
+/// means what Yomitan's does. Anki being closed is not an error — the badge
+/// simply does not appear.
+pub async fn mined(
+    State(state): State<AppState>,
+    Query(q): Query<MinedQuery>,
+) -> Json<serde_json::Value> {
+    let note_id = jp_mine_core::export::find_note_for_vocab(
+        &state.http,
+        &state.anki_url,
+        state.anki_vocab_field.as_deref().unwrap_or("VocabKanji"),
+        &q.term,
+    )
+    .await
+    .unwrap_or_default();
+    Json(serde_json::json!({ "note_id": note_id }))
+}
+
+/// `POST /api/mined/browse` — raise Anki's card browser on the note.
+pub async fn browse(
+    State(state): State<AppState>,
+    Json(req): Json<BrowseRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    jp_mine_core::export::gui_browse(&state.http, &state.anki_url, req.note_id)
+        .await
+        .map_err(|e| AppError::Export(e.to_string()))?;
+    Ok(Json(serde_json::json!({ "ok": true })))
 }
 
 /// `POST /api/judge` — mark a word known or unknown, in the shared ledger.

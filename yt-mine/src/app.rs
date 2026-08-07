@@ -41,6 +41,11 @@ pub struct AppState {
     pub highlighter: Option<Arc<Highlighter>>,
     /// The shared dictionary cache — what a word means, and how common it is.
     pub knowledge: Knowledge,
+    /// For asking Anki directly — the popup's "already a card" badge and the
+    /// link from it. The export path has its own client inside the exporter.
+    pub http: reqwest::Client,
+    pub anki_url: String,
+    pub anki_vocab_field: Option<String>,
     pub llm_definer: Option<Arc<dyn LlmDefiner>>,
     pub audio_dir: String,
     pub media_dir: String,
@@ -61,6 +66,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/define", get(api::define))
         .route("/api/expand", get(api::expand))
         .route("/api/judge", post(api::judge))
+        .route("/api/mined", get(api::mined))
+        .route("/api/mined/browse", post(api::browse))
         .route("/api/export", post(api::export_sentences))
         .route(
             "/{video_id}/sentences/{sentence_id}/audio",
