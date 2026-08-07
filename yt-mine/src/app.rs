@@ -11,7 +11,7 @@ use jp_core::knowledge::Knowledge;
 use jp_core::tokenize::Tokenizer;
 
 use crate::routes::api;
-use crate::services::download::AudioDownloader;
+use crate::services::download::MediaDownloader;
 use crate::services::export::AnkiExporter;
 use crate::services::llm::LlmDefiner;
 use crate::services::media::MediaExtractor;
@@ -29,7 +29,7 @@ const SHARED_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../web-shared");
 #[derive(Clone)]
 pub struct AppState {
     pub db: SqlitePool,
-    pub downloader: Arc<dyn AudioDownloader>,
+    pub downloader: Arc<dyn MediaDownloader>,
     pub transcriber: Arc<dyn Transcriber>,
     pub exporter: Arc<dyn AnkiExporter>,
     pub media_extractor: Arc<dyn MediaExtractor>,

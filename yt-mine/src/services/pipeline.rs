@@ -8,7 +8,7 @@ use jp_core::text::sentences::split_sentences;
 
 use crate::db;
 use crate::models::{JobStatus, TranscriptSegment};
-use crate::services::download::AudioDownloader;
+use crate::services::download::MediaDownloader;
 use crate::services::transcribe::{ProgressCallback, Transcriber};
 
 /// Runs the full pipeline for a job: download -> transcribe -> store sentences.
@@ -18,16 +18,19 @@ pub async fn process_job(
     job_id: i64,
     youtube_url: String,
     audio_dir: String,
-    downloader: Arc<dyn AudioDownloader>,
+    downloader: Arc<dyn MediaDownloader>,
     transcriber: Arc<dyn Transcriber>,
 ) {
-    // Step 1: Download
+    // Step 1: Download the audio
     info!(job_id, url = youtube_url, "starting download");
     db::update_job_status(&pool, job_id, &JobStatus::Downloading, None)
         .await
         .ok();
 
-    let download_result = match downloader.download(youtube_url, audio_dir).await {
+    let audio = match downloader
+        .download_audio(youtube_url.clone(), audio_dir.clone())
+        .await
+    {
         Ok(result) => result,
         Err(e) => {
             error!(job_id, error = %e, "download failed");
@@ -38,16 +41,22 @@ pub async fn process_job(
         }
     };
 
-    db::update_job_download(
+    db::update_job_audio(
         &pool,
         job_id,
-        &download_result.audio_path,
-        &download_result.video_title,
-        &download_result.video_path,
-        download_result.video_duration,
+        &audio.audio_path,
+        &audio.video_title,
+        audio.video_duration,
     )
     .await
     .ok();
+
+    // The video is only wanted for the screenshot on a mined card, so it comes
+    // down while whisper is already working rather than ahead of it.
+    let video_download = {
+        let downloader = downloader.clone();
+        tokio::spawn(async move { downloader.download_video(youtube_url, audio_dir).await })
+    };
 
     // Step 2: Transcribe — sentences are inserted progressively via the callback,
     // so they appear in the UI during transcription (the frontend polls for updates).
@@ -71,10 +80,7 @@ pub async fn process_job(
         cb_handles.lock().unwrap().push(handle);
     }));
 
-    let segments = match transcriber
-        .transcribe(download_result.audio_path, on_progress)
-        .await
-    {
+    let segments = match transcriber.transcribe(audio.audio_path, on_progress).await {
         Ok(segments) => segments,
         Err(e) => {
             error!(job_id, error = %e, "transcription failed");
@@ -96,10 +102,72 @@ pub async fn process_job(
         handle.await.ok();
     }
 
+    match video_download.await {
+        Ok(Ok(video_path)) => {
+            db::update_job_video(&pool, job_id, &video_path).await.ok();
+        }
+        Ok(Err(e)) => {
+            error!(job_id, error = %e, "video download failed");
+            db::update_job_status(
+                &pool,
+                job_id,
+                &JobStatus::Error,
+                Some("Video download failed."),
+            )
+            .await
+            .ok();
+            return;
+        }
+        Err(e) => {
+            error!(job_id, error = %e, "video download task failed");
+            db::update_job_status(
+                &pool,
+                job_id,
+                &JobStatus::Error,
+                Some("Video download failed."),
+            )
+            .await
+            .ok();
+            return;
+        }
+    }
+
     info!(job_id, count = segments.len(), "job complete");
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
         .await
         .ok();
+}
+
+/// Drops a subtitle speaker label from the front of a segment.
+///
+/// Whisper learnt Japanese partly from subtitles written `名前 セリフ`, and on a
+/// short window it writes the label too — one podcast gave 234 lines opening
+/// `ヤンヤン `, plus 48 `樋口 ` and 3 `深井 `, none of them spoken. Conditioning on
+/// the previous text then carries the label forward for as long as it survives,
+/// so one hallucination becomes a run of hundreds.
+///
+/// The ASCII space is what makes this safe to strip: whisper's Japanese output
+/// has none of its own, so a leading run of Japanese followed by one is a label
+/// and not speech.
+fn strip_speaker_label(text: &str) -> &str {
+    let Some((label, rest)) = text.split_once(' ') else {
+        return text;
+    };
+    let is_label = !label.is_empty()
+        && label.chars().count() <= 8
+        && label.chars().all(is_japanese)
+        && !rest.trim_start().is_empty();
+
+    if is_label { rest.trim_start() } else { text }
+}
+
+fn is_japanese(c: char) -> bool {
+    matches!(c,
+        '\u{3040}'..='\u{309F}'   // hiragana
+        | '\u{30A0}'..='\u{30FF}' // katakana, ー
+        | '\u{4E00}'..='\u{9FFF}' // kanji
+        | '\u{3005}'              // 々
+    )
 }
 
 /// One whisper segment, cut into the sentences it holds.
@@ -114,7 +182,9 @@ pub async fn process_job(
 /// inside itself. A line's audio is therefore accurate to a fraction of a
 /// second rather than exact — speech rate is near enough uniform within one
 /// segment for that to hold.
-fn into_sentences(segment: TranscriptSegment) -> Vec<TranscriptSegment> {
+fn into_sentences(mut segment: TranscriptSegment) -> Vec<TranscriptSegment> {
+    segment.text = strip_speaker_label(&segment.text).to_string();
+
     let sentences = split_sentences(&segment.text);
     if sentences.len() < 2 {
         return vec![segment];
@@ -142,7 +212,7 @@ fn into_sentences(segment: TranscriptSegment) -> Vec<TranscriptSegment> {
 mod tests {
     use super::*;
     use crate::models::TranscriptSegment;
-    use crate::services::download::{DownloadError, DownloadResult, MockAudioDownloader};
+    use crate::services::download::{AudioDownload, DownloadError, MockMediaDownloader};
     use crate::services::transcribe::{MockTranscriber, TranscribeError};
 
     #[test]
@@ -185,6 +255,46 @@ mod tests {
         assert_eq!(out[0].text, "もう本当に久しぶり。");
     }
 
+    #[test]
+    fn a_hallucinated_speaker_label_is_dropped() {
+        let out = into_sentences(TranscriptSegment {
+            start: 0.0,
+            end: 3.0,
+            text: "ヤンヤン 響きが沖縄だもんな。".into(),
+        });
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].text, "響きが沖縄だもんな。");
+    }
+
+    #[test]
+    fn the_label_goes_before_the_segment_is_cut_into_sentences() {
+        let out = into_sentences(TranscriptSegment {
+            start: 0.0,
+            end: 6.0,
+            text: "樋口 確かに。そうですね。".into(),
+        });
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].text, "確かに。");
+        assert_eq!(out[1].text, "そうですね。");
+    }
+
+    #[test]
+    fn speech_is_left_alone() {
+        // No space at all: whisper's ordinary Japanese output.
+        assert_eq!(
+            strip_speaker_label("何のためかっていうと、"),
+            "何のためかっていうと、"
+        );
+        // A space, but the run before it is not a label.
+        assert_eq!(strip_speaker_label("OK でしょ"), "OK でしょ");
+        assert_eq!(
+            strip_speaker_label("ガソリンスタンドの溝は防災上の理由 です"),
+            "ガソリンスタンドの溝は防災上の理由 です"
+        );
+        // A label with nothing after it is all there is — keep it.
+        assert_eq!(strip_speaker_label("ヤンヤン "), "ヤンヤン ");
+    }
+
     async fn test_pool() -> SqlitePool {
         db::create_pool("sqlite::memory:").await.unwrap()
     }
@@ -200,17 +310,19 @@ mod tests {
         .await
         .unwrap();
 
-        let mut downloader = MockAudioDownloader::new();
-        downloader.expect_download().returning(|_, _| {
+        let mut downloader = MockMediaDownloader::new();
+        downloader.expect_download_audio().returning(|_, _| {
             Box::pin(async {
-                Ok(DownloadResult {
+                Ok(AudioDownload {
                     audio_path: "/tmp/audio.wav".into(),
-                    video_path: "/tmp/video.mp4".into(),
                     video_title: "Test Video".into(),
                     video_duration: Some(60.0),
                 })
             })
         });
+        downloader
+            .expect_download_video()
+            .returning(|_, _| Box::pin(async { Ok("/tmp/video.mp4".to_string()) }));
 
         let mut transcriber = MockTranscriber::new();
         transcriber.expect_transcribe().returning(|_, on_progress| {
@@ -268,8 +380,8 @@ mod tests {
         .await
         .unwrap();
 
-        let mut downloader = MockAudioDownloader::new();
-        downloader.expect_download().returning(|_, _| {
+        let mut downloader = MockMediaDownloader::new();
+        downloader.expect_download_audio().returning(|_, _| {
             Box::pin(async { Err(DownloadError::Failed("network error".into())) })
         });
 
@@ -305,17 +417,19 @@ mod tests {
         .await
         .unwrap();
 
-        let mut downloader = MockAudioDownloader::new();
-        downloader.expect_download().returning(|_, _| {
+        let mut downloader = MockMediaDownloader::new();
+        downloader.expect_download_audio().returning(|_, _| {
             Box::pin(async {
-                Ok(DownloadResult {
+                Ok(AudioDownload {
                     audio_path: "/tmp/audio.wav".into(),
-                    video_path: "/tmp/video.mp4".into(),
                     video_title: "Test Video".into(),
                     video_duration: Some(60.0),
                 })
             })
         });
+        downloader
+            .expect_download_video()
+            .returning(|_, _| Box::pin(async { Ok("/tmp/video.mp4".to_string()) }));
 
         let mut transcriber = MockTranscriber::new();
         transcriber.expect_transcribe().returning(|_, _| {

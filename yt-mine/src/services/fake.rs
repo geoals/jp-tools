@@ -11,7 +11,7 @@ use tracing::info;
 use jp_core::tokenize::{Token, TokenizeError, Tokenizer};
 
 use crate::models::TranscriptSegment;
-use crate::services::download::{AudioDownloader, DownloadError, DownloadResult};
+use crate::services::download::{AudioDownload, DownloadError, MediaDownloader};
 use crate::services::export::{AnkiExporter, ExportError, ExportSentence};
 use crate::services::llm::{LlmDefiner, LlmError};
 use crate::services::media::{MediaError, MediaExtractor};
@@ -21,31 +21,42 @@ use crate::services::transcribe::{TranscribeError, Transcriber};
 /// "Downloading..." state is visible during polling).
 pub struct FakeDownloader;
 
-impl AudioDownloader for FakeDownloader {
-    fn download(
+/// Paths stored in the DB have to exist for the media routes to work on them.
+async fn write_placeholder(path: &str) -> Result<(), DownloadError> {
+    tokio::fs::write(path, b"fake")
+        .await
+        .map_err(|e| DownloadError::Failed(format!("failed to write {path}: {e}")))
+}
+
+impl MediaDownloader for FakeDownloader {
+    fn download_audio(
         &self,
         _url: String,
         output_dir: String,
-    ) -> Pin<Box<dyn Future<Output = Result<DownloadResult, DownloadError>> + Send>> {
+    ) -> Pin<Box<dyn Future<Output = Result<AudioDownload, DownloadError>> + Send>> {
         Box::pin(async move {
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
             let audio_path = format!("{output_dir}/fake_api.wav");
-            let video_path = format!("{output_dir}/fake_api.mp4");
+            write_placeholder(&audio_path).await?;
 
-            // Create placeholder files so paths stored in the DB actually exist.
-            for path in [&audio_path, &video_path] {
-                tokio::fs::write(path, b"fake")
-                    .await
-                    .map_err(|e| DownloadError::Failed(format!("failed to write {path}: {e}")))?;
-            }
-
-            Ok(DownloadResult {
+            Ok(AudioDownload {
                 audio_path,
-                video_path,
                 video_title: "[Dev] 日本語の勉強法".into(),
                 video_duration: Some(45.0),
             })
+        })
+    }
+
+    fn download_video(
+        &self,
+        _url: String,
+        output_dir: String,
+    ) -> Pin<Box<dyn Future<Output = Result<String, DownloadError>> + Send>> {
+        Box::pin(async move {
+            let video_path = format!("{output_dir}/fake_api.mp4");
+            write_placeholder(&video_path).await?;
+            Ok(video_path)
         })
     }
 }
@@ -238,16 +249,20 @@ mod tests {
     async fn fake_downloader_creates_placeholder_files() {
         let dir = tempfile::tempdir().unwrap();
         let dl = FakeDownloader;
-        let result = dl
-            .download(
-                "https://youtu.be/test".into(),
-                dir.path().to_str().unwrap().into(),
-            )
+        let out: String = dir.path().to_str().unwrap().into();
+
+        let audio = dl
+            .download_audio("https://youtu.be/test".into(), out.clone())
             .await
             .unwrap();
-        assert!(std::path::Path::new(&result.audio_path).exists());
-        assert!(std::path::Path::new(&result.video_path).exists());
-        assert!(result.video_title.contains("Dev"));
+        assert!(std::path::Path::new(&audio.audio_path).exists());
+
+        let video_path = dl
+            .download_video("https://youtu.be/test".into(), out)
+            .await
+            .unwrap();
+        assert!(std::path::Path::new(&video_path).exists());
+        assert!(audio.video_title.contains("Dev"));
     }
 
     #[tokio::test]

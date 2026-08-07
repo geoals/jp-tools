@@ -1,19 +1,29 @@
 use std::future::Future;
 use std::pin::Pin;
 
+/// The two downloads are separate calls because transcription only needs the
+/// audio, and it is the long step. Fetching the video first would leave the GPU
+/// idle for the whole video download; split, the video comes down while whisper
+/// is already running, and it is not wanted until a card is mined.
 #[cfg_attr(test, mockall::automock)]
-pub trait AudioDownloader: Send + Sync {
-    fn download(
+pub trait MediaDownloader: Send + Sync {
+    fn download_audio(
         &self,
         url: String,
         output_dir: String,
-    ) -> Pin<Box<dyn Future<Output = Result<DownloadResult, DownloadError>> + Send>>;
+    ) -> Pin<Box<dyn Future<Output = Result<AudioDownload, DownloadError>> + Send>>;
+
+    /// Returns the path of the downloaded video.
+    fn download_video(
+        &self,
+        url: String,
+        output_dir: String,
+    ) -> Pin<Box<dyn Future<Output = Result<String, DownloadError>> + Send>>;
 }
 
 #[derive(Debug, Clone)]
-pub struct DownloadResult {
+pub struct AudioDownload {
     pub audio_path: String,
-    pub video_path: String,
     pub video_title: String,
     pub video_duration: Option<f64>,
 }
@@ -86,62 +96,62 @@ fn validate_video_id(id: &str) -> Option<String> {
 
 pub struct YtDlpDownloader;
 
-impl AudioDownloader for YtDlpDownloader {
-    fn download(
+/// Runs yt-dlp and returns its `--print` lines.
+async fn run_yt_dlp(args: &[&str]) -> Result<Vec<String>, DownloadError> {
+    let output = tokio::process::Command::new("yt-dlp")
+        .args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| DownloadError::Failed(format!("failed to run yt-dlp: {e}")))?
+        .wait_with_output()
+        .await
+        .map_err(|e| DownloadError::Failed(format!("yt-dlp failed: {e}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(DownloadError::Failed(format!(
+            "yt-dlp exited with non-zero status: {stderr}"
+        )));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::to_string)
+        .collect())
+}
+
+impl MediaDownloader for YtDlpDownloader {
+    fn download_audio(
         &self,
         url: String,
         output_dir: String,
-    ) -> Pin<Box<dyn Future<Output = Result<DownloadResult, DownloadError>> + Send>> {
+    ) -> Pin<Box<dyn Future<Output = Result<AudioDownload, DownloadError>> + Send>> {
         Box::pin(async move {
             if !is_valid_youtube_url(&url) {
                 return Err(DownloadError::InvalidUrl);
             }
 
-            let output_template = format!("{output_dir}/%(id)s.%(ext)s");
+            // The audio and video downloads can land on the same container
+            // extension (both are webm on most videos), so they need distinct
+            // names or the second overwrites the first.
+            let output_template = format!("{output_dir}/%(id)s.audio.%(ext)s");
 
-            // Download video at low resolution — 480p is enough for Anki screenshots,
-            // and keeps the file small. yt-dlp's -S prefers formats closest to 480p.
-            //
-            // Force the mp4 merge container. Left to itself yt-dlp picks the container
-            // from the audio stream, so opus audio makes it merge into webm — and
-            // ffmpeg's webm muxer rejects a stream-copied AV1 video track partway
-            // through ("Invalid data found when processing input"), failing the whole
-            // download. mp4 muxes both AV1 and opus without complaint.
-            let child = tokio::process::Command::new("yt-dlp")
-                .args([
-                    "-S",
-                    "res:480",
-                    "--merge-output-format",
-                    "mp4",
-                    "--print",
-                    "duration",
-                    "--print",
-                    "title",
-                    "--print",
-                    "after_move:filepath",
-                    "-o",
-                    &output_template,
-                    &url,
-                ])
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .spawn()
-                .map_err(|e| DownloadError::Failed(format!("failed to run yt-dlp: {e}")))?;
-
-            let output = child
-                .wait_with_output()
-                .await
-                .map_err(|e| DownloadError::Failed(format!("yt-dlp failed: {e}")))?;
-
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(DownloadError::Failed(format!(
-                    "yt-dlp exited with non-zero status: {stderr}"
-                )));
-            }
-
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let mut lines = stdout.lines();
+            let lines = run_yt_dlp(&[
+                "-f",
+                "bestaudio",
+                "--print",
+                "duration",
+                "--print",
+                "title",
+                "--print",
+                "after_move:filepath",
+                "-o",
+                &output_template,
+                &url,
+            ])
+            .await?;
+            let mut lines = lines.into_iter();
 
             // yt-dlp prints in execution order: info-extraction fields (duration, title)
             // before post-processing fields (after_move:filepath).
@@ -150,24 +160,23 @@ impl AudioDownloader for YtDlpDownloader {
 
             let video_title = lines
                 .next()
-                .ok_or_else(|| DownloadError::Failed("no title in yt-dlp output".into()))?
-                .to_string();
+                .ok_or_else(|| DownloadError::Failed("no title in yt-dlp output".into()))?;
 
-            let video_path = lines
+            let source_path = lines
                 .next()
-                .ok_or_else(|| DownloadError::Failed("no filepath in yt-dlp output".into()))?
-                .to_string();
+                .ok_or_else(|| DownloadError::Failed("no filepath in yt-dlp output".into()))?;
 
-            // Extract audio from video via ffmpeg (16kHz mono WAV for whisper)
-            let audio_path = {
-                let p = std::path::Path::new(&video_path);
-                p.with_extension("wav").to_string_lossy().into_owned()
-            };
+            // 16kHz mono WAV is whisper's own input format, so the source
+            // bitrate past that point is not worth paying for.
+            let audio_path = std::path::Path::new(&source_path)
+                .with_extension("wav")
+                .to_string_lossy()
+                .into_owned();
 
             let ffmpeg = tokio::process::Command::new("ffmpeg")
                 .args([
                     "-i",
-                    &video_path,
+                    &source_path,
                     "-vn",
                     "-acodec",
                     "pcm_s16le",
@@ -195,12 +204,51 @@ impl AudioDownloader for YtDlpDownloader {
                 )));
             }
 
-            Ok(DownloadResult {
+            Ok(AudioDownload {
                 audio_path,
-                video_path,
                 video_title,
                 video_duration,
             })
+        })
+    }
+
+    fn download_video(
+        &self,
+        url: String,
+        output_dir: String,
+    ) -> Pin<Box<dyn Future<Output = Result<String, DownloadError>> + Send>> {
+        Box::pin(async move {
+            if !is_valid_youtube_url(&url) {
+                return Err(DownloadError::InvalidUrl);
+            }
+
+            let output_template = format!("{output_dir}/%(id)s.video.%(ext)s");
+
+            // 480p is enough for Anki screenshots and keeps the file small;
+            // yt-dlp's -S prefers the format closest to it.
+            //
+            // Video-only (`bv*`), since the audio is already down and only
+            // frames are wanted here. That also sidesteps the merge that forced
+            // an mp4 container before: ffmpeg's webm muxer rejects a
+            // stream-copied AV1 track partway through. With one format there is
+            // no merge, so the source container is kept as it is.
+            let lines = run_yt_dlp(&[
+                "-S",
+                "res:480",
+                "-f",
+                "bv*/b",
+                "--print",
+                "after_move:filepath",
+                "-o",
+                &output_template,
+                &url,
+            ])
+            .await?;
+
+            lines
+                .into_iter()
+                .next()
+                .ok_or_else(|| DownloadError::Failed("no filepath in yt-dlp output".into()))
         })
     }
 }
@@ -298,18 +346,22 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires yt-dlp installed"]
-    async fn yt_dlp_downloads_audio() {
+    async fn yt_dlp_downloads_audio_then_video() {
         let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().to_str().unwrap().to_string();
         let downloader = YtDlpDownloader;
-        let result = downloader
-            .download(
-                // Short public domain video
-                "https://www.youtube.com/watch?v=jNQXAC9IVRw".into(),
-                dir.path().to_str().unwrap().into(),
-            )
-            .await;
-        let result = result.unwrap();
-        assert!(!result.video_title.is_empty());
-        assert!(std::path::Path::new(&result.audio_path).exists());
+        // Short public domain video
+        let url = "https://www.youtube.com/watch?v=jNQXAC9IVRw".to_string();
+
+        let audio = downloader
+            .download_audio(url.clone(), out.clone())
+            .await
+            .unwrap();
+        assert!(!audio.video_title.is_empty());
+        assert!(std::path::Path::new(&audio.audio_path).exists());
+
+        let video_path = downloader.download_video(url, out).await.unwrap();
+        assert!(std::path::Path::new(&video_path).exists());
+        assert_ne!(video_path, audio.audio_path);
     }
 }

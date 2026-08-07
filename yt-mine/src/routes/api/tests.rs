@@ -9,7 +9,7 @@ use jp_core::tokenize::{MockTokenizer, Token};
 use crate::app::{AppState, build_router};
 use crate::db;
 use crate::models::{JobStatus, TranscriptSegment};
-use crate::services::download::MockAudioDownloader;
+use crate::services::download::MockMediaDownloader;
 use crate::services::export::MockAnkiExporter;
 use crate::services::media::{MockMediaExtractor, media_filenames};
 use crate::services::transcribe::MockTranscriber;
@@ -39,7 +39,7 @@ async fn test_app() -> (axum_test::TestServer, sqlx::SqlitePool) {
     let pool = db::create_pool("sqlite::memory:").await.unwrap();
     let state = AppState {
         db: pool.clone(),
-        downloader: Arc::new(MockAudioDownloader::new()),
+        downloader: Arc::new(MockMediaDownloader::new()),
         transcriber: Arc::new(MockTranscriber::new()),
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(MockMediaExtractor::new()),
@@ -89,17 +89,19 @@ async fn seed_job(pool: &sqlx::SqlitePool, video_id: &str) -> i64 {
 
 #[tokio::test]
 async fn submit_job_creates_and_returns_video_id() {
-    let mut downloader = MockAudioDownloader::new();
-    downloader.expect_download().returning(|_, _| {
+    let mut downloader = MockMediaDownloader::new();
+    downloader.expect_download_audio().returning(|_, _| {
         Box::pin(async {
-            Ok(crate::services::download::DownloadResult {
+            Ok(crate::services::download::AudioDownload {
                 audio_path: "/tmp/audio.wav".into(),
-                video_path: "/tmp/video.mp4".into(),
                 video_title: "Test".into(),
                 video_duration: Some(60.0),
             })
         })
     });
+    downloader
+        .expect_download_video()
+        .returning(|_, _| Box::pin(async { Ok("/tmp/video.mp4".to_string()) }));
 
     let mut transcriber = MockTranscriber::new();
     transcriber
@@ -284,7 +286,7 @@ async fn define_returns_the_popups_shape() {
     let pool = db::create_pool("sqlite::memory:").await.unwrap();
     let state = AppState {
         db: pool.clone(),
-        downloader: Arc::new(MockAudioDownloader::new()),
+        downloader: Arc::new(MockMediaDownloader::new()),
         transcriber: Arc::new(MockTranscriber::new()),
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(MockMediaExtractor::new()),
@@ -341,7 +343,7 @@ async fn export_returns_count_and_ids() {
     let pool = db::create_pool("sqlite::memory:").await.unwrap();
     let state = AppState {
         db: pool.clone(),
-        downloader: Arc::new(MockAudioDownloader::new()),
+        downloader: Arc::new(MockMediaDownloader::new()),
         transcriber: Arc::new(MockTranscriber::new()),
         exporter: Arc::new(exporter),
         media_extractor: Arc::new(media_extractor),
@@ -370,16 +372,12 @@ async fn export_returns_count_and_ids() {
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
         .await
         .unwrap();
-    db::update_job_download(
-        &pool,
-        job_id,
-        "/tmp/audio.wav",
-        "Test",
-        "/tmp/video.mp4",
-        Some(60.0),
-    )
-    .await
-    .unwrap();
+    db::update_job_audio(&pool, job_id, "/tmp/audio.wav", "Test", Some(60.0))
+        .await
+        .unwrap();
+    db::update_job_video(&pool, job_id, "/tmp/video.mp4")
+        .await
+        .unwrap();
     db::insert_sentences(
         &pool,
         job_id,
@@ -435,7 +433,7 @@ async fn test_app_with_media_dir(
     let pool = db::create_pool("sqlite::memory:").await.unwrap();
     let state = AppState {
         db: pool.clone(),
-        downloader: Arc::new(MockAudioDownloader::new()),
+        downloader: Arc::new(MockMediaDownloader::new()),
         transcriber: Arc::new(MockTranscriber::new()),
         exporter: Arc::new(MockAnkiExporter::new()),
         media_extractor: Arc::new(media_extractor),
@@ -500,16 +498,12 @@ async fn sentence_audio_extracts_and_returns_mp3() {
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
         .await
         .unwrap();
-    db::update_job_download(
-        &pool,
-        job_id,
-        "/tmp/audio.wav",
-        "Test",
-        "/tmp/video.mp4",
-        Some(60.0),
-    )
-    .await
-    .unwrap();
+    db::update_job_audio(&pool, job_id, "/tmp/audio.wav", "Test", Some(60.0))
+        .await
+        .unwrap();
+    db::update_job_video(&pool, job_id, "/tmp/video.mp4")
+        .await
+        .unwrap();
     db::insert_sentences(
         &pool,
         job_id,
@@ -556,16 +550,12 @@ async fn sentence_audio_serves_cached_clip() {
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
         .await
         .unwrap();
-    db::update_job_download(
-        &pool,
-        job_id,
-        "/tmp/audio.wav",
-        "Test",
-        "/tmp/video.mp4",
-        Some(60.0),
-    )
-    .await
-    .unwrap();
+    db::update_job_audio(&pool, job_id, "/tmp/audio.wav", "Test", Some(60.0))
+        .await
+        .unwrap();
+    db::update_job_video(&pool, job_id, "/tmp/video.mp4")
+        .await
+        .unwrap();
     db::insert_sentences(
         &pool,
         job_id,

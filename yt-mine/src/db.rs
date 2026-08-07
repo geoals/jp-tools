@@ -164,24 +164,37 @@ pub async fn update_job_status(
     Ok(())
 }
 
-pub async fn update_job_download(
+pub async fn update_job_audio(
     pool: &SqlitePool,
     id: i64,
     audio_path: &str,
     video_title: &str,
-    video_path: &str,
     video_duration: Option<f64>,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "UPDATE mining_jobs SET audio_path = ?, video_title = ?, video_path = ?, video_duration = ? WHERE id = ?",
+        "UPDATE mining_jobs SET audio_path = ?, video_title = ?, video_duration = ? WHERE id = ?",
     )
     .bind(audio_path)
     .bind(video_title)
-    .bind(video_path)
     .bind(video_duration)
     .bind(id)
     .execute(pool)
     .await?;
+    Ok(())
+}
+
+/// Set separately from the audio: the video lands after it, during or after
+/// transcription.
+pub async fn update_job_video(
+    pool: &SqlitePool,
+    id: i64,
+    video_path: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE mining_jobs SET video_path = ? WHERE id = ?")
+        .bind(video_path)
+        .bind(id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
@@ -515,7 +528,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_job_download_sets_audio_path_and_title() {
+    async fn update_job_audio_sets_audio_path_and_title() {
         let pool = test_pool().await;
         let id = create_job(
             &pool,
@@ -525,16 +538,10 @@ mod tests {
         .await
         .unwrap();
 
-        update_job_download(
-            &pool,
-            id,
-            "/tmp/audio.wav",
-            "Test Video",
-            "/tmp/video.mp4",
-            Some(120.5),
-        )
-        .await
-        .unwrap();
+        update_job_audio(&pool, id, "/tmp/audio.wav", "Test Video", Some(120.5))
+            .await
+            .unwrap();
+        update_job_video(&pool, id, "/tmp/video.mp4").await.unwrap();
         let job = get_job(&pool, id).await.unwrap().unwrap();
         assert_eq!(job.audio_path.as_deref(), Some("/tmp/audio.wav"));
         assert_eq!(job.video_title.as_deref(), Some("Test Video"));

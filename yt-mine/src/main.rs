@@ -8,7 +8,7 @@ use jp_core::tokenize::Tokenizer;
 use yt_mine::app::{AppState, build_router};
 use yt_mine::config::Config;
 use yt_mine::db;
-use yt_mine::services::download::{AudioDownloader, YtDlpDownloader};
+use yt_mine::services::download::{MediaDownloader, YtDlpDownloader};
 use yt_mine::services::export::{AnkiConnectExporter, AnkiExporter};
 use yt_mine::services::fake::{
     FakeAnkiExporter, FakeDownloader, FakeLlmDefiner, FakeMediaExtractor, FakeTokenizer,
@@ -55,7 +55,7 @@ async fn main() {
     info!(path = %config.knowledge_db_path, "knowledge database ready");
 
     let (downloader, transcriber, exporter, media_extractor, tokenizer, highlighter): (
-        Arc<dyn AudioDownloader>,
+        Arc<dyn MediaDownloader>,
         Arc<dyn Transcriber>,
         Arc<dyn AnkiExporter>,
         Arc<dyn MediaExtractor>,

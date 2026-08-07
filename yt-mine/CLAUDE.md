@@ -21,6 +21,24 @@ This is not the auto-caption mistake in another form. That took line breaks
 from a transcript that had none to give; this takes them from punctuation the
 model actually emitted.
 
+**A leading `名前 ` is dropped as a hallucinated subtitle speaker label**
+(`strip_speaker_label`). Whisper learnt Japanese partly from subtitles written
+`名前 セリフ` and writes the label itself on a low-context window; conditioning on
+the previous text then carries it forward, so one hallucination becomes a run of
+hundreds — one podcast gave 234 lines opening `ヤンヤン `, plus 48 `樋口 ` and 3
+`深井 `, none of them spoken. The ASCII space is what makes this safe to strip:
+whisper's Japanese output has none of its own.
+
+Turning `condition_on_previous_text` off is not the fix — measured over the same
+150s, it *creates* the label (0 occurrences on, 10 off) and drops punctuation
+from 6.2% to 0.7%, because faster-whisper resets the initial prompt with it.
+Conditioning propagates the label; it does not start it.
+
+**The audio is downloaded first, on its own, and the video follows in
+parallel.** Transcription is the long step and only needs the audio, so fetching
+the merged video ahead of it left the GPU idle for the whole download. The video
+is video-only (`bv*`) at 480p and is only wanted once a card is mined.
+
 **Whisper transcribes the whole video from 0:00, and that is deliberate.** It
 was briefly replaced by YouTube's own auto-captions, which arrive for the whole
 video in about a second — but the ASR drops 。 for stretches at a time, so its
@@ -39,7 +57,7 @@ line as soon as transcription reaches it.
   headword list. A transcript and a hooked VN line have to segment the same
   way, or a word mined here lands on a ledger key `#read` never produces. It
   also means `analyze` gives each token its ledger status for free
-- **Traits for external tools** — `AudioDownloader`, `Transcriber`, `AnkiExporter`, `MediaExtractor`, `Tokenizer` (in jp-core), `LlmDefiner` enable mocking via `mockall`
+- **Traits for external tools** — `MediaDownloader`, `Transcriber`, `AnkiExporter`, `MediaExtractor`, `Tokenizer` (in jp-core), `LlmDefiner` enable mocking via `mockall`
 - **Subprocesses over FFI** — clean boundary for yt-dlp, ffmpeg
 - **Remote whisper-service** — transcription offloaded to separate FastAPI container (NDJSON streaming)
 - **Preact + htm + signals from CDN** — no build step, ES module imports from esm.sh with pinned versions
