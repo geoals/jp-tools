@@ -79,6 +79,10 @@
   background: none;
   border: none;
   border-left: 1px solid var(--border);
+  /* The group is one rounded shape, so a segment is square and the container's
+     overflow is what rounds the two ends. Without this the base button radius
+     leaves the selected segment a floating pill inside the border. */
+  border-radius: 0;
   color: var(--text-muted);
   font: inherit;
   font-size: 0.85rem;
