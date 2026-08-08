@@ -59,6 +59,7 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/", get(spa_shell))
         .route("/api/jobs", post(api::submit_job))
+        .route("/api/videos", get(api::list_videos))
         .route("/api/{video_id}", get(api::get_job))
         .route("/api/{video_id}/status", get(api::poll_status))
         // The popup's own endpoints. Not nested under a video: what a word
@@ -66,6 +67,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/define", get(api::define))
         .route("/api/expand", get(api::expand))
         .route("/api/judge", post(api::judge))
+        .route("/api/judge/many", post(api::judge_many))
         .route("/api/mined", get(api::mined))
         .route("/api/mined/browse", post(api::browse))
         .route("/api/export", post(api::export_sentences))

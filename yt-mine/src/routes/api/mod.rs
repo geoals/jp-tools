@@ -114,6 +114,29 @@ pub struct JudgeRequest {
 }
 
 #[derive(Deserialize)]
+pub struct JudgeManyRequest {
+    /// Ledger keys, never surfaces — the row's button sends the pairs its
+    /// tokens already carry.
+    pub words: Vec<JudgeWord>,
+    pub status: String,
+}
+
+#[derive(Deserialize)]
+pub struct JudgeWord {
+    pub headword: String,
+    pub reading: String,
+}
+
+#[derive(Serialize)]
+pub struct RecentVideoJson {
+    video_id: String,
+    video_title: Option<String>,
+    status: String,
+    created_at: String,
+    sentence_count: i64,
+}
+
+#[derive(Deserialize)]
 pub struct ExportRequest {
     job_id: i64,
     sentences: Vec<ExportSentenceRequest>,
@@ -368,20 +391,61 @@ pub async fn judge(
     State(state): State<AppState>,
     Json(req): Json<JudgeRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let status = Status::parse(&req.status);
-    if !matches!(status, Status::Known | Status::Unknown) {
-        return Err(AppError::BadRequest(format!(
-            "not a judgement: {}",
-            req.status
-        )));
-    }
+    let status = judgement(&req.status)?;
     let term = Term::new(req.headword, &req.reading);
-    let ts = std::time::SystemTime::now()
+    vocabulary::set_status(&state.knowledge, &term, status, now_secs()).await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+/// `POST /api/judge/many` — the same write, for every word in a line at once.
+///
+/// A transcript line is read whole, and most of its words are already known;
+/// the ones worth a card are the two that are not. Judging them one popup at a
+/// time is the work this exists to skip.
+pub async fn judge_many(
+    State(state): State<AppState>,
+    Json(req): Json<JudgeManyRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let status = judgement(&req.status)?;
+    let ts = now_secs();
+    for word in req.words {
+        let term = Term::new(word.headword, &word.reading);
+        vocabulary::set_status(&state.knowledge, &term, status, ts).await?;
+    }
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+/// `new` and `seen` are what reading writes; only these two are set by hand.
+fn judgement(status: &str) -> Result<Status, AppError> {
+    match Status::parse(status) {
+        s @ (Status::Known | Status::Unknown) => Ok(s),
+        _ => Err(AppError::BadRequest(format!("not a judgement: {status}"))),
+    }
+}
+
+fn now_secs() -> f64 {
+    std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0);
-    vocabulary::set_status(&state.knowledge, &term, status, ts).await?;
-    Ok(Json(serde_json::json!({ "ok": true })))
+        .unwrap_or(0.0)
+}
+
+/// `GET /api/videos` — what has been processed already, newest first.
+pub async fn list_videos(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<RecentVideoJson>>, AppError> {
+    let videos = db::list_recent_videos(&state.db, 50)
+        .await?
+        .into_iter()
+        .map(|v| RecentVideoJson {
+            video_id: v.video_id,
+            video_title: v.video_title,
+            status: v.status,
+            created_at: v.created_at,
+            sentence_count: v.sentence_count,
+        })
+        .collect();
+    Ok(Json(videos))
 }
 
 pub async fn export_sentences(

@@ -46,6 +46,12 @@ line breaks weld five sentences into one, and a sentence card is only as good
 as its sentence. Nothing derived from an auto-caption track can be trusted to
 say where a line starts and stops. The transcript is whisper's alone.
 
+**The home page lists what has already been processed** (`/api/videos`, one row
+per video rather than per job, since a retried video leaves several). A
+transcript is worth coming back to — the words skipped the first time through
+are still in it — and the only way back to one used to be the original YouTube
+URL.
+
 A pasted link still carries its timestamp: YouTube's "Copy link at current
 time" writes `t=`, `start_seconds_in` reads it, and the page scrolls to that
 line as soon as transcription reaches it.
@@ -83,7 +89,11 @@ surface:
   and no export button. A video is read a sentence at a time and the word being
   looked at is the word the card is about, so there was never a batch to
   assemble. What gets mined is what the popup is *open on*, so a compound
-  picked out of the scan is the card's word rather than the token clicked.
+  picked out of the scan is the card's word rather than the token clicked. It
+  spins while the mine is out — the export cuts an audio clip and a screenshot
+  first, which is seconds — and it is gone once the word is a card: the badge
+  and the button are one state, and mining a duplicate is what Anki refuses
+  anyway.
 - **✓ and ✗ are the only judging.** No side mouse buttons: the sentence list is
   an ordinary page, not a layer over a game.
 - **The popup is placed in document coordinates**, appended to `<body>` outside
@@ -99,11 +109,30 @@ sentence and hand back the same reference, which makes Preact skip the subtree
 — including when a signal the row reads has changed. A word judged in the popup
 kept its old tint and the open token stayed outlined after the popup closed.
 
+## Filtering the list
+
+The toolbar above the list picks which lines are drawn: all of them, the ones
+holding a word not marked known, or i+1 — exactly one such word. A 414-line
+video came out 83 and 64. `ledger.js` is what both the filters and the row's
+✓ ask, so "not known" means the same thing in each: `new`, `seen` and
+`unknown` alike, since one was never judged and one was refused but both are
+words this page exists to do something about.
+
+**A filter is a view, decided once per line.** `visible()` keeps the set of ids
+it admitted and only tests lines it has not seen, or marking the last unknown
+word in a line known would delete that line from under the hand that judged it
+— the same rule as `#read`'s `◌ marked`. The counts in the toolbar *are* live:
+they are a label, not the view.
+
+**✓ on the row marks every not-known word in the line known**, through
+`/api/judge/many`. Most of a transcript line is already known and the two words
+that are not are the reason to stop on it; the button's number is how many
+that is.
+
 ## Not built
 
-Smart filtering — frequency thresholds, i+1 sentence selection, dimming
-sentences whose words are all known. The ledger is read now, so the data is
-there; nothing consumes it beyond the tints.
+Frequency thresholds — a filter that asks how common the unknown word is, not
+just that there is one.
 
 ## Tokenization & Dictionary
 

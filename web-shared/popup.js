@@ -47,12 +47,16 @@ export function createPopup(opts) {
   // Hidden until a card for the word is known to exist. Held so a mine can
   // raise it on a popup already on screen.
   let minedBadge = null;
+  // ＋. Held for the same reason as the badge, and because the two are one
+  // state: the badge appearing is what removes the button.
+  let addButton = null;
 
   function close() {
     popupEl.hidden = true;
     anchor = null;
     target = null;
     minedBadge = null;
+    addButton = null;
     stepSource = null;
     onLayout();
   }
@@ -111,13 +115,19 @@ export function createPopup(opts) {
     }
   }
 
-  /** Raise the open popup's "mined" badge, and point it at the card. */
+  /** Raise the open popup's "mined" badge, and point it at the card.
+   *
+   * ＋ goes with it. Mining a word that is already a card is the duplicate
+   * Anki would refuse anyway, so the badge and the button are one state: what
+   * the head says about the card is either "make one" or "here it is". */
   function markMined(noteId) {
     if (!minedBadge || !noteId) return;
     minedBadge.hidden = false;
     minedBadge.classList.add("to-card");
     minedBadge.title = "Open this card in Anki";
     minedBadge.onclick = () => api.browse(noteId);
+    if (addButton) addButton.hidden = true;
+    onLayout();
   }
 
   function render(data, matches) {
@@ -282,7 +292,21 @@ export function createPopup(opts) {
     }
     const add = el("button", "", "＋");
     add.title = "Mine";
-    add.addEventListener("click", async () => markMined(await mine(on)));
+    // A mine cuts an audio clip and a screenshot before Anki is asked, which
+    // is seconds — long enough that a button doing nothing reads as a button
+    // that missed the click. The spinner is what says it was heard.
+    add.addEventListener("click", async () => {
+      if (add.disabled) return;
+      add.disabled = true;
+      add.replaceChildren(el("span", "spin"));
+      try {
+        markMined(await mine(on));
+      } finally {
+        add.disabled = false;
+        add.textContent = "＋";
+      }
+    });
+    addButton = add;
     out.append(add);
     return out;
   }

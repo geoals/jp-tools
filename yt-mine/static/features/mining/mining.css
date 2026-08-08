@@ -52,6 +52,100 @@
   color: var(--danger-text);
 }
 
+/* --- Toolbar --- */
+
+/* One group of filters now. It is a row so sorting and the next filter have
+   somewhere to go without moving anything that is already here. */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0.9rem 0 0.6rem;
+}
+
+.segmented {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.segmented button {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35em;
+  padding: 0.25rem 0.7rem;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.segmented button:first-child {
+  border-left: none;
+}
+
+.segmented button:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.segmented button.on {
+  background: var(--accent-dim);
+  color: var(--text);
+}
+
+.segmented .count {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.65;
+}
+
+/* --- Processed videos --- */
+
+.history-heading {
+  margin-top: 2rem;
+}
+
+.video-history {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.video-history > li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.video-history a {
+  color: var(--text);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.video-history a:hover {
+  color: var(--accent);
+}
+
+.video-history .meta {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
 /* --- Sentence list --- */
 
 .sentence-list {
@@ -118,6 +212,40 @@ a.timestamp:hover {
   opacity: 0.5;
   pointer-events: none;
   animation: spin 0.6s linear infinite;
+}
+
+/* Mark every word in the line known. The number is how many that is, which is
+   also what makes the line worth stopping on — it stays quiet until the row is
+   under the pointer. */
+.know-btn {
+  flex-shrink: 0;
+  align-self: center;
+  display: flex;
+  align-items: baseline;
+  gap: 0.25em;
+  padding: 0.1rem 0.4rem;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  opacity: 0.35;
+  transition:
+    opacity 0.12s,
+    color 0.12s;
+}
+
+.sentence-list > li:hover .know-btn {
+  opacity: 1;
+}
+
+.know-btn:hover {
+  border-color: var(--success-border);
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 
 .sentence-tokens {

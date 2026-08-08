@@ -251,6 +251,45 @@ pub async fn update_job_progress(
     Ok(())
 }
 
+/// The videos already processed, newest first — one row per video rather than
+/// one per job, since re-submitting a failed video leaves several.
+pub async fn list_recent_videos(
+    pool: &SqlitePool,
+    limit: i64,
+) -> Result<Vec<RecentVideo>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT j.video_id, j.video_title, j.status, j.created_at, \
+                (SELECT COUNT(*) FROM mining_sentences s WHERE s.job_id = j.id) AS sentence_count \
+         FROM mining_jobs j \
+         WHERE j.video_id IS NOT NULL \
+           AND j.id = (SELECT MAX(id) FROM mining_jobs o WHERE o.video_id = j.video_id) \
+         ORDER BY j.id DESC \
+         LIMIT ?",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| RecentVideo {
+            video_id: r.get("video_id"),
+            video_title: r.get("video_title"),
+            status: r.get("status"),
+            created_at: r.get("created_at"),
+            sentence_count: r.get("sentence_count"),
+        })
+        .collect())
+}
+
+pub struct RecentVideo {
+    pub video_id: String,
+    pub video_title: Option<String>,
+    pub status: String,
+    pub created_at: String,
+    pub sentence_count: i64,
+}
+
 pub async fn count_sentences_for_job(pool: &SqlitePool, job_id: i64) -> Result<i64, sqlx::Error> {
     let row = sqlx::query("SELECT COUNT(*) as cnt FROM mining_sentences WHERE job_id = ?")
         .bind(job_id)

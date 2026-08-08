@@ -1,6 +1,8 @@
 import { html } from 'htm/preact';
 import { exportedIds, audioState, judged } from './state.js';
 import { toggle, wheel } from './popup.js';
+import { judgeWords } from '../../api.js';
+import { key, notKnown, statusOf } from './ledger.js';
 
 export function SentenceRow({ sentence, videoId, jobId }) {
   const exported = exportedIds.value;
@@ -24,11 +26,23 @@ export function SentenceRow({ sentence, videoId, jobId }) {
         key: tok.base_form,
         reading: tok.reading,
         surface: tok.surface,
-        status: marks.get(`${tok.base_form} ${tok.reading}`) ?? tok.status,
+        status: statusOf(tok, marks),
         start: tok.start,
       },
       { videoId, jobId, sentenceId: sentence.id, text: sentence.text },
     );
+  }
+
+  // Most of a line is already known, and the two words that are not are the
+  // reason to stop on it. This says "nothing here" in one hit instead of a
+  // popup per word — the same write ✓ makes, against the same rows.
+  const pending = notKnown(sentence, marks);
+  async function markLineKnown() {
+    const words = pending.map((t) => ({ headword: t.base_form, reading: t.reading }));
+    if (!words.length || !(await judgeWords(words, 'known'))) return;
+    const next = new Map(judged.value);
+    for (const tok of pending) next.set(key(tok), 'known');
+    judged.value = next;
   }
 
   function handlePlay() {
@@ -58,7 +72,7 @@ export function SentenceRow({ sentence, videoId, jobId }) {
           // marked since the page loaded. `known` gets no tint at all — the
           // absence of a mark is what makes the marks readable, same as
           // read-stats' feed.
-          const status = marks.get(`${tok.base_form} ${tok.reading}`) ?? tok.status;
+          const status = statusOf(tok, marks);
           const cls = ['token content-word', status && status !== 'known' ? `mark-${status}` : '']
             .filter(Boolean)
             .join(' ');
@@ -71,6 +85,11 @@ export function SentenceRow({ sentence, videoId, jobId }) {
           `;
         })}
       </span>
+      ${pending.length > 0 && html`
+        <button class="know-btn" onClick=${markLineKnown} title="Mark every word in this line known">
+          <span>✓</span><span class="count">${pending.length}</span>
+        </button>
+      `}
     </li>
   `;
 }

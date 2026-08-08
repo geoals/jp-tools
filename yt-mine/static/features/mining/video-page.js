@@ -3,10 +3,15 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import { fetchJob, pollStatus } from '../../api.js';
 import { JobStatus } from './job-status.js';
 import { SentenceList } from './sentence-list.js';
+import { FilterBar } from './filter-bar.js';
+import { judged } from './state.js';
+import { matchesFilter } from './ledger.js';
 
 export function VideoPage({ videoId, at }) {
   const [job, setJob] = useState(null);
   const [error, setError] = useState(null);
+  const [filter, setFilter] = useState('all');
+  const kept = useRef({ filter: null, ids: new Set(), decided: new Set() });
   const pollRef = useRef(null);
   // The list arrives one fetch after the page does, and grows while whisper
   // runs, so landing on the line is a one-shot that waits for it to exist.
@@ -70,14 +75,36 @@ export function VideoPage({ videoId, at }) {
       progressPercent=${job.progress_percent}
       waitingFor=${at && !landed.current ? at : null}
     />
+    ${job.sentences?.length > 0 && html`
+      <${FilterBar} sentences=${job.sentences} filter=${filter} onFilter=${setFilter} />
+    `}
     <${SentenceList}
-      sentences=${job.sentences}
+      sentences=${visible(job.sentences, filter, kept)}
       videoId=${videoId}
       jobId=${job.job_id}
       isDone=${isDone}
       isTranscribing=${isTranscribing}
     />
   `;
+}
+
+// A filter is a view, and it is decided once per line rather than re-tested
+// every render: marking the last unknown word in a line known would otherwise
+// delete that line from under the hand that judged it. A line joins or leaves
+// the view when the filter is picked — nothing else moves it.
+function visible(sentences, filter, memo) {
+  if (!sentences) return sentences;
+  if (memo.current.filter !== filter) {
+    memo.current = { filter, ids: new Set(), decided: new Set() };
+  }
+  const { ids, decided } = memo.current;
+  const marks = judged.peek();
+  for (const s of sentences) {
+    if (decided.has(s.id)) continue;
+    decided.add(s.id);
+    if (matchesFilter(s, filter, marks)) ids.add(s.id);
+  }
+  return sentences.filter((s) => ids.has(s.id));
 }
 
 function lastStart(sentences) {

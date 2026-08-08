@@ -18,6 +18,11 @@ export async function submitUrl(url) {
   return res.json();
 }
 
+export async function fetchVideos() {
+  const res = await request(`${BASE}/videos`);
+  return res.json();
+}
+
 export async function fetchJob(videoId) {
   const res = await request(`${BASE}/${videoId}`);
   return res.json();
@@ -57,6 +62,16 @@ export async function judgeWord(headword, reading, status) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ headword, reading, status }),
+  });
+  return res.ok;
+}
+
+// `words` is [{ headword, reading }] — ledger keys, as the tokens carry them.
+export async function judgeWords(words, status) {
+  const res = await fetch(`${BASE}/judge/many`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ words, status }),
   });
   return res.ok;
 }

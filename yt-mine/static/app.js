@@ -2,6 +2,7 @@ import { render } from 'preact';
 import { html } from 'htm/preact';
 import { route, navigate } from './router.js';
 import { SubmitForm } from './features/mining/submit-form.js';
+import { VideoHistory } from './features/mining/video-history.js';
 import { VideoPage } from './features/mining/video-page.js';
 import { AudioPlayer } from './features/mining/audio-player.js';
 
@@ -10,7 +11,7 @@ function App() {
 
   return html`
     <h1><a href="/">yt-mine</a></h1>
-    ${page === 'home' && html`<${SubmitForm} />`}
+    ${page === 'home' && html`<${SubmitForm} /><${VideoHistory} />`}
     ${page === 'video' && html`<${VideoPage} videoId=${videoId} at=${at} />`}
     <${AudioPlayer} />
   `;
