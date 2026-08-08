@@ -12,50 +12,36 @@ export function ComprehensionPanel({ sentences, partial }) {
   const c = comprehension(sentences, judged.value);
   if (!c.words.total) return null;
 
-  const left = `${c.typesLeft} word${c.typesLeft === 1 ? '' : 's'} left`;
-  const leftDetail = c.typesRefused
-    ? `${c.typesRefused} of them judged not known`
-    : 'distinct, none judged not known yet';
-
   return html`
     <div class="comprehension${partial ? ' partial' : ''}">
       <${Tile}
         label="Words"
-        r=${c.words}
-        title="Share of content-word occurrences already known"
+        s=${c.words}
+        title="Content-word occurrences marked known, of all of them — how much of the talking is covered"
       />
       <${Tile}
         label="Distinct"
-        r=${c.types}
-        title="Share of distinct words already known — the learning left, not the reading ease"
+        s=${c.types}
+        title="Distinct words marked known, of all of them — the learning, not the reading ease"
       />
       <${Tile}
         label="Full lines"
-        r=${c.lines}
-        title="Share of lines with no unknown word in them"
+        s=${c.lines}
+        title="Lines with every content word marked known"
       />
-      <div class="tile" title="Distinct words in this video not marked known">
-        <span class="tile-value">${left}</span>
-        <span class="tile-label">${leftDetail}</span>
-      </div>
+      <${Tile} label="Left" s=${null} left=${c.left} />
     </div>
   `;
 }
 
-function Tile({ label, r, title }) {
-  const value = r.exact
-    ? pct(r.floor)
-    : `${pct(r.floor)}–${pct(r.ceiling)}`;
-  const sub = r.exact ? `${label} · all judged` : `${label} · unjudged span`;
+function Tile({ label, s, left, title }) {
+  const value = s ? `${Math.round(s.pct * 100)}%` : String(left);
+  const sub = s ? `${label} · ${s.known} of ${s.total}` : 'Distinct, not known';
 
   return html`
-    <div class="tile" title=${title}>
+    <div class="tile" title=${title ?? 'Distinct words in this video not marked known'}>
       <span class="tile-value">${value}</span>
       <span class="tile-label">${sub}</span>
     </div>
   `;
-}
-
-function pct(x) {
-  return `${Math.round(x * 100)}%`;
 }

@@ -185,7 +185,10 @@ fn is_japanese(c: char) -> bool {
 fn into_sentences(mut segment: TranscriptSegment) -> Vec<TranscriptSegment> {
     segment.text = strip_speaker_label(&segment.text).to_string();
 
-    let sentences = split_sentences(&segment.text);
+    let sentences: Vec<String> = split_sentences(&segment.text)
+        .into_iter()
+        .flat_map(|s| split_long_clauses(&s))
+        .collect();
     if sentences.len() < 2 {
         return vec![segment];
     }
@@ -205,6 +208,56 @@ fn into_sentences(mut segment: TranscriptSegment) -> Vec<TranscriptSegment> {
         let end = segment.start + span * (seen as f64 / total as f64);
         out.push(TranscriptSegment { start, end, text });
     }
+    out
+}
+
+/// The length past which a line is cut at a 、 rather than left whole.
+///
+/// Above the p90 of every transcript measured (28–45 characters), so this only
+/// ever reaches the tail: five lines in 418 on the worst video, zero on two of
+/// four.
+const MAX_LINE_CHARS: usize = 80;
+
+/// Neither half may come out shorter than this, or the cut is not worth making.
+/// A six-character fragment is not a sentence card whatever the line it came
+/// from.
+const MIN_CLAUSE_CHARS: usize = 20;
+
+/// Cut a line too long to be a card at the 、 nearest its middle.
+///
+/// A clause is not a sentence, and that is the trade: spontaneous speech chains
+/// 、 for half a minute without ever reaching 。, so the alternative is a
+/// 152-character card that never gets reviewed. Cutting nearest the *middle*
+/// rather than at the first 、 is what keeps both halves substantial — and both
+/// halves are re-tested, so a very long run comes apart into several pieces
+/// instead of one long piece and one short one.
+///
+/// Only the tail reaches this. A line under [`MAX_LINE_CHARS`] is returned
+/// untouched, so ordinary output is exactly what whisper's own punctuation said.
+fn split_long_clauses(text: &str) -> Vec<String> {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= MAX_LINE_CHARS {
+        return vec![text.to_string()];
+    }
+
+    let middle = chars.len() / 2;
+    let cut = chars
+        .iter()
+        .enumerate()
+        // The 、 belongs to the half it closes, so the split is after it.
+        .filter(|(i, c)| {
+            **c == '、' && *i + 1 >= MIN_CLAUSE_CHARS && chars.len() - (*i + 1) >= MIN_CLAUSE_CHARS
+        })
+        .min_by_key(|(i, _)| i.abs_diff(middle))
+        .map(|(i, _)| i + 1);
+
+    let Some(cut) = cut else {
+        return vec![text.to_string()];
+    };
+
+    let (left, right) = chars.split_at(cut);
+    let mut out = split_long_clauses(&left.iter().collect::<String>());
+    out.extend(split_long_clauses(&right.iter().collect::<String>()));
     out
 }
 
@@ -239,6 +292,56 @@ mod tests {
         assert_eq!(out[1].end, 30.0);
         assert!((out[0].end - out[1].start).abs() < 1e-9);
         assert!(out[0].end > out[1].end - out[1].start);
+    }
+
+    // The 1:39 line of FHpanJS6cyY: one sentence by whisper's punctuation, 106
+    // characters of it, seven 、 and no 。 until the end.
+    const RUN_ON: &str = "今回の動画はタイアップとか案件っていうわけではないんですけど、これがベストっていうわけでもないし、まだね届いてないものもね、一応買ったものとして、ちょっとね、こんな感じで、こんな理由で買いましたっていうのを紹介していく形なので、ちょっとその点だけ了承いただけると嬉しいです。";
+
+    #[test]
+    fn a_line_too_long_to_be_a_card_is_cut_at_its_middle_comma() {
+        let out = split_long_clauses(RUN_ON);
+
+        assert!(out.len() > 1);
+        assert!(out.iter().all(|s| s.chars().count() <= MAX_LINE_CHARS));
+        assert!(out.iter().all(|s| s.chars().count() >= MIN_CLAUSE_CHARS));
+        // Every character survives, in order: a cut, never a rewrite.
+        assert_eq!(out.concat(), RUN_ON);
+        // The 、 closes the clause before it rather than opening the next.
+        assert!(out[0].ends_with('、'));
+    }
+
+    #[test]
+    fn a_cut_line_still_covers_its_segment() {
+        let out = into_sentences(TranscriptSegment {
+            start: 10.0,
+            end: 35.0,
+            text: RUN_ON.into(),
+        });
+
+        assert!(out.len() > 1);
+        assert_eq!(out[0].start, 10.0);
+        assert_eq!(out[out.len() - 1].end, 35.0);
+        for pair in out.windows(2) {
+            assert!((pair[0].end - pair[1].start).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn a_long_line_with_no_usable_comma_is_left_whole() {
+        // Nowhere to cut that leaves two clauses worth reviewing, so the line
+        // stays as whisper wrote it rather than being broken mid-phrase.
+        let unbroken = "あ".repeat(120);
+        assert_eq!(split_long_clauses(&unbroken), vec![unbroken.clone()]);
+
+        let edge = format!("{}、{}", "あ".repeat(95), "い".repeat(5));
+        assert_eq!(split_long_clauses(&edge), vec![edge.clone()]);
+    }
+
+    #[test]
+    fn an_ordinary_line_is_never_touched() {
+        let line = "でもね、それはちょっと違うと思うんですよ。";
+        assert_eq!(split_long_clauses(line), vec![line.to_string()]);
     }
 
     #[test]

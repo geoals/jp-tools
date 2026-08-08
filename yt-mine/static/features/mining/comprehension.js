@@ -1,25 +1,23 @@
 // How much of a transcript is already understood.
 //
-// Every figure is a **range**, and the range is the point. The ledger's `new`
-// and `seen` mean *never judged*, not *not known*, and a fresh transcript is
-// almost entirely `seen` — so a single number would report a video read
-// comfortably as 5% comprehensible. The floor counts only what is asserted
-// known; the ceiling grants every unjudged word. The truth is between them, and
-// the gap closes as the video is worked through.
+// Every figure counts a word as understood only when the ledger asserts it —
+// `known`, or mined. `new` and `seen` mean never judged, so the figures are a
+// floor: the true number is higher by however much of the unjudged mass is
+// already understood. `left` is the size of that mass, and is why it is
+// reported beside the percentages rather than derived from them.
+//
+// It was briefly a floor–ceiling range, granting every unjudged word on the
+// ceiling. The ceiling was 100% on every video measured — ✗ is rare, so
+// "unjudged" and "not known" are nowhere near the same size — and a range with
+// a constant end is a wider way of printing one number.
 
 import { key, statusOf } from './ledger.js';
 
-const KNOWN = 'known';
-const UNJUDGED = 'unjudged';
-const REFUSED = 'refused';
-
-function classify(status) {
-  if (status === 'known' || status === 'blacklisted') return KNOWN;
-  if (status === 'unknown') return REFUSED;
-  return UNJUDGED;
+function isKnown(status) {
+  return status === 'known' || status === 'blacklisted';
 }
 
-/** Comprehensibility of `sentences`, as ranges of counts.
+/** Comprehensibility of `sentences`, as shares of what is asserted known.
  *
  * Lines with no content word at all — an interjection, a stray 「はい」 — are
  * left out entirely rather than counted as fully understood, which would
@@ -28,52 +26,36 @@ export function comprehension(sentences, marks) {
   const types = new Map();
   let words = 0;
   let wordsKnown = 0;
-  let wordsUnjudged = 0;
   let lines = 0;
   let linesKnown = 0;
-  let linesNoRefused = 0;
 
   for (const s of sentences) {
     const content = s.tokens.filter((t) => t.is_content_word);
     if (!content.length) continue;
     lines++;
     let gaps = 0;
-    let refused = 0;
     for (const t of content) {
-      const cls = classify(statusOf(t, marks));
+      const known = isKnown(statusOf(t, marks));
       words++;
-      if (cls === KNOWN) wordsKnown++;
-      else {
-        gaps++;
-        if (cls === UNJUDGED) wordsUnjudged++;
-        else refused++;
-      }
-      types.set(key(t), cls);
+      if (known) wordsKnown++;
+      else gaps++;
+      types.set(key(t), known);
     }
     if (gaps === 0) linesKnown++;
-    if (refused === 0) linesNoRefused++;
   }
 
-  const typeValues = [...types.values()];
-  const typesKnown = typeValues.filter((c) => c === KNOWN).length;
-  const typesUnjudged = typeValues.filter((c) => c === UNJUDGED).length;
+  const typesKnown = [...types.values()].filter(Boolean).length;
 
   return {
-    words: range(wordsKnown, wordsKnown + wordsUnjudged, words),
-    types: range(typesKnown, typesKnown + typesUnjudged, types.size),
-    lines: range(linesKnown, linesNoRefused, lines),
+    words: share(wordsKnown, words),
+    types: share(typesKnown, types.size),
+    lines: share(linesKnown, lines),
     // What is left to do, not what is done: the count the percentages hide.
     // 6% unknown is forty words in one video and four hundred in another.
-    typesLeft: types.size - typesKnown,
-    typesRefused: typeValues.length - typesKnown - typesUnjudged,
+    left: types.size - typesKnown,
   };
 }
 
-function range(floor, ceiling, total) {
-  return {
-    total,
-    floor: total ? floor / total : 0,
-    ceiling: total ? ceiling / total : 0,
-    exact: floor === ceiling,
-  };
+function share(known, total) {
+  return { total, known, pct: total ? known / total : 0 };
 }
