@@ -378,7 +378,10 @@ impl SudachiTokenizer {
                 None => {
                     let mut forms: Vec<&str> = forms.to_vec();
                     forms.dedup();
-                    format!("Not in any dictionary: {}", forms.join(", "))
+                    format!(
+                        "Not in a dictionary that decides segmentation: {}",
+                        forms.join(", ")
+                    )
                 }
             };
             let kept = listed.is_some();
@@ -1204,11 +1207,20 @@ impl SudachiTokenizer {
         //
         // Uninflected only: a stem is not the word, and the normalised form is
         // the only thing that knows which word it is a stem of.
+        //
+        // A digit spelt out as its kanji numeral is not that: 2人乗り and
+        // 二人乗り are one word, and the kanji form is the one every dictionary
+        // and every listed word's identity already uses. Keeping the digit made
+        // the identity 2人乗り, which nothing lists, so the highlighter's
+        // wordhood gate dropped a perfectly ordinary word as a non-word.
         let (t, r) = sudachi();
         if *surface == *m.dictionary_form()
             && t != surface
-            && t.chars()
-                .any(|c| crate::text::kanji::is_kanji(c) && !surface.contains(c))
+            && t.chars().any(|c| {
+                crate::text::kanji::is_kanji(c)
+                    && !surface.contains(c)
+                    && !spells_out_a_digit(c, &surface)
+            })
         {
             return (
                 surface,
@@ -1339,6 +1351,19 @@ fn is_one_mora(reading: &str) -> bool {
         return false;
     };
     second.is_none_or(|c| matches!(c, 'ゃ' | 'ゅ' | 'ょ' | 'ャ' | 'ュ' | 'ョ'))
+}
+
+/// Is this kanji a numeral standing in for a digit the surface wrote in figures?
+///
+/// Sudachi normalises 2人乗り to 二人乗り, and that is the same spelling of the
+/// same word, not the archaic orthography its caller exists to keep off the
+/// page. Both digit forms count: a line may write either.
+fn spells_out_a_digit(c: char, surface: &str) -> bool {
+    const NUMERALS: &str = "〇零一二三四五六七八九十百千万億兆";
+    NUMERALS.contains(c)
+        && surface
+            .chars()
+            .any(|s| s.is_ascii_digit() || ('０'..='９').contains(&s))
 }
 
 /// Is this token a piece of a compound rather than the word standing alone?
