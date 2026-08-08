@@ -222,6 +222,9 @@ threshold means roughly the same thing under either.
 ## Working here
 
 - Commit straight to `master`.
+- **A word the reader reports as misparsed goes in `jp-core/PARSE-DEFECTS.md`**,
+  one entry saying what the pipeline does with it and why, and is worked
+  through later in a batch rather than fixed on the spot.
 - **Don't restart the stack or touch `~/.local/share/jp-tools` while a VN is
   being read** — nothing breaks, but it interrupts the session, and
   `scripts/dev-instance.sh` exists so read-stats can be worked on regardless.
