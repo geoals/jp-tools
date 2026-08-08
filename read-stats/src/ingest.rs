@@ -552,6 +552,7 @@ mod tests {
             proper_noun: proper,
             subsidiary: false,
             counter: false,
+            derived_class: None,
             inflected: false,
         }
     }

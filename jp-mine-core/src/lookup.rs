@@ -123,6 +123,7 @@ mod tests {
                 proper_noun: false,
                 subsidiary: false,
                 counter: false,
+                derived_class: None,
                 inflected: true,
             },
             Token {
@@ -134,6 +135,7 @@ mod tests {
                 proper_noun: false,
                 subsidiary: false,
                 counter: false,
+                derived_class: None,
                 inflected: false,
             },
         ];
@@ -153,6 +155,7 @@ mod tests {
                 proper_noun: false,
                 subsidiary: false,
                 counter: false,
+                derived_class: None,
                 inflected: false,
             },
             Token {
@@ -164,6 +167,7 @@ mod tests {
                 proper_noun: false,
                 subsidiary: false,
                 counter: false,
+                derived_class: None,
                 inflected: false,
             },
             Token {
@@ -175,6 +179,7 @@ mod tests {
                 proper_noun: false,
                 subsidiary: false,
                 counter: false,
+                derived_class: None,
                 inflected: false,
             },
         ];
@@ -196,6 +201,7 @@ mod tests {
                 proper_noun: false,
                 subsidiary: false,
                 counter: false,
+                derived_class: None,
                 inflected: false,
             },
             Token {
@@ -207,6 +213,7 @@ mod tests {
                 proper_noun: false,
                 subsidiary: false,
                 counter: false,
+                derived_class: None,
                 inflected: false,
             },
         ];
@@ -227,6 +234,7 @@ mod tests {
             proper_noun: false,
             subsidiary: false,
             counter: false,
+            derived_class: None,
             inflected: false,
         }];
         assert_eq!(bold_target_in_sentence(&tokens, "別の語"), None);
@@ -244,6 +252,7 @@ mod tests {
                 proper_noun: false,
                 subsidiary: false,
                 counter: false,
+                derived_class: None,
                 inflected: false,
             },
             Token {
@@ -255,6 +264,7 @@ mod tests {
                 proper_noun: false,
                 subsidiary: false,
                 counter: false,
+                derived_class: None,
                 inflected: false,
             },
             Token {
@@ -266,6 +276,7 @@ mod tests {
                 proper_noun: false,
                 subsidiary: false,
                 counter: false,
+                derived_class: None,
                 inflected: false,
             },
             Token {
@@ -277,6 +288,7 @@ mod tests {
                 proper_noun: false,
                 subsidiary: false,
                 counter: false,
+                derived_class: None,
                 inflected: false,
             },
         ];

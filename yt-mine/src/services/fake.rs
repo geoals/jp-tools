@@ -197,6 +197,7 @@ impl Tokenizer for FakeTokenizer {
                     proper_noun: false,
                     subsidiary: false,
                     counter: false,
+                    derived_class: None,
                     inflected: false,
                 }
             })

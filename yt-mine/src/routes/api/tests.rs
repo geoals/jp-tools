@@ -28,6 +28,7 @@ fn mock_tokenizer() -> MockTokenizer {
                 proper_noun: false,
                 subsidiary: false,
                 counter: false,
+                derived_class: None,
                 inflected: false,
             })
             .collect())

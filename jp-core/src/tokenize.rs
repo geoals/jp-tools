@@ -73,6 +73,14 @@ pub struct Token {
     /// Not 助数詞可能, which is a noun that can *also* count — 回, 名, 時間, 分,
     /// 年 are words in their own right and stay words.
     pub counter: bool,
+    /// For a 接尾辞, the word class it derives — Sudachi's second field, mapped
+    /// to a top-level class: げ is 接尾辞,形状詞的, so 得意げ is a 形状詞.
+    ///
+    /// A suffix is bound and has no class of its own, so a compound that ends
+    /// in one cannot take its class from its last part the way 動詞+動詞 does.
+    /// Without this, every joined 〜げ, 〜さ and 〜難い came out tagged 接尾辞 and
+    /// was dropped as grammar — joined correctly, then thrown away.
+    pub derived_class: Option<String>,
     /// Whether the surface is a *stem* rather than the word itself — 続い for
     /// 続く, 許せ for 許す, なれ for 慣れる.
     ///
@@ -755,8 +763,15 @@ impl SudachiTokenizer {
                 reading,
                 dictionary_form: term.clone(),
                 base_form: term,
-                pos: last.pos.clone(),
+                // Japanese compounds are right-headed, so the tail's class is
+                // the compound's — except where the tail is a bound suffix,
+                // which has none and names the class it makes instead.
+                pos: last
+                    .derived_class
+                    .clone()
+                    .unwrap_or_else(|| last.pos.clone()),
                 proper_noun: false,
+                derived_class: None,
                 subsidiary: false,
                 counter: false,
                 inflected: false,
@@ -1454,6 +1469,9 @@ impl SudachiTokenizer {
             reading,
             pos: m.part_of_speech()[0].clone(),
             proper_noun: subclass == "固有名詞",
+            derived_class: (m.part_of_speech()[0] == "接尾辞")
+                .then(|| derived_class(&subclass))
+                .flatten(),
             subsidiary,
             counter: m.part_of_speech().get(2).is_some_and(|c| c == "助数詞"),
             inflected: *m.surface() != *m.dictionary_form(),
@@ -1577,6 +1595,21 @@ impl Tokenizer for SudachiTokenizer {
 /// (noun, pronoun, verb, adjective, adjectival noun, adverb).
 ///
 /// 代名詞 is a top-level Sudachi tag, not a subtype of 名詞.
+/// The top-level word class a 接尾辞 derives, from Sudachi's second field.
+///
+/// 名詞的, 動詞的, 形容詞的 and 形状詞的 are the four it distinguishes; anything
+/// else (助数詞, and the bare 接尾辞 rows) derives nothing.
+fn derived_class(subclass: &str) -> Option<String> {
+    let class = match subclass {
+        "名詞的" => "名詞",
+        "動詞的" => "動詞",
+        "形容詞的" => "形容詞",
+        "形状詞的" => "形状詞",
+        _ => return None,
+    };
+    Some(class.to_string())
+}
+
 pub fn is_content_word(pos: &str) -> bool {
     matches!(
         pos,
@@ -1700,6 +1733,7 @@ mod tests {
             reading: reading.to_string(),
             pos: pos.to_string(),
             proper_noun: false,
+            derived_class: None,
             subsidiary: false,
             counter: false,
             inflected: false,
@@ -2215,6 +2249,29 @@ mod tests {
         assert_eq!(token.reading, "しゃくりあげる");
         assert_eq!(token.surface, "しゃくりあげ", "the text as written");
         assert_eq!(token.pos, "動詞");
+    }
+
+    /// A compound whose tail is a suffix takes the class the suffix *derives*.
+    /// It cannot take the tail's own class the way 動詞+動詞 does: a suffix is
+    /// bound and 接尾辞 is not a content word, so 得意げ joined correctly and was
+    /// then dropped from the feed as grammar.
+    #[test]
+    #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+    fn a_suffix_compound_takes_the_class_the_suffix_derives() {
+        let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
+            .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+        let tokenizer = SudachiTokenizer::new(Path::new(&dict_path), HashSet::from(["x".into()]))
+            .unwrap()
+            .with_standard(&[("得意げ".to_string(), "とくいげ".to_string())]);
+
+        let token = tokenizer
+            .tokenize("得意げに笑った")
+            .unwrap()
+            .into_iter()
+            .find(|t| t.base_form == "得意げ")
+            .expect("joined");
+        assert_eq!(token.pos, "形状詞");
+        assert!(counts_as_word(&token, &MasterWords::new(HashSet::new(), &[])));
     }
 
     /// A reading naming two headwords is not arbitrated — it is dropped, and
