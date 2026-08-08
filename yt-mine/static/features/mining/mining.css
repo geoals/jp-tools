@@ -109,6 +109,44 @@
   opacity: 0.65;
 }
 
+/* --- Comprehensibility --- */
+
+.comprehension {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 1px;
+  margin-top: 1rem;
+  /* The gap is the border: one background behind the grid shows through the
+     1px gutters, so the tiles are divided without four separate rules. */
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.comprehension.partial {
+  opacity: 0.75;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.5rem 0.8rem;
+  background: var(--bg-surface);
+}
+
+.tile-value {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.tile-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
 /* --- Processed videos --- */
 
 .history-heading {

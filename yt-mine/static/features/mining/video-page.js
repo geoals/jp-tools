@@ -4,6 +4,7 @@ import { fetchJob, pollStatus } from '../../api.js';
 import { JobStatus } from './job-status.js';
 import { SentenceList } from './sentence-list.js';
 import { FilterBar } from './filter-bar.js';
+import { ComprehensionPanel } from './comprehension-panel.js';
 import { judged } from './state.js';
 import { matchesFilter } from './ledger.js';
 
@@ -76,6 +77,7 @@ export function VideoPage({ videoId, at }) {
       waitingFor=${at && !landed.current ? at : null}
     />
     ${job.sentences?.length > 0 && html`
+      <${ComprehensionPanel} sentences=${job.sentences} partial=${!job.is_terminal} />
       <${FilterBar} sentences=${job.sentences} filter=${filter} onFilter=${setFilter} />
     `}
     <${SentenceList}
