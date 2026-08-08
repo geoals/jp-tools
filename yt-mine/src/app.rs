@@ -1,10 +1,13 @@
 use std::sync::Arc;
 
 use axum::Router;
+use axum::http::HeaderValue;
+use axum::http::header::CACHE_CONTROL;
 use axum::response::Html;
 use axum::routing::{get, post};
 use sqlx::SqlitePool;
 use tower_http::services::ServeDir;
+use tower_http::set_header::SetResponseHeaderLayer;
 
 use jp_core::highlight::Highlighter;
 use jp_core::knowledge::Knowledge;
@@ -78,5 +81,14 @@ pub fn build_router(state: AppState) -> Router {
         .route("/{video_id}", get(spa_shell))
         .nest_service("/static", ServeDir::new(STATIC_DIR))
         .nest_service("/shared", ServeDir::new(SHARED_DIR))
+        // The frontend has no build step, so nothing in a URL changes when a
+        // module does. `no-cache` is revalidation, not "don't cache": the
+        // browser keeps the bytes and `ServeDir` answers 304 off
+        // `if-modified-since` until the file actually changes. read-stats
+        // serves `/shared` under the same rule.
+        .layer(SetResponseHeaderLayer::if_not_present(
+            CACHE_CONTROL,
+            HeaderValue::from_static("no-cache"),
+        ))
         .with_state(state)
 }
