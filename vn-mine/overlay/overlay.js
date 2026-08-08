@@ -101,6 +101,11 @@ function draw(incoming) {
   const text = line.text;
   const frag = document.createDocumentFragment();
   let at = 0;
+  // The gaps on this line: unjudged-and-barely-met, or judged unknown. `seen`
+  // is not one — it is unjudged but met often, which is the bulk of any line,
+  // so counting it would mark nothing.
+  let gaps = 0;
+  let commonGaps = 0;
 
   // Offsets are UTF-16 code units, which is exactly what a JS string indexes
   // in, so they slice directly.
@@ -110,11 +115,10 @@ function draw(incoming) {
 
     const word = document.createElement("span");
     // `known` gets no class, so it draws as plain text.
-    const common =
-      commonMaxRank &&
-      span.freq_rank &&
-      span.freq_rank <= commonMaxRank &&
-      (span.status === "new" || span.status === "unknown");
+    const gap = span.status === "new" || span.status === "unknown";
+    const common = gap && commonMaxRank && span.freq_rank && span.freq_rank <= commonMaxRank;
+    if (gap) gaps += 1;
+    if (common) commonGaps += 1;
     word.className = ["w", span.status === "known" ? "" : span.status, common ? "common" : ""]
       .filter(Boolean)
       .join(" ");
@@ -129,6 +133,11 @@ function draw(incoming) {
     at = span.start + span.len;
   }
   frag.append(text.slice(at));
+
+  // One gap and it is a common word: the line is worth learning whole, since
+  // everything else in it is already known. Rank does the work here — without
+  // it a third of all lines have exactly one gap.
+  lineEl.classList.toggle("one-gap", gaps === 1 && commonGaps === 1);
 
   lineEl.replaceChildren(frag);
   report();

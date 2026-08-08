@@ -95,6 +95,14 @@
     background: var(--backdrop);
   }
 
+  /* Every word on the line is known but one, and that one is common — the line
+     is learnable whole. An inset shadow rather than a border: the left edge of
+     #line is measured onto the game's own first glyph, and a border would push
+     every line that got one sideways. */
+  #line.one-gap {
+    box-shadow: inset 3px 0 0 hsl(45 90% 60%);
+  }
+
   /* One span per word the tokenizer found. Nothing is drawn until the pointer
      is on one — a permanent box per word would be a wall of them, and the hint
      is only needed for the word being reached for. */
