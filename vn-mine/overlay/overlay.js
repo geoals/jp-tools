@@ -1,10 +1,12 @@
 // The overlay strip's whole client: draw the newest line, and define the word
 // that is clicked in it.
 //
-// `backlog=1` is what the stream's query parameter exists for — this caller
-// wants a short feed, and a feed of one is the shortest. On a dropped
-// connection EventSource reconnects with `Last-Event-ID`, so it resumes after
-// the line it drew rather than replaying anything.
+// `backlog` is what the stream's query parameter exists for — this caller wants
+// a short feed, not the whole sitting. Only the newest line is ever drawn; the
+// few before it are asked for so the explain button has context to send from
+// the moment the overlay opens. On a dropped connection EventSource reconnects
+// with `Last-Event-ID`, so it resumes after the line it drew rather than
+// replaying anything.
 //
 // Segmentation is not asked for separately: the line event already carries a
 // span per word, each with the `(headword, reading)` the ledger keys on. The
@@ -22,6 +24,8 @@
 // nothing is looked up and nothing is written.
 
 import { createPopup } from "/shared/popup.js";
+import { parseMarkdown } from "/shared/markdown.js";
+import { streamExplain } from "/shared/explain.js";
 
 const params = new URLSearchParams(location.search);
 const root = document.documentElement.style;
@@ -85,7 +89,15 @@ fetch("/api/settings")
   .then((s) => (commonMaxRank = s.reader_common_max_freq_rank || 0))
   .catch(() => {});
 
-const stream = new EventSource("/api/lines/stream?backlog=1");
+// Lines sent to the model with the one to explain, matching `#read`. Also the
+// backlog asked for, so an overlay opened mid-scene can explain the first line
+// it draws — only the newest is ever shown, the rest exist to place a pronoun.
+const EXPLAIN_CONTEXT_LINES = 8;
+// The last few lines drawn, oldest first. The stream sends one at a time and
+// the explain endpoint wants the run they arrived in.
+const recent = [];
+
+const stream = new EventSource(`/api/lines/stream?backlog=${EXPLAIN_CONTEXT_LINES}`);
 
 stream.onmessage = (e) => draw(JSON.parse(e.data));
 
@@ -98,14 +110,12 @@ stream.addEventListener("status", (e) => {
 function draw(incoming) {
   closePopup();
   line = incoming;
+  recent.push(incoming.text);
+  if (recent.length > EXPLAIN_CONTEXT_LINES) recent.shift();
+  selectedInLine = "";
   const text = line.text;
   const frag = document.createDocumentFragment();
   let at = 0;
-  // The gaps on this line: unjudged-and-barely-met, or judged unknown. `seen`
-  // is not one — it is unjudged but met often, which is the bulk of any line,
-  // so counting it would mark nothing.
-  let gaps = 0;
-  let commonGaps = 0;
 
   // Offsets are UTF-16 code units, which is exactly what a JS string indexes
   // in, so they slice directly.
@@ -115,10 +125,11 @@ function draw(incoming) {
 
     const word = document.createElement("span");
     // `known` gets no class, so it draws as plain text.
-    const gap = span.status === "new" || span.status === "unknown";
-    const common = gap && commonMaxRank && span.freq_rank && span.freq_rank <= commonMaxRank;
-    if (gap) gaps += 1;
-    if (common) commonGaps += 1;
+    const common =
+      commonMaxRank &&
+      span.freq_rank &&
+      span.freq_rank <= commonMaxRank &&
+      (span.status === "new" || span.status === "unknown");
     word.className = ["w", span.status === "known" ? "" : span.status, common ? "common" : ""]
       .filter(Boolean)
       .join(" ");
@@ -133,11 +144,6 @@ function draw(incoming) {
     at = span.start + span.len;
   }
   frag.append(text.slice(at));
-
-  // One gap and it is a common word: the line is worth learning whole, since
-  // everything else in it is already known. Rank does the work here — without
-  // it a third of all lines have exactly one gap.
-  lineEl.classList.toggle("one-gap", gaps === 1 && commonGaps === 1);
 
   lineEl.replaceChildren(frag);
   report();
@@ -281,6 +287,159 @@ for (const type of ["pointerup", "pointercancel"]) {
   });
 }
 
+// "What does this line say" — the same `/api/reader/explain` `#read` asks, and
+// the same `web-shared/markdown.js` over what comes back. Only the surface is
+// this file's: a button placed and dragged on its own, because the line box is
+// fitted over the game's own text and this has to be able to sit clear of it.
+const explainBoxEl = document.getElementById("explain-box");
+const explainBtnEl = document.getElementById("explain-btn");
+const explainPanelEl = document.getElementById("explain-panel");
+// Versioned: the widget used to hang off the bottom edge, and an offset stored
+// against that anchor puts it somewhere else entirely against this one.
+const EXPLAIN_PLACE = "vn-overlay-explain-offset-top";
+let explainDrag = null;
+let explaining = false;
+let explainOffset = { x: 0, y: 0 };
+
+try {
+  explainOffset = { ...explainOffset, ...JSON.parse(localStorage.getItem(EXPLAIN_PLACE) ?? "{}") };
+} catch {
+  // Nothing stored, or stored by an older shape. Start where the CSS puts it.
+}
+applyExplainPlace();
+
+function applyExplainPlace() {
+  explainBoxEl.style.setProperty("--ex", `${explainOffset.x}px`);
+  explainBoxEl.style.setProperty("--ey", `${explainOffset.y}px`);
+  report();
+}
+
+/** Clamped like the strip's own drag: pushed off the surface it is gone, and
+ *  the surface is the whole screen. */
+function moveExplainTo(x, y) {
+  const rect = explainBoxEl.getBoundingClientRect();
+  const left = rect.left - explainOffset.x;
+  const top = rect.top - explainOffset.y;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(v, hi));
+  explainOffset = {
+    x: clamp(x, -left, Math.max(0, window.innerWidth - rect.width) - left),
+    y: clamp(y, -top, Math.max(0, window.innerHeight - rect.height) - top),
+  };
+  applyExplainPlace();
+}
+
+explainBtnEl.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return;
+  explainDrag = {
+    id: e.pointerId,
+    x: e.clientX - explainOffset.x,
+    y: e.clientY - explainOffset.y,
+    moved: false,
+  };
+  explainBtnEl.setPointerCapture(e.pointerId);
+});
+
+explainBtnEl.addEventListener("pointermove", (e) => {
+  if (!explainDrag || e.pointerId !== explainDrag.id) return;
+  // A press wanders a pixel or two before it lifts; only a real move is a drag,
+  // or the button would stop answering taps.
+  if (Math.abs(e.clientX - explainDrag.x - explainOffset.x) > 3) explainDrag.moved = true;
+  if (Math.abs(e.clientY - explainDrag.y - explainOffset.y) > 3) explainDrag.moved = true;
+  if (explainDrag.moved) moveExplainTo(e.clientX - explainDrag.x, e.clientY - explainDrag.y);
+});
+
+for (const type of ["pointerup", "pointercancel"]) {
+  explainBtnEl.addEventListener(type, (e) => {
+    if (!explainDrag || e.pointerId !== explainDrag.id) return;
+    explainBtnEl.releasePointerCapture(e.pointerId);
+    const dragged = explainDrag.moved;
+    explainDrag = null;
+    localStorage.setItem(EXPLAIN_PLACE, JSON.stringify(explainOffset));
+    if (type === "pointerup" && !dragged) explainLine();
+  });
+}
+
+// The widget is its own surface: a click on it must not reach the document
+// handler that closes the popup, and must not reach the VN either.
+explainBoxEl.addEventListener("click", (e) => e.stopPropagation());
+
+// Reading it is what it is for, so it stays until dismissed — and a click
+// anywhere on it dismisses, rather than a ✕ to aim at over a game.
+explainPanelEl.addEventListener("click", () => {
+  explainPanelEl.hidden = true;
+  report();
+});
+
+// The last text selected inside the line, remembered rather than read at the
+// press: reaching for the button collapses the selection in the act of
+// clicking, so by the time the handler runs there is nothing left to read.
+// Cleared with the line it was made in.
+let selectedInLine = "";
+document.addEventListener("selectionchange", () => {
+  const sel = window.getSelection?.();
+  const text = (sel?.toString() ?? "").trim();
+  if (text && sel.anchorNode && lineEl.contains(sel.anchorNode)) selectedInLine = text;
+});
+
+/** Ask the model for a short read on the newest line.
+ *
+ * Two ways to say which word it should be about, and a selection wins: dragging
+ * across part of the line is the only way to ask about something the tokenizer
+ * did not make a word. Failing that it is whatever the popup is open on, since
+ * on this surface a word is reached by clicking it. */
+async function explainLine() {
+  if (explaining || !recent.length) return;
+  const focus = selectedInLine || (popup.anchor()?.dataset.term ?? "");
+  explaining = true;
+  explainBtnEl.disabled = true;
+  showExplain("…", false);
+  try {
+    await streamExplain({
+      context: recent,
+      focus,
+      onText: (text) => showExplain(text, false),
+    });
+  } catch (err) {
+    showExplain(err.message, true);
+  } finally {
+    explaining = false;
+    explainBtnEl.disabled = false;
+  }
+}
+
+/** The model's Markdown as DOM. Built node by node rather than parsed into a
+ *  string of HTML: this is model output, and there is no innerHTML on its
+ *  path. */
+function showExplain(text, isError) {
+  const frag = document.createDocumentFragment();
+  for (const block of parseMarkdown(text)) {
+    if (block.type === "ul") {
+      const ul = document.createElement("ul");
+      for (const item of block.items) ul.append(inlineMd(item, document.createElement("li")));
+      frag.append(ul);
+    } else {
+      frag.append(inlineMd(block.spans, document.createElement("p")));
+    }
+  }
+  explainPanelEl.replaceChildren(frag);
+  explainPanelEl.classList.toggle("err", isError);
+  explainPanelEl.hidden = false;
+  report();
+}
+
+function inlineMd(spans, into) {
+  for (const s of spans) {
+    if (!s.style) {
+      into.append(s.text);
+      continue;
+    }
+    const el = document.createElement(s.style === "bold" ? "strong" : "em");
+    el.textContent = s.text;
+    into.append(el);
+  }
+  return into;
+}
+
 /** Close, and forget the lookup the popup recorded. */
 function closePopup() {
   const word = popup.anchor();
@@ -397,7 +556,7 @@ function report() {
   // words advances the VN from under an open popup. It is also far steadier —
   // one rect that changes when the line does, rather than a dozen that shift
   // by a pixel as the text reflows.
-  const rects = [lineEl.getBoundingClientRect()];
+  const rects = [lineEl.getBoundingClientRect(), explainBoxEl.getBoundingClientRect()];
   if (!popupEl.hidden) rects.push(popupEl.getBoundingClientRect());
   // Flat `x, y, w, h, ...` rather than nested: an array of arrays reaches Qt
   // as opaque QJSValues, while an array of plain numbers converts cleanly.
@@ -413,6 +572,7 @@ function report() {
 const watch = new ResizeObserver(report);
 watch.observe(lineEl);
 watch.observe(popupEl);
+watch.observe(explainBoxEl);
 window.addEventListener("resize", report);
 
 // Only under the overlay shell — in an ordinary browser there is no channel and

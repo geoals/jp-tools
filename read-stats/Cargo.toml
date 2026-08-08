@@ -17,7 +17,8 @@ dotenvy = "0.15"
 tower-http = { version = "0.6", features = ["fs", "set-header"] }
 async-stream = "0.3"
 futures-core = "0.3"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"] }
+futures-util = { version = "0.3", default-features = false }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls-native-roots"] }
 jp-core = { path = "../jp-core" }
 # The card fields and the CompactDef gloss. NOT `jp_mine_core::export` — an
 # overlay card goes through `services::card::add_note` like every other.

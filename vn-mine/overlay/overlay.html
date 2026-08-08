@@ -95,14 +95,6 @@
     background: var(--backdrop);
   }
 
-  /* Every word on the line is known but one, and that one is common — the line
-     is learnable whole. An inset shadow rather than a border: the left edge of
-     #line is measured onto the game's own first glyph, and a border would push
-     every line that got one sideways. */
-  #line.one-gap {
-    box-shadow: inset 3px 0 0 hsl(45 90% 60%);
-  }
-
   /* One span per word the tokenizer found. Nothing is drawn until the pointer
      is on one — a permanent box per word would be a wall of them, and the hint
      is only needed for the word being reached for. */
@@ -173,9 +165,82 @@
     font-size: 0.75rem;
     letter-spacing: 0.04em;
   }
+
+  /* The model's read on the last line, and the button that asks for it. Placed
+     and dragged on its own, not off #box: the line box is fitted over the
+     game's text and this has to be able to sit where the game has nothing.
+
+     Anchored at the top with the button above the panel, so the answer grows
+     downwards into empty screen. Anchored at the bottom it grew upwards, and a
+     streamed answer then crept up the screen line by line as it was being
+     read. */
+  #explain-box {
+    position: absolute;
+    left: 1rem;
+    top: 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+    max-width: min(60rem, 78vw);
+    transform: translate(var(--ex, 0px), var(--ey, 0px));
+  }
+
+  #explain-btn {
+    flex: none;
+    min-width: 3rem;
+    padding: 0.45rem 0.9rem;
+    border: none;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.82);
+    color: hsl(45 90% 72%);
+    font: inherit;
+    font-size: 1.3rem;
+    cursor: pointer;
+    /* The drag is the same gesture as the press, told apart by whether the
+       pointer moved — so the browser's own text selection must not start. */
+    user-select: none;
+    touch-action: none;
+  }
+  #explain-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  #explain-panel {
+    max-height: 60vh;
+    overflow-y: auto;
+    scrollbar-width: none;
+    padding: 0.9rem 1.2rem;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.92);
+    color: #f2f2f2;
+    font-size: 1.15rem;
+    line-height: 1.7;
+  }
+  #explain-panel[hidden] {
+    display: none;
+  }
+  #explain-panel.err {
+    color: hsl(28 92% 72%);
+  }
+  #explain-panel p {
+    margin: 0 0 0.5rem;
+  }
+  #explain-panel ul {
+    margin: 0 0 0.5rem;
+    padding-left: 1.1rem;
+  }
+  #explain-panel :last-child {
+    margin-bottom: 0;
+  }
 </style>
 
 <div id="box"><div id="line"></div></div>
 <div id="popup" class="jp-popup" hidden></div>
+<div id="explain-box">
+  <button id="explain-btn" title="Explain the last line (select a word first to focus on it)">ℹ</button>
+  <div id="explain-panel" hidden></div>
+</div>
 <div id="warn"></div>
 <script type="module" src="/overlay/overlay.js"></script>

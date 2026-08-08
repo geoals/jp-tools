@@ -16,6 +16,8 @@ import {
   useState,
 } from "preact/hooks";
 import { html } from "htm/preact";
+import { parseMarkdown } from "/shared/markdown.js";
+import { streamExplain } from "/shared/explain.js";
 import { api } from "./api.js";
 
 const FONT_KEY = "reader-font-px";
@@ -514,11 +516,14 @@ export function Reader() {
     setExplaining(true);
     setExplain({ focus: sel, text: "" });
     try {
-      const r = await api("/api/reader/explain", {
-        method: "POST",
-        body: { context, focus: sel },
+      await streamExplain({
+        context,
+        focus: sel,
+        // Shown as it arrives, so the panel fills rather than waiting on the
+        // whole answer. `explaining` stays set until it is done, which is what
+        // keeps the button disabled.
+        onText: (text) => setExplain({ ok: true, focus: sel, text }),
       });
-      setExplain({ ok: true, focus: sel, text: r.text });
     } catch (err) {
       setExplain({ ok: false, focus: sel, text: err.message });
     } finally {
@@ -731,7 +736,7 @@ export function Reader() {
             </button>
           </div>
           <div class="reader-explain-body">
-            ${explaining ? "explaining…" : renderMarkdown(explain.text)}
+            ${explain && explain.text ? renderMarkdown(explain.text) : "explaining…"}
           </div>
         </div>`
       }
@@ -764,42 +769,25 @@ export function Reader() {
   `;
 }
 
-/** Render the slice of Markdown the model emits — paragraphs, `-`/`*` bullets,
- *  `**bold**` / `*italic*` — as vnodes. Not a parser plus innerHTML, which would
- *  open an XSS seam on model output. */
+/** The model's Markdown as vnodes. The parse is `web-shared/markdown.js`, which
+ *  the overlay reads too; only this mapping to vnodes is Preact's. Never a
+ *  parser plus innerHTML, which would open an XSS seam on model output. */
 function renderMarkdown(src) {
-  const blocks = (src || "").trim().split(/\n{2,}/);
-  return blocks.map((block, i) => {
-    const rows = block.split("\n");
-    const isList = rows.length > 0 && rows.every((l) => /^\s*[-*]\s+/.test(l));
-    if (isList) {
-      return html`<ul key=${i}>
-        ${rows.map(
-          (l, j) =>
-            html`<li key=${j}>${inlineMd(l.replace(/^\s*[-*]\s+/, ""))}</li>`,
-        )}
-      </ul>`;
-    }
-    // Soft-wrapped lines in one block are one paragraph.
-    return html`<p key=${i}>${inlineMd(rows.join(" "))}</p>`;
-  });
+  return parseMarkdown(src).map((block, i) =>
+    block.type === "ul"
+      ? html`<ul key=${i}>
+          ${block.items.map((item, j) => html`<li key=${j}>${inlineMd(item)}</li>`)}
+        </ul>`
+      : html`<p key=${i}>${inlineMd(block.spans)}</p>`,
+  );
 }
 
-/** `**bold**` and `*italic*` spans within a line, everything else literal. */
-function inlineMd(text) {
-  const parts = [];
-  const re = /\*\*([^*]+)\*\*|\*([^*]+)\*/g;
-  let last = 0;
-  let key = 0;
-  let m;
-  while ((m = re.exec(text))) {
-    if (m.index > last) parts.push(text.slice(last, m.index));
-    if (m[1] != null) parts.push(html`<strong key=${key++}>${m[1]}</strong>`);
-    else parts.push(html`<em key=${key++}>${m[2]}</em>`);
-    last = re.lastIndex;
-  }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts;
+function inlineMd(spans) {
+  return spans.map((s, i) => {
+    if (s.style === "bold") return html`<strong key=${i}>${s.text}</strong>`;
+    if (s.style === "italic") return html`<em key=${i}>${s.text}</em>`;
+    return s.text;
+  });
 }
 
 /** "cleared 3 lines", built whole since htm collapses the whitespace at a line

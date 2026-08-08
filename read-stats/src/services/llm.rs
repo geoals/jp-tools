@@ -44,15 +44,10 @@ bullet list with one-line bullets — but nothing heavier."
 /// by `JP_TOOLS_LLM_MODEL`.
 const MODEL: &str = "claude-opus-5";
 
-/// Ask the model to explain `context`'s last line. Earlier entries are prior
-/// lines (oldest first) given only for context; `focus` is a word selected in
-/// the line to centre on, or empty.
-pub async fn explain(
-    http: &reqwest::Client,
-    api_key: &str,
-    context: &[String],
-    focus: &str,
-) -> Result<String, AppError> {
+/// The prompt for one explain call: earlier lines (oldest first) as context,
+/// the last one as the line to explain, and `focus` — a word to centre on, or
+/// empty.
+fn user_message(context: &[String], focus: &str) -> String {
     let (earlier, target) = context.split_at(context.len() - 1);
     let target = &target[0];
 
@@ -71,25 +66,127 @@ pub async fn explain(
         user.push_str("\n\nFocus word: ");
         user.push_str(focus);
     }
+    user
+}
 
+fn request_body(user: String, stream: bool) -> Value {
     // Thinking off: keeps this interactive helper snappy, and avoids the upward
     // familiarity bias thinking introduces into the two-axis tags. Sonnet 5 and
     // Opus 5 otherwise default to adaptive thinking when `thinking` is omitted.
-    let body = serde_json::json!({
+    serde_json::json!({
         "model": MODEL,
         "max_tokens": 512,
         "thinking": { "type": "disabled" },
+        "stream": stream,
         "system": SYSTEM_PROMPT.as_str(),
         "messages": [{ "role": "user", "content": user }],
-    });
+    })
+}
 
-    let resp = http
-        .post("https://api.anthropic.com/v1/messages")
+fn send(
+    http: &reqwest::Client,
+    api_key: &str,
+    body: Value,
+// `use<>`: the builder owns everything it needs by the time `send` is called,
+// so the future borrows nothing — without this it inherits the arguments'
+// lifetimes and cannot outlive the handler that made it.
+) -> impl std::future::Future<Output = reqwest::Result<reqwest::Response>> + Send + 'static + use<> {
+    http.post("https://api.anthropic.com/v1/messages")
         .header("x-api-key", api_key)
         .header("anthropic-version", "2023-06-01")
         .header("content-type", "application/json")
         .json(&body)
         .send()
+}
+
+/// Ask the model to explain `context`'s last line, a piece at a time.
+///
+/// Streamed rather than awaited whole: the answer is a few hundred tokens off
+/// Opus, and unstreamed that is several seconds of nothing on screen while the
+/// reader waits mid-line. The model is pinned, so the only lever on how long
+/// this *feels* is when the first words arrive.
+pub fn explain_stream(
+    http: &reqwest::Client,
+    api_key: &str,
+    context: &[String],
+    focus: &str,
+) -> impl futures_util::Stream<Item = Result<String, AppError>> + Send + 'static + use<> {
+    deltas(send(http, api_key, request_body(user_message(context, focus), true)))
+}
+
+/// The text deltas of an in-flight Messages request.
+///
+/// Split from `explain_stream` so the request — the only thing here that
+/// borrows — is built and owned before the stream body exists. Written inline,
+/// `stream!` captures the caller's lifetimes whether it uses them or not, and
+/// the result cannot then be handed to a response.
+fn deltas(
+    request: impl std::future::Future<Output = reqwest::Result<reqwest::Response>> + Send + 'static,
+) -> impl futures_util::Stream<Item = Result<String, AppError>> + Send + 'static {
+    async_stream::stream! {
+        let resp = match request.await {
+            Ok(r) => r,
+            Err(e) => {
+                yield Err(AppError::Upstream(format!("Anthropic request failed: {e}")));
+                return;
+            }
+        };
+
+        let status = resp.status();
+        if !status.is_success() {
+            // An error answers as one JSON body, not as an event stream.
+            let json: Value = resp.json().await.unwrap_or_default();
+            let msg = json["error"]["message"].as_str().unwrap_or("unknown API error");
+            yield Err(AppError::Upstream(format!("Anthropic returned {status}: {msg}")));
+            return;
+        }
+
+        let mut body = resp.bytes_stream();
+        // Chunks split anywhere, including mid-line and mid-UTF-8, so frames are
+        // reassembled here rather than decoded per chunk.
+        let mut buf = Vec::new();
+        while let Some(chunk) = futures_util::StreamExt::next(&mut body).await {
+            match chunk {
+                Ok(bytes) => buf.extend_from_slice(&bytes),
+                Err(e) => {
+                    yield Err(AppError::Upstream(format!("Anthropic stream broke: {e}")));
+                    return;
+                }
+            }
+            while let Some(nl) = buf.iter().position(|b| *b == b'\n') {
+                let line: Vec<u8> = buf.drain(..=nl).collect();
+                if let Some(text) = text_delta(&line) {
+                    yield Ok(text);
+                }
+            }
+        }
+    }
+}
+
+/// The text a `content_block_delta` frame carries, or nothing — every other
+/// line of the stream is an event name, a blank separator, or a frame about
+/// something else (message start, usage, block boundaries).
+fn text_delta(line: &[u8]) -> Option<String> {
+    let line = std::str::from_utf8(line).ok()?.trim();
+    let payload = line.strip_prefix("data:")?.trim();
+    let json: Value = serde_json::from_str(payload).ok()?;
+    if json["type"] != "content_block_delta" || json["delta"]["type"] != "text_delta" {
+        return None;
+    }
+    Some(json["delta"]["text"].as_str()?.to_string())
+}
+
+/// The whole explanation, awaited. Only the tests use this — the reader and the
+/// overlay both stream — but it is the same request and prompt, so what it
+/// asserts holds for what they get.
+#[cfg(test)]
+pub async fn explain(
+    http: &reqwest::Client,
+    api_key: &str,
+    context: &[String],
+    focus: &str,
+) -> Result<String, AppError> {
+    let resp = send(http, api_key, request_body(user_message(context, focus), false))
         .await
         .map_err(|e| AppError::Upstream(format!("Anthropic request failed: {e}")))?;
 
@@ -115,6 +212,7 @@ pub async fn explain(
 /// first block of type `text` rather than blindly taking the first block, since
 /// thinking-capable models (Sonnet 5, Opus 5) can emit a leading `thinking`
 /// block ahead of the text.
+#[cfg(test)]
 fn extract_text(json: &Value) -> Result<String, AppError> {
     json["content"]
         .as_array()
