@@ -110,12 +110,15 @@ pub async fn import_dictionary(
 ) -> Result<i64, sqlx::Error> {
     let mut tx = pool.begin().await?;
 
-    let row =
-        sqlx::query("INSERT INTO dictionaries (title, source_path) VALUES (?, ?) RETURNING id")
-            .bind(title)
-            .bind(source_path)
-            .fetch_one(&mut *tx)
-            .await?;
+    // `meta_checked` from the start: a fresh import parses the whole zip, meta
+    // banks included, so there is nothing left for the backfill to look for.
+    let row = sqlx::query(
+        "INSERT INTO dictionaries (title, source_path, meta_checked) VALUES (?, ?, 1) RETURNING id",
+    )
+    .bind(title)
+    .bind(source_path)
+    .fetch_one(&mut *tx)
+    .await?;
     let dict_id: i64 = row.get("id");
 
     for entry in entries {
@@ -671,27 +674,29 @@ pub struct PreferredReading {
     pub acceptable: HashSet<String>,
 }
 
-/// Check whether any frequency entries exist for a dictionary.
-pub async fn has_frequency_entries(
+/// Whether this dictionary's zip has already been read for pitch and frequency
+/// data.
+///
+/// Same shape as [`needs_sequence_backfill`], and for the same reason: most
+/// dictionaries publish neither, so "has no pitch rows" cannot mean "not read
+/// yet" — that re-parsed all seven zips on every `jp-dict sync`.
+pub async fn needs_meta_backfill(
     pool: &SqlitePool,
     dictionary_id: i64,
 ) -> Result<bool, sqlx::Error> {
-    let count: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM dictionary_frequency WHERE dictionary_id = ?")
-            .bind(dictionary_id)
-            .fetch_one(pool)
-            .await?;
-    Ok(count.0 > 0)
+    let (checked,): (i64,) = sqlx::query_as("SELECT meta_checked FROM dictionaries WHERE id = ?")
+        .bind(dictionary_id)
+        .fetch_one(pool)
+        .await?;
+    Ok(checked == 0)
 }
 
-/// Check whether any pitch entries exist for a dictionary.
-pub async fn has_pitch_entries(pool: &SqlitePool, dictionary_id: i64) -> Result<bool, sqlx::Error> {
-    let count: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM dictionary_pitch WHERE dictionary_id = ?")
-            .bind(dictionary_id)
-            .fetch_one(pool)
-            .await?;
-    Ok(count.0 > 0)
+pub async fn mark_meta_checked(pool: &SqlitePool, dictionary_id: i64) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE dictionaries SET meta_checked = 1 WHERE id = ?")
+        .bind(dictionary_id)
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 /// What a dictionary is *for*, which decides which questions it may answer.

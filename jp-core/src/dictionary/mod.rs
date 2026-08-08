@@ -745,25 +745,25 @@ impl Dictionary {
         let path_str = path.to_string_lossy();
 
         if let Some((id, title)) = db::find_dictionary(pool, &path_str).await? {
-            // Handle existing cached dicts that were imported before pitch or
-            // frequency support: if either table is empty but the zip might
-            // have that data, re-parse its meta banks.
-            let needs_pitch = !db::has_pitch_entries(pool, id).await?;
-            let needs_freq = !db::has_frequency_entries(pool, id).await?;
-            if (needs_pitch || needs_freq) && path.exists() {
+            // Dictionaries cached before pitch or frequency support: re-parse
+            // the meta banks once. Marked checked whether or not the zip held
+            // any, so one publishing neither is not re-read every startup —
+            // except when the zip has moved, which is left unmarked to retry.
+            if db::needs_meta_backfill(pool, id).await? && path.exists() {
                 if let Ok((fresh_pitch, fresh_freq)) = Self::load_meta_from_zip(path) {
-                    if needs_pitch && !fresh_pitch.is_empty() {
+                    if !fresh_pitch.is_empty() {
                         let mut tx = pool.begin().await?;
                         db::insert_pitch_entries(&mut tx, id, &fresh_pitch).await?;
                         tx.commit().await?;
                         info!(title = %title, pitch = fresh_pitch.len(), "backfilled pitch data into cache");
                     }
-                    if needs_freq && !fresh_freq.is_empty() {
+                    if !fresh_freq.is_empty() {
                         let mut tx = pool.begin().await?;
                         db::insert_frequency_entries(&mut tx, id, &fresh_freq).await?;
                         tx.commit().await?;
                         info!(title = %title, freq = fresh_freq.len(), "backfilled frequency data into cache");
                     }
+                    db::mark_meta_checked(pool, id).await?;
                 }
             }
 

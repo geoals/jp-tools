@@ -160,6 +160,18 @@ impl Knowledge {
             .execute(&self.0)
             .await?;
         }
+        // The same marker for pitch and frequency data. Every dictionary already
+        // cached has been through `load_or_import` — which read its meta banks —
+        // so the one-time stamp is unconditional; without it they would all be
+        // re-parsed once more to learn the same nothing.
+        if !has_column(&self.0, "dictionaries", "meta_checked").await? {
+            sqlx::raw_sql(
+                "ALTER TABLE dictionaries ADD COLUMN meta_checked INTEGER NOT NULL DEFAULT 0;\
+                 UPDATE dictionaries SET meta_checked = 1;",
+            )
+            .execute(&self.0)
+            .await?;
+        }
         // `dictionary_entries` predates reading the word class off the term
         // bank. Existing rows keep an empty `rules` until the dictionary is
         // re-imported, which reads as "not known to be conjugatable" — the same
