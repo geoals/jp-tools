@@ -39,10 +39,14 @@ bullet list with one-line bullets — but nothing heavier."
     )
 });
 
-/// Pinned to Opus 5 — the explain button is a short interactive lookup, and its
-/// two-axis tags should match the cards' (both on Opus, thinking off). Not driven
-/// by `JP_TOOLS_LLM_MODEL`.
-const MODEL: &str = "claude-opus-5";
+/// Pinned to Sonnet 5 — the explain button is a short interactive lookup read
+/// once and thrown away, so it does not need the model the cards are written
+/// with. Not driven by `JP_TOOLS_LLM_MODEL`.
+///
+/// The tags it prints therefore come off a different model than
+/// `compactdef`'s, which is why the rubric is shared source and not a
+/// paraphrase: the wording is the only thing holding the two axes together.
+const MODEL: &str = "claude-sonnet-5";
 
 /// The prompt for one explain call: earlier lines (oldest first) as context,
 /// the last one as the line to explain, and `focus` — a word to centre on, or
@@ -70,13 +74,19 @@ fn user_message(context: &[String], focus: &str) -> String {
 }
 
 fn request_body(user: String, stream: bool) -> Value {
-    // Thinking off: keeps this interactive helper snappy, and avoids the upward
-    // familiarity bias thinking introduces into the two-axis tags. Sonnet 5 and
-    // Opus 5 otherwise default to adaptive thinking when `thinking` is omitted.
+    // Thinking off and effort medium: keeps this interactive helper snappy, and
+    // avoids the upward familiarity bias thinking introduces into the two-axis
+    // tags. Sonnet 5 defaults to adaptive thinking when `thinking` is omitted,
+    // and to `high` effort — which is most of what an explain call costs, since
+    // output bills at five times input.
+    //
+    // The cap is a cost bound, not a target: an answer this prompt asks to be
+    // "very concise" runs well under it, and hitting it truncates mid-sentence.
     serde_json::json!({
         "model": MODEL,
-        "max_tokens": 512,
+        "max_tokens": 336,
         "thinking": { "type": "disabled" },
+        "output_config": { "effort": "medium" },
         "stream": stream,
         "system": SYSTEM_PROMPT.as_str(),
         "messages": [{ "role": "user", "content": user }],
