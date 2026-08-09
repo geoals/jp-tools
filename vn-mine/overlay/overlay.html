@@ -70,6 +70,10 @@
        the surface, not the window. */
     transform: translate(var(--dx, 0px), var(--dy, 0px));
   }
+  /* `display: flex` above wins over the attribute on its own. */
+  #box[hidden] {
+    display: none;
+  }
 
   /* Scaled up, the line is read off the screen rather than fitted over the
      game's own text, so it goes to the bottom edge: nothing of the game is
@@ -186,7 +190,13 @@
     transform: translate(var(--ex, 0px), var(--ey, 0px));
   }
 
-  #explain-btn {
+  #buttons {
+    display: flex;
+    gap: 0.4rem;
+  }
+
+  #explain-btn,
+  #hide-btn {
     flex: none;
     min-width: 3rem;
     padding: 0.45rem 0.9rem;
@@ -205,6 +215,9 @@
   #explain-btn:disabled {
     opacity: 0.45;
     cursor: default;
+  }
+  #hide-btn.off {
+    color: #9a9a9a;
   }
 
   #explain-panel {
@@ -239,7 +252,10 @@
 <div id="box"><div id="line"></div></div>
 <div id="popup" class="jp-popup" hidden></div>
 <div id="explain-box">
-  <button id="explain-btn" title="Explain the last line (select a word first to focus on it)">ℹ</button>
+  <div id="buttons">
+    <button id="explain-btn" title="Explain the last line (select a word first to focus on it)">ℹ</button>
+    <button id="hide-btn" title="Hide the line">👁</button>
+  </div>
   <div id="explain-panel" hidden></div>
 </div>
 <div id="warn"></div>

@@ -370,6 +370,20 @@ explainPanelEl.addEventListener("click", () => {
   report();
 });
 
+// Take the line off the screen without stopping the overlay: it is over the
+// game's own text, and a scene worth looking at is worth looking at whole. The
+// stream keeps running, so the line back is whatever is current, not the one
+// that was showing when it went.
+const hideBtnEl = document.getElementById("hide-btn");
+hideBtnEl.addEventListener("click", () => {
+  boxEl.hidden = !boxEl.hidden;
+  warnEl.hidden = boxEl.hidden;
+  hideBtnEl.classList.toggle("off", boxEl.hidden);
+  hideBtnEl.title = boxEl.hidden ? "Show the line" : "Hide the line";
+  if (boxEl.hidden) closePopup();
+  report();
+});
+
 // The last text selected inside the line, remembered rather than read at the
 // press: reaching for the button collapses the selection in the act of
 // clicking, so by the time the handler runs there is nothing left to read.
@@ -556,7 +570,8 @@ function report() {
   // words advances the VN from under an open popup. It is also far steadier —
   // one rect that changes when the line does, rather than a dozen that shift
   // by a pixel as the text reflows.
-  const rects = [lineEl.getBoundingClientRect(), explainBoxEl.getBoundingClientRect()];
+  const rects = [explainBoxEl.getBoundingClientRect()];
+  if (!boxEl.hidden) rects.push(lineEl.getBoundingClientRect());
   if (!popupEl.hidden) rects.push(popupEl.getBoundingClientRect());
   // Flat `x, y, w, h, ...` rather than nested: an array of arrays reaches Qt
   // as opaque QJSValues, while an array of plain numbers converts cleanly.
