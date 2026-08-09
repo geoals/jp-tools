@@ -27,13 +27,11 @@ portion it is PASSIVE only (known, but they would not produce it).\n\
 do, but a large share of such words are recognized mainly by people who read.\n\
 - OBSCURE — you can assume non-readers do NOT know it, and even among active \
 readers only a portion recognize it.\n\
-A transparent compound of common parts with a predictable meaning (等価値 = \
-等価+価値) is understood first-encounter → COMMON or higher. Spoken/colloquial \
-words are more familiar than their rarity in writing suggests; don't demote them \
-for being informal.\n\
+A transparent compound of common parts is understood first-encounter (等価値 = \
+等価+価値) → COMMON or higher. You are biased by written frequency: spoken and \
+colloquial words are more familiar than their rarity in print suggests.\n\
 Rate the word AS IT IS WRITTEN in front of you. A word usually met in kana is \
-as familiar as the kana makes it, however rare the kanji spelling would be — \
-すえた臭い is not rated on 饐える. Do not import an orthography that is not there.";
+as familiar as the kana makes it, however rare the kanji spelling would be.";
 
 /// The FLAVOR axis — one baseline formality plus up to two independent marks.
 pub const FLAVOR_RUBRIC: &str = "\
