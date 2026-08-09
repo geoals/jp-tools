@@ -41,22 +41,21 @@ itself. No dictionary headword is supplied, deliberately. Work out which word it
 is from the sentence; gloss that word's sense, but rate FAMILIARITY on the \
 written form you were given.\n\n\
 Output exactly two lines and nothing else — no preamble, no markdown, and never \
-an XML or HTML tag of your own (do NOT write <meaning>, </meaning>, <usage>, \
-<br>, or any angle-bracket tag or label):\n\
+an XML or HTML tag or label of your own:\n\
 - Line 1 — the meaning, optionally followed by \". \" and one short usage note.\n\
 - Line 2 — FAMILIARITY · FLAVOR[ · FLAVOR2[ · FLAVOR3]][ (structural)]\n\n\
 MEANING/USAGE: nuance-carrying English. A bare one/two-word translation ONLY for \
 a concrete 1-to-1 term (焼却炉 → incinerator); otherwise a short phrase that \
 carries the actual nuance. Optionally one short usage note — a fixed collocation, \
 a polarity restriction, or the typical speaker — where citing the Japanese word \
-or its usual phrase is fine. Adult/explicit words: gloss clinically. Any Japanese \
-reading you cite: hiragana, never romaji.\n\n\
+or its usual phrase is fine. Any Japanese reading you cite: hiragana, never \
+romaji.\n\n\
 {FAMILIARITY_RUBRIC}\n\n\
 {FLAVOR_RUBRIC}\n\n\
 STRUCTURAL (optional trailing parenthetical, orthogonal): (idiom) (mimetic) \
 (fixed phrase) (proverb) (name) (four-char idiom).\n\n\
-Judge from the word, the sentence, and your own knowledge ALONE — no frequency \
-data, no dictionary tags. No preamble, no markdown."
+Judge from the word, the sentence, and your own knowledge ALONE. No preamble, \
+no markdown."
     )
 });
 
@@ -78,7 +77,15 @@ pub async fn compact_def(
         "max_tokens": 300,
         "thinking": { "type": "disabled" },
         "output_config": { "effort": "low" },
-        "system": SYSTEM_PROMPT.as_str(),
+        // The system block is the same ~1,300 tokens on every card and is 84%
+        // of what a call costs, so it is cached. A mine inside the 5-minute
+        // window reads it at a tenth of the price — and mining clusters, so the
+        // denser the session the more of them hit.
+        "system": [{
+            "type": "text",
+            "text": SYSTEM_PROMPT.as_str(),
+            "cache_control": { "type": "ephemeral" },
+        }],
         "messages": [{
             "role": "user",
             "content": format!("Sentence: {sentence}\nTarget: {target}"),
