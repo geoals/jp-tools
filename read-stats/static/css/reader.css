@@ -104,6 +104,9 @@
   /* Positioned, and after the marks layer in the DOM, so the text paints over
      its own mark rather than under it. */
   position: relative;
+  /* Same as the overlay: a line carries the game's own soft breaks as
+     newlines, and #read shows the same text. */
+  white-space: pre-wrap;
   margin: 0 0 0.75em;
   line-height: 1.75;
   font-family: "Noto Sans JP", "IBM Plex Sans", sans-serif;

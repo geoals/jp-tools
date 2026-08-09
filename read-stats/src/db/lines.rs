@@ -25,6 +25,13 @@ pub struct ReaderLine {
     pub ts: f64,
     pub chars: i64,
     pub text: String,
+    /// Furigana the game drew with the line, as `[[start, len, reading], ...]`
+    /// over `text` in UTF-16 code units — the same units as
+    /// [`jp_core::highlight::Span`], so the overlay indexes both alike. Passed
+    /// through as stored: only the overlay reads it, and nothing here has an
+    /// opinion about a reading.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ruby: Option<serde_json::Value>,
 }
 
 /// Lines newer than `after_id`, oldest first. The reader's SSE loop calls this
@@ -35,7 +42,7 @@ pub async fn fetch_lines_after_id(
     limit: i64,
 ) -> Result<Vec<ReaderLine>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT id, ts, chars, text FROM lines
+        "SELECT id, ts, chars, text, ruby FROM lines
          WHERE id > ? AND text IS NOT NULL AND discarded = 0 ORDER BY id LIMIT ?",
     )
     .bind(after_id)
@@ -49,7 +56,7 @@ pub async fn fetch_lines_after_id(
 /// so the screen isn't blank until the next line is hooked.
 pub async fn fetch_recent_lines(k: &Knowledge, limit: i64) -> Result<Vec<ReaderLine>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT id, ts, chars, text FROM lines
+        "SELECT id, ts, chars, text, ruby FROM lines
          WHERE text IS NOT NULL AND discarded = 0 ORDER BY id DESC LIMIT ?",
     )
     .bind(limit)
@@ -96,6 +103,9 @@ fn reader_line(r: &sqlx::sqlite::SqliteRow) -> ReaderLine {
         ts: r.get("ts"),
         chars: r.get("chars"),
         text: r.get::<Option<String>, _>("text").unwrap_or_default(),
+        ruby: r
+            .get::<Option<String>, _>("ruby")
+            .and_then(|s| serde_json::from_str(&s).ok()),
     }
 }
 
@@ -123,7 +133,7 @@ pub async fn fetch_current_session_lines(
     max: i64,
 ) -> Result<Vec<ReaderLine>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT id, ts, chars, text FROM lines
+        "SELECT id, ts, chars, text, ruby FROM lines
          WHERE text IS NOT NULL AND discarded = 0 ORDER BY id DESC LIMIT ?",
     )
     .bind(max)
@@ -153,7 +163,7 @@ pub async fn fetch_lines_before_id(
     limit: i64,
 ) -> Result<Vec<ReaderLine>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT id, ts, chars, text FROM lines
+        "SELECT id, ts, chars, text, ruby FROM lines
          WHERE id < ? AND text IS NOT NULL AND discarded = 0 ORDER BY id DESC LIMIT ?",
     )
     .bind(before_id)

@@ -206,6 +206,23 @@ impl Knowledge {
             .execute(&self.0)
             .await?;
         }
+        // Furigana the game drew with a line, kept out of the line itself.
+        //
+        // `text` stays the spelling as written, because everything downstream
+        // keys on it: `count_chars`, the tokenizer's offsets, the ledger, the
+        // mined card. A reading interleaved there would be counted as
+        // characters read and analysed as a word — 大事 with おおごと inline is
+        // not a spelling anything is written in.
+        //
+        // JSON `[[start, len, reading], ...]`, offsets in UTF-16 code units
+        // over `text` to match `highlight::Span`, so a client indexes both the
+        // same way. NULL for a line with no furigana, which is nearly all of
+        // them, and for every line captured before the column existed.
+        if !has_column(&self.0, "lines", "ruby").await? {
+            sqlx::raw_sql("ALTER TABLE lines ADD COLUMN ruby TEXT")
+                .execute(&self.0)
+                .await?;
+        }
         // `works` predates the per-work capture window.
         if !has_column(&self.0, "works", "vn_window").await? {
             sqlx::raw_sql("ALTER TABLE works ADD COLUMN vn_window TEXT")

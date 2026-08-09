@@ -102,6 +102,29 @@ MAX_READING_CHARS = 500
 # no evidence about whether it is reading.
 CONTROL = re.compile(r"[\x01-\x08\x0b\x0c\x0e-\x1f]")
 
+# A soft line break the engine emits as literal markup rather than rendering.
+# Kept as a newline, not dropped: it is where the game breaks the line, so the
+# overlay draws the text the shape it has on screen. Costs nothing in the count
+# — count_chars is an allowlist and whitespace is outside it, while the literal
+# <br> reached Sudachi and put "b" in the vocabulary ledger.
+BR = re.compile(r"<br\s*/?>", re.I)
+
+# The rest of TextMeshPro's rich text, which reaches the hook unrendered for the
+# same reason <br> does. Only the tags go; the text they wrap is dialogue and
+# stays. Named tags rather than any <...> run, because ASCII angle brackets do
+# occur in real lines (emoticons), and a blanket rule would eat them. Left in,
+# a tag costs the count as well as the ledger: its own letters are inside
+# count_chars' allowlist, so <color=#9c8eff>b</color> counted 17 of the 23
+# characters on that line.
+RICH_TAG = re.compile(
+    r"</?(?:color|b|i|u|s|em|strong|size|font|material|quad|sprite|link|align"
+    r"|cspace|mspace|indent|line-height|line-indent|margin|mark|nobr|noparse"
+    r"|page|pos|space|sub|sup|style|voffset|width|gradient|rotate"
+    r"|allcaps|smallcaps|uppercase|lowercase)"
+    r"(?:=[^<>]*)?\s*/?>",
+    re.I,
+)
+
 # Dohna Dohna (Alicesoft System 4.3), hook HS932#-C@289F60:main.bin, taps the
 # script-text layer before rendering, so one capture interleaves dialogue with
 # UI/animation directives. The two are self-labelling: the engine's own regexes
@@ -158,7 +181,51 @@ def clean_line(raw):
     # are the VN's, not the reader's, and Sudachi analyses them as words —
     # \x05 and \x04 reached read-stats' vocabulary ledger as "e" and "d". No
     # effect on the count: NOT_COUNTED is an allowlist and never counted them.
-    return CONTROL.sub("", text)
+    return RICH_TAG.sub("", BR.sub("\n", CONTROL.sub("", text)))
+
+
+# Furigana, in the two shapes a hook produces it: this engine's
+# <ruby="おおごと">大事</ruby>, and the HTML one with the reading in <rt> and
+# fallback parentheses in <rp>. RICH_TAG deliberately leaves all three alone so
+# split_ruby can pair each reading with the text it annotates.
+RUBY = re.compile(
+    r"<ruby(?:\s*=\s*[\"']?(?P<attr>[^\"'<>]*)[\"']?)?\s*>(?P<body>.*?)</ruby\s*>",
+    re.I | re.S,
+)
+RT = re.compile(r"<rt\s*>(.*?)</rt\s*>", re.I | re.S)
+RP = re.compile(r"<rp\s*>.*?</rp\s*>", re.I | re.S)
+# A ruby tag that never closed, so the pair above could not match it. The
+# reading is dropped with the tag rather than left in the line — furigana is a
+# gloss on the spelling, not part of it (see clean_field in services/anki.rs,
+# which learnt this on 節穴 arriving as 節ふし穴).
+RUBY_STRAY = re.compile(r"</?ruby(?:\s*=[^<>]*)?\s*>|<r[tp]\s*>.*?(?=<|$)", re.I | re.S)
+
+
+def u16len(s):
+    """Length in UTF-16 code units — what highlight::Span offsets count in, and
+    what a JS string indexes in, so the overlay slices both the same way."""
+    return len(s.encode("utf-16-le")) // 2
+
+
+def split_ruby(text):
+    """`(text without furigana, [[start, len, reading], ...])`.
+
+    The reading comes out of the line and travels beside it. Left inline it
+    would be counted as characters read, tokenized as part of the word, and
+    written to the ledger — the spelling is 大事, never 大事おおごと.
+    """
+    out, spans, at = [], [], 0
+    for m in RUBY.finditer(text):
+        out.append(RUBY_STRAY.sub("", text[at : m.start()]))
+        body = m.group("body")
+        reading = m.group("attr") or " ".join(RT.findall(body))
+        base = RUBY_STRAY.sub("", RT.sub("", RP.sub("", body)))
+        if base and reading.strip():
+            spans.append([sum(u16len(p) for p in out), u16len(base), reading.strip()])
+        out.append(base)
+        at = m.end()
+    out.append(RUBY_STRAY.sub("", text[at:]))
+    return "".join(out), spans
 
 KNOWLEDGE_DB = os.environ.get("JP_TOOLS_KNOWLEDGE_DB_PATH") or os.path.expanduser(
     "~/.local/share/jp-tools/knowledge.db"
@@ -177,7 +244,8 @@ CREATE TABLE IF NOT EXISTS lines (
     text   TEXT,
     source TEXT    NOT NULL DEFAULT 'vn',
     work   TEXT,
-    discarded INTEGER NOT NULL DEFAULT 0
+    discarded INTEGER NOT NULL DEFAULT 0,
+    ruby   TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_lines_ts ON lines(ts);
 """
@@ -224,6 +292,7 @@ class StatsSink:
             for column in (
                 "work TEXT",
                 "discarded INTEGER NOT NULL DEFAULT 0",
+                "ruby TEXT",
             ):
                 try:
                     self.db.execute(f"ALTER TABLE lines ADD COLUMN {column}")
@@ -283,14 +352,16 @@ class StatsSink:
         except sqlite3.Error:
             return None
 
-    def add(self, ts, text):
+    def add(self, ts, text, ruby=None):
         if self.db is None:
             return
         chars = len(NOT_COUNTED.sub("", text))
         # clean_line() already dropped UI, skip-through and runaway captures, so
         # everything reaching here is real dialogue: insert not discarded. The
         # discarded column stays for the reader's manual clear button.
-        self.pending.append((ts, chars, text, self.current_work()))
+        self.pending.append(
+            (ts, chars, text, self.current_work(), json.dumps(ruby, ensure_ascii=False) if ruby else None)
+        )
         # Under a lock held for minutes this keeps the newest lines; the oldest
         # are the ones already in lines.log the longest, so they stay
         # recoverable from there.
@@ -304,8 +375,8 @@ class StatsSink:
         try:
             self.db.execute("BEGIN IMMEDIATE")
             self.db.executemany(
-                "INSERT INTO lines (ts, chars, text, source, work, discarded)"
-                " VALUES (?, ?, ?, 'vn', ?, 0)",
+                "INSERT INTO lines (ts, chars, text, source, work, discarded, ruby)"
+                " VALUES (?, ?, ?, 'vn', ?, 0, ?)",
                 self.pending,
             )
             self.db.execute("COMMIT")
@@ -337,6 +408,11 @@ async def read_lines(ws, out, stats, last_text):
         text = clean_line(normalize(raw))
         if not text:
             continue
+        # The log and the dedup below both want the line as written: furigana
+        # is a separate layer from here on, and only the overlay draws it.
+        text, ruby = split_ruby(text)
+        if not text:
+            continue
         # A re-hook of the line still on screen (Textractor double-fire,
         # focus change) must not move the anchor. Only the immediately
         # preceding line is suppressed, so a genuine later repeat of the
@@ -346,7 +422,7 @@ async def read_lines(ws, out, stats, last_text):
         ts = time.time()
         out.write(f"{ts:.9f}\t{text}\n")
         out.flush()
-        stats.add(ts, text)
+        stats.add(ts, text, ruby)
         last_text = text
     return last_text
 

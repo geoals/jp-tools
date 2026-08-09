@@ -106,6 +106,31 @@ stream.addEventListener("status", (e) => {
   warnEl.textContent = capture === "live" ? "" : capture;
 });
 
+/* Append `text[from..to)` to `parent`, drawing the game's own furigana where it
+ * falls. `ruby` offsets are UTF-16 code units over the line, the same units the
+ * token spans use, so both index the string directly.
+ *
+ * The reading is markup here and nowhere else: it is not in `line.text`, so it
+ * is not counted, not tokenized, and never reaches a card. An annotation that
+ * straddles a token boundary is drawn as plain text — the word spans are what
+ * the reader mines with, and they may not be broken to hang a reading off. */
+function appendText(parent, text, ruby, from, to) {
+  let at = from;
+  for (const [start, len, reading] of ruby) {
+    const end = start + len;
+    if (end <= at || start >= to || start < at || end > to) continue;
+    if (start > at) parent.append(text.slice(at, start));
+    const annotated = document.createElement("ruby");
+    annotated.append(text.slice(start, end));
+    const rt = document.createElement("rt");
+    rt.textContent = reading;
+    annotated.append(rt);
+    parent.append(annotated);
+    at = end;
+  }
+  if (at < to) parent.append(text.slice(at, to));
+}
+
 /** One line, one span per word the tokenizer found. */
 function draw(incoming) {
   closePopup();
@@ -114,6 +139,7 @@ function draw(incoming) {
   if (recent.length > EXPLAIN_CONTEXT_LINES) recent.shift();
   selectedInLine = "";
   const text = line.text;
+  const ruby = line.ruby ?? [];
   const frag = document.createDocumentFragment();
   let at = 0;
 
@@ -121,7 +147,7 @@ function draw(incoming) {
   // in, so they slice directly.
   for (const span of [...(line.tokens ?? [])].sort((a, b) => a.start - b.start)) {
     if (span.start < at) continue;
-    if (span.start > at) frag.append(text.slice(at, span.start));
+    if (span.start > at) appendText(frag, text, ruby, at, span.start);
 
     const word = document.createElement("span");
     // `known` gets no class, so it draws as plain text.
@@ -133,7 +159,12 @@ function draw(incoming) {
     word.className = ["w", span.status === "known" ? "" : span.status, common ? "common" : ""]
       .filter(Boolean)
       .join(" ");
-    word.textContent = text.slice(span.start, span.start + span.len);
+    // The surface travels in a dataset field, not as textContent: a furigana
+    // annotation inside the span would otherwise read back as 大事おおごと,
+    // which is not a spelling anything is written in and is what the popup,
+    // the card and CompactDef would be given.
+    word.dataset.surface = text.slice(span.start, span.start + span.len);
+    appendText(word, text, ruby, span.start, span.start + span.len);
     word.dataset.term = span.headword;
     word.dataset.reading = span.reading ?? "";
     word.dataset.status = span.status;
@@ -143,7 +174,7 @@ function draw(incoming) {
     frag.append(word);
     at = span.start + span.len;
   }
-  frag.append(text.slice(at));
+  appendText(frag, text, ruby, at, text.length);
 
   lineEl.replaceChildren(frag);
   report();
@@ -163,7 +194,7 @@ lineEl.addEventListener("click", (e) => {
     term: word.dataset.term,
     key: word.dataset.term,
     reading: word.dataset.reading,
-    surface: word.textContent,
+    surface: word.dataset.surface,
     status: word.dataset.status,
     start: Number(word.dataset.start),
   });
@@ -533,7 +564,7 @@ async function mine(word, target = null) {
   const on = target ?? {
     key: word.dataset.term,
     reading: word.dataset.reading,
-    surface: word.textContent,
+    surface: word.dataset.surface,
   };
   const res = await fetch("/api/reader/mine", {
     method: "POST",

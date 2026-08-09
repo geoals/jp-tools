@@ -37,6 +37,32 @@ class CleanLine(unittest.TestCase):
         raw = f"{M}「ふひゃあんっ！！」"
         self.assertEqual(wl.clean_line(raw), "「ふひゃあんっ！！」")
 
+    def test_soft_break_becomes_newline(self):
+        # Manosaba emits its soft breaks as literal markup. Real capture.
+        raw = "（もしそんな魔法が魔女化によって強化され、<br>　暴走したのだとしたら……）"
+        self.assertEqual(
+            wl.clean_line(raw),
+            "（もしそんな魔法が魔女化によって強化され、\n　暴走したのだとしたら……）",
+        )
+
+    def test_soft_break_variants(self):
+        self.assertEqual(wl.clean_line("あ<br/>い"), "あ\nい")
+        self.assertEqual(wl.clean_line("あ<BR />い"), "あ\nい")
+
+    def test_rich_text_tags_stripped_content_kept(self):
+        # Real capture. The tag goes, the text it wrapped stays.
+        raw = "だから……<color=#9c8eff>b</color>！ アリサ！"
+        self.assertEqual(wl.clean_line(raw), "だから……b！ アリサ！")
+
+    def test_rich_text_variants(self):
+        self.assertEqual(wl.clean_line("<b>強調</b>する"), "強調する")
+        self.assertEqual(wl.clean_line("<size=120%>大</size>きい"), "大きい")
+        self.assertEqual(wl.clean_line("<i>斜</i>め<nobr>です</nobr>"), "斜めです")
+
+    def test_ascii_angle_brackets_survive(self):
+        # Not a tag: emoticons put ASCII angle brackets in real dialogue.
+        self.assertEqual(wl.clean_line("そうか<(_ _)>ごめん"), "そうか<(_ _)>ごめん")
+
     def test_multi_marker_line_joined(self):
         # Real opening line, split across markers at every soft break.
         raw = (
@@ -201,6 +227,41 @@ class CapturePausedFlag(unittest.TestCase):
         self.assertFalse(
             sink.capture_paused(), "an unreadable flag must keep capturing"
         )
+
+
+class SplitRuby(unittest.TestCase):
+    def test_engine_form(self):
+        # Real capture. The reading leaves the line and travels beside it.
+        text, ruby = wl.split_ruby(
+            "彼女の悪戯が<ruby=\"おおごと\">大事</ruby>になってしまった……。"
+        )
+        self.assertEqual(text, "彼女の悪戯が大事になってしまった……。")
+        self.assertEqual(ruby, [[6, 2, "おおごと"]])
+
+    def test_html_form_with_fallback_parens(self):
+        text, ruby = wl.split_ruby("<ruby>節<rp>(</rp><rt>ふし</rt><rp>)</rp></ruby>穴")
+        self.assertEqual(text, "節穴")
+        self.assertEqual(ruby, [[0, 1, "ふし"]])
+
+    def test_several_annotations_offset_from_stripped_text(self):
+        text, ruby = wl.split_ruby("<ruby=\"あ\">亜</ruby>と<ruby=\"い\">伊</ruby>")
+        self.assertEqual(text, "亜と伊")
+        self.assertEqual(ruby, [[0, 1, "あ"], [2, 1, "い"]])
+
+    def test_unclosed_tag_drops_its_reading(self):
+        # Furigana is a gloss on the spelling; a broken tag must not leak it
+        # into the line, where it would be counted and tokenized.
+        self.assertEqual(wl.split_ruby("大事<rt>おおごと"), ("大事", []))
+
+    def test_plain_line_untouched(self):
+        self.assertEqual(wl.split_ruby("ふつうの行"), ("ふつうの行", []))
+
+    def test_offsets_are_utf16(self):
+        # 𠮟 is a surrogate pair in UTF-16, which is what the overlay indexes
+        # in — a codepoint offset would place the furigana one short.
+        text, ruby = wl.split_ruby("𠮟<ruby=\"しか\">叱</ruby>")
+        self.assertEqual(text, "𠮟叱")
+        self.assertEqual(ruby, [[2, 1, "しか"]])
 
 
 if __name__ == "__main__":

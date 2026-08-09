@@ -63,7 +63,8 @@
     padding: 4.23rem 0 0;
     font-family: var(--line-font);
     font-size: clamp(1.35rem, calc(1.82vw * var(--scale)), 2.25rem);
-    line-height: 1.8;
+    /* Tuned against the game's own line spacing, which the strip sits over. */
+    line-height: 1.68;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
     /* Set by the drag — see moveBy(). The strip is a layer surface pinned to
        every screen edge, so repositioning it means moving the content inside
@@ -89,6 +90,9 @@
   }
 
   #line {
+    /* The game's own soft breaks arrive as newlines, so the line is drawn the
+       shape it has on screen. Wrapping still applies past the overlay width. */
+    white-space: pre-wrap;
     width: fit-content;
     max-width: 100%;
     max-height: 100%;
@@ -97,6 +101,17 @@
     padding: 0.45rem 0.7rem;
     border-radius: 10px;
     background: var(--backdrop);
+  }
+
+  /* Furigana the game drew with the line. `line-height: 1` on the reading keeps
+     it inside the leading the line already has, so a line with furigana sits at
+     the same height as one without — the strip is aligned to the game's text
+     and must not shift under it. */
+  ruby > rt {
+    font-size: 0.5em;
+    line-height: 1;
+    opacity: 0.85;
+    text-shadow: none;
   }
 
   /* One span per word the tokenizer found. Nothing is drawn until the pointer
