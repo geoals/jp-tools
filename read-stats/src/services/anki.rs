@@ -182,14 +182,33 @@ pub fn clean_field_keep_bold(raw: &str) -> String {
 }
 
 /// Strip HTML tags and surrounding whitespace from a field value.
+///
+/// A ruby annotation's *reading* goes with the tags: `<rt>` and `<rp>` hold
+/// furigana, which is a gloss on the spelling rather than part of it. Keeping
+/// their text interleaves the reading into the word — 節穴 comes through as
+/// 節ふし穴, which is not a spelling anything is written in, and it is the
+/// string CompactDef would be told to rate "as it is written".
 pub fn clean_field(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
+    let mut tag = String::new();
     let mut in_tag = false;
+    let mut in_reading = false;
     for c in raw.chars() {
         match c {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            c if !in_tag => out.push(c),
+            '<' => {
+                in_tag = true;
+                tag.clear();
+            }
+            '>' => {
+                in_tag = false;
+                let name = tag.trim_start_matches('/');
+                let name = name.split([' ', '\t', '\n']).next().unwrap_or("");
+                if name.eq_ignore_ascii_case("rt") || name.eq_ignore_ascii_case("rp") {
+                    in_reading = !tag.starts_with('/');
+                }
+            }
+            c if in_tag => tag.push(c),
+            c if !in_reading => out.push(c),
             _ => {}
         }
     }
@@ -335,8 +354,9 @@ mod tests {
         );
         // Furigana inside the span is markup, not spelling.
         assert_eq!(
-            bolded_span("<b>節<rt>ふし</rt>穴</b>じゃない").as_deref(),
-            Some("節ふし穴")
+            bolded_span("<b><ruby>節<rp>(</rp><rt>ふし</rt><rp>)</rp></ruby>穴</b>じゃない")
+                .as_deref(),
+            Some("節穴")
         );
         assert_eq!(bolded_span("markerless sentence"), None);
         assert_eq!(bolded_span("<b></b>"), None);
