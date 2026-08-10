@@ -264,5 +264,42 @@ class SplitRuby(unittest.TestCase):
         self.assertEqual(ruby, [[2, 1, "しか"]])
 
 
+class CollapseRepeatsTest(unittest.TestCase):
+    """A hook that emits every character four times over."""
+
+    def test_plain_line(self):
+        raw = "心心心心配配配配そそそそううううにににに呼呼呼呼ぶぶぶぶ。。。。"
+        self.assertEqual(wl.collapse_repeats(raw), "心配そうに呼ぶ。")
+
+    def test_genuine_repeat_survives(self):
+        # What Textractor's own filter gets wrong: it collapses the run to one.
+        raw = "だだだだかかかかららららああああああああ。。。。"
+        self.assertEqual(wl.collapse_repeats(raw), "だからああ。")
+
+    def test_inlined_furigana_becomes_a_ruby_tag(self):
+        raw = "俺俺俺俺はははは瞠瞠どどううももくく瞠瞠どどううももくく目目目目すすすするるるる。。。。"
+        text, ruby = wl.split_ruby(wl.clean_line(raw))
+        self.assertEqual(text, "俺は瞠目する。")
+        self.assertEqual(ruby, [[2, 2, "どうもく"]])
+
+    def test_reading_stops_at_its_own_word(self):
+        # 帆刈(ほかり)叶(かなえ): the second name must not be pulled under the first
+        # reading, and 刈 must be.
+        raw = "帆帆ほほかかりり帆帆ほほかかりり刈刈刈刈叶叶かかななええ叶叶かかななええだだだだ。。。。"
+        text, ruby = wl.split_ruby(wl.clean_line(raw))
+        self.assertEqual(text, "帆刈叶だ。")
+        self.assertEqual(ruby, [[0, 2, "ほかり"], [2, 1, "かなえ"]])
+
+    def test_other_games_untouched(self):
+        self.assertIsNone(wl.collapse_repeats("これは普通の行です。"))
+        self.assertIsNone(wl.collapse_repeats("そんなーーーー！"))
+        self.assertEqual(wl.clean_line("これは普通の行です。"), "これは普通の行です。")
+
+    def test_quadrupled_line_survives_the_length_guard(self):
+        # 400 characters of hook for a 100-character line, over MAX_READING_CHARS.
+        raw = "".join(c * 4 for c in "あいうえお" * 20)
+        self.assertEqual(wl.clean_line(raw), "あいうえお" * 20)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

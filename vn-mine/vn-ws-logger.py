@@ -49,6 +49,9 @@ RUNDIR = os.environ.get("VN_RUNDIR") or os.path.join(
     os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}", "vn-mine"
 )
 LINES_LOG = os.path.join(RUNDIR, "lines.log")
+# What Textractor actually sent, before any cleaning. The only place a defect in
+# Textractor's own filters (repeat removal against a ruby tag) is visible at all.
+RAW_LOG = os.path.join(RUNDIR, "raw.log")
 WS_URL = os.environ.get("VN_WS_URL", "ws://localhost:6677")
 
 # How often the capture-paused flag is re-read, and how long to wait before
@@ -145,6 +148,95 @@ _SPEAKER = re.compile(r"【[^】]*】")
 MAX_SPEAKER_TAGS = 5
 
 
+# Some hooks emit every character of the line four times over. Textractor's
+# own "Remove Repeated Characters" collapses runs, which is wrong twice: it flattens
+# a genuine repeat (っっ, ーー, ととと) to one character, and it cannot see the shape
+# furigana arrives in. The engine emits no ruby markup at all — it inlines the
+# reading after the character it annotates, and repeats that whole group twice with
+# each character inside it doubled, so 瞠目(どうもく) hooks as
+# 瞠瞠どどううももくく瞠瞠どどううももくく目目目目 and run-collapsing left half of it
+# inline in the text. Undoing it here instead: every character still arrives exactly
+# four times, so a run divisible by four is that many characters, and a stretch of
+# doubled runs is a ruby group. Anything that does not decode cleanly is left alone,
+# which is what makes this safe for the other games' hooks.
+QUAD = 4
+_KANJI = re.compile(r"[々〆〇㐀-䶿一-鿿豈-﫿]")
+_KANA_ONLY = re.compile(r"\A[ぁ-ゟ゠-ヿ]+\Z")
+
+
+def _runs(text):
+    runs = []
+    for c in text:
+        if runs and runs[-1][0] == c:
+            runs[-1][1] += 1
+        else:
+            runs.append([c, 1])
+    return runs
+
+
+def collapse_repeats(text):
+    """`text` with the hook's fourfold repetition undone and its inlined furigana
+    turned into the engine ruby markup split_ruby reads, or None if `text` is not
+    in that shape."""
+    runs = _runs(text)
+    tokens = []  # ("plain", text) | ("ruby", base, reading)
+    i = 0
+    while i < len(runs):
+        char, n = runs[i]
+        if n % QUAD == 0:
+            single = char * (n // QUAD)
+            if tokens and tokens[-1][0] == "plain":
+                tokens[-1] = ("plain", tokens[-1][1] + single)
+            else:
+                tokens.append(("plain", single))
+            i += 1
+            continue
+        if n != 2:
+            return None
+        end = i
+        while end < len(runs) and runs[end][1] == 2:
+            end += 1
+        half = (end - i) // 2
+        if (end - i) % 2 or runs[i : i + half] != runs[i + half : end]:
+            return None
+        group = "".join(c for c, _ in runs[i : i + half])
+        if len(group) < 2 or not _KANJI.match(group[0]) or not _KANA_ONLY.match(group[1:]):
+            return None
+        tokens.append(("ruby", group[0], group[1:]))
+        i = end
+    # A short line of one repeated character (ーーーー) decodes as cleanly as a
+    # quadrupled line does, and from a game that does not repeat anything it is
+    # real text. Only a line long enough that the shape cannot be coincidence.
+    if len(runs) < 3 or len(text) < 12:
+        return None
+    # The hook groups the reading with the *first* character of the word only, so
+    # 帆刈(ほかり) arrives as a 帆ほかり group followed by a plain 刈. Pull the
+    # following kanji back under the reading, capped at one kanji per two mora —
+    # otherwise a name followed by an unrelated kanji word takes the furigana with
+    # it. Wrong only in where the reading is drawn; the line itself is unaffected.
+    for k, token in enumerate(tokens):
+        if token[0] != "ruby":
+            continue
+        base, reading = token[1], token[2]
+        cap = max(1, -(-len(reading) // 2))
+        following = tokens[k + 1] if k + 1 < len(tokens) else None
+        if following and following[0] == "plain":
+            take = 0
+            while (
+                take < len(following[1])
+                and len(base) + take < cap
+                and _KANJI.match(following[1][take])
+            ):
+                take += 1
+            if take:
+                base += following[1][:take]
+                tokens[k + 1] = ("plain", following[1][take:])
+        tokens[k] = ("ruby", base, reading)
+    return "".join(
+        t[1] if t[0] == "plain" else f"<ruby={t[2]}>{t[1]}</ruby>" for t in tokens
+    )
+
+
 def clean_line(raw):
     """Dialogue text to log for `raw`, or None to drop the capture.
 
@@ -152,7 +244,11 @@ def clean_line(raw):
     strips the 【speaker】 tag, and drops skip-through captures (many lines fused
     into one). Other games carry no markers and pass through unchanged. Either
     way a capture longer than a real line, or with no Japanese left, is dropped.
+
+    The repetition collapse runs first: at four copies of every character a normal
+    line is over the length guard below and would be dropped as a skip-through.
     """
+    raw = collapse_repeats(raw) or raw
     parts = _SEGMENT.split(raw)
     if len(parts) > 1:  # Dohna Dohna script-layer capture
         runs, keep = [], False
@@ -405,6 +501,11 @@ async def read_lines(ws, out, stats, last_text):
     async for raw in ws:
         if isinstance(raw, bytes):
             raw = raw.decode("utf-8", "replace")
+        try:
+            with open(RAW_LOG, "a", encoding="utf-8") as rawlog:
+                rawlog.write(f"{time.time():.9f}\t{normalize(raw)}\n")
+        except OSError:
+            pass
         text = clean_line(normalize(raw))
         if not text:
             continue

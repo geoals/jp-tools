@@ -41,8 +41,13 @@
        and side bearing are the font's business and already in the numbers. */
     --text-x: 0.227;
     --text-y: 0.7916;
-    --text-w: 0.5372;
     --text-size: 0.03235;
+
+    /* Where the game breaks the line, in characters. Not a fraction of the
+       window: the game wraps on a character count, and the type is sized off
+       the window's *height*, so a width fraction measured at 16:9 draws a
+       column too narrow at 4:3 and breaks a line the game did not. */
+    --text-chars: 30;
   }
 
   html {
@@ -108,7 +113,8 @@
     top: calc(var(--game-y) + var(--text-y) * var(--game-h) - 0.2em);
     right: auto;
     bottom: auto;
-    width: calc(var(--text-w) * var(--game-w) + 0.622em);
+    /* 1em per CJK glyph plus #line's `letter-spacing`, then #line's padding. */
+    width: calc(var(--text-chars) * 1.015em + 0.622em);
     height: auto;
     padding: 0;
     font-size: calc(var(--text-size) * var(--game-h));
