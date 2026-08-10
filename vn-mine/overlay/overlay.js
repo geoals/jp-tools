@@ -29,7 +29,7 @@ import { streamExplain } from "/shared/explain.js";
 
 const params = new URLSearchParams(location.search);
 const root = document.documentElement.style;
-root.setProperty("--backdrop", `rgba(0, 0, 0, ${params.get("bg") ?? "0.88"})`);
+root.setProperty("--backdrop", `rgba(0, 0, 0, ${params.get("bg") ?? "0.82"})`);
 root.setProperty("--strip", `${params.get("h") ?? "300"}px`);
 const scale = params.get("scale") ?? "1";
 root.setProperty("--scale", scale);
@@ -77,6 +77,10 @@ const popup = createPopup({
 let line = null;
 // The overlay shell, once its channel is up. Null in an ordinary browser.
 let shell = null;
+// The game window's rectangle as the shell last found it, or null when it has
+// none to give. Non-null is what puts the line over the game's own text.
+let game = null;
+let windowName = "";
 // The lookup row the open popup was recorded as, so marking the word known can
 // take it back. Cleared with the popup: a retraction is only ever the popup
 // that made the row undoing itself.
@@ -102,8 +106,13 @@ const stream = new EventSource(`/api/lines/stream?backlog=${EXPLAIN_CONTEXT_LINE
 stream.onmessage = (e) => draw(JSON.parse(e.data));
 
 stream.addEventListener("status", (e) => {
-  const { capture } = JSON.parse(e.data);
+  const { capture, vn_window } = JSON.parse(e.data);
   warnEl.textContent = capture === "live" ? "" : capture;
+  // Kept even before the channel is up: the first status usually beats it, and
+  // the shell is told on connect. The name is per work, so it changes under a
+  // running overlay whenever the current work does.
+  windowName = vn_window ?? "";
+  shell?.setWindowName(windowName);
 });
 
 /* Append `text[from..to)` to `parent`, drawing the game's own furigana where it
@@ -119,16 +128,25 @@ function appendText(parent, text, ruby, from, to) {
   for (const [start, len, reading] of ruby) {
     const end = start + len;
     if (end <= at || start >= to || start < at || end > to) continue;
-    if (start > at) parent.append(text.slice(at, start));
+    if (start > at) parent.append(drawn(text.slice(at, start)));
     const annotated = document.createElement("ruby");
-    annotated.append(text.slice(start, end));
+    annotated.append(drawn(text.slice(start, end)));
     const rt = document.createElement("rt");
     rt.textContent = reading;
     annotated.append(rt);
     parent.append(annotated);
     at = end;
   }
-  if (at < to) parent.append(text.slice(at, to));
+  if (at < to) parent.append(drawn(text.slice(at, to)));
+}
+
+/* The game's soft breaks are drawn where the game put them, so the overlaid
+ * line keeps the shape it has on screen. At phone size it is not over the game
+ * any more and the width is different, so they only break the line in the
+ * wrong places — drop them and let it wrap. Only the drawn text changes: the
+ * offsets everything else indexes with are over the original string. */
+function drawn(slice) {
+  return mobile ? slice.replace(/\n/g, "") : slice;
 }
 
 /** One line, one span per word the tokenizer found. */
@@ -261,33 +279,54 @@ const boxEl = document.getElementById("box");
 // Per layout: the two start from different places in the strip, so one stored
 // drag would carry the mobile line off the bottom edge it is pinned to.
 const PLACE = `vn-overlay-offset${mobile ? "-mobile" : ""}`;
+// Aligned to the game, the drag is calibration rather than placement — it is
+// what the per-game `--text-*` measurements are found with — so it is stored
+// apart from the free-floating one, and as fractions of the game window: a
+// resize has to carry the correction with the thing it corrects.
+const ALIGNED_PLACE = "vn-overlay-offset-aligned";
 let drag = null;
 let offset = { x: 0, y: 0 };
+let alignedOffset = { x: 0, y: 0 };
 
-try {
-  offset = { ...offset, ...JSON.parse(localStorage.getItem(PLACE) ?? "{}") };
-} catch {
-  // Nothing stored, or stored by an older shape. Start where the CSS puts it.
+for (const [key, into] of [[PLACE, "free"], [ALIGNED_PLACE, "aligned"]]) {
+  try {
+    const stored = JSON.parse(localStorage.getItem(key) ?? "{}");
+    if (into === "free") offset = { ...offset, ...stored };
+    else alignedOffset = { ...alignedOffset, ...stored };
+  } catch {
+    // Nothing stored, or stored by an older shape. Start where the CSS puts it.
+  }
 }
 apply();
+
+/** The drag in pixels, whichever of the two is in force. */
+function offsetPx() {
+  return game
+    ? { x: alignedOffset.x * game.w, y: alignedOffset.y * game.h }
+    : offset;
+}
 
 /** Move to `x, y`, clamped so the box stays somewhere it can be grabbed back
  * from — the surface is the whole screen, and a strip pushed off it is gone. */
 function moveTo(x, y) {
   const rect = lineEl.getBoundingClientRect();
-  const left = rect.left - offset.x;
-  const top = rect.top - offset.y;
+  const at = offsetPx();
+  const left = rect.left - at.x;
+  const top = rect.top - at.y;
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(v, hi));
-  offset = {
+  const px = {
     x: clamp(x, -left, Math.max(0, window.innerWidth - rect.width) - left),
     y: clamp(y, -top, Math.max(0, window.innerHeight - rect.height) - top),
   };
+  if (game) alignedOffset = { x: px.x / game.w, y: px.y / game.h };
+  else offset = px;
   apply();
 }
 
 function apply() {
-  boxEl.style.setProperty("--dx", `${offset.x}px`);
-  boxEl.style.setProperty("--dy", `${offset.y}px`);
+  const at = offsetPx();
+  boxEl.style.setProperty("--dx", `${at.x}px`);
+  boxEl.style.setProperty("--dy", `${at.y}px`);
   report();
 }
 
@@ -314,7 +353,8 @@ for (const type of ["pointerup", "pointercancel"]) {
     // it reaches the document handler and closes the open popup.
     if (drag.moved) document.addEventListener("click", (c) => c.stopPropagation(), { capture: true, once: true });
     drag = null;
-    localStorage.setItem(PLACE, JSON.stringify(offset));
+    if (game) localStorage.setItem(ALIGNED_PLACE, JSON.stringify(alignedOffset));
+    else localStorage.setItem(PLACE, JSON.stringify(offset));
   });
 }
 
@@ -413,6 +453,29 @@ hideBtnEl.addEventListener("click", () => {
   hideBtnEl.title = boxEl.hidden ? "Show the line" : "Hide the line";
   if (boxEl.hidden) closePopup();
   report();
+});
+
+// Phone size and back, without restarting the shell: `--mobile` is three query
+// parameters, so the toggle flips them and reloads. A reload rather than
+// setting the properties live because the layout is read at startup in more
+// places than the CSS — the stored drag offset is per layout, and the popup's
+// touch buttons are built from `mobile` — and the stream replays the newest
+// line the moment it reconnects, so nothing is lost.
+const MOBILE_SCALE = 1.75;
+const mobileBtnEl = document.getElementById("mobile-btn");
+mobileBtnEl.classList.toggle("off", !mobile);
+mobileBtnEl.title = mobile ? "Switch to overlay size" : "Switch to phone size";
+mobileBtnEl.addEventListener("click", () => {
+  const next = new URLSearchParams(location.search);
+  // Scaled off what is there rather than set to a constant: `VN_OVERLAY_HEIGHT`
+  // and a custom scale both arrive this way, and switching layout must not
+  // throw them away.
+  const factor = mobile ? 1 / MOBILE_SCALE : MOBILE_SCALE;
+  next.set("scale", `${Number(scale) * factor}`);
+  next.set("h", `${Math.round(Number(params.get("h") ?? "300") * factor)}`);
+  if (mobile) next.delete("mobile");
+  else next.set("mobile", "1");
+  location.replace(`${location.pathname}?${next}`);
 });
 
 // The last text selected inside the line, remembered rather than read at the
@@ -553,6 +616,27 @@ async function judge(word, status, target = null) {
   return true;
 }
 
+/** The one sentence of `text` that the word at offset `at` is in.
+ *
+ * A hooked line often holds several sentences, and the card wants the one the
+ * word was read in — the same thing Yomitan puts on a card from `#read`. It is
+ * also what `vn-trim.py` cuts the voiceline down to: the trim aligns the note's
+ * sentence against a transcript of the clip, so a narrower sentence here is a
+ * narrower clip, with nothing to change on that side.
+ *
+ * A newline is not a boundary, unlike `jp_core::text::split_sentences`. The
+ * game's own soft breaks arrive as newlines in the line, so treating them as
+ * ends would cut a wrapped sentence in half. */
+function sentenceAround(text, at) {
+  let start = 0;
+  for (const end of text.matchAll(/[。！？!?…‥]+[」』）)"”]*/g)) {
+    const stop = end.index + end[0].length;
+    if (at < stop) return text.slice(start, stop).trim();
+    start = stop;
+  }
+  return text.slice(start).trim();
+}
+
 /** A card, built and added the way Yomitan's own add is. Answers with the new
  * note's id, so a popup open on this word can raise its badge now rather than
  * the next time it is opened.
@@ -565,7 +649,9 @@ async function mine(word, target = null) {
     key: word.dataset.term,
     reading: word.dataset.reading,
     surface: word.dataset.surface,
+    start: Number(word.dataset.start),
   };
+  const at = Number.isInteger(on.start) ? on.start : Number(word.dataset.start);
   const res = await fetch("/api/reader/mine", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -573,7 +659,7 @@ async function mine(word, target = null) {
       term: on.key,
       reading: on.reading,
       surface: on.surface,
-      sentence: line ? line.text : "",
+      sentence: line ? sentenceAround(line.text, at) : "",
     }),
   });
   // The add answers with the new note's id, so a popup open on this word gets
@@ -621,12 +707,71 @@ watch.observe(popupEl);
 watch.observe(explainBoxEl);
 window.addEventListener("resize", report);
 
+/* The game moved, resized, appeared or went away. Everything the line is placed
+ * with becomes a fraction of this rectangle — see `--text-*` in overlay.html —
+ * so following the game costs nothing beyond writing it down.
+ *
+ * A zero rectangle is "not found", not "at the origin": the game may be
+ * Wayland-native, have no window name set on the work, or simply not be running
+ * yet. Then the line goes back to sitting against the screen, which is where it
+ * sat before any of this. */
+function onGeometry(x, y, w, h) {
+  game = w > 0 && h > 0 && !mobile ? { x, y, w, h } : null;
+  if (game) {
+    root.setProperty("--game-x", `${x}px`);
+    root.setProperty("--game-y", `${y}px`);
+    root.setProperty("--game-w", `${w}px`);
+    root.setProperty("--game-h", `${h}px`);
+  }
+  document.documentElement.toggleAttribute("data-aligned", !!game);
+  applyGhost();
+  apply();
+  // The popup hangs off the line box, so it has to be re-placed under it.
+  if (popup.anchor()) place(popup.anchor());
+}
+
+// Ghost mode: the line laid over the game's own text and then drawn invisibly,
+// so the game does the typesetting and the overlay only marks the words and
+// takes the clicks. Only ever on while the game's geometry is known — floating
+// marks over nothing is worse than no marks — and never on a phone, where the
+// line is being read off the screen rather than fitted over anything.
+const GHOST = "vn-overlay-ghost";
+const ghostBtnEl = document.getElementById("ghost-btn");
+let ghost = localStorage.getItem(GHOST) === "1";
+
+function applyGhost() {
+  const on = ghost && !!game;
+  document.documentElement.toggleAttribute("data-ghost", on);
+  ghostBtnEl.classList.toggle("off", !on);
+  // Left pressable while the game is missing and the mode is on: the button is
+  // then the only way to turn it back off, and a game that has quit or has not
+  // started yet is the ordinary case rather than a fault.
+  ghostBtnEl.disabled = !game && !ghost;
+  ghostBtnEl.title = game
+    ? "Read the game's own text, marked"
+    : "Needs the game window — no window name on this work, or it is not running";
+  report();
+}
+
+function toggleGhost() {
+  ghost = !ghost;
+  localStorage.setItem(GHOST, ghost ? "1" : "0");
+  applyGhost();
+}
+
+ghostBtnEl.addEventListener("click", toggleGhost);
+applyGhost();
+
 // Only under the overlay shell — in an ordinary browser there is no channel and
 // the page is simply a page. qwebchannel.js is injected by the shell, so
 // nothing is served for it here.
 if (window.qt?.webChannelTransport) {
   new QWebChannel(window.qt.webChannelTransport, (channel) => {
     shell = channel.objects.shell;
+    shell.geometry.connect(onGeometry);
+    shell.ghostToggled.connect(toggleGhost);
+    // The status event that carried it has usually already been and gone.
+    if (windowName) shell.setWindowName(windowName);
     report();
   });
 }

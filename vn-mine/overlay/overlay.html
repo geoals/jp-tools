@@ -17,13 +17,32 @@
 <link rel="stylesheet" href="/shared/popup.css" />
 <style>
   :root {
-    --backdrop: rgba(0, 0, 0, 0.88);
+    --backdrop: rgba(0, 0, 0, 0.82);
     --strip: 300px;
     --line-font: "Noto Sans CJK JP", "Noto Sans JP", sans-serif;
     /* `?scale=` — everything below is in `rem` or in `em` under something that
        is, so one root font-size takes the whole overlay with it. The few
        viewport-relative lengths carry the factor themselves. */
     --scale: 1;
+
+    /* The game window, pushed from the shell. Zero size means it was not found
+       — no name set on the work, no xdotool, or a Wayland-native game — and the
+       line keeps the screen-relative placement below. */
+    --game-x: 0px;
+    --game-y: 0px;
+    --game-w: 0px;
+    --game-h: 0px;
+
+    /* Where the game draws its own text, as fractions of that window rather
+       than of the screen, so the line follows a resize instead of having to be
+       re-measured. These reproduce the placement measured off this VN at
+       1920x1080 fullscreen; another game wants its own, found with the drag.
+       `--text-y` is the top of the line's content box, not of the ink: leading
+       and side bearing are the font's business and already in the numbers. */
+    --text-x: 0.227;
+    --text-y: 0.7916;
+    --text-w: 0.5372;
+    --text-size: 0.03235;
   }
 
   html {
@@ -76,11 +95,76 @@
     display: none;
   }
 
+  /* The game window is known, so the line is placed off it rather than off the
+     screen: moving or resizing the game carries the line along, and a different
+     resolution needs no re-measuring. `--text-*` are fractions of that window,
+     so the type scales with it too.
+
+     The box is pulled back by #line's own padding — restated here in `em` so it
+     scales with the type — which leaves the first glyph exactly where
+     `--text-x` puts it. */
+  html[data-aligned] #box {
+    left: calc(var(--game-x) + var(--text-x) * var(--game-w) - 0.311em);
+    top: calc(var(--game-y) + var(--text-y) * var(--game-h) - 0.2em);
+    right: auto;
+    bottom: auto;
+    width: calc(var(--text-w) * var(--game-w) + 0.622em);
+    height: auto;
+    padding: 0;
+    font-size: calc(var(--text-size) * var(--game-h));
+  }
+
+  html[data-aligned] #line {
+    padding: 0.2em 0.311em;
+  }
+
+  /* Ghost: the game's own text is what is read, and the overlay adds only the
+     marks over it and somewhere to click. The status tints stay — they are
+     backgrounds, the same shape the hover tint has — while the glyphs, the
+     backdrop and the shadow go, so nothing is drawn twice. Needs
+     `[data-aligned]`: without the game's geometry the line is not over the
+     game's text, and hiding it would leave marks floating on nothing. */
+  html[data-ghost] #line {
+    background: transparent;
+    color: transparent;
+    text-shadow: none;
+  }
+
+  /* The tints sit *over* the game's glyphs here rather than under the overlay's
+     own, so they have to wash the word rather than fill it: at the weight they
+     carry normally they bury the text they are marking. Lighter and much more
+     transparent, near the hover tint's weight — which needs no change on a word
+     with no status, since it was always drawn over something readable.
+     Hover moves the alpha rather than replacing the colour: the status rules
+     outrank `.w:hover`, and a hover that won outright would drop the word's
+     status for as long as it is the word being reached for. */
+  html[data-ghost] .w {
+    --tint: 0.28;
+  }
+  html[data-ghost] .w:hover {
+    --tint: 0.55;
+  }
+  html[data-ghost] .w.new {
+    background: hsl(211 70% 52% / var(--tint));
+  }
+  html[data-ghost] .w.seen {
+    background: hsl(276 48% 55% / var(--tint));
+  }
+  html[data-ghost] .w.unknown {
+    background: hsl(28 70% 50% / var(--tint));
+  }
+
   /* Scaled up, the line is read off the screen rather than fitted over the
      game's own text, so it goes to the bottom edge: nothing of the game is
      worth covering less, and the popup gets the whole screen above it. Left
      edge, not centred — centring moves the first glyph with every change in
      line length, so the eye has to find where the line starts again. */
+  /* Nothing of the game is being read through the line at phone size, so the
+     backdrop stops being a compromise and just makes the text legible. */
+  html[data-mobile] {
+    --backdrop: rgba(0, 0, 0, 0.92);
+  }
+
   html[data-mobile] #box {
     left: 0;
     right: 0;
@@ -101,6 +185,10 @@
     padding: 0.45rem 0.7rem;
     border-radius: 10px;
     background: var(--backdrop);
+    /* The game's font is a touch wider per character at the same size, so the
+       overlaid line drifts left of it across a long line. This makes up the
+       difference. */
+    letter-spacing: 0.015em;
   }
 
   /* Furigana the game drew with the line. `line-height: 1` on the reading keeps
@@ -150,6 +238,13 @@
     text-decoration: underline;
     text-decoration-thickness: 2px;
     text-underline-offset: 4px;
+  }
+  /* The underline takes its colour from the text, which ghost mode makes
+     transparent — and the underline is a mark, not a glyph, so it has to stay.
+     White, as it is when the line draws its own words: the status tints own the
+     hues, and a coloured underline would read as a status of its own. */
+  html[data-ghost] .w.common {
+    text-decoration-color: rgba(255, 255, 255, 0.85);
   }
   /* The word the popup is about. A ring, not a fill: the fills are the status
      scale, and the word being read about has to stay legible as `new`, `seen`
@@ -211,14 +306,16 @@
   }
 
   #explain-btn,
-  #hide-btn {
+  #hide-btn,
+  #ghost-btn,
+  #mobile-btn {
     flex: none;
     min-width: 3rem;
     padding: 0.45rem 0.9rem;
     border: none;
     border-radius: 8px;
     background: rgba(0, 0, 0, 0.82);
-    color: hsl(45 90% 72%);
+    color: #e6e6e6;
     font: inherit;
     font-size: 1.3rem;
     cursor: pointer;
@@ -227,11 +324,19 @@
     user-select: none;
     touch-action: none;
   }
-  #explain-btn:disabled {
+  #explain-btn:disabled,
+  /* Nothing to be a ghost over until the game's rectangle is known. */
+  #ghost-btn:disabled {
     opacity: 0.45;
     cursor: default;
   }
   #hide-btn.off {
+    color: #9a9a9a;
+  }
+  #ghost-btn.off {
+    color: #9a9a9a;
+  }
+  #mobile-btn.off {
     color: #9a9a9a;
   }
 
@@ -241,7 +346,7 @@
     scrollbar-width: none;
     padding: 0.9rem 1.2rem;
     border-radius: 10px;
-    background: rgba(0, 0, 0, 0.92);
+    background: rgba(0, 0, 0, 0.9);
     color: #f2f2f2;
     font-size: 1.15rem;
     line-height: 1.7;
@@ -270,6 +375,8 @@
   <div id="buttons">
     <button id="explain-btn" title="Explain the last line (select a word first to focus on it)">ℹ</button>
     <button id="hide-btn" title="Hide the line">👁</button>
+    <button id="ghost-btn" title="Read the game's own text, marked">あ</button>
+    <button id="mobile-btn" title="Switch to phone size">⤢</button>
   </div>
   <div id="explain-panel" hidden></div>
 </div>

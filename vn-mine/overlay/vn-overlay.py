@@ -28,10 +28,13 @@ select text rather than advance the VN. Bind it to a KDE shortcut:
 
     pkill -USR1 -f vn-overlay.py
 
-`SIGHUP` reloads the page, cache bypassed — the view has no keyboard reload and
-the page is edited on disk:
+`SIGUSR2` toggles ghost mode: the line is laid over the game's own text and then
+drawn invisibly, so what is read is the game's typesetting and all this adds is
+the status tint per word and somewhere to click. It needs the line to sit on the
+game's text to the pixel, which is what the window geometry above is for — see
+`--text-x` and friends in `overlay.html` for the per-game measurements.
 
-    pkill -HUP -f vn-overlay.py
+    pkill -USR2 -f vn-overlay.py
 
 `--mobile` is the overlay read off a phone: everything at 1.75x, the line on
 the bottom edge, and the popup carrying known / unknown / mine buttons, since
@@ -41,14 +44,16 @@ strip grows with the type; `VN_OVERLAY_HEIGHT` still wins if it is set.
     VN_OVERLAY_URL      page to show      (default overlay.html, over read-stats)
     JP_TOOLS_ANKI_URL   AnkiConnect       (default http://localhost:8765)
     VN_OVERLAY_HEIGHT   strip height, px  (default 300, 525 with --mobile)
-    VN_OVERLAY_BG       backdrop alpha    (default 0.88)
+    VN_OVERLAY_BG       backdrop alpha    (default 0.82)
     VN_OVERLAY_FONT     font for the line (default Noto Sans CJK JP)
 """
 
 import argparse
 import json
 import os
+import shutil
 import signal
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -111,16 +116,86 @@ def check_dependencies(page_url: str) -> None:
         )
 
 
-class Overlay(QObject):
-    """Owns which parts of the strip take clicks."""
+GEOMETRY_POLL_MS = 300
 
-    reloadRequested = Signal()
+
+class Overlay(QObject):
+    """Owns which parts of the strip take clicks, and where the game is."""
+
+    #: The game window as `x, y, width, height`, or a zero rectangle when it
+    #: cannot be found. The page lays the line over the game's own text off
+    #: this, so a move or a resize carries the line along instead of leaving it
+    #: measured against a screen the game no longer fills.
+    geometry = Signal(int, int, int, int)
+
+    #: Draw the marks but not the words — see `SIGUSR2` in the module docstring.
+    ghostToggled = Signal()
 
     def __init__(self) -> None:
         super().__init__()
         self._window = None
         self.interactive = False
         self._hits = []
+        self._name = ""
+        self._rect = None
+        self._xdotool = shutil.which("xdotool")
+        self._probe = QTimer()
+        self._probe.setInterval(GEOMETRY_POLL_MS)
+        self._probe.timeout.connect(self._poll_geometry)
+
+    @Slot(str)
+    def setWindowName(self, name: str) -> None:
+        """Which window is the game, as read-stats holds it for the current work.
+
+        Pushed from the page rather than read here: the name is a column on the
+        work, and a copy in this process would be the one left stale when the
+        work changes. Polled rather than watched because there is no X event for
+        "a window matching this name appeared" that is cheaper than asking.
+        """
+        name = (name or "").strip()
+        if name == self._name:
+            return
+        self._name = name
+        self._rect = None
+        if name and self._xdotool:
+            self._poll_geometry()
+            self._probe.start()
+        else:
+            self._probe.stop()
+            self.geometry.emit(0, 0, 0, 0)
+
+    def _poll_geometry(self) -> None:
+        rect = self._window_rect()
+        if rect == self._rect:
+            return
+        self._rect = rect
+        self.geometry.emit(*(rect or (0, 0, 0, 0)))
+
+    def _window_rect(self):
+        # Wine and Proton VNs are XWayland windows, so they stay addressable
+        # through X under a Wayland session — the same reason vn-capture.sh
+        # finds the window this way. A Wayland-native game has no equivalent,
+        # and the page falls back to placing the line against the screen.
+        try:
+            out = subprocess.run(
+                [self._xdotool, "search", "--name", self._name,
+                 "getwindowgeometry", "--shell", "%1"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if out.returncode != 0:
+            return None
+        fields = {}
+        for line in out.stdout.splitlines():
+            key, _, value = line.partition("=")
+            if value.lstrip("-").isdigit():
+                fields[key] = int(value)
+        if not {"X", "Y", "WIDTH", "HEIGHT"} <= fields.keys():
+            return None
+        return (fields["X"], fields["Y"], fields["WIDTH"], fields["HEIGHT"])
 
     def attach(self, window) -> None:
         self._window = window
@@ -273,7 +348,7 @@ def main() -> int:
     height = int(os.environ.get("VN_OVERLAY_HEIGHT", 300 * scale))
     url = os.environ.get("VN_OVERLAY_URL", DEFAULT_URL)
     if url == DEFAULT_URL:
-        url += f"?bg={os.environ.get('VN_OVERLAY_BG', '0.88')}&h={height}&scale={scale}"
+        url += f"?bg={os.environ.get('VN_OVERLAY_BG', '0.82')}&h={height}&scale={scale}"
         if args.mobile:
             url += "&mobile=1"
         font = os.environ.get("VN_OVERLAY_FONT")
@@ -295,7 +370,7 @@ def main() -> int:
         return 1
 
     signal.signal(signal.SIGUSR1, lambda *_: overlay.toggle())
-    signal.signal(signal.SIGHUP, lambda *_: overlay.reloadRequested.emit())
+    signal.signal(signal.SIGUSR2, lambda *_: overlay.ghostToggled.emit())
     # Python only runs a signal handler between bytecodes and Qt's event loop
     # is C, so nothing above would ever land without a tick that returns to the
     # interpreter. It has no other work.

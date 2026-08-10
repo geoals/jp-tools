@@ -179,6 +179,10 @@ struct CaptureStatus {
     /// logger has never run against this database.
     age_secs: Option<f64>,
     pending: i64,
+    /// The current work's VN window name. Carried on the status event so the
+    /// overlay can find the game and lay the line over its own text — the same
+    /// column `vn-capture.sh` reads, rather than a second place to set it.
+    vn_window: Option<String>,
 }
 
 /// A logger that has missed this many beats is not running. Three rather than
@@ -197,11 +201,28 @@ async fn capture_status(state: &AppState) -> CaptureStatus {
         .as_deref()
         .and_then(|v| serde_json::from_str::<Heartbeat>(v).ok());
 
+    let settings = db::load_settings(&state.local).await.ok();
+    // Per work first, then the legacy global setting — the order vn-capture.sh
+    // resolves in. Diverging here would be the one thing the per-work column
+    // exists to stop: two places to say which window is the game, and the one
+    // you forgot pointing at the last VN.
+    let vn_window = match &settings {
+        Some(s) => db::current_work_vn_window(&state.knowledge, &s.current_work)
+            .await
+            .unwrap_or_else(|e| {
+                warn!(error = %e, "capture status: vn window unreadable");
+                None
+            })
+            .or_else(|| (!s.vn_window.is_empty()).then(|| s.vn_window.clone())),
+        None => None,
+    };
+
     let Some(beat) = beat else {
         return CaptureStatus {
             capture: "down",
             age_secs: None,
             pending: 0,
+            vn_window,
         };
     };
     let age = crate::clock::now_ts() - beat.ts;
@@ -212,8 +233,8 @@ async fn capture_status(state: &AppState) -> CaptureStatus {
     } else if beat.pending > 0 {
         "stalled"
     } else if !beat.ws {
-        match db::load_settings(&state.local).await {
-            Ok(s) if s.capture_paused => "paused",
+        match &settings {
+            Some(s) if s.capture_paused => "paused",
             _ => "unhooked",
         }
     } else {
@@ -223,6 +244,7 @@ async fn capture_status(state: &AppState) -> CaptureStatus {
         capture,
         age_secs: Some(age),
         pending: beat.pending,
+        vn_window,
     }
 }
 

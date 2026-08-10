@@ -6,7 +6,6 @@
 #   vn-overlay.sh stop                    stop it
 #   vn-overlay.sh restart [--mobile ...]  same as start
 #   vn-overlay.sh status                  is it up, and with what
-#   vn-overlay.sh reload                  SIGHUP — reload the page in place
 #
 # Everything after the command goes to vn-overlay.py, so `--mobile` and any
 # `VAR=value` in the environment work exactly as they do there.
@@ -37,7 +36,7 @@ LOG="${VN_OVERLAY_LOG:-$RUN_DIR/overlay.log}"
 
 COMMAND="start"
 case "${1-}" in
-  start | stop | restart | status | reload)
+  start | stop | restart | status)
     COMMAND="$1"
     shift
     ;;
@@ -97,16 +96,6 @@ case "$COMMAND" in
     echo "overlay: running (pid $pid)"
     tr '\0' ' ' <"/proc/$pid/cmdline"
     echo
-    exit 0
-    ;;
-  reload)
-    pid="$(overlay_pid)"
-    if [[ -z "$pid" ]]; then
-      echo "overlay: not running" >&2
-      exit 1
-    fi
-    kill -HUP "$pid"
-    echo "overlay: page reloaded (pid $pid)"
     exit 0
     ;;
 esac

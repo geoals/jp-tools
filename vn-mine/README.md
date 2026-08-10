@@ -58,7 +58,7 @@ overlay surface *above* fullscreen windows, so the line can sit on the game.
 ```sh
 vn-mine/overlay/vn-overlay.sh                  # start, or restart what is up
 vn-mine/overlay/vn-overlay.sh --mobile         # 1.75x, read off a phone
-vn-mine/overlay/vn-overlay.sh stop|status|reload
+vn-mine/overlay/vn-overlay.sh stop|status
 ```
 
 Needs PySide6, qt6-webengine and layer-shell-qt — **system packages, not the
@@ -79,8 +79,8 @@ and none of them can be answered locally, since the dictionary and the ledger
 are jp-core's. So read-stats serves `overlay.html` out of this directory at
 `/overlay/overlay.html`: loading it over `file://` instead would break every
 relative `fetch`, and pointing it at an absolute URL would need CORS for
-nothing. It is served straight off disk, so an edit needs no restart —
-`vn-overlay.sh reload` (SIGHUP) redraws the view.
+nothing. It is served straight off disk, but the view only reads it at load,
+so an edit is picked up by `vn-overlay.sh restart`.
 
 Starting without read-stats warns and carries on; the strip fills in when
 read-stats arrives, because `EventSource` reconnects on its own. Anki down
@@ -97,7 +97,8 @@ aimed at the popup landing on the VN — which advances the line and closes the
 popup being aimed at. `qwebchannel.js` is injected from Qt's own resources, so
 read-stats serves nothing for it.
 `SIGUSR1` (`pkill -USR1 -f vn-overlay.py`) makes the whole surface take input,
-for selecting text rather than advancing. `SIGHUP` reloads the page.
+for selecting text rather than advancing. `SIGUSR2` toggles ghost mode, the
+same thing the あ button does.
 `vn-overlay.py` runs perfectly well by hand; the wrapper only handles being
 started from somewhere without a desktop session attached.
 
@@ -128,7 +129,33 @@ row that popup made. The side buttons still cost nothing at all and stay the
 way to judge a word without asking what it means.
 
 `--mobile` draws the overlay at 1.75x with the line on the bottom edge, for
-reading the screen off a phone.
+reading the screen off a phone. The 📱 button at the top left switches between
+the two without restarting the shell — it reloads the page with the layout's
+query parameters flipped, and the stream replays the newest line on reconnect.
+
+**The line is placed against the game's window, not the screen.** read-stats
+puts the current work's `vn_window` on the status event — the same column
+`vn-capture.sh` screenshots by, so there is still one place to say which window
+is the game — and the shell polls `xdotool` for its rectangle and pushes it over
+the WebChannel. Everything in `overlay.html`'s `--text-*` is a fraction of that
+rectangle, so moving or resizing the game carries the line with it and another
+resolution needs no re-measuring. No rectangle — no name on the work, no
+`xdotool`, a Wayland-native game — and the line falls back to sitting against
+the screen, which is where it sat before any of this.
+
+The `--text-*` defaults are measured off one VN. Another wants its own: drag the
+line onto the game's own text to find the offset, which is stored as fractions
+of the window, then set `--text-x`, `--text-y`, `--text-w` and `--text-size`
+from where it landed. They are per install, not yet per work.
+
+**Ghost mode** (the あ button, or `SIGUSR2`) draws the line invisibly over the
+game's own text: the game does the typesetting and the overlay contributes only
+the status tint per word, the underline on a common word, and somewhere to
+click. It needs the line to sit on the game's text to the pixel, so it only
+engages while the window rectangle is known, and it is only as good as the
+calibration above — a font whose advance differs from the game's drifts along
+the line until the tint sits between two words. The tints drop to a wash at that
+weight, since here they are over glyphs rather than under them.
 
 The popup carries a **mined** badge when the word is already a card, and
 clicking it opens that card in Anki. The check is Anki's own duplicate check,
@@ -165,7 +192,7 @@ on every change.
 - `VN_OVERLAY_HEIGHT` (default 300, 525 under `--mobile`) — strip height, px. The
   text is positioned against it, so changing it moves the line by the same
   amount.
-- `VN_OVERLAY_BG` (default 0.88) — backdrop alpha. At 1 the game's own text is
+- `VN_OVERLAY_BG` (default 0.82) — backdrop alpha. At 1 the game's own text is
   hidden, which is the only thing that makes the two agree: the VN's line
   breaks are inserted when it renders, so they are not in the hooked text and
   cannot be reproduced.
