@@ -56,6 +56,23 @@ pub async fn fetch_mined_word_days(k: &Knowledge) -> Result<Vec<WordDayHit>, sql
         .collect())
 }
 
+/// Every word-day row. The card report needs encounter *days* per lemma
+/// against an arbitrary cutoff per card, which no aggregate over this table can
+/// answer — the cutoff is the card's own last review.
+pub async fn fetch_word_days(k: &Knowledge) -> Result<Vec<WordDayHit>, sqlx::Error> {
+    let rows = sqlx::query("SELECT lemma, date, count FROM word_days")
+        .fetch_all(k.pool())
+        .await?;
+    Ok(rows
+        .iter()
+        .map(|r| WordDayHit {
+            lemma: r.get("lemma"),
+            date: r.get("date"),
+            count: r.get("count"),
+        })
+        .collect())
+}
+
 /// Every lemma the tokenizer has seen, with its total count across all days —
 /// the source of the example words on each kanji.
 pub async fn fetch_word_totals(k: &Knowledge) -> Result<Vec<(String, i64)>, sqlx::Error> {

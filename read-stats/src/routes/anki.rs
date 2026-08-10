@@ -1,7 +1,7 @@
-//! `/api/anki/*` — refreshing the deck snapshot, and what it says about
-//! re-encounters.
+//! `/api/anki/*` — refreshing the deck snapshot, what it says about
+//! re-encounters, and the card report.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::net::SocketAddr;
 
 use axum::Json;
@@ -12,7 +12,7 @@ use crate::app::AppState;
 use crate::clock::{now_ts, tz_offset_secs};
 use crate::db;
 use crate::error::AppError;
-use crate::stats;
+use crate::stats::{self, card_evidence};
 
 /// Probe for AnkiConnect (dashboard client first, then the configured
 /// fallback), snapshot the mined deck, then tokenize any new lines.
@@ -76,6 +76,149 @@ pub async fn anki_refresh(
         "mined_terms": mined,
     })))
 }
+
+/// `GET /api/anki/cards` — every mined card against what the reading knows.
+///
+/// Read-only, and deliberately so: it reports what a sweep *would* act on. The
+/// deck's scheduling state has to come from Anki live, since `anki_notes`
+/// mirrors only which words are carded, not what Anki has learnt about them.
+///
+/// The join is on [`db::AnkiNote::key`], the resolved ledger key — never the
+/// card's own spelling. A card saying 検死 against a ledger row of 検屍 would
+/// otherwise read as never met and land in the retire pile.
+pub async fn anki_cards(
+    State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> Result<Json<Value>, AppError> {
+    let Some(url) =
+        crate::services::anki::pick_url(&state.http, Some(addr.ip()), &state.anki_url).await
+    else {
+        return Ok(Json(json!({ "available": false })));
+    };
+
+    let cards = crate::services::anki::fetch_deck_cards(&state.http, &url, &state.anki_deck).await?;
+    // The real last-review time per card. `mod` cannot stand in for it — see
+    // `CardStat::modified`.
+    let reviews =
+        crate::services::anki::fetch_deck_reviews(&state.http, &url, &state.anki_deck).await?;
+
+    let settings = db::load_settings(&state.local).await?;
+    let tz = tz_offset_secs();
+    let rollover = settings.day_rollover_hour;
+    let day_of = |ts: f64| stats::date_key(ts, rollover, tz).to_string();
+
+    let notes: BTreeMap<i64, db::AnkiNote> = db::fetch_anki_notes(&state.knowledge)
+        .await?
+        .into_iter()
+        .map(|n| (n.note_id, n))
+        .collect();
+
+    let mut word_days: HashMap<String, Vec<(String, i64)>> = HashMap::new();
+    for hit in db::fetch_word_days(&state.knowledge).await? {
+        word_days
+            .entry(hit.lemma)
+            .or_default()
+            .push((hit.date, hit.count));
+    }
+    let mut lookups: HashMap<String, Vec<f64>> = HashMap::new();
+    for (key, ts) in db::fetch_lookup_keys(&state.knowledge).await? {
+        lookups.entry(key).or_default().push(ts);
+    }
+
+    // A card whose note is missing from the mirror has no ledger key to join
+    // on. Counted rather than guessed at: the answer is a refresh, not a
+    // fallback to the card's own spelling.
+    let mut unmirrored = 0;
+    // A card Anki has no review row for. Its cutoff falls back to `mod`, so the
+    // number is worth showing rather than hiding inside the buckets.
+    let mut unlogged = 0;
+    let inputs: Vec<card_evidence::CardInput> = cards
+        .iter()
+        .filter_map(|c| {
+            let Some(note) = notes.get(&c.note_id) else {
+                unmirrored += 1;
+                return None;
+            };
+            // A suspended card is already out of the rotation; nothing here
+            // would have anything to say about it.
+            if c.suspended {
+                return None;
+            }
+            let created_ts = c.note_id as f64 / 1000.0;
+            let last_review_ts = reviews.get(&c.card_id).copied().unwrap_or_else(|| {
+                unlogged += 1;
+                c.modified
+            });
+            Some(card_evidence::CardInput {
+                note_id: c.note_id,
+                vocab: note.vocab.clone(),
+                key: note.key().to_string(),
+                interval: c.interval,
+                lapses: c.lapses,
+                is_review: c.is_review(),
+                last_review_ts,
+                created_ts,
+                last_review_day: day_of(last_review_ts),
+                created_day: day_of(created_ts),
+            })
+        })
+        .collect();
+
+    let evidence = card_evidence::evaluate(&card_evidence::Inputs {
+        cards: &inputs,
+        word_days: &word_days,
+        lookups: &lookups,
+        now: now_ts(),
+    });
+
+    // Each bucket is its own list, most evidence first — the top of a list is
+    // where a sweep would start and where a wrong threshold shows itself.
+    let mut buckets: BTreeMap<String, Vec<&card_evidence::CardEvidence>> = BTreeMap::new();
+    for e in &evidence {
+        let Some(bucket) = e.bucket else { continue };
+        let name = serde_json::to_value(bucket)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default();
+        buckets.entry(name).or_default().push(e);
+    }
+    for (name, rows) in buckets.iter_mut() {
+        match name.as_str() {
+            "bring_forward" => rows.sort_by(|a, b| b.interval.cmp(&a.interval)),
+            "never_met" => rows.sort_by_key(|r| r.note_id),
+            _ => rows.sort_by(|a, b| b.encounter_days.cmp(&a.encounter_days)),
+        }
+    }
+    let counts: BTreeMap<&String, usize> = buckets.iter().map(|(k, v)| (k, v.len())).collect();
+    let listed: BTreeMap<&String, Vec<&card_evidence::CardEvidence>> = buckets
+        .iter()
+        .map(|(k, v)| (k, v.iter().take(BUCKET_SAMPLE).copied().collect()))
+        .collect();
+
+    Ok(Json(json!({
+        "available": true,
+        "source": url,
+        "deck": state.anki_deck,
+        "cards": inputs.len(),
+        "reviewing": inputs.iter().filter(|c| c.is_review).count(),
+        "unmirrored": unmirrored,
+        "unlogged": unlogged,
+        "listed_per_bucket": BUCKET_SAMPLE,
+        "counts": counts,
+        "buckets": listed,
+        "thresholds": {
+            "mature_days": card_evidence::MATURE_DAYS,
+            "defer_days": card_evidence::DEFER_DAYS,
+            "retire_days": card_evidence::RETIRE_DAYS,
+            "retire_interval": card_evidence::RETIRE_INTERVAL,
+            "never_met_age_days": card_evidence::NEVER_MET_AGE_DAYS,
+        },
+    })))
+}
+
+/// How many rows of each bucket travel with the report. The counts are whole;
+/// the lists are for looking at, and a bucket of 900 is judged from its head.
+const BUCKET_SAMPLE: usize = 200;
 
 /// Re-encounter statistics: how often mined words reappear in the line stream.
 pub async fn anki_summary(State(state): State<AppState>) -> Result<Json<Value>, AppError> {

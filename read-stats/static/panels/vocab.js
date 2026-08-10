@@ -19,6 +19,7 @@ import { DiscoveryChart } from "../charts.js";
 import { SegmentedControl } from "../components/controls.js";
 import { fmtTsDate } from "../lib/format.js";
 import { BrowseView } from "./browse.js";
+import { CardsView } from "./cards.js";
 import { FrequencyView } from "./frequency.js";
 import { PromotionView } from "./promotion.js";
 import { TriageView } from "./triage.js";
@@ -44,6 +45,7 @@ const SECTIONS = [
   { value: "frequency", label: "frequency" },
   { value: "promote", label: "promote" },
   { value: "browse", label: "browse" },
+  { value: "cards", label: "cards" },
 ];
 
 export function VocabView({ vocab, settings, onJudged }) {
@@ -74,7 +76,9 @@ export function VocabView({ vocab, settings, onJudged }) {
       />
     </div>
     ${
-      section === "triage"
+      section === "cards"
+        ? html`<${CardsView} />`
+        : section === "triage"
         ? html`<${TriageView}
             minEncounters=${settings?.triage_min_encounters ?? 3}
             onJudged=${onJudged}

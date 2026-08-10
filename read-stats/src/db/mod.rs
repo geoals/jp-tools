@@ -58,7 +58,8 @@ pub use lines::{
     line_within, max_line_id, set_lines_discarded,
 };
 pub use lookups::{
-    LookupTerm, fetch_lookup_events, fetch_lookup_terms, insert_lookup, retract_lookup,
+    LookupTerm, fetch_lookup_events, fetch_lookup_keys, fetch_lookup_terms, insert_lookup,
+    retract_lookup,
     set_lookup_headwords, unnormalized_lookup_terms,
 };
 pub use marks::{fetch_reader_marks, insert_reader_mark};
@@ -71,7 +72,9 @@ pub use sessions::{
 pub use settings::{
     BOOL_SETTING_KEYS, SETTING_KEYS, Settings, get_setting_raw, load_settings, save_setting,
 };
-pub use word_days::{WordDayHit, add_word_day_counts, fetch_mined_word_days, fetch_word_totals};
+pub use word_days::{
+    WordDayHit, add_word_day_counts, fetch_mined_word_days, fetch_word_days, fetch_word_totals,
+};
 pub use works::{
     WORK_STATUSES, Work, current_work_vn_window, delete_work, fetch_work, fetch_works_meta,
     set_work_cover, set_work_queue_pos, set_work_status, set_work_total_chars, set_work_vn_window,

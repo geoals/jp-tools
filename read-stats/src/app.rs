@@ -90,6 +90,7 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/api/anki/refresh", axum::routing::post(anki::anki_refresh))
         .route("/api/anki/summary", get(anki::anki_summary))
+        .route("/api/anki/cards", get(anki::anki_cards))
         .route("/api/vocab/summary", get(vocab::vocab_summary))
         .route("/api/vocab/history", get(vocab::vocab_history))
         .route("/api/vocab/queue", get(vocab::vocab_queue))

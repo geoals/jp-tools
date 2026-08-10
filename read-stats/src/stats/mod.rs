@@ -19,11 +19,13 @@
 //! | [`kanji`] | which kanji the text was made of, and how well each is known |
 //! | [`prose`] | what the writing is like: sentence length |
 //! | [`vocab_growth`] | when the known words were learnt — new per day, running total |
+//! | [`card_evidence`] | what the reading says about a mined card that Anki cannot see |
 //!
 //! [`presence`] is the module to read first: every other aggregate credits gap
 //! time through it, and keeping that rule in one place is what stops two views
 //! of the same day disagreeing.
 
+pub mod card_evidence;
 pub mod day;
 pub mod focus;
 pub mod kanji;

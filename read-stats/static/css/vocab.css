@@ -143,3 +143,13 @@
   color: var(--muted);
   white-space: normal;
 }
+
+/* One bucket of the card report. `details` rather than a button, so the open
+   one survives a rebuild and the browser draws the marker. */
+.card-bucket > summary {
+  cursor: pointer;
+  user-select: none;
+}
+.card-bucket > summary > h2 {
+  display: inline;
+}

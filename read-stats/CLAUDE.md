@@ -486,6 +486,16 @@ Mining:
   were literary. Withholding it costs the model the word's identity, which it has
   to infer from the sentence; that is the accepted trade, and the reason the
   sentence keeps its bold markers.
+- **The card report reads Anki's review log, never `cardsInfo`'s `mod`.**
+  `stats::card_evidence` sorts each mined card by what the reading says about
+  it since its last review — met without a lookup, looked up on a long
+  interval. `mod` was the obvious cutoff and is wrong: something had bulk-touched
+  this collection, so 2,196 of 2,256 cards read as "reviewed 9 days ago".
+  `anki::fetch_deck_reviews` takes the whole deck's log in one `cardReviews`
+  call (~20k rows, well under a second) and `mod` is only the fallback for a
+  card with no log. `GET /api/anki/cards` **writes nothing** — it reports what a
+  sweep would act on, and the thresholds are a guess until the buckets have been
+  read against words already judged known.
 - **Note ids are epoch milliseconds**, so they double as card creation times.
 - **Only engagement actions leave `reader_marks`.** Explain does; clear does
   not. A retracted lookup leaves one in place of the row it deleted, which is

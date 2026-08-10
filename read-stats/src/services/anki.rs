@@ -2,6 +2,7 @@
 //! client first, then the configured fallback) and snapshot the mined deck's
 //! vocab field.
 
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::Duration;
 
@@ -15,6 +16,9 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// notesInfo batch size — AnkiconnectAndroid chokes on very large requests.
 const NOTES_CHUNK: usize = 500;
+/// cardsInfo batch size. Smaller than `NOTES_CHUNK` because each card comes
+/// back with its rendered question, answer and CSS.
+const CARDS_CHUNK: usize = 200;
 
 async fn call(
     client: &reqwest::Client,
@@ -23,13 +27,29 @@ async fn call(
     params: Value,
 ) -> Result<Value, AppError> {
     let body = json!({ "action": action, "version": 6, "params": params });
-    let resp = client
-        .post(url)
-        .timeout(REQUEST_TIMEOUT)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| AppError::Upstream(format!("AnkiConnect '{action}' failed: {e}")))?;
+    // AnkiConnect closes the TCP connection after every response, so a pooled
+    // one is already dead when the next call reaches for it and the send fails
+    // before anything is transmitted. One retry is the whole fix: the second
+    // attempt opens a fresh connection. Safe to repeat because it failed on the
+    // way out — Anki never saw it.
+    let mut attempt = 0;
+    let resp = loop {
+        match client
+            .post(url)
+            .timeout(REQUEST_TIMEOUT)
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(resp) => break resp,
+            Err(e) if attempt == 0 && e.is_request() => attempt += 1,
+            Err(e) => {
+                return Err(AppError::Upstream(format!(
+                    "AnkiConnect '{action}' failed: {e}"
+                )));
+            }
+        }
+    };
     let body: Value = resp
         .json()
         .await
@@ -306,6 +326,118 @@ pub async fn fetch_deck_vocab(
 ) -> Result<Vec<AnkiNote>, AppError> {
     let ids = find_notes(client, url, &format!("deck:\"{deck}\"")).await?;
     notes_vocab(client, url, &ids, vocab_field).await
+}
+
+/// One card's scheduling state. What Anki knows about a word and the reading
+/// does not.
+#[derive(Debug, Clone)]
+pub struct CardStat {
+    pub card_id: i64,
+    pub note_id: i64,
+    /// Current interval in days. Negative in Anki for learning cards measured
+    /// in seconds; those are filtered out by `is_review` rather than converted.
+    pub interval: i64,
+    pub reps: i64,
+    pub lapses: i64,
+    pub suspended: bool,
+    /// Card type: 2 is review, which is the only state a re-encounter can say
+    /// anything about — a new card has never been asked.
+    pub card_type: i64,
+    /// Last modification, epoch seconds — the fallback cutoff for a card with
+    /// no review log. **Not a stand-in for the last review**: it was tried, and
+    /// on this collection something bulk-touched every card at once, which put
+    /// 2,196 of 2,256 cards at the same "reviewed 9 days ago". `mod` moves on
+    /// anything Anki does to a card, so [`fetch_deck_reviews`] is the real
+    /// answer and this is only what is left when the log has nothing.
+    pub modified: f64,
+}
+
+impl CardStat {
+    pub fn is_review(&self) -> bool {
+        self.card_type == 2 && self.interval > 0
+    }
+}
+
+/// Scheduling state for every card in the deck.
+///
+/// `cardsInfo` also returns each card's rendered question and answer, which is
+/// most of the payload and none of the point — hence the small chunks.
+pub async fn fetch_deck_cards(
+    client: &reqwest::Client,
+    url: &str,
+    deck: &str,
+) -> Result<Vec<CardStat>, AppError> {
+    let ids_val = call(
+        client,
+        url,
+        "findCards",
+        json!({ "query": format!("deck:\"{deck}\"") }),
+    )
+    .await?;
+    let ids: Vec<i64> = ids_val
+        .as_array()
+        .ok_or_else(|| AppError::Upstream("unexpected findCards response".into()))?
+        .iter()
+        .filter_map(Value::as_i64)
+        .collect();
+
+    let mut cards = Vec::with_capacity(ids.len());
+    for chunk in ids.chunks(CARDS_CHUNK) {
+        let info = call(client, url, "cardsInfo", json!({ "cards": chunk })).await?;
+        let arr = info
+            .as_array()
+            .ok_or_else(|| AppError::Upstream("unexpected cardsInfo response".into()))?;
+        for card in arr {
+            let Some(note_id) = card["note"].as_i64() else {
+                continue;
+            };
+            cards.push(CardStat {
+                card_id: card["cardId"].as_i64().unwrap_or_default(),
+                note_id,
+                interval: card["interval"].as_i64().unwrap_or(0),
+                reps: card["reps"].as_i64().unwrap_or(0),
+                lapses: card["lapses"].as_i64().unwrap_or(0),
+                suspended: card["queue"].as_i64() == Some(-1),
+                card_type: card["type"].as_i64().unwrap_or(0),
+                modified: card["mod"].as_f64().unwrap_or(0.0),
+            });
+        }
+    }
+    Ok(cards)
+}
+
+/// The last time each card in the deck was actually reviewed, epoch seconds.
+///
+/// One call for the whole deck: `cardReviews` answers with every review row
+/// since `startID`, and the rows are `[review time ms, card id, ...]`. The
+/// whole log is ~20k rows and comes back in well under a second, so it is not
+/// worth paging by date — and a per-card window would need the log anyway.
+pub async fn fetch_deck_reviews(
+    client: &reqwest::Client,
+    url: &str,
+    deck: &str,
+) -> Result<HashMap<i64, f64>, AppError> {
+    let rows = call(
+        client,
+        url,
+        "cardReviews",
+        json!({ "deck": deck, "startID": 0 }),
+    )
+    .await?;
+    let rows = rows
+        .as_array()
+        .ok_or_else(|| AppError::Upstream("unexpected cardReviews response".into()))?;
+    let mut last: HashMap<i64, f64> = HashMap::new();
+    for row in rows {
+        let (Some(at_ms), Some(card_id)) = (row[0].as_f64(), row[1].as_i64()) else {
+            continue;
+        };
+        let at = at_ms / 1000.0;
+        last.entry(card_id)
+            .and_modify(|prev| *prev = prev.max(at))
+            .or_insert(at);
+    }
+    Ok(last)
 }
 
 /// Fetch (note_id, vocab) for notes past Anki's new/learning queues — the

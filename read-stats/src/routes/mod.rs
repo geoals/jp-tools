@@ -13,7 +13,7 @@
 //! | [`works`] | `/api/works` — per-VN totals and metadata |
 //! | [`lookups`] | `/api/lookups/summary` — the mining funnel |
 //! | [`kanji`] | `/api/kanji` — every kanji read, and how well each is known |
-//! | [`anki`] | `/api/anki/*` — deck snapshot + re-encounter stats |
+//! | [`anki`] | `/api/anki/*` — deck snapshot, re-encounter stats, the card report |
 //! | [`vocab`] | `/api/vocab/*` — the knowledge ledger: status counts, rebuild |
 //! | [`tokenize`] | `/api/tokenize` — the pipeline's output for pasted text |
 //! | [`settings`] | `/api/settings`, `/api/pause` |

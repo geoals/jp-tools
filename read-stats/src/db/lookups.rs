@@ -108,6 +108,20 @@ pub async fn fetch_lookup_events(
     Ok(rows.iter().map(|r| r.get("ts")).collect())
 }
 
+/// Every lookup as `(ledger key, when)`, for counting lookups against a cutoff
+/// that differs per card. Keyed on `headword` — the resolved column — falling
+/// back to the raw spelling only while a row is unresolved, exactly as
+/// [`crate::db::AnkiNote::key`] does on the other side of the join.
+pub async fn fetch_lookup_keys(k: &Knowledge) -> Result<Vec<(String, f64)>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT COALESCE(NULLIF(headword, ''), term) AS key, ts
+         FROM lookups WHERE term IS NOT NULL AND term <> ''",
+    )
+    .fetch_all(k.pool())
+    .await?;
+    Ok(rows.iter().map(|r| (r.get("key"), r.get("ts"))).collect())
+}
+
 /// One distinct looked-up term, with the earliest mined card carrying it (if
 /// any). `note_id` is epoch milliseconds, so comparing it against `first_ts`
 /// tells mined-because-of-this-lookup apart from already-had-a-card.
