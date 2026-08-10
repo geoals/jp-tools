@@ -264,6 +264,23 @@ class SplitRuby(unittest.TestCase):
         self.assertEqual(ruby, [[2, 1, "しか"]])
 
 
+class StripSpeakerTest(unittest.TestCase):
+    def test_name_field_removed(self):
+        self.assertEqual(wl.strip_speaker("恵輔「ッ！」"), "「ッ！」")
+        self.assertEqual(wl.strip_speaker("？？？「恵ちゃん！」"), "「恵ちゃん！」")
+
+    def test_furigana_on_the_name_goes_with_it(self):
+        self.assertEqual(wl.strip_speaker("<ruby=けいすけ>恵輔</ruby>「そうか」"), "「そうか」")
+
+    def test_quote_inside_a_line_is_not_a_name(self):
+        self.assertEqual(wl.strip_speaker("俺は「バカ」と呼ばれた。"), "俺は「バカ」と呼ばれた。")
+        self.assertEqual(wl.strip_speaker("そう言って笑った。「またね」"), "そう言って笑った。「またね」")
+
+    def test_narration_and_unnamed_dialogue_untouched(self):
+        self.assertEqual(wl.strip_speaker("「そうだね」"), "「そうだね」")
+        self.assertEqual(wl.strip_speaker("心配そうに叶が呼ぶ。"), "心配そうに叶が呼ぶ。")
+
+
 class CollapseRepeatsTest(unittest.TestCase):
     """A hook that emits every character four times over."""
 
@@ -293,7 +310,7 @@ class CollapseRepeatsTest(unittest.TestCase):
     def test_speaker_name_is_a_fragment_not_a_reading(self):
         raw = "恵恵輔輔恵恵輔輔「「「「ッッッッ！！！！」」」」"
         text, ruby = wl.split_ruby(wl.clean_line(raw))
-        self.assertEqual(text, "恵輔「ッ！」")
+        self.assertEqual(text, "「ッ！」")  # the name field is stripped after
         self.assertEqual(ruby, [])
 
     def test_kana_tailed_name_keeps_its_kana(self):
@@ -301,7 +318,7 @@ class CollapseRepeatsTest(unittest.TestCase):
         # -initial fragment ahead of an opening quote is the speaker field.
         raw = "恵恵ちちゃゃんん恵恵ちちゃゃんん「「「「そそそそうううう？？？？」」」」"
         text, ruby = wl.split_ruby(wl.clean_line(raw))
-        self.assertEqual(text, "恵ちゃん「そう？」")
+        self.assertEqual(text, "「そう？」")  # the name field is stripped after
         self.assertEqual(ruby, [])
 
     def test_other_games_untouched(self):

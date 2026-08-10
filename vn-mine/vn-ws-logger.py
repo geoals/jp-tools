@@ -266,6 +266,27 @@ def collapse_repeats(text):
     )
 
 
+# The speaker field, for a hook that renders it into the same string as the line
+# (【speaker】 above is the other shape). The line wants what was said, not who said
+# it: the name is not read, and counted it inflates every dialogue line by its own
+# length. Cut only a short prefix in front of an opening quote that closes at the
+# end of the line — that is a name field, while 俺は「バカ」と呼ばれた。 is a line
+# with a quote in it and keeps its 俺は. Any furigana on the name goes with it, so
+# the cut lands between whole ruby tags and split_ruby still lines its offsets up.
+MAX_SPEAKER_CHARS = 10
+_NAME_FIELD = re.compile(
+    r"\A(?P<name>(?:<ruby[^<>]*>|</ruby\s*>|[^「。、！…])+?)(?P<line>「.*」)\Z", re.S
+)
+
+
+def strip_speaker(text):
+    m = _NAME_FIELD.match(text)
+    if not m:
+        return text
+    name = RUBY_STRAY.sub("", m.group("name"))
+    return m.group("line") if 0 < len(name) <= MAX_SPEAKER_CHARS else text
+
+
 def clean_line(raw):
     """Dialogue text to log for `raw`, or None to drop the capture.
 
@@ -306,7 +327,7 @@ def clean_line(raw):
     # are the VN's, not the reader's, and Sudachi analyses them as words —
     # \x05 and \x04 reached read-stats' vocabulary ledger as "e" and "d". No
     # effect on the count: NOT_COUNTED is an allowlist and never counted them.
-    return RICH_TAG.sub("", BR.sub("\n", CONTROL.sub("", text)))
+    return strip_speaker(RICH_TAG.sub("", BR.sub("\n", CONTROL.sub("", text))))
 
 
 # Furigana, in the two shapes a hook produces it: this engine's
