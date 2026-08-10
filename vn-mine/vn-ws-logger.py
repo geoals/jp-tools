@@ -51,6 +51,8 @@ RUNDIR = os.environ.get("VN_RUNDIR") or os.path.join(
 LINES_LOG = os.path.join(RUNDIR, "lines.log")
 # What Textractor actually sent, before any cleaning. The only place a defect in
 # Textractor's own filters (repeat removal against a ruby tag) is visible at all.
+# Written repr-escaped: whether a newline is in the stream is one of the questions
+# it exists to answer, and normalize() has already spent it by the time text flows.
 RAW_LOG = os.path.join(RUNDIR, "raw.log")
 WS_URL = os.environ.get("VN_WS_URL", "ws://localhost:6677")
 
@@ -530,7 +532,7 @@ async def read_lines(ws, out, stats, last_text):
             raw = raw.decode("utf-8", "replace")
         try:
             with open(RAW_LOG, "a", encoding="utf-8") as rawlog:
-                rawlog.write(f"{time.time():.9f}\t{normalize(raw)}\n")
+                rawlog.write(f"{time.time():.9f}\t{raw!r}\n")
         except OSError:
             pass
         text = clean_line(normalize(raw))
