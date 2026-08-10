@@ -275,7 +275,7 @@ def collapse_repeats(text):
 # the cut lands between whole ruby tags and split_ruby still lines its offsets up.
 MAX_SPEAKER_CHARS = 10
 _NAME_FIELD = re.compile(
-    r"\A(?P<name>(?:<ruby[^<>]*>|</ruby\s*>|[^「。、！…])+?)(?P<line>「.*」)\Z", re.S
+    r"\A(?P<name>(?:<ruby[^<>]*>|</ruby\s*>|[^「」。、！…])+?)(?P<line>「.*」)\Z", re.S
 )
 
 

@@ -276,6 +276,11 @@ class StripSpeakerTest(unittest.TestCase):
         self.assertEqual(wl.strip_speaker("俺は「バカ」と呼ばれた。"), "俺は「バカ」と呼ばれた。")
         self.assertEqual(wl.strip_speaker("そう言って笑った。「またね」"), "そう言って笑った。「またね」")
 
+    def test_two_fused_lines_are_not_a_name(self):
+        # A capture that caught the tail of the previous line. Real log entry.
+        line = "どうだ？」「どうだって言われても……」"
+        self.assertEqual(wl.strip_speaker(line), line)
+
     def test_narration_and_unnamed_dialogue_untouched(self):
         self.assertEqual(wl.strip_speaker("「そうだね」"), "「そうだね」")
         self.assertEqual(wl.strip_speaker("心配そうに叶が呼ぶ。"), "心配そうに叶が呼ぶ。")
