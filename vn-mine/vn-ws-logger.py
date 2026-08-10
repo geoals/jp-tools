@@ -151,14 +151,15 @@ MAX_SPEAKER_TAGS = 5
 # Some hooks emit every character of the line four times over. Textractor's
 # own "Remove Repeated Characters" collapses runs, which is wrong twice: it flattens
 # a genuine repeat (っっ, ーー, ととと) to one character, and it cannot see the shape
-# furigana arrives in. The engine emits no ruby markup at all — it inlines the
-# reading after the character it annotates, and repeats that whole group twice with
-# each character inside it doubled, so 瞠目(どうもく) hooks as
-# 瞠瞠どどううももくく瞠瞠どどううももくく目目目目 and run-collapsing left half of it
-# inline in the text. Undoing it here instead: every character still arrives exactly
-# four times, so a run divisible by four is that many characters, and a stretch of
-# doubled runs is a ruby group. Anything that does not decode cleanly is left alone,
-# which is what makes this safe for the other games' hooks.
+# furigana arrives in. What the hook repeats is a rendered *fragment*: the fragment
+# comes twice with every character inside it doubled — the same four copies of each
+# character, in a different order, and a one-character fragment is indistinguishable
+# from a plain run of four. Furigana has no markup at all: the reading is inlined
+# after the character it annotates, inside that character's fragment, so 瞠目(どうもく)
+# hooks as 瞠瞠どどううももくく瞠瞠どどううももくく目目目目 and run-collapsing left half
+# of it inline in the text. Undoing it here instead: a run divisible by four is that
+# many characters, a stretch of doubled runs is a fragment. Anything that does not
+# decode cleanly is left alone, which is what makes this safe for other hooks.
 QUAD = 4
 _KANJI = re.compile(r"[々〆〇㐀-䶿一-鿿豈-﫿]")
 _KANA_ONLY = re.compile(r"\A[ぁ-ゟ゠-ヿ]+\Z")
@@ -174,12 +175,40 @@ def _runs(text):
     return runs
 
 
+# A fragment carrying furigana is one kanji followed by its reading. A fragment
+# that is anything else is text: the speaker-name field is a fragment of its own,
+# which is why 恵輔「ッ！」 hooks with 恵輔 doubled ahead of a plain 「ッ！」. Two
+# things separate the two cases — a name written kanji-then-kana (恵ちゃん) would
+# otherwise lose its kana to a reading. The reading must be two or more mora, and
+# the speaker field is line-initial and followed by its opening quote.
+MIN_READING = 2
+_QUOTE_OPEN = "「『（(【〈《"
+
+
+def _classify(token, index, tokens):
+    kind, body = token
+    if kind != "fragment":
+        return token
+    reading = body[1:]
+    heads_a_quote = index == 0 and any(
+        t[1].startswith(tuple(_QUOTE_OPEN)) for t in tokens[1:2]
+    )
+    if (
+        heads_a_quote
+        or len(reading) < MIN_READING
+        or not _KANJI.match(body[0])
+        or not _KANA_ONLY.match(reading)
+    ):
+        return ("name", body)
+    return ("ruby", body[0], reading)
+
+
 def collapse_repeats(text):
     """`text` with the hook's fourfold repetition undone and its inlined furigana
     turned into the engine ruby markup split_ruby reads, or None if `text` is not
     in that shape."""
     runs = _runs(text)
-    tokens = []  # ("plain", text) | ("ruby", base, reading)
+    tokens = []  # ("plain", text) | ("fragment", text)
     i = 0
     while i < len(runs):
         char, n = runs[i]
@@ -199,18 +228,16 @@ def collapse_repeats(text):
         half = (end - i) // 2
         if (end - i) % 2 or runs[i : i + half] != runs[i + half : end]:
             return None
-        group = "".join(c for c, _ in runs[i : i + half])
-        if len(group) < 2 or not _KANJI.match(group[0]) or not _KANA_ONLY.match(group[1:]):
-            return None
-        tokens.append(("ruby", group[0], group[1:]))
+        tokens.append(("fragment", "".join(c for c, _ in runs[i : i + half])))
         i = end
     # A short line of one repeated character (ーーーー) decodes as cleanly as a
     # quadrupled line does, and from a game that does not repeat anything it is
     # real text. Only a line long enough that the shape cannot be coincidence.
     if len(runs) < 3 or len(text) < 12:
         return None
+    tokens = [_classify(t, k, tokens) for k, t in enumerate(tokens)]
     # The hook groups the reading with the *first* character of the word only, so
-    # 帆刈(ほかり) arrives as a 帆ほかり group followed by a plain 刈. Pull the
+    # 帆刈(ほかり) arrives as a 帆ほかり fragment followed by a plain 刈. Pull the
     # following kanji back under the reading, capped at one kanji per two mora —
     # otherwise a name followed by an unrelated kanji word takes the furigana with
     # it. Wrong only in where the reading is drawn; the line itself is unaffected.
@@ -233,7 +260,7 @@ def collapse_repeats(text):
                 tokens[k + 1] = ("plain", following[1][take:])
         tokens[k] = ("ruby", base, reading)
     return "".join(
-        t[1] if t[0] == "plain" else f"<ruby={t[2]}>{t[1]}</ruby>" for t in tokens
+        f"<ruby={t[2]}>{t[1]}</ruby>" if t[0] == "ruby" else t[1] for t in tokens
     )
 
 

@@ -290,6 +290,20 @@ class CollapseRepeatsTest(unittest.TestCase):
         self.assertEqual(text, "帆刈叶だ。")
         self.assertEqual(ruby, [[0, 2, "ほかり"], [2, 1, "かなえ"]])
 
+    def test_speaker_name_is_a_fragment_not_a_reading(self):
+        raw = "恵恵輔輔恵恵輔輔「「「「ッッッッ！！！！」」」」"
+        text, ruby = wl.split_ruby(wl.clean_line(raw))
+        self.assertEqual(text, "恵輔「ッ！」")
+        self.assertEqual(ruby, [])
+
+    def test_kana_tailed_name_keeps_its_kana(self):
+        # 恵ちゃん is one kanji then kana, the shape furigana also has. The line
+        # -initial fragment ahead of an opening quote is the speaker field.
+        raw = "恵恵ちちゃゃんん恵恵ちちゃゃんん「「「「そそそそうううう？？？？」」」」"
+        text, ruby = wl.split_ruby(wl.clean_line(raw))
+        self.assertEqual(text, "恵ちゃん「そう？」")
+        self.assertEqual(ruby, [])
+
     def test_other_games_untouched(self):
         self.assertIsNone(wl.collapse_repeats("これは普通の行です。"))
         self.assertIsNone(wl.collapse_repeats("そんなーーーー！"))
