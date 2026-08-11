@@ -163,3 +163,90 @@ expected to omit. This is a genuine gap — a rare literary word no dictionary o
 the master's size holds, and no rule will recover it. The honest outcome for
 this class may be a fourth state between `non-word` and a scale entry: known to
 exist, not on the count.
+
+## 連帯感 — 感 compound the master omits
+
+Held whole, reading れんたいかん right. `non-word` because Sankoku lacks it; a
+`standard` monolingual has it, which is what keeps segmentation correct.
+
+Same shape as 書き込み and 砂粒: a productive suffix (感 on a noun — 連帯感,
+劣等感, 疎外感) that the master lists only as the bare stem. A rule for 感
+compounds would do what per-entry additions cannot.
+
+## またいちから — boundary wrong, then a rank-151,785 false positive
+
+Sudachi Mode C returns `ま` + `たいち` + `から`, not `また` + `いち` + `から`.
+The gate drops たいち, but identity then matches it *by reading only* and the
+line acquires 対置 (freq_rank 151,785), entered as `new`.
+
+Third of the boundary family, with なんてひどい and いいんだよって, and the
+worst of the three: the assertion is written by the reading-only fallback on a
+token the gate had already refused. A hiragana token that failed the gate
+should not be able to claim a kanji headword five orders of magnitude rarer
+than the words around it — a frequency floor on the reading-only rule would
+stop this class without touching segmentation.
+
+また before Sudachi, in the orthographic rewrite pass, is the same fix なんて
+wants.
+
+## ひとりもいやしない — 弥 out of the いやしない negative
+
+`ひとり` + `も` + `いや` + `し` + `ない`. The line is 居やしない, the emphatic
+negative of いる (…や+しない), so the correct split has no いや in it at all.
+いや then matches 弥 exactly — master headword, spelling and reading both — and
+a rank-43,783 副詞 enters the ledger as `new`.
+
+Fourth of the boundary family, and it defeats the fix the others suggest: this
+is not a reading-only match, so a frequency floor on that rule does nothing.
+The signal is grammatical — 弥 is an adverb and cannot be followed by する in
+its 連用形.
+
+The 〜やしない contraction is productive (ありゃしない, できやしない,
+わかりゃしない). Handling it as a rewrite before Sudachi, like なんて and また,
+covers the family in one place.
+
+## お伺いを立てて — the polite prefix left outside the expression
+
+`お` + `伺いを立て` + `て`. The join pass finds the expression and conjugates
+its last word right, but only from `伺い` onward: `お` + `伺い` was tried first,
+found nothing, and the honorific stays a separate 接頭辞 token. The expression
+is then `non-word`, since 伺いを立てる is listed by a non-master dictionary
+only.
+
+Two causes, one line. The prefix one is general — お is productive on any 動作名詞
+(お伺い, お願い, お答え) and no dictionary will list every combination, so the
+join needs to try the run *without* a leading honorific and re-attach it, not
+look up お+X. The `non-word` one is the 連帯感/砂粒 class again: a real headword
+Sankoku lacks.
+
+## 豪華きわまりない — the kana half of a word no dictionary spells in kana
+
+`豪華` + `きわまり` + `ない`. Two defects stacked, and the second is the reason
+the reader sees anything at all.
+
+1. **The join never fires.** The word is 極まりない, which every installed
+   dictionary lists, Sankoku included — but only under that spelling, so the
+   spelling path finds nothing for きわまり+ない. The reading path would find it
+   (`by_reading["きわまりない"]` is one headword), and it is not admitted:
+   `reading_join_admitted` wants either an all-`動詞` run or a kanji somewhere
+   in the head, and an all-kana `きわまり` is neither.
+2. **The popup then says `Not in any dictionary`.** The wordhood gate passes on
+   the *resolved* spelling — `In master dictionary: 極まり` — while the identity
+   ladder refuses that pair, because Sankoku's 極まり reads きまり and only
+   Jitendex lists 極まり/きわまり. So the headword is kept as written, and
+   `define` looks up the literal string きわまり, which is no dictionary's
+   headword.
+
+The gate and `define` asking different questions is the general shape: a gate
+match on a kanji spelling guarantees nothing about the popup, whenever the
+ladder falls through to the kana surface. Fixing (1) removes this instance;
+the mismatch itself is wider.
+
+## 窪み — same class as 聞きかじり and 書き込み
+
+Sudachi holds it whole and the reading is right. Off the master scale because
+Sankoku lists only 窪む; 明鏡, 小学館 and Jitendex all have 窪み. The popup is
+fine — this is the wordhood/scale question alone.
+
+Third instance of the class, and the second common word in it. A 連用形 noun
+whose verb the master lists needs a derivation rule, not one entry per word.

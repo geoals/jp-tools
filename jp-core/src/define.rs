@@ -35,7 +35,7 @@ const CORPUS_FREQUENCY: &str = "BCCWJ";
 /// The dictionary the popup opens on, ahead of the master. Named rather than
 /// derived: install order is the order zips were first seen, which says nothing
 /// about which definition is worth reading first.
-pub const OPENS_WITH: [&str; 1] = ["明鏡国語辞典 第三版"];
+pub const OPENS_WITH: [&str; 1] = ["Jitendex"];
 
 #[derive(Serialize)]
 pub struct Sense {
@@ -133,7 +133,7 @@ pub async fn define(
                 .collect(),
         });
     }
-    // Meikyou, then the master, then everything else in install order — a
+    // Jitendex, then the master, then everything else in install order — a
     // stable sort, so the last tier keeps it. The master decides what counts as
     // a word and is the vocabulary scale; that is not the same question as
     // which definition to read first, so the order is named here rather than
@@ -241,7 +241,15 @@ pub async fn expand(
     let pool = k.pool();
 
     let chars: Vec<char> = text.chars().take(EXPAND_MAX_CHARS).collect();
-    let mut candidates: Vec<String> = (2..=chars.len())
+    // A single kanji counts, since it is the shape that most needs a second
+    // reading offered: 粋 is いき or すい, both listed, and the ladder picks one.
+    // A single kana never does — を, の and た are prefixes of half the lines in
+    // the corpus and would put a particle chip in every popup.
+    let shortest = match chars.first() {
+        Some(c) if crate::text::kanji::is_kanji(*c) => 1,
+        _ => 2,
+    };
+    let mut candidates: Vec<String> = (shortest..=chars.len())
         .map(|n| chars[..n].iter().collect())
         .collect();
     // Two kinds of candidate. A literal prefix finds a compound the tokenizer
