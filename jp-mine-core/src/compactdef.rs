@@ -14,6 +14,12 @@ use serde_json::Value;
 pub enum CompactDefError {
     #[error("CompactDef failed: {0}")]
     Failed(String),
+    /// The backend itself is not answering — the CLI would not start, exited
+    /// non-zero, or printed nothing. Separate from `Failed` because it is not
+    /// about this card: a caller looping over thousands of them must stop, not
+    /// spawn another few hundred processes into a usage limit.
+    #[error("CompactDef backend unavailable: {0}")]
+    Unavailable(String),
 }
 
 use crate::tags::{FAMILIARITY_RUBRIC, FLAVOR_RUBRIC, TagLine};
@@ -127,48 +133,9 @@ pub fn compact_def_cli(target: &str, sentence: &str) -> Result<String, CompactDe
     let mut message = format!("Sentence: {sentence}\nTarget: {target}");
 
     for attempt in 0..2 {
-        let out = std::process::Command::new("claude")
-            .args(["-p", "--model", "opus", "--effort", "low"])
-            .args(["--setting-sources", ""])
-            // Writing a gloss needs no tools, and their definitions are 3,800 of
-            // the ~12,000 tokens the CLI sends — a third of the bill over a run
-            // of thousands. Naming them is unfortunate but there is no "no
-            // tools" switch; a tool missing from this list costs tokens, not
-            // correctness.
-            .arg("--disallowed-tools")
-            .args([
-                "Bash",
-                "Read",
-                "Write",
-                "Edit",
-                "Glob",
-                "Grep",
-                "WebFetch",
-                "WebSearch",
-                "Task",
-                "TodoWrite",
-                "NotebookEdit",
-            ])
-            .args(["--system-prompt", system_prompt()])
-            .arg(&message)
-            // Nothing here should read the filesystem, and a cwd with a
-            // CLAUDE.md in it is exactly what --setting-sources is shutting out.
-            .current_dir(std::env::temp_dir())
-            .output()
-            .map_err(|e| CompactDefError::Failed(format!("could not run `claude`: {e}")))?;
-
-        if !out.status.success() {
-            let err = String::from_utf8_lossy(&out.stderr);
-            return Err(CompactDefError::Failed(format!(
-                "claude CLI: {}",
-                err.trim()
-            )));
-        }
-
         // The CLI prints the reply and nothing else, but a stray leading line
         // would land in the meaning; the gloss is the last two non-empty lines.
-        let stdout = String::from_utf8_lossy(&out.stdout);
-        let raw = clean_gloss(&stdout);
+        let raw = clean_gloss(&run_cli(system_prompt(), &message)?);
         let raw = match raw.rsplit_once("<br>") {
             Some((head, tags)) => {
                 let meaning = head.rsplit_once("<br>").map_or(head, |(_, m)| m);
@@ -189,6 +156,131 @@ pub fn compact_def_cli(target: &str, sentence: &str) -> Result<String, CompactDe
         }
     }
     unreachable!("the loop returns on both branches of its last iteration")
+}
+
+/// Run one `claude -p` call and return its stdout.
+fn run_cli(system: &str, message: &str) -> Result<String, CompactDefError> {
+    let out = std::process::Command::new("claude")
+        .args(["-p", "--model", "opus", "--effort", "low"])
+        .args(["--setting-sources", ""])
+        // Writing a gloss needs no tools, and their definitions are 3,800 of
+        // the ~12,000 tokens the CLI sends — a third of the bill over a run of
+        // thousands. Naming them is unfortunate but there is no "no tools"
+        // switch; a tool missing from this list costs tokens, not correctness.
+        .arg("--disallowed-tools")
+        .args([
+            "Bash",
+            "Read",
+            "Write",
+            "Edit",
+            "Glob",
+            "Grep",
+            "WebFetch",
+            "WebSearch",
+            "Task",
+            "TodoWrite",
+            "NotebookEdit",
+        ])
+        .args(["--system-prompt", system])
+        .arg(message)
+        // Nothing here should read the filesystem, and a cwd with a CLAUDE.md
+        // in it is exactly what --setting-sources is shutting out.
+        .current_dir(std::env::temp_dir())
+        .output()
+        .map_err(|e| CompactDefError::Unavailable(format!("could not run `claude`: {e}")))?;
+
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    if !out.status.success() || stdout.trim().is_empty() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let why = if err.trim().is_empty() {
+            "no output".to_string()
+        } else {
+            err.trim().to_string()
+        };
+        return Err(CompactDefError::Unavailable(format!("claude CLI: {why}")));
+    }
+    Ok(stdout)
+}
+
+/// The batch system prompt: the same rubric, asked for many words at once.
+static BATCH_PROMPT: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        "{}\n\n\
+BATCH MODE: the user sends numbered items, each `N. Sentence: … | Target: …`. \
+Answer every item, one output line each, in order:\n\
+N. <meaning line> ## <tag line>\n\
+Nothing else — no blank lines between items, no preamble, no markdown. The \
+two lines of the normal format become the two halves of one line, split by \
+\" ## \". Never use \" ## \" inside the meaning.",
+        system_prompt()
+    )
+});
+
+/// Gloss many cards in one CLI call.
+///
+/// One round trip per card is the wrong shape for a re-tag of thousands: the
+/// system prompt is ~1,300 tokens and was being resent every time, and each
+/// call is a process spawn plus a cold model. Batching amortises the prompt
+/// over the whole batch and cuts wall-clock time by roughly the batch size.
+///
+/// Returns one result per input, in order. An item the model skipped or
+/// answered unparseably comes back `Err(Failed)` and the rest still land; a
+/// backend failure is `Unavailable` for every item, so the caller can stop.
+pub fn compact_def_batch_cli(items: &[(String, String)]) -> Vec<Result<String, CompactDefError>> {
+    let message = items
+        .iter()
+        .enumerate()
+        .map(|(i, (target, sentence))| format!("{}. Sentence: {sentence} | Target: {target}", i + 1))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let stdout = match run_cli(&BATCH_PROMPT, &message) {
+        Ok(s) => s,
+        Err(e) => {
+            let why = e.to_string();
+            return items
+                .iter()
+                .map(|_| Err(CompactDefError::Unavailable(why.clone())))
+                .collect();
+        }
+    };
+
+    let answers = parse_batch(&stdout, items.len());
+    answers
+        .into_iter()
+        .map(|a| {
+            a.ok_or_else(|| CompactDefError::Failed("no answer in the batch reply".into()))
+                .and_then(|raw| {
+                    canonical_gloss(&raw)
+                        .map_err(|why| CompactDefError::Failed(format!("bad tag line: {why}")))
+                })
+        })
+        .collect()
+}
+
+/// Pull `N. meaning ## tags` lines out of a batch reply, indexed by the model's
+/// own numbering rather than by position — a skipped or duplicated item must
+/// not shift every answer after it onto the wrong card.
+fn parse_batch(stdout: &str, len: usize) -> Vec<Option<String>> {
+    let mut answers = vec![None; len];
+    for line in stdout.lines() {
+        let line = line.trim();
+        let Some((index, rest)) = line.split_once('.') else {
+            continue;
+        };
+        let Ok(index) = index.trim().parse::<usize>() else {
+            continue;
+        };
+        let Some((meaning, tags)) = rest.split_once("##") else {
+            continue;
+        };
+        if index == 0 || index > len {
+            continue;
+        }
+        let meaning = clean_gloss(meaning);
+        answers[index - 1] = Some(format!("{meaning}<br>{}", tags.trim()));
+    }
+    answers
 }
 
 /// Split a cleaned gloss into its meaning and tag halves and re-render the tag
@@ -327,6 +419,29 @@ mod tests {
     #[test]
     fn clean_gloss_empty_stays_empty() {
         assert_eq!(clean_gloss("   "), "");
+    }
+
+    #[test]
+    fn parse_batch_reads_the_models_numbering() {
+        let out = "1. to wane ## COMMON · PLAIN\n\n3. a forgery ## FORMAL · TECHNICAL\n";
+        assert_eq!(
+            parse_batch(out, 3),
+            vec![
+                Some("to wane<br>COMMON · PLAIN".into()),
+                None,
+                Some("a forgery<br>FORMAL · TECHNICAL".into()),
+            ]
+        );
+    }
+
+    /// A number outside the batch is dropped rather than panicking on the index.
+    #[test]
+    fn parse_batch_ignores_junk_lines() {
+        let out = "Here are the glosses:\n1. camel ## CORE · PLAIN\n9. stray ## PLAIN\n";
+        assert_eq!(
+            parse_batch(out, 2),
+            vec![Some("camel<br>CORE · PLAIN".into()), None]
+        );
     }
 
     #[test]
