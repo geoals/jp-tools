@@ -55,6 +55,13 @@ async fn main() {
     let (fix, api) = (arg("--fix"), arg("--api"));
     let retag_all = arg("--retag-all");
     let retag = retag_all || arg("--retag");
+    // Re-judging is the only expensive step, so it is the only one worth
+    // stopping early: --limit N re-tags the first N and reports the rest.
+    let limit = std::env::args()
+        .skip_while(|a| a != "--limit")
+        .nth(1)
+        .and_then(|n| n.parse::<usize>().ok())
+        .unwrap_or(usize::MAX);
 
     // AnkiConnect closes the connection without saying so, so a pooled one fails
     // on the next write in a long run of them.
@@ -68,6 +75,7 @@ async fn main() {
     let notes = notes.as_array().expect("notesInfo returned no array");
 
     let (mut ok, mut repaired, mut rejected, mut failed) = (0, 0, 0, 0);
+    let mut retagged = 0usize;
     for note in notes {
         let field = |name: &str| note["fields"][name]["value"].as_str().unwrap_or_default();
         let note_id = note["noteId"].as_i64().expect("note without an id");
@@ -114,9 +122,10 @@ async fn main() {
 
         rejected += 1;
         println!("REJECT {vocab} — {why}: {tags}");
-        if !retag {
+        if !retag || retagged >= limit {
             continue;
         }
+        retagged += 1;
 
         // Re-judged from the same inputs the mining path uses: the surface as
         // the sentence spelt it, never the headword.
@@ -158,7 +167,7 @@ async fn main() {
     let rejected_verb = if retag { "re-tagged" } else { "rejected" };
     println!(
         "\n{} cards: {ok} canonical, {repaired} {repaired_verb}, {rejected} {rejected_verb}, \
-         {failed} failure(s)",
+         {retagged} re-judged, {failed} failure(s)",
         notes.len()
     );
 }
