@@ -16,7 +16,7 @@ pub enum CompactDefError {
     Failed(String),
 }
 
-use crate::tags::{FAMILIARITY_RUBRIC, FLAVOR_RUBRIC};
+use crate::tags::{FAMILIARITY_RUBRIC, FLAVOR_RUBRIC, TagLine};
 
 /// Pinned to Opus 5. The tag-axis experiment found no thinking and no external
 /// frequency signals to be best, and that request shape carries over unchanged.
@@ -43,7 +43,10 @@ written form you were given.\n\n\
 Output exactly two lines and nothing else — no preamble, no markdown, and never \
 an XML or HTML tag or label of your own:\n\
 - Line 1 — the meaning, optionally followed by \". \" and one short usage note.\n\
-- Line 2 — FAMILIARITY · FLAVOR[ · FLAVOR2[ · FLAVOR3]][ (structural)]\n\n\
+- Line 2 — FAMILIARITY · FLAVOR[ · FLAVOR2[ · FLAVOR3]][ (structural)]\n\
+Line 2 is machine-read. Every tag is separated by \" · \" including the one \
+between FAMILIARITY and the first FLAVOR, and a baseline formality is always \
+present even when a mark is more informative.\n\n\
 MEANING/USAGE: nuance-carrying English. A bare one/two-word translation ONLY for \
 a concrete 1-to-1 term (焼却炉 → incinerator); otherwise a short phrase that \
 carries the actual nuance. Optionally one short usage note — a fixed collocation, \
@@ -72,6 +75,50 @@ pub async fn compact_def(
     target: &str,
     sentence: &str,
 ) -> Result<String, CompactDefError> {
+    let mut messages = vec![serde_json::json!({
+        "role": "user",
+        "content": format!("Sentence: {sentence}\nTarget: {target}"),
+    })];
+
+    // One correction round. The tag line is the machine-readable half of the
+    // field, so a malformed one is sent back rather than written: the repairable
+    // shapes are already repaired by `TagLine::parse`, which leaves only a
+    // missing baseline or an invented tag — both of them judgements the model
+    // has to make again, not formatting this side can guess at.
+    for attempt in 0..2 {
+        let raw = clean_gloss(&request(http, api_key, &messages).await?);
+        match canonical_gloss(&raw) {
+            Ok(gloss) => return Ok(gloss),
+            Err(why) if attempt == 0 => {
+                messages.push(serde_json::json!({ "role": "assistant", "content": raw }));
+                messages.push(serde_json::json!({
+                    "role": "user",
+                    "content": format!(
+                        "Line 2 is invalid: {why}. Send both lines again, corrected."
+                    ),
+                }));
+            }
+            Err(why) => return Err(CompactDefError::Failed(format!("bad tag line: {why}"))),
+        }
+    }
+    unreachable!("the loop returns on both branches of its last iteration")
+}
+
+/// Split a cleaned gloss into its meaning and tag halves and re-render the tag
+/// line in canonical form. The meaning line is passed through untouched.
+fn canonical_gloss(gloss: &str) -> Result<String, String> {
+    let (meaning, tags) = gloss
+        .rsplit_once("<br>")
+        .ok_or("no tag line — expected a meaning line and a tag line")?;
+    let tags = TagLine::parse(tags).map_err(|e| e.to_string())?;
+    Ok(format!("{meaning}<br>{tags}"))
+}
+
+async fn request(
+    http: &reqwest::Client,
+    api_key: &str,
+    messages: &[Value],
+) -> Result<String, CompactDefError> {
     let body = serde_json::json!({
         "model": MODEL,
         "max_tokens": 300,
@@ -86,10 +133,7 @@ pub async fn compact_def(
             "text": SYSTEM_PROMPT.as_str(),
             "cache_control": { "type": "ephemeral" },
         }],
-        "messages": [{
-            "role": "user",
-            "content": format!("Sentence: {sentence}\nTarget: {target}"),
-        }],
+        "messages": messages,
     });
 
     let resp = http
@@ -117,10 +161,7 @@ pub async fn compact_def(
         )));
     }
 
-    // The gloss is a short English meaning line plus a two-axis tag line;
-    // clean_gloss trims stray wrapping quotes and joins the lines with <br> so
-    // the tag line renders on its own line on the card back.
-    extract_text(&json).map(|s| clean_gloss(&s))
+    extract_text(&json)
 }
 
 /// Post-clean a raw gloss into the card-back HTML. The model returns a short

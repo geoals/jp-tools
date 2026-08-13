@@ -250,3 +250,16 @@ fine — this is the wordhood/scale question alone.
 
 Third instance of the class, and the second common word in it. A 連用形 noun
 whose verb the master lists needs a derivation rule, not one entry per word.
+
+## ムワムワ — a mimetic only Jitendex lists
+
+Segmentation and identity are both right: `ムワムワ` + `と` + `し` + `た`, and
+the popup works, since Jitendex has ムワムワ (and むわむわ, むわっと, ムワッと).
+Sankoku, 明鏡 and 小学館 list none of them, so the word is off the master scale
+and the segmentation gate says `Not in a dictionary that decides segmentation`.
+
+Same class as 連帯感 and 砂粒 — a real headword the master lacks — but with a
+productive shape behind it: katakana mimetics are coined freely (ムワムワ,
+ムワッと, ムンムン) and no master dictionary will list them. A reduplicated
+kana stem plus と+する is a recognizable pattern, so this is a derivation
+question rather than one entry per word.
