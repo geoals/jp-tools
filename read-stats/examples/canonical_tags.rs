@@ -1,17 +1,22 @@
 //! Audit — and repair — the CompactDef tag line on every card in the collection,
 //! through the same [`TagLine`] parser the mining path now enforces.
 //!
-//! Three modes, in the order they should be run:
+//! Modes, in the order they should be run:
 //!
-//!     cargo run -p read-stats --example canonical_tags            # report only
-//!     cargo run -p read-stats --example canonical_tags -- --fix   # separator slips
-//!     cargo run -p read-stats --example canonical_tags -- --retag # re-judge the rest
+//!     ... --example canonical_tags                  # report only
+//!     ... --example canonical_tags -- --fix         # separator slips, free
+//!     ... --example canonical_tags -- --retag       # re-judge what fails to parse
+//!     ... --example canonical_tags -- --retag-all   # re-judge every card
 //!
-//! `--fix` is free and cannot change a judgement: it only re-renders what parsed.
-//! `--retag` bills one Opus call per card, and is for the lines the parser
-//! rejects — a missing baseline, two baselines, an invented tag. Those are
-//! judgements that were never validly made, so they are made again through the
-//! production path rather than patched here.
+//! `--fix` cannot change a judgement: it only re-renders what already parsed.
+//! `--retag` re-judges the lines the parser rejects — a missing baseline, two
+//! baselines, an invented tag — because those are judgements that were never
+//! validly made. `--retag-all` also re-judges the cards that parse but were
+//! written under an older rubric, which is the only way to get one judge over
+//! the whole collection.
+//!
+//! One call per card, through the `claude` CLI by default so the work is billed
+//! to the subscription; `--api` uses API credits instead.
 //!
 //! Kept in the tree because a prompt change can reintroduce the class, and the
 //! report is how you find out.
@@ -47,7 +52,9 @@ async fn call(http: &reqwest::Client, action: &str, params: Value) -> Value {
 async fn main() {
     dotenvy::dotenv().ok();
     let arg = |name: &str| std::env::args().any(|a| a == name);
-    let (fix, retag) = (arg("--fix"), arg("--retag"));
+    let (fix, api) = (arg("--fix"), arg("--api"));
+    let retag_all = arg("--retag-all");
+    let retag = retag_all || arg("--retag");
 
     // AnkiConnect closes the connection without saying so, so a pooled one fails
     // on the next write in a long run of them.
@@ -76,9 +83,12 @@ async fn main() {
         let why = match TagLine::parse(tags) {
             Ok(parsed) if parsed.to_string() == tags.trim() => {
                 ok += 1;
-                continue;
+                if !retag_all {
+                    continue;
+                }
+                String::from("re-judging under the current rubric")
             }
-            Ok(parsed) => {
+            Ok(parsed) if !retag_all => {
                 repaired += 1;
                 println!("REPAIR {vocab} — {tags}  →  {parsed}");
                 if fix {
@@ -98,7 +108,8 @@ async fn main() {
                 }
                 continue;
             }
-            Err(why) => why,
+            Ok(_) => String::from("re-judging under the current rubric"),
+            Err(why) => why.to_string(),
         };
 
         rejected += 1;
@@ -112,10 +123,16 @@ async fn main() {
         let raw_sentence = field("SentKanji");
         let surface = anki::bolded_span(raw_sentence).unwrap_or_else(|| vocab.clone());
         let sentence = anki::clean_field_keep_bold(raw_sentence);
-        let api_key =
-            std::env::var("JP_TOOLS_ANTHROPIC_API_KEY").expect("set JP_TOOLS_ANTHROPIC_API_KEY");
 
-        match compactdef::compact_def(&http, &api_key, &surface, &sentence).await {
+        let generated = if api {
+            let api_key = std::env::var("JP_TOOLS_ANTHROPIC_API_KEY")
+                .expect("set JP_TOOLS_ANTHROPIC_API_KEY");
+            compactdef::compact_def(&http, &api_key, &surface, &sentence).await
+        } else {
+            compactdef::compact_def_cli(&surface, &sentence)
+        };
+
+        match generated {
             Ok(new) if !new.is_empty() => {
                 println!("    retagged: {new}");
                 if let Err(e) =
