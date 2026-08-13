@@ -45,6 +45,7 @@ async fn call(http: &reqwest::Client, action: &str, params: Value) -> Value {
 
 #[tokio::main]
 async fn main() {
+    dotenvy::dotenv().ok();
     let arg = |name: &str| std::env::args().any(|a| a == name);
     let (fix, retag) = (arg("--fix"), arg("--retag"));
 
@@ -82,9 +83,14 @@ async fn main() {
                 println!("REPAIR {vocab} — {tags}  →  {parsed}");
                 if fix {
                     let new = format!("{meaning}<br>{parsed}");
-                    if let Err(e) =
-                        anki::update_note_field_verified(&http, ANKI_URL, note_id, COMPACT_FIELD, &new)
-                            .await
+                    if let Err(e) = anki::update_note_field_verified(
+                        &http,
+                        ANKI_URL,
+                        note_id,
+                        COMPACT_FIELD,
+                        &new,
+                    )
+                    .await
                     {
                         println!("    WRITE FAILED: {e}");
                         failed += 1;

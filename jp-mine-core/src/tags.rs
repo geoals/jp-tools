@@ -225,11 +225,11 @@ mod tests {
             round_trip("COMMON FORMAL · TECHNICAL"),
             "COMMON · FORMAL · TECHNICAL"
         );
+        assert_eq!(round_trip("RARE PLAIN · DIALECT"), "RARE · PLAIN · DIALECT");
         assert_eq!(
-            round_trip("RARE PLAIN · DIALECT"),
-            "RARE · PLAIN · DIALECT"
+            round_trip("COMMON PLAIN TECHNICAL"),
+            "COMMON · PLAIN · TECHNICAL"
         );
-        assert_eq!(round_trip("COMMON PLAIN TECHNICAL"), "COMMON · PLAIN · TECHNICAL");
     }
 
     #[test]

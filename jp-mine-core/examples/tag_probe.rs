@@ -85,6 +85,7 @@ const PROBES: &[(&str, &str, &str)] = &[
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
+    dotenvy::dotenv().ok();
     let api_key =
         std::env::var("JP_TOOLS_ANTHROPIC_API_KEY").expect("set JP_TOOLS_ANTHROPIC_API_KEY");
     let http = reqwest::Client::new();
@@ -94,8 +95,8 @@ async fn main() {
         match compactdef::compact_def(&http, &api_key, target, sentence).await {
             Ok(gloss) => {
                 let (meaning, tags) = gloss.rsplit_once("<br>").unwrap_or(("", &gloss));
-                let has_tier = jp_mine_core::tags::TagLine::parse(tags)
-                    .is_ok_and(|t| t.familiarity.is_some());
+                let has_tier =
+                    jp_mine_core::tags::TagLine::parse(tags).is_ok_and(|t| t.familiarity.is_some());
                 tiers += usize::from(has_tier);
                 println!("{target}\n  {tags}\n  {meaning}\n  probing: {probing}\n");
             }
@@ -105,8 +106,5 @@ async fn main() {
 
     // The rate is the point. A rubric that says "omit unless very confident" and
     // still tags everything has not changed anything.
-    println!(
-        "{tiers}/{} probes carried a familiarity tier",
-        PROBES.len()
-    );
+    println!("{tiers}/{} probes carried a familiarity tier", PROBES.len());
 }
