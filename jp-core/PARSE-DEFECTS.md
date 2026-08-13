@@ -251,15 +251,28 @@ fine — this is the wordhood/scale question alone.
 Third instance of the class, and the second common word in it. A 連用形 noun
 whose verb the master lists needs a derivation rule, not one entry per word.
 
-## ムワムワ — a mimetic only Jitendex lists
+## ムワムワ — no span at all, because the no-row path asks only the master
 
-Segmentation and identity are both right: `ムワムワ` + `と` + `し` + `た`, and
-the popup works, since Jitendex has ムワムワ (and むわむわ, むわっと, ムワッと).
-Sankoku, 明鏡 and 小学館 list none of them, so the word is off the master scale
-and the segmentation gate says `Not in a dictionary that decides segmentation`.
+Segmentation and identity are right (`ムワムワ` + `漂い` + …), and
+`/api/reader/define?term=ムワムワ` returns the Jitendex entry. The reader still
+gets no popup, because there is no span to click: the token comes back
+`excluded: "non-word"`.
 
-Same class as 連帯感 and 砂粒 — a real headword the master lacks — but with a
+The two wordhood tests in `highlight::classify` disagree. A term with a ledger
+row is tested with `VocabRow::is_word` — `in_master || in_name || in_reference`,
+the lenient gate. A term with *no* row falls to `Highlighter::in_master_lexicon`,
+which is the master alone. ムワムワ is in Jitendex only, so it is a word on the
+first test and a non-word on the second, and which one it gets depends on
+whether ingest has run: the line was 29816 and the watermark stood at 29519, so
+the reader met it live and got the strict answer. ポテチ, same class, has a row
+and paints `new`.
+
+So this is not really a parse defect — the strict test is on the wrong path.
+The no-row branch should ask the same question the row does, which means the
+lexicon the highlighter carries needs the reference and name dictionaries in it,
+not just the master. Note the ledger row it would then create still stays off
+the vocabulary scale (`COUNTS_AS_VOCAB` is `in_master`), which is correct.
+
+The word itself is the 連帯感/砂粒 class — a real headword Sankoku lacks — with a
 productive shape behind it: katakana mimetics are coined freely (ムワムワ,
-ムワッと, ムンムン) and no master dictionary will list them. A reduplicated
-kana stem plus と+する is a recognizable pattern, so this is a derivation
-question rather than one entry per word.
+ムワッと, ムンムン) and no master dictionary will list them all.

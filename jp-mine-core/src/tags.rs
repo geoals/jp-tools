@@ -50,12 +50,20 @@ not etymology.";
 /// The five FAMILIARITY tiers, most familiar first. Index is the tier order.
 pub const FAMILIARITY: [&str; 5] = ["CORE", "COMMON", "UNCOMMON", "RARE", "OBSCURE"];
 
-/// The four baseline formalities. Exactly one is required.
-pub const BASELINES: [&str; 4] = ["SLANG", "PLAIN", "FORMAL", "LITERARY"];
+/// The baseline formalities. Exactly one is required.
+pub const BASELINES: [&str; 3] = ["SLANG", "PLAIN", "FORMAL"];
 
 /// The independent marks, added to a baseline. Order in the rendered line
 /// follows this array, not the order the model happened to emit them in.
-pub const MARKS: [&str; 9] = [
+///
+/// LITERARY is a mark and not a baseline because it answers a different
+/// question: the baseline is how stiff a word is, LITERARY is which medium it
+/// belongs to, and a word can be both. Forcing the choice produced 26 cards
+/// that emitted FORMAL and LITERARY together — 怨恨, 傀儡, 羅列 are stiff *and*
+/// writing-only, while 束の間 is writing-heavy at a plain register and 誤謬 is
+/// stiff but perfectly sayable.
+pub const MARKS: [&str; 10] = [
+    "LITERARY",
     "TECHNICAL",
     "RELIGIOUS",
     "HONORIFIC",
@@ -79,9 +87,7 @@ pub const STRUCTURAL: [&str; 6] = [
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum TagLineError {
-    #[error("no familiarity tier: line starts with {0:?}")]
-    NoFamiliarity(String),
-    #[error("no baseline formality (one of SLANG/PLAIN/FORMAL/LITERARY)")]
+    #[error("no baseline formality (one of SLANG/PLAIN/FORMAL)")]
     NoBaseline,
     #[error("more than one baseline formality: {0}")]
     TwoBaselines(String),
@@ -103,7 +109,11 @@ pub enum TagLineError {
 /// missing baseline or an invented tag is a judgement that was never made.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TagLine {
-    pub familiarity: &'static str,
+    /// Absent when no familiarity claim is being made. A tier asserts something
+    /// about the whole native-speaker population, which is not a judgement that
+    /// can be made about every word; silence is a legitimate answer and is
+    /// preferable to a tier picked to fill the slot.
+    pub familiarity: Option<&'static str>,
     pub baseline: &'static str,
     pub marks: Vec<&'static str>,
     pub structural: Option<&'static str>,
@@ -133,13 +143,18 @@ impl TagLine {
         // goes missing, and no tag contains a space.
         let mut tokens = tags
             .split(|c: char| c == '·' || c.is_whitespace())
-            .filter(|t| !t.is_empty());
+            .filter(|t| !t.is_empty())
+            .peekable();
 
-        let first = tokens.next().ok_or(TagLineError::Empty)?;
-        let familiarity = *FAMILIARITY
+        // A familiarity tier, when made, leads the line; a line that opens on a
+        // flavor tag is simply not making the claim.
+        let familiarity = FAMILIARITY
             .iter()
-            .find(|f| f.eq_ignore_ascii_case(first))
-            .ok_or_else(|| TagLineError::NoFamiliarity(first.to_string()))?;
+            .find(|f| tokens.peek().is_some_and(|t| f.eq_ignore_ascii_case(t)))
+            .copied();
+        if familiarity.is_some() {
+            tokens.next();
+        }
 
         let mut baseline: Option<&'static str> = None;
         let mut marks = Vec::new();
@@ -170,7 +185,10 @@ impl TagLine {
 
 impl std::fmt::Display for TagLine {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} · {}", self.familiarity, self.baseline)?;
+        if let Some(familiarity) = self.familiarity {
+            write!(f, "{familiarity} · ")?;
+        }
+        write!(f, "{}", self.baseline)?;
         for mark in &self.marks {
             write!(f, " · {mark}")?;
         }
@@ -195,7 +213,8 @@ mod tests {
             "COMMON · PLAIN",
             "UNCOMMON · FORMAL · HONORIFIC",
             "CORE · PLAIN (mimetic)",
-            "RARE · LITERARY",
+            "RARE · FORMAL · LITERARY",
+            "PLAIN · TECHNICAL",
             "COMMON · FORMAL (four-char idiom)",
         ] {
             assert_eq!(round_trip(line), line);
@@ -228,6 +247,29 @@ mod tests {
     /// A missing baseline is not repairable — PLAIN is not a safe default, it is
     /// the claim "safe anywhere", which is exactly what a TECHNICAL-only line
     /// failed to decide.
+    /// The 26-card case: stiff *and* writing-only is one word's two properties,
+    /// not a choice between them.
+    #[test]
+    fn formal_and_literary_coexist() {
+        assert_eq!(
+            round_trip("UNCOMMON · LITERARY · FORMAL"),
+            "UNCOMMON · FORMAL · LITERARY"
+        );
+    }
+
+    /// A tier is a claim about the whole population. Declining to make it is an
+    /// answer, and the line still parses.
+    #[test]
+    fn familiarity_is_optional() {
+        let parsed = TagLine::parse("FORMAL · TECHNICAL").unwrap();
+        assert_eq!(parsed.familiarity, None);
+        assert_eq!(parsed.to_string(), "FORMAL · TECHNICAL");
+        assert_eq!(
+            TagLine::parse("COMMON · PLAIN").unwrap().familiarity,
+            Some("COMMON")
+        );
+    }
+
     #[test]
     fn a_missing_baseline_is_rejected() {
         assert_eq!(
@@ -235,6 +277,7 @@ mod tests {
             Err(TagLineError::NoBaseline)
         );
         assert_eq!(TagLine::parse("COMMON"), Err(TagLineError::NoBaseline));
+        assert_eq!(TagLine::parse("TECHNICAL"), Err(TagLineError::NoBaseline));
     }
 
     #[test]
@@ -245,7 +288,7 @@ mod tests {
         ));
         assert!(matches!(
             TagLine::parse("EVERYDAY · PLAIN"),
-            Err(TagLineError::NoFamiliarity(_))
+            Err(TagLineError::UnknownTag(_))
         ));
         assert!(matches!(
             TagLine::parse("COMMON · PLAIN (colloquial)"),
