@@ -4,34 +4,26 @@
 //! definitions and had already drifted apart; this is the single source of truth
 //! so a wording change lands everywhere at once.
 //!
-//! FAMILIARITY uses the sharpened definitions: the axis turns on the single
-//! question "can you be certain EVERY native adult recognizes it?", with COMMON
-//! vs UNCOMMON split by active-vs-passive vocabulary and RARE as the first tier
-//! where universal recognition can no longer be assumed.
+//! FAMILIARITY is optional and usually absent. It claims something about the
+//! whole native adult population, which is not knowable for most words, and a
+//! forced five-tier version of it put COMMON on 74% of the collection — two
+//! words checked against a native speaker came back wrong in the same
+//! direction. Omission is the honest answer and the expected one.
 //!
 //! It is rated on the spelling the reader actually met, which is why both
 //! callers send a surface form and never a dictionary headword: 饐える is a rare
 //! kanji, すえた臭い is a phrase people say, and the card is about the second.
 
-/// The FAMILIARITY axis — one tier, recognition-on-sight across the population.
+/// The FAMILIARITY axis — omitted unless the claim is safe to bet on.
 pub const FAMILIARITY_RUBRIC: &str = "\
-FAMILIARITY (exactly one) — recognition-on-sight across the native adult \
-population (NOT frequency, NOT whether they say it). The axis turns on ONE \
-question: can you be certain EVERY native adult recognizes it?\n\
-- CORE — every native, from childhood.\n\
-- COMMON — every native adult knows it, and for most it is ACTIVE vocabulary \
-(they would use it themselves).\n\
-- UNCOMMON — essentially every native adult still RECOGNIZES it, but for a large \
-portion it is PASSIVE only (known, but they would not produce it).\n\
-- RARE — the first tier where you CANNOT be certain every adult knows it. Many \
-do, but a large share of such words are recognized mainly by people who read.\n\
-- OBSCURE — you can assume non-readers do NOT know it, and even among active \
-readers only a portion recognize it.\n\
-A transparent compound of common parts is understood first-encounter (等価値 = \
-等価+価値) → COMMON or higher. You are biased by written frequency: spoken and \
-colloquial words are more familiar than their rarity in print suggests.\n\
-Rate the word AS IT IS WRITTEN in front of you. A word usually met in kana is \
-as familiar as the kana makes it, however rare the kanji spelling would be.";
+FAMILIARITY (optional — omit unless very confident) — recognition across the \
+whole native adult population, including adults who read no books.\n\
+Emit one only if you would bet money on it:\n\
+- CORE — every native from childhood: children's TV, everyday conversation.\n\
+- COMMON — every native adult knows it. Test: would an adult who reads no books \
+meet this on TV, at work, on a sign, or in conversation? If it is only ever met \
+in print, it is not COMMON.\n\
+- RARE — you are confident a large share of natives would not recognize it.";
 
 /// The FLAVOR axis — one baseline formality plus up to two independent marks.
 pub const FLAVOR_RUBRIC: &str = "\
@@ -39,16 +31,19 @@ FLAVOR (1-3) — if you SAY it in the wrong room, how do you sound. Emit exactly
 one baseline formality, then add marks only when they carry an independent, \
 equally-important warning:\n\
 - baseline: SLANG / PLAIN (safe anywhere — always shown) / FORMAL (stiff if \
-casual; fine in formal speech or writing) / LITERARY (writing-only; theatrical \
-if spoken).\n\
-- marks: TECHNICAL, RELIGIOUS, HONORIFIC, HUMBLE, DIALECT, ARCHAIC, VULGAR, \
-DEROGATORY, CHILDISH.\n\
+casual; fine in formal speech or writing).\n\
+- marks: LITERARY (writing-only; theatrical if spoken), TECHNICAL, RELIGIOUS, \
+HONORIFIC, HUMBLE, DIALECT, ARCHAIC, VULGAR, DEROGATORY, CHILDISH.\n\
 Tag the IN-SENTENCE sense; other senses don't count (joking 成仏 = PLAIN, not \
 RELIGIOUS). A word can be marked in origin but plain in use — tag current usage, \
 not etymology.";
 
-/// The five FAMILIARITY tiers, most familiar first. Index is the tier order.
-pub const FAMILIARITY: [&str; 5] = ["CORE", "COMMON", "UNCOMMON", "RARE", "OBSCURE"];
+/// The FAMILIARITY tiers, most familiar first.
+///
+/// Three, not five. The middle of a five-tier scale is where the population
+/// claim cannot be made honestly, and UNCOMMON was absorbing it — 483 cards
+/// carried it. Omitting the tier says that better than a tier for it does.
+pub const FAMILIARITY: [&str; 3] = ["CORE", "COMMON", "RARE"];
 
 /// The baseline formalities. Exactly one is required.
 pub const BASELINES: [&str; 3] = ["SLANG", "PLAIN", "FORMAL"];
@@ -211,7 +206,7 @@ mod tests {
     fn canonical_lines_survive_unchanged() {
         for line in [
             "COMMON · PLAIN",
-            "UNCOMMON · FORMAL · HONORIFIC",
+            "RARE · FORMAL · HONORIFIC",
             "CORE · PLAIN (mimetic)",
             "RARE · FORMAL · LITERARY",
             "PLAIN · TECHNICAL",
@@ -230,8 +225,8 @@ mod tests {
             "COMMON · FORMAL · TECHNICAL"
         );
         assert_eq!(
-            round_trip("UNCOMMON PLAIN · DIALECT"),
-            "UNCOMMON · PLAIN · DIALECT"
+            round_trip("RARE PLAIN · DIALECT"),
+            "RARE · PLAIN · DIALECT"
         );
         assert_eq!(round_trip("COMMON PLAIN TECHNICAL"), "COMMON · PLAIN · TECHNICAL");
     }
@@ -252,8 +247,8 @@ mod tests {
     #[test]
     fn formal_and_literary_coexist() {
         assert_eq!(
-            round_trip("UNCOMMON · LITERARY · FORMAL"),
-            "UNCOMMON · FORMAL · LITERARY"
+            round_trip("RARE · LITERARY · FORMAL"),
+            "RARE · FORMAL · LITERARY"
         );
     }
 
@@ -273,11 +268,23 @@ mod tests {
     #[test]
     fn a_missing_baseline_is_rejected() {
         assert_eq!(
-            TagLine::parse("UNCOMMON · TECHNICAL"),
+            TagLine::parse("RARE · TECHNICAL"),
             Err(TagLineError::NoBaseline)
         );
         assert_eq!(TagLine::parse("COMMON"), Err(TagLineError::NoBaseline));
         assert_eq!(TagLine::parse("TECHNICAL"), Err(TagLineError::NoBaseline));
+    }
+
+    /// The retired tiers are not silently accepted: a card still carrying one
+    /// has not been re-judged under the abstaining rubric.
+    #[test]
+    fn retired_tiers_are_rejected() {
+        for line in ["UNCOMMON · PLAIN", "OBSCURE · FORMAL"] {
+            assert!(matches!(
+                TagLine::parse(line),
+                Err(TagLineError::UnknownTag(_))
+            ));
+        }
     }
 
     #[test]
