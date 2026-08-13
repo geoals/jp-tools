@@ -130,6 +130,25 @@ pub fn compact_def_cli(target: &str, sentence: &str) -> Result<String, CompactDe
         let out = std::process::Command::new("claude")
             .args(["-p", "--model", "opus", "--effort", "low"])
             .args(["--setting-sources", ""])
+            // Writing a gloss needs no tools, and their definitions are 3,800 of
+            // the ~12,000 tokens the CLI sends — a third of the bill over a run
+            // of thousands. Naming them is unfortunate but there is no "no
+            // tools" switch; a tool missing from this list costs tokens, not
+            // correctness.
+            .arg("--disallowed-tools")
+            .args([
+                "Bash",
+                "Read",
+                "Write",
+                "Edit",
+                "Glob",
+                "Grep",
+                "WebFetch",
+                "WebSearch",
+                "Task",
+                "TodoWrite",
+                "NotebookEdit",
+            ])
             .args(["--system-prompt", system_prompt()])
             .arg(&message)
             // Nothing here should read the filesystem, and a cwd with a

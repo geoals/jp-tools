@@ -5,8 +5,9 @@
 // page (`work-detail.js`) — everything per-work lives there, which is what
 // keeps this level to "what is on the shelf and how far in am I".
 //
-// A work with no reading behind it does not appear. There is no text until it
-// has been read, so a queued title would be a card of blanks.
+// A work with no reading behind it is a cover in the queued row, not a card:
+// every number on a card is zero until it has been read, and the queue is
+// about which cover comes next.
 
 import { html } from "htm/preact";
 import { useState } from "preact/hooks";
@@ -24,9 +25,19 @@ function isFinished(w) {
 export function WorksShelf({ works, settings, onSaved, onOpen }) {
   const [adding, setAdding] = useState(false);
 
-  const read = works.filter((w) => w.work && w.chars > 0);
+  const named = works.filter((w) => w.work);
+  const read = named.filter((w) => w.chars > 0);
   const current = read.filter((w) => !isFinished(w));
   const done = read.filter(isFinished);
+  // Unset queue_pos sorts last, so an ordered queue stays ordered and the rest
+  // follows by title rather than by insertion order.
+  const queued = named
+    .filter((w) => w.chars === 0 && !isFinished(w))
+    .sort(
+      (a, b) =>
+        (a.meta?.queue_pos ?? Infinity) - (b.meta?.queue_pos ?? Infinity) ||
+        a.work.localeCompare(b.work),
+    );
 
   return html`
     <div class="card">
@@ -48,7 +59,7 @@ export function WorksShelf({ works, settings, onSaved, onOpen }) {
         />`
       }
       ${
-        read.length === 0
+        named.length === 0
           ? html`<div class="meta-hint">
               Nothing read yet — start reading and the tracker will stamp lines
               with a title.
@@ -65,7 +76,18 @@ export function WorksShelf({ works, settings, onSaved, onOpen }) {
                   `,
                 )}
               </div>
-              <${FinishedShelf} works=${done} onOpen=${onOpen} />
+              <${CoverShelf}
+                label="queued"
+                works=${queued}
+                caption=${queuedCaption}
+                onOpen=${onOpen}
+              />
+              <${CoverShelf}
+                label="finished"
+                works=${done}
+                caption=${readCaption}
+                onOpen=${onOpen}
+              />
             `
       }
     </div>
@@ -123,18 +145,30 @@ function WorkCard({ work: w, isCurrent, onOpen }) {
   `;
 }
 
-/** The back catalogue: covers, and the dates they were read between. */
-function FinishedShelf({ works, onOpen }) {
+/** What was read, and the dates it was read between. */
+function readCaption(w) {
+  const when = [fmtDateStr(w.first_read), fmtDateStr(w.last_read)]
+    .filter(Boolean)
+    .join(" – ");
+  return `${w.work} · ${fmtChars(w.chars)} chars${when ? ` · ${when}` : ""}`;
+}
+
+/** How long it is, which is the only number a queued work has. */
+function queuedCaption(w) {
+  const total = w.meta?.total_chars;
+  return total ? `${w.work} · ${fmtChars(total)} chars` : w.work;
+}
+
+/** A row of covers under a label — the back catalogue, and the queue. Both are
+ *  lists of works with no numbers worth a card. */
+function CoverShelf({ label, works, caption, onOpen }) {
   if (!works.length) return null;
   return html`
     <div class="finished-shelf">
-      <div class="word-list-label">finished</div>
+      <div class="word-list-label">${label}</div>
       <div class="cover-row">
         ${works.map((w) => {
-          const when = [fmtDateStr(w.first_read), fmtDateStr(w.last_read)]
-            .filter(Boolean)
-            .join(" – ");
-          const title = `${w.work} · ${fmtChars(w.chars)} chars${when ? ` · ${when}` : ""}`;
+          const title = caption(w);
           return html`
             <button
               type="button"
