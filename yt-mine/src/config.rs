@@ -20,7 +20,6 @@ pub struct Config {
     /// Anthropic API key for LLM-generated definitions. When absent, LLM
     /// definitions are skipped entirely.
     pub anthropic_api_key: Option<String>,
-    /// Model to use for LLM definitions.
     /// URL of remote whisper-service for transcription.
     pub whisper_service_url: String,
     /// Path to the Sudachi system dictionary (.dic file).

@@ -392,7 +392,7 @@ pub fn parse_pitch_bank(json: &str) -> Result<Vec<(String, PitchEntry)>, Diction
         .as_array()
         .ok_or_else(|| DictionaryError::Load("pitch bank is not an array".into()))?;
 
-    Ok(arr.iter().filter_map(|v| parse_pitch_entry(v)).collect())
+    Ok(arr.iter().filter_map(parse_pitch_entry).collect())
 }
 
 fn parse_pitch_entry(value: &Value) -> Option<(String, PitchEntry)> {
@@ -431,7 +431,7 @@ pub fn parse_freq_bank(json: &str) -> Result<Vec<FreqEntry>, DictionaryError> {
         .as_array()
         .ok_or_else(|| DictionaryError::Load("freq bank is not an array".into()))?;
 
-    Ok(arr.iter().filter_map(|v| parse_freq_entry(v)).collect())
+    Ok(arr.iter().filter_map(parse_freq_entry).collect())
 }
 
 fn parse_freq_entry(value: &Value) -> Option<FreqEntry> {
@@ -749,22 +749,23 @@ impl Dictionary {
             // the meta banks once. Marked checked whether or not the zip held
             // any, so one publishing neither is not re-read every startup —
             // except when the zip has moved, which is left unmarked to retry.
-            if db::needs_meta_backfill(pool, id).await? && path.exists() {
-                if let Ok((fresh_pitch, fresh_freq)) = Self::load_meta_from_zip(path) {
-                    if !fresh_pitch.is_empty() {
-                        let mut tx = pool.begin().await?;
-                        db::insert_pitch_entries(&mut tx, id, &fresh_pitch).await?;
-                        tx.commit().await?;
-                        info!(title = %title, pitch = fresh_pitch.len(), "backfilled pitch data into cache");
-                    }
-                    if !fresh_freq.is_empty() {
-                        let mut tx = pool.begin().await?;
-                        db::insert_frequency_entries(&mut tx, id, &fresh_freq).await?;
-                        tx.commit().await?;
-                        info!(title = %title, freq = fresh_freq.len(), "backfilled frequency data into cache");
-                    }
-                    db::mark_meta_checked(pool, id).await?;
+            if db::needs_meta_backfill(pool, id).await?
+                && path.exists()
+                && let Ok((fresh_pitch, fresh_freq)) = Self::load_meta_from_zip(path)
+            {
+                if !fresh_pitch.is_empty() {
+                    let mut tx = pool.begin().await?;
+                    db::insert_pitch_entries(&mut tx, id, &fresh_pitch).await?;
+                    tx.commit().await?;
+                    info!(title = %title, pitch = fresh_pitch.len(), "backfilled pitch data into cache");
                 }
+                if !fresh_freq.is_empty() {
+                    let mut tx = pool.begin().await?;
+                    db::insert_frequency_entries(&mut tx, id, &fresh_freq).await?;
+                    tx.commit().await?;
+                    info!(title = %title, freq = fresh_freq.len(), "backfilled frequency data into cache");
+                }
+                db::mark_meta_checked(pool, id).await?;
             }
 
             info!(title = %title, "dictionary available (cached in db)");

@@ -135,7 +135,7 @@ fn mode_c_with_headwords_keeps_compounds_that_mode_b_splits() {
         words.len()
     );
     assert!(
-        improved.len() > 0,
+        !improved.is_empty(),
         "Expected at least some compounds to be improved vs Mode B"
     );
 }

@@ -121,9 +121,7 @@ pub fn evaluate(input: &Inputs) -> Vec<CardEvidence> {
                 None
             } else if c.interval >= MATURE_DAYS && lookups > 0 {
                 Some(Bucket::BringForward)
-            } else if lookups == 0
-                && encounter_days >= RETIRE_DAYS
-                && c.interval >= RETIRE_INTERVAL
+            } else if lookups == 0 && encounter_days >= RETIRE_DAYS && c.interval >= RETIRE_INTERVAL
             {
                 Some(Bucket::Retire)
             } else if lookups == 0 && encounter_days >= DEFER_DAYS {

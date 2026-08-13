@@ -74,13 +74,13 @@ async fn reachable(client: &reqwest::Client, url: &str) -> bool {
 /// (a device running AnkiconnectAndroid), then the configured fallback.
 pub fn candidate_urls(client_ip: Option<IpAddr>, fallback: &str) -> Vec<String> {
     let mut urls = Vec::new();
-    if let Some(ip) = client_ip {
-        if !ip.is_loopback() {
-            urls.push(match ip {
-                IpAddr::V4(v4) => format!("http://{v4}:8765"),
-                IpAddr::V6(v6) => format!("http://[{v6}]:8765"),
-            });
-        }
+    if let Some(ip) = client_ip
+        && !ip.is_loopback()
+    {
+        urls.push(match ip {
+            IpAddr::V4(v4) => format!("http://{v4}:8765"),
+            IpAddr::V6(v6) => format!("http://[{v6}]:8765"),
+        });
     }
     if !urls.contains(&fallback.to_string()) {
         urls.push(fallback.to_string());

@@ -96,7 +96,8 @@ pub async fn anki_cards(
         return Ok(Json(json!({ "available": false })));
     };
 
-    let cards = crate::services::anki::fetch_deck_cards(&state.http, &url, &state.anki_deck).await?;
+    let cards =
+        crate::services::anki::fetch_deck_cards(&state.http, &url, &state.anki_deck).await?;
     // The real last-review time per card. `mod` cannot stand in for it — see
     // `CardStat::modified`.
     let reviews =

@@ -384,36 +384,6 @@ pub async fn set_status(
     Ok(())
 }
 
-/// Assert one status across many terms — the bulk half of triage ("mark
-/// everything I didn't flag as known"). One transaction, so a batch of ten
-/// thousand either lands or doesn't.
-pub async fn set_status_bulk(
-    k: &Knowledge,
-    terms: &[Term],
-    status: Status,
-    ts: f64,
-) -> Result<u64, sqlx::Error> {
-    let mut tx = k.pool().begin().await?;
-    let mut n = 0;
-    for term in terms {
-        n += sqlx::query(
-            "INSERT INTO vocabulary (headword, reading, status, status_ts, status_source) \
-                 VALUES (?, ?, ?, ?, 'bulk') \
-             ON CONFLICT(headword, reading) DO UPDATE SET status = excluded.status, \
-                 status_ts = excluded.status_ts, status_source = excluded.status_source",
-        )
-        .bind(&term.headword)
-        .bind(&term.reading)
-        .bind(status.as_str())
-        .bind(ts)
-        .execute(&mut *tx)
-        .await?
-        .rows_affected();
-    }
-    tx.commit().await?;
-    Ok(n)
-}
-
 /// One row of a frequency-triage page: a term, its rank, and its single
 /// resolved master-dictionary reading. Always resolvable — [`frequency_queue`]
 /// only returns rows with exactly one reading; a homograph never reaches this
@@ -762,11 +732,6 @@ pub fn preselects_known(row: &VocabRow, min_encounters: i64) -> bool {
     row.encounter_count >= min_encounters && row.lookup_count == 0
 }
 
-/// Assert a different status per term, in one transaction.
-///
-/// [`set_status_bulk`]'s sibling, for the triage submit: a batch mixes `known`
-/// and `unknown` and must land atomically, or the reader cannot tell which rows
-/// they still owe an answer for.
 /// Assert `status` only where nothing has been asserted yet.
 ///
 /// The write a *bulk seed* wants, against [`set_status_each`]'s, which is what
@@ -1532,6 +1497,20 @@ pub async fn is_empty(pool: &SqlitePool) -> Result<bool, sqlx::Error> {
     Ok(count.0 == 0)
 }
 
+/// Every spelling the deck mirror holds — the tokenizer's second wordhood
+/// source, so a word mined yesterday is kept whole in tomorrow's lines.
+///
+/// The raw `vocab` and not `headword`: this feeds Sudachi's user lexicon, which
+/// matches against the text, and the text spells a word the way the card does.
+pub async fn mined_vocab(
+    pool: &sqlx::SqlitePool,
+) -> Result<std::collections::HashSet<String>, sqlx::Error> {
+    let rows: Vec<(String,)> = sqlx::query_as("SELECT vocab FROM anki_notes")
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.into_iter().map(|(v,)| v).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1969,8 +1948,10 @@ mod tests {
             .into_iter()
             .map(|r| r.term)
             .collect();
+        let judgements: Vec<(Term, Status)> =
+            terms.into_iter().map(|t| (t, Status::Known)).collect();
         assert_eq!(
-            set_status_bulk(&k, &terms, Status::Known, 9.0)
+            set_status_each(&k, &judgements, 9.0, "triage")
                 .await
                 .unwrap(),
             2
@@ -2497,18 +2478,4 @@ mod tests {
 
         assert_eq!(rank_of(&k).await, Some(13));
     }
-}
-
-/// Every spelling the deck mirror holds — the tokenizer's second wordhood
-/// source, so a word mined yesterday is kept whole in tomorrow's lines.
-///
-/// The raw `vocab` and not `headword`: this feeds Sudachi's user lexicon, which
-/// matches against the text, and the text spells a word the way the card does.
-pub async fn mined_vocab(
-    pool: &sqlx::SqlitePool,
-) -> Result<std::collections::HashSet<String>, sqlx::Error> {
-    let rows: Vec<(String,)> = sqlx::query_as("SELECT vocab FROM anki_notes")
-        .fetch_all(pool)
-        .await?;
-    Ok(rows.into_iter().map(|(v,)| v).collect())
 }

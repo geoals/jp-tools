@@ -79,12 +79,6 @@ impl Knowledge {
         Ok(k)
     }
 
-    /// Wrap an already-open pool. For tests and for callers that manage their
-    /// own connection setup.
-    pub fn from_pool(pool: SqlitePool) -> Self {
-        Knowledge(pool)
-    }
-
     /// A migrated, empty database in a throwaway file, for tests.
     ///
     /// A file and not `:memory:`: [`open`](Self::open) pools five connections,

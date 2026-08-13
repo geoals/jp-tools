@@ -73,9 +73,8 @@ pub async fn process_job(
     let on_progress: Option<ProgressCallback> = Some(Box::new(move |segment, _count| {
         let pool = progress_pool.clone();
         let handle = tokio::spawn(async move {
-            for line in into_sentences(segment) {
-                db::insert_sentence(&pool, job_id, &line).await.ok();
-            }
+            let lines = into_sentences(segment);
+            db::insert_sentences(&pool, job_id, &lines).await.ok();
         });
         cb_handles.lock().unwrap().push(handle);
     }));

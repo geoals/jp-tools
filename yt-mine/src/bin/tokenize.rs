@@ -19,8 +19,8 @@ fn main() {
     let tokens = tokenizer.tokenize(&text).expect("tokenization failed");
 
     println!(
-        "{:<14} {:<14} {:<14} {}",
-        "surface", "base_form", "reading", "pos"
+        "{:<14} {:<14} {:<14} pos",
+        "surface", "base_form", "reading"
     );
     println!("{}", "-".repeat(60));
 

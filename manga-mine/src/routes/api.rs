@@ -265,10 +265,10 @@ async fn exporter_for_client(
     };
 
     let mut cache = state.client_anki_cache.lock().await;
-    if let Some(entry) = cache.get(&ip) {
-        if entry.checked_at.elapsed() < CLIENT_ANKI_TTL {
-            return entry.exporter.clone().unwrap_or_else(default);
-        }
+    if let Some(entry) = cache.get(&ip)
+        && entry.checked_at.elapsed() < CLIENT_ANKI_TTL
+    {
+        return entry.exporter.clone().unwrap_or_else(default);
     }
 
     let url = match ip {

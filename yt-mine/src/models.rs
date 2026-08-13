@@ -20,7 +20,7 @@ impl JobStatus {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "pending" => Some(Self::Pending),
             "downloading" => Some(Self::Downloading),
@@ -84,14 +84,14 @@ mod tests {
 
         for status in &statuses {
             let s = status.as_str();
-            let parsed = JobStatus::from_str(s).unwrap();
+            let parsed = JobStatus::parse(s).unwrap();
             assert_eq!(&parsed, status);
         }
     }
 
     #[test]
     fn job_status_from_str_unknown_returns_none() {
-        assert_eq!(JobStatus::from_str("unknown"), None);
+        assert_eq!(JobStatus::parse("unknown"), None);
     }
 
     #[test]

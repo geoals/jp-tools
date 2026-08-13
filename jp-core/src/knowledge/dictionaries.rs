@@ -43,10 +43,6 @@ pub async fn master_headwords(pool: &SqlitePool) -> Result<HashSet<String>, sqlx
     Ok(rows.into_iter().map(|(term,)| term).collect())
 }
 
-/// The master dictionary's `(headword, reading)` pairs, for recomposing the
-/// compounds Sudachi's own lexicon splits. See
-/// `SudachiTokenizer::with_master_readings`, which is what decides how to treat
-/// a reading that names more than one headword.
 /// The `(headword, reading)` pairs of every dictionary that decides
 /// segmentation *beside* the master — see [`Role::Standard`]. Same shape as
 /// [`master_entries`], and deliberately a separate query: the caller has to
@@ -61,6 +57,10 @@ pub async fn standard_entries(pool: &SqlitePool) -> Result<Vec<(String, String)>
     .await
 }
 
+/// The master dictionary's `(headword, reading)` pairs, for recomposing the
+/// compounds Sudachi's own lexicon splits. See
+/// `SudachiTokenizer::with_master_readings`, which is what decides how to treat
+/// a reading that names more than one headword.
 pub async fn master_entries(pool: &SqlitePool) -> Result<Vec<(String, String)>, sqlx::Error> {
     sqlx::query_as(
         "SELECT DISTINCT de.term, de.reading FROM dictionary_entries de \
@@ -1193,7 +1193,7 @@ mod tests {
         .execute(k.pool()).await.unwrap();
 
         let map = master_forms_by_sequence(k.pool()).await.unwrap();
-        assert!(map.get(&2082430).is_none(), "a name imports as nothing");
+        assert!(!map.contains_key(&2082430), "a name imports as nothing");
     }
 
     /// Sets up Sankoku (master, id 1), Jitendex (popularity, id 2) and BCCWJ

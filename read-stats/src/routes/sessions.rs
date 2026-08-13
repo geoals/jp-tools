@@ -110,6 +110,9 @@ pub async fn create_session(
     State(state): State<AppState>,
     Json(req): Json<CreateSession>,
 ) -> Result<Json<db::ManualSession>, AppError> {
+    // Negated, not `m <= 0.0`: every NaN comparison is false, so the flipped
+    // form would let a NaN through as a valid duration.
+    #[allow(clippy::neg_cmp_op_on_partial_ord)]
     if req.minutes.is_some_and(|m| !(m > 0.0)) {
         return Err(AppError::BadRequest("minutes must be > 0".into()));
     }

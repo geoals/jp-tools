@@ -59,8 +59,7 @@ pub use lines::{
 };
 pub use lookups::{
     LookupTerm, fetch_lookup_events, fetch_lookup_keys, fetch_lookup_terms, insert_lookup,
-    retract_lookup,
-    set_lookup_headwords, unnormalized_lookup_terms,
+    retract_lookup, set_lookup_headwords, unnormalized_lookup_terms,
 };
 pub use marks::{fetch_reader_marks, insert_reader_mark};
 pub use pool::{create_pool, open_knowledge};

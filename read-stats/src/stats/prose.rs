@@ -56,7 +56,7 @@ impl ProseAcc {
 /// `None` below [`SENTENCE_FLOOR`]: a percentile over forty sentences is a
 /// description of one scene, and printing it beside a corpus average invites
 /// reading a difference that is noise.
-fn percentile(values: &mut Vec<i64>, q: f64) -> Option<f64> {
+fn percentile(values: &mut [i64], q: f64) -> Option<f64> {
     if values.len() < SENTENCE_FLOOR {
         return None;
     }

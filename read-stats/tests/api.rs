@@ -573,9 +573,8 @@ async fn work_detail_scopes_the_history_to_one_title() {
     assert_eq!(d["days"].as_array().unwrap().len(), 2);
     let sittings = d["sittings"].as_array().unwrap();
     assert_eq!(sittings.len(), 2);
-    assert_eq!(
+    assert!(
         sittings[0]["start_ts"].as_f64().unwrap() > sittings[1]["start_ts"].as_f64().unwrap(),
-        true,
         "newest first"
     );
     assert_eq!(sittings[1]["estimated"], true, "logged without minutes");

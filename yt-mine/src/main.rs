@@ -18,6 +18,17 @@ use yt_mine::services::llm::{CompactDefiner, LlmDefiner};
 use yt_mine::services::media::{FfmpegMediaExtractor, MediaExtractor};
 use yt_mine::services::transcribe::{RemoteTranscriber, Transcriber};
 
+/// The external tools, picked once at startup: the real ones, or the fakes
+/// `JP_TOOLS_FAKE_API` swaps in. They go straight into [`AppState`].
+struct Services {
+    downloader: Arc<dyn MediaDownloader>,
+    transcriber: Arc<dyn Transcriber>,
+    exporter: Arc<dyn AnkiExporter>,
+    media_extractor: Arc<dyn MediaExtractor>,
+    tokenizer: Arc<dyn Tokenizer>,
+    highlighter: Option<Arc<Highlighter>>,
+}
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
@@ -54,23 +65,16 @@ async fn main() {
         .expect("failed to open knowledge database");
     info!(path = %config.knowledge_db_path, "knowledge database ready");
 
-    let (downloader, transcriber, exporter, media_extractor, tokenizer, highlighter): (
-        Arc<dyn MediaDownloader>,
-        Arc<dyn Transcriber>,
-        Arc<dyn AnkiExporter>,
-        Arc<dyn MediaExtractor>,
-        Arc<dyn Tokenizer>,
-        Option<Arc<Highlighter>>,
-    ) = if config.fake_api {
+    let services = if config.fake_api {
         info!("*** DEV MODE — using fake services (no external deps needed) ***");
-        (
-            Arc::new(FakeDownloader),
-            Arc::new(FakeTranscriber),
-            Arc::new(FakeAnkiExporter),
-            Arc::new(FakeMediaExtractor),
-            Arc::new(FakeTokenizer),
-            None,
-        )
+        Services {
+            downloader: Arc::new(FakeDownloader),
+            transcriber: Arc::new(FakeTranscriber),
+            exporter: Arc::new(FakeAnkiExporter),
+            media_extractor: Arc::new(FakeMediaExtractor),
+            tokenizer: Arc::new(FakeTokenizer),
+            highlighter: None,
+        }
     } else {
         // The reader's own pipeline, all seven inputs — not a bare Sudachi with
         // the headword list, which is what this used to build. A transcript and
@@ -87,17 +91,17 @@ async fn main() {
         let transcriber: Arc<dyn Transcriber> =
             Arc::new(RemoteTranscriber::new(config.whisper_service_url.clone()));
 
-        (
-            Arc::new(YtDlpDownloader),
+        Services {
+            downloader: Arc::new(YtDlpDownloader),
             transcriber,
-            Arc::new(AnkiConnectExporter::new(
+            exporter: Arc::new(AnkiConnectExporter::new(
                 config.anki_url.clone(),
                 config.anki.clone(),
             )),
-            Arc::new(FfmpegMediaExtractor),
-            highlighter.tokenizer(),
-            Some(highlighter),
-        )
+            media_extractor: Arc::new(FfmpegMediaExtractor),
+            tokenizer: highlighter.tokenizer(),
+            highlighter: Some(highlighter),
+        }
     };
 
     let llm_definer: Option<Arc<dyn LlmDefiner>> = if config.fake_api {
@@ -111,12 +115,12 @@ async fn main() {
 
     let state = AppState {
         db: pool,
-        downloader,
-        transcriber,
-        exporter,
-        media_extractor,
-        tokenizer,
-        highlighter,
+        downloader: services.downloader,
+        transcriber: services.transcriber,
+        exporter: services.exporter,
+        media_extractor: services.media_extractor,
+        tokenizer: services.tokenizer,
+        highlighter: services.highlighter,
         knowledge,
         http: reqwest::Client::new(),
         anki_url: config.anki_url.clone(),

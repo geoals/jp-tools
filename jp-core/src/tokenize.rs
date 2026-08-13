@@ -2296,7 +2296,10 @@ mod tests {
             .find(|t| t.base_form == "得意げ")
             .expect("joined");
         assert_eq!(token.pos, "形状詞");
-        assert!(counts_as_word(&token, &MasterWords::new(HashSet::new(), &[])));
+        assert!(counts_as_word(
+            &token,
+            &MasterWords::new(HashSet::new(), &[])
+        ));
     }
 
     /// A reading naming two headwords is not arbitrated — it is dropped, and

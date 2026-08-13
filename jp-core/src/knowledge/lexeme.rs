@@ -105,10 +105,10 @@ async fn known_forms(k: &Knowledge) -> Result<Vec<KnownForm>, sqlx::Error> {
     for r in &rows {
         let key: (String, String) = (r.get("headword"), r.get("reading"));
         let entry = by_form.entry(key).or_default();
-        if let Some(seq) = r.get::<Option<i64>, _>("sequence") {
-            if !entry.contains(&seq) {
-                entry.push(seq);
-            }
+        if let Some(seq) = r.get::<Option<i64>, _>("sequence")
+            && !entry.contains(&seq)
+        {
+            entry.push(seq);
         }
     }
 

@@ -141,7 +141,7 @@ fn job_from_row(r: sqlx::sqlite::SqliteRow) -> Job {
         video_title: r.get("video_title"),
         audio_path: r.get("audio_path"),
         video_path: r.get("video_path"),
-        status: JobStatus::from_str(&status_str).unwrap_or(JobStatus::Error),
+        status: JobStatus::parse(&status_str).unwrap_or(JobStatus::Error),
         error_message: r.get("error_message"),
         created_at: r.get("created_at"),
         segments_found: r.get("segments_found"),
@@ -216,25 +216,6 @@ pub async fn insert_sentences(
         .execute(pool)
         .await?;
     }
-    Ok(())
-}
-
-pub async fn insert_sentence(
-    pool: &SqlitePool,
-    job_id: i64,
-    segment: &TranscriptSegment,
-) -> Result<(), sqlx::Error> {
-    let now = chrono_now();
-    sqlx::query(
-        "INSERT INTO mining_sentences (job_id, text, start_time, end_time, created_at) VALUES (?, ?, ?, ?, ?)",
-    )
-    .bind(job_id)
-    .bind(&segment.text)
-    .bind(segment.start)
-    .bind(segment.end)
-    .bind(&now)
-    .execute(pool)
-    .await?;
     Ok(())
 }
 
@@ -704,7 +685,7 @@ mod tests {
             end: 1.0,
             text: "partial".into(),
         };
-        insert_sentences(&pool, transcribing, &[seg.clone()])
+        insert_sentences(&pool, transcribing, std::slice::from_ref(&seg))
             .await
             .unwrap();
         // And to the done job (should survive)

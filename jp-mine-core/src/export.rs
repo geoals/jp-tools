@@ -446,19 +446,19 @@ impl AnkiExporter for AnkiConnectExporter {
             for es in &sentences {
                 let media_started = std::time::Instant::now();
                 let mut screenshot_filename = None;
-                if config.field_image.is_some() {
-                    if let Some(path) = &es.screenshot_path {
-                        screenshot_filename =
-                            upload_media(&client, &anki_url, path, "screenshot.jpg").await?;
-                    }
+                if config.field_image.is_some()
+                    && let Some(path) = &es.screenshot_path
+                {
+                    screenshot_filename =
+                        upload_media(&client, &anki_url, path, "screenshot.jpg").await?;
                 }
 
                 let mut audio_clip_filename = None;
-                if config.field_audio.is_some() {
-                    if let Some(path) = &es.audio_clip_path {
-                        audio_clip_filename =
-                            upload_media(&client, &anki_url, path, "clip.mp3").await?;
-                    }
+                if config.field_audio.is_some()
+                    && let Some(path) = &es.audio_clip_path
+                {
+                    audio_clip_filename =
+                        upload_media(&client, &anki_url, path, "clip.mp3").await?;
                 }
                 media_ms += media_started.elapsed().as_millis() as u64;
                 let note_started = std::time::Instant::now();
@@ -615,7 +615,7 @@ mod tests {
             tags: vec![],
         };
 
-        let notes = vec![NoteData {
+        let notes = [NoteData {
             sentence_text: "テスト".into(),
             vocab_kanji: "テスト".into(),
             vocab_def: "test".into(),
@@ -663,7 +663,7 @@ mod tests {
             tags: vec![],
         };
 
-        let notes = vec![NoteData {
+        let notes = [NoteData {
             sentence_text: "文".into(),
             vocab_kanji: "語".into(),
             vocab_def: "def".into(),

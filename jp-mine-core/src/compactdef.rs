@@ -274,7 +274,6 @@ mod tests {
             .split('·')
             .next()
             .unwrap()
-            .trim()
             .split_whitespace()
             .next()
             .unwrap();

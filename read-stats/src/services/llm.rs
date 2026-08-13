@@ -97,10 +97,11 @@ fn send(
     http: &reqwest::Client,
     api_key: &str,
     body: Value,
-// `use<>`: the builder owns everything it needs by the time `send` is called,
-// so the future borrows nothing — without this it inherits the arguments'
-// lifetimes and cannot outlive the handler that made it.
-) -> impl std::future::Future<Output = reqwest::Result<reqwest::Response>> + Send + 'static + use<> {
+    // `use<>`: the builder owns everything it needs by the time `send` is called,
+    // so the future borrows nothing — without this it inherits the arguments'
+    // lifetimes and cannot outlive the handler that made it.
+) -> impl std::future::Future<Output = reqwest::Result<reqwest::Response>> + Send + 'static + use<>
+{
     http.post("https://api.anthropic.com/v1/messages")
         .header("x-api-key", api_key)
         .header("anthropic-version", "2023-06-01")
@@ -121,7 +122,11 @@ pub fn explain_stream(
     context: &[String],
     focus: &str,
 ) -> impl futures_util::Stream<Item = Result<String, AppError>> + Send + 'static + use<> {
-    deltas(send(http, api_key, request_body(user_message(context, focus), true)))
+    deltas(send(
+        http,
+        api_key,
+        request_body(user_message(context, focus), true),
+    ))
 }
 
 /// The text deltas of an in-flight Messages request.
@@ -196,9 +201,13 @@ pub async fn explain(
     context: &[String],
     focus: &str,
 ) -> Result<String, AppError> {
-    let resp = send(http, api_key, request_body(user_message(context, focus), false))
-        .await
-        .map_err(|e| AppError::Upstream(format!("Anthropic request failed: {e}")))?;
+    let resp = send(
+        http,
+        api_key,
+        request_body(user_message(context, focus), false),
+    )
+    .await
+    .map_err(|e| AppError::Upstream(format!("Anthropic request failed: {e}")))?;
 
     let status = resp.status();
     let json: Value = resp

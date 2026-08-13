@@ -38,25 +38,6 @@ export async function pollStatus(videoId, sentenceCount, status) {
   return res.json();
 }
 
-export async function fetchDefine(term, reading) {
-  const params = new URLSearchParams({ term });
-  if (reading) params.set('reading', reading);
-  const res = await request(`${BASE}/define?${params}`);
-  return res.json();
-}
-
-// Every other reading of this position — the escape hatch for a word the
-// tokenizer split, or read the other way. Never throws: an empty list is the
-// common answer and the popup draws nothing for it.
-export async function fetchExpand(text) {
-  try {
-    const res = await fetch(`${BASE}/expand?${new URLSearchParams({ text })}`);
-    return res.ok ? await res.json() : [];
-  } catch {
-    return [];
-  }
-}
-
 export async function judgeWord(headword, reading, status) {
   const res = await fetch(`${BASE}/judge`, {
     method: 'POST',
