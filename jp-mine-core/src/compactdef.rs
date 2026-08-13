@@ -43,10 +43,10 @@ written form you were given.\n\n\
 Output exactly two lines and nothing else — no preamble, no markdown, and never \
 an XML or HTML tag or label of your own:\n\
 - Line 1 — the meaning, optionally followed by \". \" and one short usage note.\n\
-- Line 2 — FAMILIARITY · FLAVOR[ · FLAVOR2[ · FLAVOR3]][ (structural)]\n\
-Line 2 is machine-read. Every tag is separated by \" · \" including the one \
-between FAMILIARITY and the first FLAVOR, and a baseline formality is always \
-present even when a mark is more informative.\n\n\
+- Line 2 — [FAMILIARITY · ]FLAVOR[ · FLAVOR2[ · FLAVOR3]][ (structural)]\n\
+Line 2 is machine-read. Every tag is separated by \" · \". A baseline formality \
+is always present, even when a mark is more informative. FAMILIARITY is not: \
+most lines start with the baseline.\n\n\
 MEANING/USAGE: nuance-carrying English. A bare one/two-word translation ONLY for \
 a concrete 1-to-1 term (焼却炉 → incinerator); otherwise a short phrase that \
 carries the actual nuance. Optionally one short usage note — a fixed collocation, \
@@ -61,6 +61,13 @@ Judge from the word, the sentence, and your own knowledge ALONE. No preamble, \
 no markdown."
     )
 });
+
+/// The exact system prompt sent with every CompactDef call. Exposed because
+/// tuning the rubric means reading what is actually being asked, and a
+/// paraphrase of it is how the two callers drifted apart in the first place.
+pub fn system_prompt() -> &'static str {
+    &SYSTEM_PROMPT
+}
 
 /// Generate the CompactDef gloss for `target` as used in `sentence`.
 ///

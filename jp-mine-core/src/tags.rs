@@ -30,8 +30,9 @@ pub const FLAVOR_RUBRIC: &str = "\
 FLAVOR (1-3) — if you SAY it in the wrong room, how do you sound. Emit exactly \
 one baseline formality, then add marks only when they carry an independent, \
 equally-important warning:\n\
-- baseline: SLANG / PLAIN (safe anywhere — always shown) / FORMAL (stiff if \
-casual; fine in formal speech or writing).\n\
+- baseline: SLANG (in-group or faddish) / CASUAL (relaxed everyday speech; \
+blunt in a formal room) / PLAIN (safe anywhere — always shown) / FORMAL (stiff \
+if casual; fine in formal speech or writing).\n\
 - marks: LITERARY (writing-only; theatrical if spoken), TECHNICAL, RELIGIOUS, \
 HONORIFIC, HUMBLE, DIALECT, ARCHAIC, VULGAR, DEROGATORY, CHILDISH.\n\
 Tag the IN-SENTENCE sense; other senses don't count (joking 成仏 = PLAIN, not \
@@ -46,7 +47,7 @@ not etymology.";
 pub const FAMILIARITY: [&str; 3] = ["CORE", "COMMON", "RARE"];
 
 /// The baseline formalities. Exactly one is required.
-pub const BASELINES: [&str; 3] = ["SLANG", "PLAIN", "FORMAL"];
+pub const BASELINES: [&str; 4] = ["SLANG", "CASUAL", "PLAIN", "FORMAL"];
 
 /// The independent marks, added to a baseline. Order in the rendered line
 /// follows this array, not the order the model happened to emit them in.
@@ -82,7 +83,7 @@ pub const STRUCTURAL: [&str; 6] = [
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum TagLineError {
-    #[error("no baseline formality (one of SLANG/PLAIN/FORMAL)")]
+    #[error("no baseline formality (one of SLANG/CASUAL/PLAIN/FORMAL)")]
     NoBaseline,
     #[error("more than one baseline formality: {0}")]
     TwoBaselines(String),
