@@ -50,6 +50,11 @@ Two stacked causes.
 ど真ん中 all arrive whole from Sudachi. Fixing (2) alone would not fix this
 word; only a role change for Jitendex would, and that is a huge blast radius.
 
+Cause (1) is now half gone: the `Wordhood` fix at the bottom of this file makes
+花摘み clickable on its own, so (2) — the leading `接頭辞` the join refuses — is
+all that stands between the reader and お花摘み. Ranking it still needs the
+master.
+
 ## 聞きかじり — nominalized verb, master lists only the verb
 
 Sudachi holds it whole (`名詞`), so nothing is split. It is `non-word` because
@@ -251,7 +256,7 @@ fine — this is the wordhood/scale question alone.
 Third instance of the class, and the second common word in it. A 連用形 noun
 whose verb the master lists needs a derivation rule, not one entry per word.
 
-## ムワムワ — no span at all, because the no-row path asks only the master
+## ムワムワ — no span at all, because the no-row path asks only the master — FIXED
 
 Segmentation and identity are right (`ムワムワ` + `漂い` + …), and
 `/api/reader/define?term=ムワムワ` returns the Jitendex entry. The reader still
@@ -276,3 +281,14 @@ the vocabulary scale (`COUNTS_AS_VOCAB` is `in_master`), which is correct.
 The word itself is the 連帯感/砂粒 class — a real headword Sankoku lacks — with a
 productive shape behind it: katakana mimetics are coined freely (ムワムワ,
 ムワッと, ムンムン) and no master dictionary will list them all.
+
+**Fixed.** `Highlighter` now carries a `Wordhood` set — the headwords *and* the
+readings of the master, name and reference dictionaries — and the no-row branch
+asks it, which is `VocabRow::is_word`'s question with the same kana half
+`refresh_dictionary_flags` gives a row. The scale is untouched: `COUNTS_AS_VOCAB`
+is still `in_master`, so these get a span and a popup and no count.
+
+This was the general clickability defect, not one word. Anything a reference
+dictionary alone lists — 景気づけ (Sankoku has only 景気付け), 花摘み, ムワムワ —
+was unclickable when met live and clickable once ingest had written a row, so
+whether a word could be tapped depended on a race with the watermark.

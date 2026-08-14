@@ -15,9 +15,9 @@
 //! - **Names** (Sudachi's 固有名詞, same as ingest) — a VN's cast would
 //!   otherwise be the loudest thing on every line.
 //! - **Non-words**: tokenizer noise, and anything no dictionary lists. The
-//!   ledger answers for a term it has a row for, the master headword set for one
-//!   it does not — a word hooked ten seconds ago has no row yet, and that word
-//!   is what this feature exists to point at.
+//!   ledger answers for a term it has a row for and [`Wordhood`] for one it does
+//!   not — a word hooked ten seconds ago has no row yet, and that word is what
+//!   this feature exists to point at, so both must answer alike.
 //!
 //! [`Tier`] splits the ledger's `new` on `encounter_count`, since it covers both
 //! "met fifty times, never judged" and "never met at all".
@@ -185,14 +185,47 @@ async fn preferred(
     d::preferred_readings(pool, master.id, jitendex.id, bccwj.id).await
 }
 
+/// Whether a term is a word at all, for a term the ledger cannot answer for.
+///
+/// A ledger row carries three flags and [`VocabRow::is_word`] accepts any of
+/// them, so a term listed only by Jitendex is a word once ingest has seen it.
+/// A term met live — which is most of what the reader is there to point at —
+/// has no row yet, and asking the master alone made the same word a `non-word`
+/// and cost it its span: the reader could not tap 景気づけ or ムワムワ, both of
+/// which the popup would have defined. This holds the lenient set so both paths
+/// ask one question.
+///
+/// Being a word here still says nothing about the vocabulary scale: that
+/// denominator is `in_master` alone (`COUNTS_AS_VOCAB`), and the row this now
+/// admits stays off it.
+#[derive(Debug, Default, Clone)]
+pub struct Wordhood {
+    terms: HashSet<String>,
+    /// Readings, for the kana half of the rule — a `Term` with no reading is a
+    /// kana headword, and a dictionary giving it as some kanji headword's
+    /// reading lists the word.
+    readings: HashSet<String>,
+}
+
+impl Wordhood {
+    pub fn new(terms: HashSet<String>, readings: HashSet<String>) -> Wordhood {
+        Wordhood { terms, readings }
+    }
+
+    fn contains(&self, term: &Term) -> bool {
+        self.terms.contains(&term.headword)
+            || (term.reading.is_empty() && self.readings.contains(&term.headword))
+    }
+}
+
 /// The Sudachi pipeline plus the dictionary sets it needs, built once and
 /// shared by every streaming reader — the dictionary load costs far more than
 /// tokenizing a line, and here the lines arrive one at a time all evening.
 pub struct Highlighter {
     tokenizer: std::sync::Arc<SudachiTokenizer>,
-    /// The master dictionary's headwords — the wordhood test for a term the
-    /// ledger has no row for yet.
-    lexicon: HashSet<String>,
+    /// The wordhood test for a term the ledger has no row for yet — the same
+    /// question [`VocabRow::is_word`] answers for a term that has one.
+    wordhood: Wordhood,
     /// The same dictionary keyed by `(headword, reading)`, for the affix half of
     /// the wordhood gate. Ingest asks the identical question, which keeps a tint
     /// and a ledger row from disagreeing about 達.
@@ -212,6 +245,7 @@ impl Highlighter {
         dict_path: impl AsRef<std::path::Path>,
     ) -> Result<Highlighter, BuildError> {
         let p = pipeline(k, dict_path).await?;
+        let (terms, readings) = crate::knowledge::dictionaries::wordhood_entries(k.pool()).await?;
         let headwords: Vec<String> = p.lexicon.iter().cloned().collect();
         let ranks = match crate::knowledge::dictionaries::by_title(
             k.pool(),
@@ -226,7 +260,7 @@ impl Highlighter {
         };
         Ok(Highlighter::new(
             std::sync::Arc::new(p.tokenizer),
-            p.lexicon,
+            Wordhood::new(terms, readings),
             p.master,
             ranks,
         ))
@@ -243,13 +277,13 @@ impl Highlighter {
 
     pub fn new(
         tokenizer: std::sync::Arc<SudachiTokenizer>,
-        lexicon: HashSet<String>,
+        wordhood: Wordhood,
         master: MasterWords,
         ranks: HashMap<(String, String), i64>,
     ) -> Highlighter {
         Highlighter {
             tokenizer,
-            lexicon,
+            wordhood,
             master,
             ranks,
         }
@@ -343,8 +377,8 @@ impl Highlighter {
     }
 
     /// Whether a term the ledger has never heard of is a word at all.
-    fn in_master_lexicon(&self, term: &Term) -> bool {
-        self.lexicon.contains(&term.headword)
+    fn is_word(&self, term: &Term) -> bool {
+        self.wordhood.contains(term)
     }
 }
 
@@ -555,8 +589,11 @@ pub async fn analyze(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Analyzed
                 match row {
                     Some(row) => tier_for(row),
                     // No row: nothing has ingested this line yet, so the ledger
-                    // cannot answer and the master dictionary is asked instead.
-                    None if h.in_master_lexicon(&c.term) => Ok(Tier::New),
+                    // cannot answer and the dictionaries are asked directly —
+                    // the same lenient question `VocabRow::is_word` puts to a
+                    // row, so a word does not lose its span for being met
+                    // before ingest caught up.
+                    None if h.is_word(&c.term) => Ok(Tier::New),
                     None => Err(Excluded::NonWord),
                 }
             };
@@ -753,6 +790,33 @@ mod tests {
     fn untriaged_splits_on_encounter_count() {
         assert_eq!(tier_for(&row(Status::New, 1)), Ok(Tier::New));
         assert_eq!(tier_for(&row(Status::New, 2)), Ok(Tier::Seen));
+    }
+
+    fn wordhood() -> Wordhood {
+        Wordhood::new(
+            ["景気づけ".to_string()].into_iter().collect(),
+            ["むわむわ".to_string()].into_iter().collect(),
+        )
+    }
+
+    #[test]
+    fn a_term_only_a_reference_dictionary_lists_is_a_word() {
+        // The lenient gate, matching what a ledger row would say. Sankoku has
+        // only 景気付け, so the master alone answered `non-word` and the reader
+        // got no span to tap.
+        assert!(wordhood().contains(&Term::new("景気づけ", "けいきづけ")));
+        assert!(!wordhood().contains(&Term::new("景気づける", "けいきづける")));
+    }
+
+    #[test]
+    fn a_kana_headword_matches_a_dictionary_reading() {
+        // `Term` stores no reading for a kana headword, so the headword itself
+        // is what a dictionary's reading column has to be matched against —
+        // the same kana half `refresh_dictionary_flags` gives a row.
+        assert!(wordhood().contains(&Term::new("むわむわ", "むわむわ")));
+        // A kanji headword gets no such fallback: its own spelling must be
+        // listed, or every homophone would be a word.
+        assert!(!wordhood().contains(&Term::new("無和", "むわむわ")));
     }
 
     #[test]

@@ -43,6 +43,39 @@ pub async fn master_headwords(pool: &SqlitePool) -> Result<HashSet<String>, sqlx
     Ok(rows.into_iter().map(|(term,)| term).collect())
 }
 
+/// Every headword, and every reading, of the dictionaries whose listing makes a
+/// term a word — the roles [`VocabRow::is_word`] accepts.
+///
+/// The lenient half of the two thresholds above, for a caller that has to ask
+/// the wordhood question of a term the ledger has no row for and so cannot ask
+/// `is_word` itself. The readings come back beside the terms because that rule
+/// has a kana half: a ledger key with no reading *is* kana, and a dictionary
+/// listing it as the reading of a kanji headword is the same evidence of
+/// wordhood — see [`refresh_dictionary_flags`], which this mirrors.
+///
+/// [`VocabRow::is_word`]: crate::knowledge::vocabulary::VocabRow::is_word
+/// [`refresh_dictionary_flags`]: crate::knowledge::vocabulary::refresh_dictionary_flags
+pub async fn wordhood_entries(
+    pool: &SqlitePool,
+) -> Result<(HashSet<String>, HashSet<String>), sqlx::Error> {
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT DISTINCT de.term, de.reading FROM dictionary_entries de \
+         JOIN dictionaries d ON d.id = de.dictionary_id \
+         WHERE d.role IN ('master', 'name', 'reference')",
+    )
+    .fetch_all(pool)
+    .await?;
+    let mut terms = HashSet::new();
+    let mut readings = HashSet::new();
+    for (term, reading) in rows {
+        terms.insert(term);
+        if !reading.is_empty() {
+            readings.insert(reading);
+        }
+    }
+    Ok((terms, readings))
+}
+
 /// The `(headword, reading)` pairs of every dictionary that decides
 /// segmentation *beside* the master — see [`Role::Standard`]. Same shape as
 /// [`master_entries`], and deliberately a separate query: the caller has to
