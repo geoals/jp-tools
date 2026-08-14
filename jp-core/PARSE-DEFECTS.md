@@ -292,3 +292,132 @@ This was the general clickability defect, not one word. Anything a reference
 dictionary alone lists — 景気づけ (Sankoku has only 景気付け), 花摘み, ムワムワ —
 was unclickable when met live and clickable once ingest had written a row, so
 whether a word could be tapped depended on a race with the watermark.
+
+---
+
+## 何時 — the clock reading なんじ is never produced, and the まで/でも forms become particles
+
+Three spellings of one word, and the pipeline gets the literal one wrong every
+way it can. Noticed in 白昼夢の青写真's script, where the literal string occurs
+twice and neither is the set phrase:
+
+| line | what comes out |
+| --- | --- |
+| 「……何時なの」 | 何時 / **なんどき**, `名詞` |
+| 学校は何時までかかるだろうか。 | 何時まで / **いつまで**, `助詞` |
+| いつ何時でも | いつ → 何時/いつ, then 何時でも / いつでも, `助詞` |
+
+Both lines mean なんじ — asking the time — and no path produces it. なんどき is
+a real reading but belongs to いつ何時, which is the one context here that
+*doesn't* get it.
+
+Two separate things are wrong:
+
+- **The reading.** 何時 is いつ, なんじ or なんどき, and the choice needs the
+  sentence. なんどき is the rarest of the three and is what a bare 何時 lands on.
+- **The join.** 何時まで and 何時でも come back tagged `助詞` — a compound of
+  noun + particle presented as one particle, with a reading (いつまで) asserted
+  over the whole thing. That is why the second line contributes no 何時 row at
+  all, and it is a category error rather than a close call.
+
+Low volume and worth leaving alone until the batch: 217 of this work's 218
+何時 rows are kana いつ normalized onto the master's spelling, which is the rule
+working. The damage is confined to the literal spelling.
+
+One thing to note when it is fixed, because it looks like a second defect and
+is not: 何時/なんどき painted `known` on the first line, borrowed from the known
+何時/いつ row by the judged-under-another-reading rule. That rule is right; it
+was applied to a key that should never have been built.
+
+---
+
+## The top of 白昼夢の青写真's script queue — audit of 50, four causes
+
+Not one word: the fifty commonest unjudged terms in the work's script profile,
+each checked against a line it appears in and the token the pipeline built.
+
+| class | terms | occurrences |
+| --- | --- | --- |
+| parse errors | 14 (28%) | 3,865 (49%) |
+| names leaked into vocabulary | 8 (16%) | 2,276 (29%) |
+| useful vocabulary | 27 (54%) | 1,638 (21%) |
+
+The inversion is the finding. By term the queue is about half junk; **weighted
+by how often the words occur it is 78% junk**, because the errors cluster at
+exactly the frequencies a triage session starts from.
+
+**A name Sudachi has no entry for is split, and the fragment is counted.**
+The 皆守 case, four more times, and it is the single largest cause here:
+
+- 凪 ×2,385 — 世凪 as 世 + 凪
+- 李/すもも ×682 — the character すもも normalised onto the fruit
+- 麻 ×84 — 入麻 as 入 + 麻
+- 鯱 ×70 — シャチ normalised onto the orca
+
+**A name joined to grammar.** 凛と ×72: the line lists two people, 凛 and
+オリヴィア, and 凛 + と was joined into the adverb 凛と. Recomposition refuses a
+run containing a proper noun — 凛 was not tagged one.
+
+**Fragments of a longer word.** 乳粥 ×47 out of 牛乳粥; 症 ×45 off 症状.
+
+**Bad joins and readings.** この家 ×48, joined and read このや where the line is
+この + 家. 玉蜀黍 ×39, keyed in kanji for a line that wrote とうもろこし — the
+spelling fallback did not fire.
+
+**Never vocabulary in any work.** ちゅ ×207, ぢ ×52, ちゅる ×29 — onomatopoeia
+from sex scenes, and the ×207 shows how much of it there is. YOU ×51 and ME ×54
+are Sudachi normalising kana onto ASCII. These want a wordhood rule, not an
+entry each.
+
+Two things worth keeping from how this was measured. **Five of the fifty had no
+literal match in the script at all** — the ledger key is a spelling the text
+never used — and that test is pure code: if neither the headword nor its reading
+occurs in the line the token came from, something has been asserted that was not
+read. It caught 玉蜀黍, オリーブ, 鯱, YOU and ME without judging anything.
+
+And the per-work name list already being imported (`work_names`) covers 6 of the
+14 errors and all 8 leaks: **6,141 of the 7,874 occurrences audited, 78%**. It
+is not a polish step, it is most of the problem.
+
+---
+
+## The same script sampled at random — the tail is a different defect
+
+The audit above took the fifty *commonest* unjudged terms and concluded the
+errors were concentrated at the head. That conclusion did not follow: a
+top-only sample cannot say anything about the tail. So: fifty more, drawn
+uniformly at random from all 5,440 unjudged terms of the same work (counts 1
+to 13), checked the same way.
+
+| class | top 50 | random 50 |
+| --- | --- | --- |
+| parse errors | 28% | 6% |
+| spelling errors | (counted as parse) | 8% |
+| names leaked | 16% | **0%** |
+| **junk** | **44%** | **14%** |
+| useful vocabulary | 54% | 82% |
+
+The head really is about three times worse, and now that is measured rather
+than assumed. But the two ends fail in different ways, and each wants its own
+fix.
+
+**Names are a head-only defect, necessarily.** A cast member is repeated
+hundreds of times, so a split name can only ever land at a high count — zero
+appeared in the random draw. `work_names` is aimed exactly where the damage is.
+
+**The tail's largest defect is spelling, not segmentation.** Four of the fifty
+are keyed in kanji the line never used: 鼾 for いびき, 伸し上がる for のしあがる,
+御祝儀 for ご祝儀, 独り暮らし against the text's 一人暮らし. That is the 玉蜀黍
+case from the head audit, and this is where it lives. The surface-preserving
+fallback — normalise no further than the spelling the reader saw — is either
+not firing or not covering okurigana and prefix variants.
+
+The three ordinary parse errors: 36 counted as a word (a number is not
+vocabulary), 寝よう cut to the noun 寝, and 頂 broken out of 絶頂.
+
+**Neither end needs a model.** The head is fixed by importing the cast, the
+tail by making the fallback hold. And the mechanical test from the previous
+entry — *neither the headword nor its reading occurs in the line the token came
+from* — is precisely the definition of the spelling defect, so one check with
+no judgement in it finds the whole category. Across 5,440 unjudged terms a 14%
+tail rate is on the order of 760 wrong rows, which is worth a pass of its own.
