@@ -5,7 +5,9 @@ Fixtures are real captures from a reading session (opening, an H-scene skipped
 at speed, combat, and menu navigation) with the hook HS932#-C@289F60:main.bin.
 Run: python3 vn-mine/test_ws_logger.py
 """
+import asyncio
 import importlib.util
+import io
 import os
 import sqlite3
 import sys
@@ -241,6 +243,62 @@ class CapturePausedFlag(unittest.TestCase):
         self.assertFalse(
             sink.capture_paused(), "an unreadable flag must keep capturing"
         )
+
+
+class SplitCaptureRejoined(unittest.TestCase):
+    """Textractor splitting one script line at its own \\n, as it really
+    arrived: two captures 30ms apart, the second opening on the break."""
+
+    HALVES = [
+        "\\cd「今僕は、その理由を聞かせてもらおうとしている。",
+        "\\n後学のためにね」",
+    ]
+    WHOLE = "「今僕は、その理由を聞かせてもらおうとしている。\n後学のためにね」"
+
+    def sink(self):
+        tmp = tempfile.mkdtemp()
+        db = os.path.join(tmp, "knowledge.db")
+        self.addCleanup(os.environ.pop, "JP_TOOLS_STATS_DISABLE", None)
+        os.environ.pop("JP_TOOLS_STATS_DISABLE", None)
+        old = (wl.KNOWLEDGE_DB, wl.STATS_DB)
+        wl.KNOWLEDGE_DB = db
+        wl.STATS_DB = os.path.join(tmp, "read-stats.db")
+        self.addCleanup(lambda: setattr(wl, "KNOWLEDGE_DB", old[0]))
+        self.addCleanup(lambda: setattr(wl, "STATS_DB", old[1]))
+        return wl.StatsSink()
+
+    def drain(self, captures):
+        sink = self.sink()
+
+        async def ws():
+            for c in captures:
+                yield c
+
+        asyncio.run(wl.read_lines(ws(), io.StringIO(), sink, (None, [])))
+        return sink.db.execute(
+            "SELECT text, discarded FROM lines ORDER BY id"
+        ).fetchall()
+
+    def test_the_feed_ends_on_the_whole_line(self):
+        rows = self.drain(self.HALVES)
+        self.assertEqual(
+            [r[0] for r in rows if not r[1]],
+            [self.WHOLE],
+            "the reader must see one line, not a half that vanishes",
+        )
+
+    def test_the_half_is_discarded_not_deleted(self):
+        rows = self.drain(self.HALVES)
+        self.assertEqual([r[1] for r in rows], [1, 0])
+
+    def test_a_continuation_alone_still_logs(self):
+        # No previous line to attach to — after a reconnect, or with the first
+        # half dropped. Better a fragment than a lost line.
+        rows = self.drain(self.HALVES[1:])
+        self.assertEqual(rows, [("後学のためにね」", 0)])
+
+    def test_a_cleared_textbox_is_not_a_continuation(self):
+        self.assertFalse(wl.continues_previous("\\cd\\n後学のためにね」"))
 
 
 class SplitRuby(unittest.TestCase):

@@ -306,6 +306,20 @@ def _escape(m):
     return "\n" if m.group(1) == "n" else ""
 
 
+# Textractor sometimes flushes one script line as two captures, split at the
+# script's own \n, so the second arrives opening on the break. \cd is what clears
+# the textbox, so a capture without one that opens on \n is continuing text still
+# on screen and belongs to the line before it — which the overlay draws alone, so
+# unmerged the first half shows for the 30ms until the rest lands. Content and
+# not timing: real consecutive lines arrive 49ms apart in the same session, so no
+# flush delay can separate the two cases.
+CONTINUATION = re.compile(r"\A\s*\\n")
+
+
+def continues_previous(raw):
+    return bool(CONTINUATION.match(raw)) and "\\cd" not in raw
+
+
 def clean_line(raw):
     """Dialogue text to log for `raw`, or None to drop the capture.
 
@@ -534,6 +548,24 @@ class StatsSink:
         del self.pending[: -self.MAX_PENDING]
         self.flush()
 
+    def retract_last(self):
+        """Take the previous line back out of the feed, the merged one replacing
+        it. Discarded rather than deleted — the reader's own clear button works
+        the same way, and an id already handed to `term_surfaces` or crossed by
+        an ingest watermark must stay resolvable."""
+        if self.pending:
+            self.pending.pop()
+            return
+        if self.db is None:
+            return
+        try:
+            self.db.execute(
+                "UPDATE lines SET discarded = 1 WHERE id ="
+                " (SELECT MAX(id) FROM lines WHERE source = 'vn')"
+            )
+        except sqlite3.Error as e:
+            log(f"could not retract the split line ({e}) — both halves stand")
+
     def flush(self):
         if not self.pending:
             return
@@ -566,8 +598,13 @@ def normalize(msg):
     return text[:4000]
 
 
-async def read_lines(ws, out, stats, last_text):
-    """Drain one connection into the log and the stats sink."""
+async def read_lines(ws, out, stats, last):
+    """Drain one connection into the log and the stats sink.
+
+    `last` is the line before, as (text, ruby) — the dedup needs its text and a
+    continuation needs both halves to rebuild the ruby offsets.
+    """
+    last_text, last_ruby = last
     async for raw in ws:
         if isinstance(raw, bytes):
             raw = raw.decode("utf-8", "replace")
@@ -576,26 +613,38 @@ async def read_lines(ws, out, stats, last_text):
                 rawlog.write(f"{time.time():.9f}\t{raw!r}\n")
         except OSError:
             pass
-        text = clean_line(normalize(raw))
+        capture = normalize(raw)
+        continuation = continues_previous(capture)
+        text = clean_line(capture)
         if not text:
             continue
+        # The break the halves are rejoined on below, so it is not counted twice
+        # and every ruby offset stays measured from the first character.
+        if continuation:
+            text = text.lstrip("\n")
         # The log and the dedup below both want the line as written: furigana
         # is a separate layer from here on, and only the overlay draws it.
         text, ruby = split_ruby(text)
         if not text:
             continue
+        if continuation and last_text is not None:
+            stats.retract_last()
+            shift = u16len(last_text) + 1
+            ruby = [[start + shift, length, r] for start, length, r in ruby]
+            text = f"{last_text}\n{text}"
+            ruby = last_ruby + ruby
         # A re-hook of the line still on screen (Textractor double-fire,
         # focus change) must not move the anchor. Only the immediately
         # preceding line is suppressed, so a genuine later repeat of the
         # same short line — separated by other dialogue — still logs.
-        if text == last_text:
+        elif text == last_text:
             continue
         ts = time.time()
         out.write(f"{ts:.9f}\t{text}\n")
         out.flush()
         stats.add(ts, text, ruby)
-        last_text = text
-    return last_text
+        last_text, last_ruby = text, ruby
+    return last_text, last_ruby
 
 
 async def watch_pause(ws, stats):
@@ -613,7 +662,7 @@ async def watch_pause(ws, stats):
 
 
 async def pump(out, stats, state):
-    last_text = None
+    last = (None, [])
     # An explicit loop rather than `async for ws in websockets.connect(...)`:
     # that form reconnects on its own, which is exactly what a pause must not
     # do. Reconnecting is now a decision made here, once per iteration, after
@@ -630,7 +679,7 @@ async def pump(out, stats, state):
                 state["ws"] = ws
                 watcher = asyncio.create_task(watch_pause(ws, stats))
                 try:
-                    last_text = await read_lines(ws, out, stats, last_text)
+                    last = await read_lines(ws, out, stats, last)
                 except websockets.ConnectionClosed:
                     log("connection closed")
                 finally:
