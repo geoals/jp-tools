@@ -29,7 +29,6 @@ import { streamExplain } from "/shared/explain.js";
 
 const params = new URLSearchParams(location.search);
 const root = document.documentElement.style;
-root.setProperty("--backdrop", `rgba(0, 0, 0, ${params.get("bg") ?? "0.82"})`);
 root.setProperty("--strip", `${params.get("h") ?? "300"}px`);
 const scale = params.get("scale") ?? "1";
 root.setProperty("--scale", scale);
@@ -108,6 +107,9 @@ stream.onmessage = (e) => draw(JSON.parse(e.data));
 stream.addEventListener("status", (e) => {
   const { capture, vn_window } = JSON.parse(e.data);
   warnEl.textContent = capture === "live" ? "" : capture;
+  // Only the two states that say what the flag is. `down` and `stalled` are
+  // faults in the logger, and neither means capture was switched off.
+  if (capture === "paused" || capture === "live") showPaused(capture === "paused");
   // Kept even before the channel is up: the first status usually beats it, and
   // the shell is told on connect. The name is per work, so it changes under a
   // running overlay whenever the current work does.
@@ -120,9 +122,8 @@ stream.addEventListener("status", (e) => {
  * token spans use, so both index the string directly.
  *
  * The reading is markup here and nowhere else: it is not in `line.text`, so it
- * is not counted, not tokenized, and never reaches a card. An annotation that
- * straddles a token boundary is drawn as plain text — the word spans are what
- * the reader mines with, and they may not be broken to hang a reading off. */
+ * is not counted, not tokenized, and never reaches a card. Annotations that
+ * reach past `to` are left to `draw`, which wraps whole pieces of the line. */
 function appendText(parent, text, ruby, from, to) {
   let at = from;
   for (const [start, len, reading] of ruby) {
@@ -149,6 +150,41 @@ function drawn(slice) {
   return mobile ? slice.replace(/\n/g, "") : slice;
 }
 
+// The brackets a line of speech opens with, in the shapes the VNs use them.
+const QUOTE_OPEN = /^[「『（(【〈《"]/;
+
+/* The line cut into what is drawn: one piece per word the tokenizer found, and
+ * one for each run of text between them. */
+function pieces(text, spans) {
+  const out = [];
+  let at = 0;
+  for (const span of spans) {
+    if (span.start < at) continue;
+    if (span.start > at) out.push({ start: at, end: span.start });
+    out.push({ start: span.start, end: span.start + span.len, span });
+    at = span.start + span.len;
+  }
+  if (at < text.length) out.push({ start: at, end: text.length });
+  return out;
+}
+
+/* The readings that cover more than one piece. The game's markup is the source
+ * of truth for what a reading annotates — 牛乳粥 is one word to the game and
+ * 牛 + 乳粥 to the tokenizer — so the annotation is drawn whole, with the word
+ * spans nested inside the <ruby>. They stay separate elements, so what the
+ * reader mines with is untouched.
+ *
+ * Only when both ends land on a piece boundary. A reading over half a token
+ * has nothing to wrap, and appendText draws that stretch as plain text. */
+function wideRuby(ruby, parts) {
+  const edges = new Set(parts.flatMap((p) => [p.start, p.end]));
+  return ruby.filter(([start, len]) => {
+    const end = start + len;
+    const inOnePiece = parts.some((p) => p.start <= start && end <= p.end);
+    return !inOnePiece && edges.has(start) && edges.has(end);
+  });
+}
+
 /** One line, one span per word the tokenizer found. */
 function draw(incoming) {
   closePopup();
@@ -159,42 +195,61 @@ function draw(incoming) {
   const text = line.text;
   const ruby = line.ruby ?? [];
   const frag = document.createDocumentFragment();
-  let at = 0;
-
   // Offsets are UTF-16 code units, which is exactly what a JS string indexes
   // in, so they slice directly.
-  for (const span of [...(line.tokens ?? [])].sort((a, b) => a.start - b.start)) {
-    if (span.start < at) continue;
-    if (span.start > at) appendText(frag, text, ruby, at, span.start);
+  const parts = pieces(text, [...(line.tokens ?? [])].sort((a, b) => a.start - b.start));
+  const wide = wideRuby(ruby, parts);
+  let group = null;
 
-    const word = document.createElement("span");
-    // `known` gets no class, so it draws as plain text.
-    const common =
-      commonMaxRank &&
-      span.freq_rank &&
-      span.freq_rank <= commonMaxRank &&
-      (span.status === "new" || span.status === "unknown");
-    word.className = ["w", span.status === "known" ? "" : span.status, common ? "common" : ""]
-      .filter(Boolean)
-      .join(" ");
-    // The surface travels in a dataset field, not as textContent: a furigana
-    // annotation inside the span would otherwise read back as 大事おおごと,
-    // which is not a spelling anything is written in and is what the popup,
-    // the card and CompactDef would be given.
-    word.dataset.surface = text.slice(span.start, span.start + span.len);
-    appendText(word, text, ruby, span.start, span.start + span.len);
-    word.dataset.term = span.headword;
-    word.dataset.reading = span.reading ?? "";
-    word.dataset.status = span.status;
-    // Where the word starts in the line, for the expansion scan: it reads the
-    // raw text to the right of this point, which the spans do not carry.
-    word.dataset.start = String(span.start);
-    frag.append(word);
-    at = span.start + span.len;
+  for (const part of parts) {
+    const opening = wide.find(([start]) => start === part.start);
+    if (opening) group = { end: opening[0] + opening[1], reading: opening[2], el: document.createElement("ruby") };
+    const parent = group ? group.el : frag;
+
+    if (!part.span) {
+      appendText(parent, text, ruby, part.start, part.end);
+    } else {
+      const span = part.span;
+      const word = document.createElement("span");
+      // `known` gets no class, so it draws as plain text.
+      const common =
+        commonMaxRank &&
+        span.freq_rank &&
+        span.freq_rank <= commonMaxRank &&
+        (span.status === "new" || span.status === "unknown");
+      word.className = ["w", span.status === "known" ? "" : span.status, common ? "common" : ""]
+        .filter(Boolean)
+        .join(" ");
+      // The surface travels in a dataset field, not as textContent: a furigana
+      // annotation inside the span would otherwise read back as 大事おおごと,
+      // which is not a spelling anything is written in and is what the popup,
+      // the card and CompactDef would be given.
+      word.dataset.surface = text.slice(part.start, part.end);
+      appendText(word, text, ruby, part.start, part.end);
+      word.dataset.term = span.headword;
+      word.dataset.reading = span.reading ?? "";
+      word.dataset.status = span.status;
+      // Where the word starts in the line, for the expansion scan: it reads the
+      // raw text to the right of this point, which the spans do not carry.
+      word.dataset.start = String(part.start);
+      parent.append(word);
+    }
+
+    if (group && part.end === group.end) {
+      const rt = document.createElement("rt");
+      rt.textContent = group.reading;
+      group.el.append(rt);
+      frag.append(group.el);
+      group = null;
+    }
   }
-  appendText(frag, text, ruby, at, text.length);
 
   lineEl.replaceChildren(frag);
+  // The game indents a quoted line's later rows under its first character, not
+  // under the 「 — see #line.quoted. Reading it off the text rather than always
+  // hanging the indent: a narration line starts at the margin and every row of
+  // it does.
+  lineEl.classList.toggle("quoted", QUOTE_OPEN.test(text));
   report();
 }
 
@@ -477,6 +532,101 @@ mobileBtnEl.addEventListener("click", () => {
   else next.set("mobile", "1");
   location.replace(`${location.pathname}?${next}`);
 });
+
+// The same switch as `#read`'s: `settings.capture_paused`, which the logger
+// polls and answers by closing its Textractor socket. Here because the reason
+// to reach for it — a scene not being read, someone else at the keyboard — is
+// something that happens while looking at the game, not at the dashboard.
+//
+// The button reflects the flag rather than a local toggle, so the two pages
+// agree: the POST's answer sets it, and every status event corrects it.
+const pauseBtnEl = document.getElementById("pause-btn");
+
+function showPaused(paused) {
+  pauseBtnEl.classList.toggle("paused", paused);
+  pauseBtnEl.textContent = paused ? "▶" : "⏸";
+  pauseBtnEl.title = paused ? "Resume capture" : "Pause capture";
+}
+
+pauseBtnEl.addEventListener("click", async () => {
+  pauseBtnEl.disabled = true;
+  try {
+    const resp = await fetch("/api/capture/pause", { method: "POST" });
+    if (resp.ok) showPaused((await resp.json()).paused);
+  } catch {
+    // Offline; the next status event says what the flag actually is.
+  }
+  pauseBtnEl.disabled = false;
+});
+
+// How the line is set: size, leading, letter spacing, and how solid the box
+// behind it is. Stored in the browser rather than in settings, because they are
+// about this screen — a phone reading the same overlay wants its own — and
+// applied as CSS variables, so the aligned placement over the game's own text
+// keeps working off them.
+const TYPE = "vn-overlay-type";
+// `?bg=` is the backdrop's starting point, not a competing setting: it is what
+// the shell was launched with, and the slider takes over from there.
+const TYPE_DEFAULTS = {
+  scale: 1,
+  leading: 1.68,
+  tracking: 0.015,
+  backdrop: Number(params.get("bg") ?? 0.82),
+};
+const TYPE_VARS = {
+  scale: (v) => ["--line-scale", `${v}`],
+  leading: (v) => ["--line-leading", `${v}`],
+  tracking: (v) => ["--line-tracking", `${v}em`],
+  backdrop: (v) => ["--backdrop", `rgba(0, 0, 0, ${v})`],
+};
+let type = { ...TYPE_DEFAULTS };
+try {
+  type = { ...type, ...JSON.parse(localStorage.getItem(TYPE) ?? "{}") };
+} catch {
+  // Nothing stored, or stored by an older shape. Draw the line as measured.
+}
+
+const settingsBtnEl = document.getElementById("settings-btn");
+const settingsPanelEl = document.getElementById("settings-panel");
+const typeInputs = {
+  scale: [document.getElementById("set-size"), document.getElementById("out-size")],
+  leading: [document.getElementById("set-leading"), document.getElementById("out-leading")],
+  tracking: [document.getElementById("set-tracking"), document.getElementById("out-tracking")],
+  backdrop: [document.getElementById("set-backdrop"), document.getElementById("out-backdrop")],
+};
+
+function applyType() {
+  for (const [key, value] of Object.entries(type)) {
+    const asVar = TYPE_VARS[key];
+    if (!asVar) continue;
+    root.setProperty(...asVar(value));
+    const [input, out] = typeInputs[key];
+    input.value = String(value);
+    out.textContent = key === "tracking" ? `${value.toFixed(3)}em` : value.toFixed(2);
+  }
+  localStorage.setItem(TYPE, JSON.stringify(type));
+  report();
+}
+
+for (const [key, [input]] of Object.entries(typeInputs)) {
+  input.addEventListener("input", () => {
+    type = { ...type, [key]: Number(input.value) };
+    applyType();
+  });
+}
+
+document.getElementById("settings-reset").addEventListener("click", () => {
+  type = { ...TYPE_DEFAULTS };
+  applyType();
+});
+
+settingsBtnEl.addEventListener("click", () => {
+  settingsPanelEl.hidden = !settingsPanelEl.hidden;
+  settingsBtnEl.classList.toggle("off", settingsPanelEl.hidden);
+  report();
+});
+
+applyType();
 
 // The last text selected inside the line, remembered rather than read at the
 // press: reaching for the button collapses the selection in the act of

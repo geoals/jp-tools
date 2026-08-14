@@ -43,11 +43,19 @@
     --text-y: 0.7916;
     --text-size: 0.03235;
 
+    /* The type settings, set from the cogwheel and stored per browser. They are
+       multipliers and offsets on the measured placement above rather than
+       lengths of their own, so a line drawn bigger or looser still starts where
+       `--text-x` puts it. Default to no change at all. */
+    --line-scale: 1;
+    --line-leading: 1.68;
+    --line-tracking: 0.015em;
+
     /* Where the game breaks the line, in characters. Not a fraction of the
        window: the game wraps on a character count, and the type is sized off
        the window's *height*, so a width fraction measured at 16:9 draws a
        column too narrow at 4:3 and breaks a line the game did not. */
-    --text-chars: 30;
+    --text-chars: 34;
   }
 
   html {
@@ -86,9 +94,9 @@
     box-sizing: border-box;
     padding: 4.23rem 0 0;
     font-family: var(--line-font);
-    font-size: clamp(1.35rem, calc(1.82vw * var(--scale)), 2.25rem);
+    font-size: calc(clamp(1.35rem, calc(1.82vw * var(--scale)), 2.25rem) * var(--line-scale));
     /* Tuned against the game's own line spacing, which the strip sits over. */
-    line-height: 1.68;
+    line-height: var(--line-leading);
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
     /* Set by the drag — see moveBy(). The strip is a layer surface pinned to
        every screen edge, so repositioning it means moving the content inside
@@ -114,10 +122,10 @@
     right: auto;
     bottom: auto;
     /* 1em per CJK glyph plus #line's `letter-spacing`, then #line's padding. */
-    width: calc(var(--text-chars) * 1.015em + 0.622em);
+    width: calc(var(--text-chars) * (1em + var(--line-tracking)) + 0.622em);
     height: auto;
     padding: 0;
-    font-size: calc(var(--text-size) * var(--game-h));
+    font-size: calc(var(--text-size) * var(--game-h) * var(--line-scale));
   }
 
   html[data-aligned] #line {
@@ -192,9 +200,23 @@
     border-radius: 10px;
     background: var(--backdrop);
     /* The game's font is a touch wider per character at the same size, so the
-       overlaid line drifts left of it across a long line. This makes up the
-       difference. */
-    letter-spacing: 0.015em;
+       overlaid line drifts left of it across a long line. The default makes up
+       the difference; the cogwheel moves it from there. */
+    letter-spacing: var(--line-tracking);
+  }
+
+  /* A line of speech is set with its later rows under the first character, not
+     under the opening bracket, which is how the game sets it. The padding moves
+     every row in by one character and the negative indent pulls the first one
+     back out, so the 「 stays exactly where the line starts and only the rows
+     after a break — the game's own, or a wrap — are indented. One character is
+     1em *plus* the letter spacing, which is the bracket's whole advance. */
+  #line.quoted {
+    padding-left: calc(0.7rem + 1em + var(--line-tracking));
+    text-indent: calc(-1em - var(--line-tracking));
+  }
+  html[data-aligned] #line.quoted {
+    padding-left: calc(0.311em + 1em + var(--line-tracking));
   }
 
   /* Furigana the game drew with the line. `line-height: 1` on the reading keeps
@@ -314,7 +336,9 @@
   #explain-btn,
   #hide-btn,
   #ghost-btn,
-  #mobile-btn {
+  #mobile-btn,
+  #settings-btn,
+  #pause-btn {
     flex: none;
     min-width: 3rem;
     padding: 0.45rem 0.9rem;
@@ -344,6 +368,55 @@
   }
   #mobile-btn.off {
     color: #9a9a9a;
+  }
+  #settings-btn.off {
+    color: #9a9a9a;
+  }
+  /* Paused is the state worth seeing from across the room: nothing being read
+     is being counted. Coloured rather than dimmed, unlike the other toggles. */
+  #pause-btn.paused {
+    color: hsl(28 92% 72%);
+  }
+
+  /* The type settings. Sits under the buttons like the explain panel, so it is
+     inside #explain-box's rectangle and the shell already takes its clicks. */
+  #settings-panel {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0.5rem 0.7rem;
+    padding: 0.9rem 1.1rem;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.9);
+    color: #e6e6e6;
+    font-size: 0.95rem;
+  }
+  #settings-panel[hidden] {
+    display: none;
+  }
+  #settings-panel input[type="range"] {
+    width: 11rem;
+    accent-color: #9a8cff;
+  }
+  /* Tabular figures: the readout is beside a slider being dragged, and a
+     proportional 1 makes the whole row twitch as the number changes. */
+  #settings-panel output {
+    min-width: 3.2rem;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: #b9b9b9;
+  }
+  #settings-reset {
+    grid-column: 1 / -1;
+    justify-self: end;
+    padding: 0.25rem 0.7rem;
+    border: none;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.14);
+    color: #e6e6e6;
+    font: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
   }
 
   #explain-panel {
@@ -383,6 +456,23 @@
     <button id="hide-btn" title="Hide the line">👁</button>
     <button id="ghost-btn" title="Read the game's own text, marked">あ</button>
     <button id="mobile-btn" title="Switch to phone size">⤢</button>
+    <button id="settings-btn" class="off" title="Type settings">⚙</button>
+    <button id="pause-btn" title="Pause capture">⏸</button>
+  </div>
+  <div id="settings-panel" hidden>
+    <label for="set-size">Size</label>
+    <input id="set-size" type="range" min="0.6" max="2" step="0.05" />
+    <output id="out-size"></output>
+    <label for="set-leading">Line height</label>
+    <input id="set-leading" type="range" min="1" max="3" step="0.02" />
+    <output id="out-leading"></output>
+    <label for="set-tracking">Spacing</label>
+    <input id="set-tracking" type="range" min="-0.05" max="0.3" step="0.005" />
+    <output id="out-tracking"></output>
+    <label for="set-backdrop">Backdrop</label>
+    <input id="set-backdrop" type="range" min="0" max="1" step="0.02" />
+    <output id="out-backdrop"></output>
+    <button id="settings-reset">Reset</button>
   </div>
   <div id="explain-panel" hidden></div>
 </div>

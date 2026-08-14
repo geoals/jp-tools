@@ -67,12 +67,17 @@ os.environ.setdefault("QT_WAYLAND_SHELL_INTEGRATION", "layer-shell")
 from PySide6.QtCore import QFile, QIODevice, QObject, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication, QRegion
 from PySide6.QtQml import QQmlApplicationEngine
-from PySide6.QtWebChannel import QWebChannel  # noqa: F401  registers the qrc below
-from PySide6.QtWebEngineCore import QWebEngineProfile, QWebEngineScript
+# Registers the qrc that webchannel_script() reads.
+from PySide6.QtWebChannel import QWebChannel  # noqa: F401
+from PySide6.QtWebEngineCore import QWebEngineScript
 from PySide6.QtWebEngineQuick import QtWebEngineQuick
 
 DEFAULT_URL = "http://localhost:3200/overlay/overlay.html"
 ANKI_URL = os.environ.get("JP_TOOLS_ANKI_URL", "http://localhost:8765")
+# Where the page's localStorage lives between runs — see Overlay.qml's profile.
+STORAGE = (
+    Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "vn-mine/overlay"
+)
 
 
 def check_dependencies(page_url: str) -> None:
@@ -313,12 +318,13 @@ class Surface:
         return True
 
 
-def inject_webchannel() -> None:
-    """Put Qt's own `qwebchannel.js` in the page before it runs.
+def webchannel_script() -> QWebEngineScript:
+    """Qt's own `qwebchannel.js`, for the view to run before the page does.
 
-    The page has no reason to carry a copy of it — and it ships inside
-    QtWebChannel as a qrc resource, so the version in the page always matches
-    the one on this side of the channel.
+    The page has no reason to carry a copy: it ships inside QtWebChannel as a
+    qrc resource, so the version in the page always matches the one on this
+    side of the channel. Built here rather than in QML, where WebEngineScript
+    is a value type and not creatable as an element.
     """
     f = QFile(":/qtwebchannel/qwebchannel.js")
     f.open(QIODevice.OpenModeFlag.ReadOnly)
@@ -327,7 +333,7 @@ def inject_webchannel() -> None:
     script.setSourceCode(bytes(f.readAll()).decode())
     script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
     script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
-    QWebEngineProfile.defaultProfile().scripts().insert(script)
+    return script
 
 
 def main() -> int:
@@ -356,14 +362,19 @@ def main() -> int:
             url += f"&font={quote(font)}"
 
     check_dependencies(url)
-    inject_webchannel()
 
     overlay = Overlay()
     surface = Surface(
         app,
         overlay,
         str(Path(__file__).resolve().parent / "Overlay.qml"),
-        {"overlay": overlay, "overlayUrl": url, "overlayHeight": height},
+        {
+            "overlay": overlay,
+            "overlayUrl": url,
+            "overlayHeight": height,
+            "overlayStorage": str(STORAGE),
+            "overlayWebChannelScript": webchannel_script(),
+        },
     )
     if not surface.build():
         print("QML failed to load", file=sys.stderr)

@@ -36,12 +36,28 @@ Window {
         anchors.fill: parent
         url: overlayUrl
         backgroundColor: "transparent"
+        // Named, so localStorage survives a restart: the default profile is
+        // off-the-record, and the type settings, ghost mode and both drag
+        // offsets went with it every time the shell exited.
+        profile: WebEngineProfile {
+            // Both: a storage name alone leaves the profile off-the-record,
+            // which is the whole defect — it keeps nothing.
+            offTheRecord: false
+            storageName: "vn-overlay"
+            persistentStoragePath: overlayStorage
+        }
+
+        // qwebchannel.js before the page runs — see webchannel_script() for why
+        // the page carries no copy of it. Built in Python because
+        // WebEngineScript is a QML value type here, not a creatable element.
+        userScripts.collection: [overlayWebChannelScript]
 
         // The page is the only thing that knows where its words are, and it
         // says so the moment they move. Registered from here rather than
         // handed over from Python: the view wants a QQmlWebChannel, which
         // PySide does not expose.
         webChannel: WebChannel { id: channel }
+
         Component.onCompleted: channel.registerObject("shell", overlay)
     }
 
