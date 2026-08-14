@@ -32,10 +32,10 @@ use crate::knowledge::vocabulary::{self, Status, Term};
 /// newspaper prose against 32,370 in fiction.
 const CORPUS_FREQUENCY: &str = "BCCWJ";
 
-/// The dictionary the popup opens on, ahead of the master. Named rather than
+/// The dictionary that follows the master in the popup. Named rather than
 /// derived: install order is the order zips were first seen, which says nothing
 /// about which definition is worth reading first.
-pub const OPENS_WITH: [&str; 1] = ["Jitendex"];
+pub const SECOND_PAGE: [&str; 1] = ["Jitendex"];
 
 #[derive(Serialize)]
 pub struct Sense {
@@ -133,18 +133,15 @@ pub async fn define(
                 .collect(),
         });
     }
-    // Jitendex, then the master, then everything else in install order — a
-    // stable sort, so the last tier keeps it. The master decides what counts as
-    // a word and is the vocabulary scale; that is not the same question as
-    // which definition to read first, so the order is named here rather than
-    // taken from the role.
+    // The master, then Jitendex, then everything else in install order — a
+    // stable sort, so the last tier keeps it.
     sources.sort_by_key(|s| {
-        if OPENS_WITH.contains(&s.dictionary.as_str()) {
-            0
-        } else if dicts
+        if dicts
             .iter()
             .any(|d| d.title == s.dictionary && d.role == dictionaries::Role::Master)
         {
+            0
+        } else if SECOND_PAGE.contains(&s.dictionary.as_str()) {
             1
         } else {
             2

@@ -443,7 +443,7 @@ Mining:
 - **The card's dictionaries and the popup's are two lists.** `CARD_DICTIONARIES`
   is Sankoku and Jitendex, because those are the two the note type has CSS for
   and a third would land on the card unstyled. The popup shows everything
-  installed and opens on `jp_core::define::OPENS_WITH`. Adding a dictionary changes the
+  installed and opens on the master, with `jp_core::define::SECOND_PAGE` next. Adding a dictionary changes the
   popup; it changes the card only when the note type gets a rule for it.
 - **The class name is fixed per dictionary, never derived from its title.**
   `CARD_DICTIONARIES` pairs a title prefix with the class (`sanseido`,

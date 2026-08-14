@@ -194,7 +194,7 @@ export function createPopup(opts) {
       };
       back.addEventListener("click", () => (at--, showSource()));
       next.addEventListener("click", () => (at++, showSource()));
-      // Clamped rather than wrapped: the order is `jp_core::define::OPENS_WITH`,
+      // Clamped rather than wrapped: the order is set by `jp_core::define`,
       // so the first entry is the one worth reading first and wrapping past the
       // last would land back on it as if it were a new answer.
       stepSource = (by) => {
