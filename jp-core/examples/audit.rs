@@ -17,6 +17,13 @@
 //!   the rank of what it took. This is where the false positives live: 弥 off
 //!   いや, 対置 off たいち.
 //!
+//! `AUDIT_JOINS=1` audits the other pass instead: every run of tokens
+//! recomposition merged, by what it built and how rare that word is. A join is
+//! the mirror defect of a bad identity — there Sudachi put a boundary wrong,
+//! here it was right and the join removed a correct one — and the same test
+//! applies, since a rank-119,268 word built out of two particles was not read
+//! either.
+//!
 //! Output is TSV, sorted by occurrences, so a threshold can be chosen by
 //! reading the distribution rather than guessed.
 
@@ -99,6 +106,10 @@ async fn main() {
         prefs,
         conjugatable,
     );
+
+    if std::env::var("AUDIT_JOINS").is_ok() {
+        return joins(&tk, &lines, &jiten);
+    }
 
     let mut found: HashMap<(String, String, String, String, String), Row> = HashMap::new();
     let mut counted = 0usize;
@@ -193,5 +204,63 @@ fn rung(rule: &str) -> &'static str {
         r if r.starts_with("Single-mora") => "one-mora",
         r if r.starts_with("Invalid word start") => "bad-onset",
         _ => "other",
+    }
+}
+
+/// Every join recomposition made, by what it built. The parts are kept because
+/// they are the evidence: よ + って spelling よって is the defect, and よって
+/// arriving whole from Sudachi is not.
+fn joins(
+    tk: &jp_core::tokenize::SudachiTokenizer,
+    lines: &[String],
+    jiten: &HashMap<String, i64>,
+) {
+    use jp_core::tokenize::trace::{Step, Verdict};
+    let mut found: HashMap<(String, String, String, String), Row> = HashMap::new();
+    let mut total = 0usize;
+    for line in lines {
+        let Ok((_, steps)) = tk.explain(line) else {
+            continue;
+        };
+        for step in steps {
+            let Step::Join { parts, verdict } = step else {
+                continue;
+            };
+            let Verdict::Joined {
+                term,
+                reading,
+                signal,
+            } = verdict
+            else {
+                continue;
+            };
+            total += 1;
+            let rank = jiten
+                .get(&term)
+                .map(|r| r.to_string())
+                .unwrap_or_else(|| "-".into());
+            let row = found
+                .entry((
+                    format!("{term}/{}", kana::to_hiragana(&reading)),
+                    parts.join("+"),
+                    rank,
+                    signal.to_string(),
+                ))
+                .or_default();
+            row.count += 1;
+            if row.example.is_empty() {
+                row.example = line.replace(['\t', '\n'], " ");
+            }
+        }
+    }
+    let mut rows: Vec<_> = found.into_iter().collect();
+    rows.sort_by_key(|(k, r)| (std::cmp::Reverse(r.count), k.clone()));
+    eprintln!("{total} joins, {} distinct", rows.len());
+    println!("n\tterm\tparts\trank\tsignal\texample");
+    for ((term, parts, rank, signal), row) in rows {
+        println!(
+            "{}\t{term}\t{parts}\t{rank}\t{signal}\t{}",
+            row.count, row.example
+        );
     }
 }

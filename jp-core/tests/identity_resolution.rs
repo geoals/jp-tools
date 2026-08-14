@@ -663,3 +663,20 @@ fn three_morae_of_kana_may_name_a_rare_spelling() {
 
     assert_eq!(identity_of(&tokens, "ほうき"), pair("箒", "ほうき"));
 }
+
+/// A join made on the reading may not overwrite a kanji the text wrote.
+///
+/// 生誕祭 and 聖誕祭 are both せいたんさい, and only the second is a master
+/// headword, so the reading path rewrote a birthday celebration into Christmas
+/// 14 times. The kanji on the page is evidence and the reading is not: where
+/// the two disagree the page wins, which is the same rule the identity ladder
+/// applies when it refuses to add kanji nobody wrote.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_sounded_join_never_replaces_a_kanji_the_text_wrote() {
+    let (tk, _) = setup();
+    let tokens = tokens_of(&tk, "生誕祭の準備をする");
+
+    let bases: Vec<&str> = tokens.iter().map(|t| t.base_form.as_str()).collect();
+    assert!(!bases.contains(&"聖誕祭"), "{bases:?}");
+}

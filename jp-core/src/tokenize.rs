@@ -751,6 +751,30 @@ impl SudachiTokenizer {
             return refused(trace, parts(), expression.clone(), blocked.into());
         };
 
+        // **A sounded join may not overwrite a kanji the text wrote.**
+        //
+        // The reading path exists for the half of a compound written in kana —
+        // 綺麗 + ごと is 綺麗事, ふり + かかる is 降り掛かる — and in every one of
+        // those the kanji already on the page survives into the answer. When it
+        // does not, the reading has matched a different word that merely sounds
+        // the same, and the join then rewrites the sentence: 生誕祭 became the
+        // Christmas 聖誕祭 14 times, 解放的 became 開放的, 延長線 became 延長戦,
+        // 同化し became どうかする, 大声出し became 精出す, この先私 became
+        // 先渡し. Two thirds of everything this path built was that.
+        //
+        // The mirror of the identity ladder's "normalising it would add kanji
+        // the text did not use", and the same argument: the spelling the reader
+        // saw is evidence, and a rule that discards it is guessing.
+        if !spelled
+            && let Some(lost) = run
+                .iter()
+                .flat_map(|t| t.surface.chars())
+                .find(|c| crate::text::kanji::is_kanji(*c) && !term.contains(*c))
+        {
+            let reason = format!("Phonetic match discarded: {lost} is written in the text");
+            return refused(trace, parts(), term, reason);
+        }
+
         // **Three characters minimum, unless the parts spell it in kanji.**
         //
         // The floor is there for kana: two kana spell so many words that a join
