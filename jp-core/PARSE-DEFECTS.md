@@ -491,3 +491,50 @@ entry — *neither the headword nor its reading occurs in the line the token cam
 from* — is precisely the definition of the spelling defect, so one check with
 no judgement in it finds the whole category. Across 5,440 unjudged terms a 14%
 tail rate is on the order of 760 wrong rows, which is worth a pass of its own.
+
+---
+
+## Where the parser stands — 2026-08-14, after the six fixes
+
+Two fresh uniform samples, drawn by `examples/audit.rs` over the 31,655 lines
+the reader actually read (`discarded = 0` — see below), and judged one at a
+time against the line each came from.
+
+**By token, weighted by occurrence — 59 of 60 right.** This is what the ledger
+accumulates, and it is a flattering number: about three fifths of any such draw
+is だ, た, は, を, に, て, と, か, ます, and those are never wrong. The one
+error was で in 「どこで殺意を抱くか」 read as the copula だ rather than the
+locative particle, which costs nothing because だ is grammar the reader has long
+since judged.
+
+**By type, one vote per distinct identity — 51 of 60 clean, 5 wrong, 4
+arguable.** This is the number that matters, because a wrong type is a wrong
+ledger row however rarely it occurs.
+
+| what was wrong | sample |
+| --- | --- |
+| onomatopoeia counted as vocabulary | ぎぎぎい, ズブブ |
+| a fragment of a word | こう (out of ちょこーっと), す (out of すべき), 送音 (out of 挿送音) |
+| arguable — orthography or a split | やり難い, 母様 (off 御母様), ゲーム+オーバー, Closed → クローズド |
+
+**Not comparable to the 14% at the top of this section**, which sampled the
+*unjudged* terms of one work; this samples every distinct identity in the corpus
+and so includes 部活, 趣味, 我慢 and every other word that was never in doubt.
+
+The composition is the finding. **Segmentation and identity errors did not
+appear in either draw** — the classes this file was built out of. What is left
+is a wordhood question: noise that is not a word at all. `vocabulary` holds 341
+distinct short all-kana non-master terms still `new`, across 3,443 encounters,
+and that bucket is where the next pass belongs.
+
+### The corpus is not what `lines` says it is
+
+106 lines — 0.33% of them — carry **21% of every character in the table**. They
+are half-width-katakana mojibake from one badly-hooked session of
+素晴らしき日々 on 2026-07-21, 2–3k characters each.
+
+All 106 are already `discarded = 1`, and ingest, the ledger and the daily counts
+all filter that flag, so nothing downstream ever saw them. **Any new analysis
+must filter it too**: before it did, a uniform token draw came back 32% rubble
+and the name audit's three largest entries (キー ×2220, 泉 ×892, タン ×231) were
+all of it.
