@@ -34,6 +34,7 @@ use jp_core::knowledge::Knowledge;
 use jp_core::knowledge::dictionaries;
 use jp_core::text::kana;
 use jp_core::text::kanji::is_kanji;
+use jp_core::tokenize::MasterWords;
 
 #[derive(Default)]
 struct Row {
@@ -96,6 +97,9 @@ async fn main() {
     // `AUDIT_GUARD=off` builds the tokenizer without the reader ranks, which is
     // the only thing the short-kana guard needs — so the two runs differ in that
     // rule and nothing else, and their diff is the rule's whole blast radius.
+    let lexicon: std::collections::HashSet<String> =
+        master.iter().map(|(t, _)| t.clone()).collect();
+    let words = MasterWords::new(lexicon, &master);
     let guarded = std::env::var("AUDIT_GUARD").as_deref() != Ok("off");
     let tk = jp_core::golden::tokenizer(
         dict_path,
@@ -106,6 +110,30 @@ async fn main() {
         prefs,
         conjugatable,
     );
+
+    // `AUDIT_TEXT="…"` explains one line the way `#tokenize` does, without a
+    // running service — which is how a defect gets checked while a session is
+    // in progress.
+    if let Ok(text) = std::env::var("AUDIT_TEXT") {
+        for line in text.split('\n') {
+            let (tokens, steps) = tk.explain(line).unwrap();
+            println!("== {line}");
+            for t in &tokens {
+                println!(
+                    "   {:<10} -> {:<12} {:<12} {:<8} word={}",
+                    t.surface,
+                    t.base_form,
+                    kana::to_hiragana(&t.reading),
+                    t.pos,
+                    jp_core::tokenize::counts_as_word(t, &words)
+                );
+            }
+            for step in steps {
+                println!("   . {}", serde_json::to_string(&step).unwrap());
+            }
+        }
+        return;
+    }
 
     if std::env::var("AUDIT_JOINS").is_ok() {
         return joins(&tk, &lines, &jiten);

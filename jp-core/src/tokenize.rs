@@ -625,11 +625,34 @@ impl SudachiTokenizer {
         // golden corpus.
         let opens_on_a_word = is_content_word(&run[0].pos);
         let conjugated_tail = last.inflected && is_content_word(&last.pos) && opens_on_a_word;
-        let candidates: Vec<&String> = if conjugated_tail {
+        // A mimetic is written in either kana, and the dictionary picked one.
+        // スッ + と spells no headword, and the run then came apart: と was left
+        // free, joined する into とする, and the mimetic disappeared. Sankoku
+        // lists すっと, so the word was there the whole time behind an alphabet.
+        //
+        // **Offered last, and only for an all-kana run**, because the alphabet
+        // is part of the spelling wherever a word is written in kanji — the same
+        // reason the identity ladder keeps ザル off ざる. A run that spells a
+        // headword as written is never reached by this.
+        //
+        // **And only for a run that opens on a content word.** A weaker signal
+        // takes the stricter fence: without it の + メル spells のめる and
+        // が + メル spells がめる, which is a character's name being read as the
+        // back half of a verb.
+        let folded = crate::text::kana::to_hiragana(&surfaces);
+        let foldable = folded != surfaces
+            && is_content_word(&run[0].pos)
+            && run
+                .iter()
+                .all(|t| crate::text::kana::is_all_kana(&t.surface));
+        let mut candidates: Vec<&String> = if conjugated_tail {
             vec![&written, &as_written]
         } else {
             vec![&surfaces]
         };
+        if foldable {
+            candidates.push(&folded);
+        }
         // **A standard dictionary may say what is one word, never how it is
         // spelt.** The join builds its candidate from base forms, and Sudachi's
         // base form for まで is 迄 — which 明鏡 lists, so 今まで came back as

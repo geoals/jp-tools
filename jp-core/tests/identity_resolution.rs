@@ -680,3 +680,24 @@ fn a_sounded_join_never_replaces_a_kanji_the_text_wrote() {
     let bases: Vec<&str> = tokens.iter().map(|t| t.base_form.as_str()).collect();
     assert!(!bases.contains(&"聖誕祭"), "{bases:?}");
 }
+
+/// A mimetic is written in either kana, and the dictionary picked one.
+///
+/// スッ + と spells no headword, so the run came apart: と was left free, joined
+/// する into とする, and the mimetic vanished from the line. Sankoku lists すっと
+/// — the word was there the whole time, behind an alphabet.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_katakana_mimetic_joins_the_hiragana_headword_it_sounds_like() {
+    let (tk, _) = setup();
+    let tokens = tokens_of(&tk, "胸がスッとする");
+
+    let joined = tokens
+        .iter()
+        .find(|t| t.surface == "スッと")
+        .unwrap_or_else(|| panic!("スッ + と must join: {tokens:?}"));
+    assert_eq!(joined.base_form, "すっと");
+    // And the と is then no longer free to be taken by とする.
+    let bases: Vec<&str> = tokens.iter().map(|t| t.base_form.as_str()).collect();
+    assert!(!bases.contains(&"とする"), "{bases:?}");
+}
