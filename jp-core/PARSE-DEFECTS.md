@@ -12,7 +12,7 @@ curl -s localhost:3200/api/tokenize -H 'content-type: application/json' \
 
 ---
 
-## 断腸の思い, 机上の空論 — dropped as a name
+## 断腸の思い, 机上の空論 — dropped as a name — FIXED
 
 `excluded: "name"`. Segmentation and identity are both right; SudachiDict
 itself tags the entry `名詞,固有名詞,一般`, and the highlighter drops every
@@ -20,9 +20,26 @@ proper noun before it consults the ledger, so a master headword mis-tagged
 this way is invisible. Not general to の-phrases — 一期一会, 弱肉強食, 藪の中,
 高嶺の花 are all fine; it is per-entry.
 
-Possible fix: don't trust `固有名詞` when the master lists the term as an
-ordinary headword. Touches the name gate, which exists to keep a VN's cast out
-of the feed.
+**Fixed**, but not the way this entry proposed. "Don't trust `固有名詞` when
+the master lists the term" is far too wide: 橘, 出雲, 葵, 司, 水上, デンマーク,
+孔子 and シェリー are all master headwords and all names, and admitting them is
+the whole thing the gate exists to prevent — 4,172 occurrences of it in this
+corpus.
+
+**Mixed script is what separates the two**, and nothing else tried does. A
+Japanese name is written in kanji or in katakana; it does not carry okurigana.
+`SudachiTokenizer::ordinary_headword` is that rule, applied where `proper_noun`
+is *set* rather than where the highlighter reads it, so ingest's proper-noun
+ratio and the reader's tint cannot disagree.
+
+Over the corpus it admits 63 occurrences of 16 terms — もう少し, 何となく,
+相変わらず, 鳥肌が立つ, 目立ちたがり, 魔法使い, 高みの見物, 陸の孤島,
+知る権利, 無茶振り, 棒高跳び, 悪魔の証明, 上から目線, ドミノ倒し and the two
+above — every one of them vocabulary, and moves no name at all.
+
+What it does not reach is the same defect on a term with no okurigana: 予定調和,
+悪魔, 王子, 城, 金, 鏡 are all mis-tagged the same way and are indistinguishable
+from a name by any signal available here.
 
 ## 満足げ, 悲しげ, 不安げ, 悔しげ — never joined
 
@@ -88,7 +105,7 @@ spelling, where the reading alone would identify it. Loosening the guard is
 the same knob that keeps 其れ and 此の out of the corpus, so it needs to key on
 the master listing the reading unambiguously, not on the spelling.
 
-## スッとする — mimetic split, then the と taken by とする
+## スッとする — mimetic split, then the と taken by とする — FIXED
 
 Sudachi splits it as `スッ` + `と` + `する`. Sankoku lists すっと as a headword,
 so the pair should rejoin, but the join of `スッ`+`と` reports
@@ -104,6 +121,17 @@ The と is then free, and `と`+`する` joins as とする. The result is a
 Two things to fix, in order: fold katakana to hiragana when the join pass looks
 a run up, and check whether a longer join starting earlier should beat とする
 when both are available.
+
+**Fixed by the first alone.** The join now offers the run folded to hiragana,
+last and only for an all-kana run that opens on a content word — the alphabet is
+part of the spelling wherever a word is written in kanji, which is the ザル/ざる
+argument, and the fence keeps の + メル from spelling のめる. Once スッ + と
+joins, the と is no longer free and とする never forms, so the second question
+did not have to be answered.
+
+62 occurrences recovered corpus-wide, almost all one family: パッと, ピタリと,
+ツンと, ピシャリと, ギュッと, ギクリと, ドサリと, ニコッと, ギロリと, キュッと,
+ガクッと. One is wrong — モノ + の → ものの, where モノ is 物.
 
 ## 依代 — okurigana variant of a master headword
 
@@ -142,7 +170,7 @@ lists only 書き込む; 明鏡 has both. A common word, so this class is not a 
 case — a 連用形 noun the master carries only as a verb needs a rule, not an
 entry each.
 
-## いいんだよって — the join pass builds よって out of particle + quotative
+## いいんだよって — the join pass builds よって out of particle + quotative — FIXED
 
 Sudachi segments it right: `いい` `ん` `だ` `よ` `って`. The join pass then
 merges the last two, because よって is a listed headword ("therefore"), and the
@@ -156,6 +184,13 @@ The signal available: 名詞/接続詞 よって cannot follow the sentence-fina
 particle よ, and the parts are two grammar tokens. The `ん`+`だ` join was
 refused a moment earlier by the length floor — which よって clears at exactly
 three characters while being just as much a function-word run.
+
+**Fixed by `NEVER_JOIN`**, which turned out to cost nothing: the real
+「彼によって」 arrives whole from Sudachi and never goes through recompose, so
+the only joins blocked are the two wrong ones. Five more went in with it —
+も+やる, も+やっと, は+やめ, the tail of いらっしゃい, and ええ+ん, which is
+crying every time. からに was looked at and left: 「するからには」 is the
+construction and only one of three sightings is not.
 
 ## 蠱毒 — only Jitendex has it
 
@@ -194,7 +229,7 @@ stop this class without touching segmentation.
 また before Sudachi, in the orthographic rewrite pass, is the same fix なんて
 wants.
 
-## ひとりもいやしない — 弥 out of the いやしない negative
+## ひとりもいやしない — 弥 out of the いやしない negative — FIXED
 
 `ひとり` + `も` + `いや` + `し` + `ない`. The line is 居やしない, the emphatic
 negative of いる (…や+しない), so the correct split has no いや in it at all.
@@ -209,6 +244,26 @@ its 連用形.
 The 〜やしない contraction is productive (ありゃしない, できやしない,
 わかりゃしない). Handling it as a rewrite before Sudachi, like なんて and また,
 covers the family in one place.
+
+**Fixed without touching segmentation.** The split is still wrong — いや is
+still there — but it no longer names 弥, because a two-mora hiragana surface may
+not take a kanji identity the reader-facing list ranks worse than 15,000. That
+is the one-mora rule at the next mora out, and the same argument: Japanese has a
+kanji for every mora, so at two the match is still found every time and is
+evidence none of them.
+
+169 occurrences over the corpus, 90% of them wrong — 篠, 歯牙 and 使途 off the
+あてぃし of a streamer's dialect, 縷々 off a sung るーるー, 河豚 off a choking
+noise. What it costs is 仄, 皹, 練り, 魔羅 and 反吐, which stay as written.
+
+Rarity is half the rule: とき, あと and はず are the same two morae and 時, 後,
+筈 are simply right. Katakana is exempt — it is itself a decision about spelling,
+and ハエ, キク, ツタ, カス, アザ are the words the guard would otherwise throw
+away.
+
+**The reading-only frequency floor this entry's neighbours asked for is not what
+was built.** またいちから's 対置 is three morae and still gets through; a floor
+wide enough to catch it also refuses そっぽ/外方 at rank 209,173, which is right.
 
 ## お伺いを立てて — the polite prefix left outside the expression
 

@@ -135,6 +135,45 @@ async fn main() {
         return;
     }
 
+    // `AUDIT_NAMES=1`: tokens Sudachi calls 固有名詞 that the master lists as
+    // an ordinary headword — the words the name gate drops before it consults
+    // the ledger, and 断腸の思い is the one that was noticed.
+    if std::env::var("AUDIT_NAMES").is_ok() {
+        let mut found: HashMap<String, Row> = HashMap::new();
+        for line in &lines {
+            let Ok(tokens) = jp_core::tokenize::Tokenizer::tokenize(&tk, line) else {
+                continue;
+            };
+            for t in tokens {
+                if !t.proper_noun || !words.lists(&t.base_form, &t.reading) {
+                    continue;
+                }
+                let row = found
+                    .entry(format!(
+                        "{}/{}",
+                        t.base_form,
+                        kana::to_hiragana(&t.reading)
+                    ))
+                    .or_default();
+                row.count += 1;
+                if row.example.is_empty() {
+                    row.example = line.replace(['\t', '\n'], " ");
+                }
+            }
+        }
+        let mut rows: Vec<_> = found.into_iter().collect();
+        rows.sort_by_key(|(k, r)| (std::cmp::Reverse(r.count), k.clone()));
+        eprintln!(
+            "{} distinct, {} occurrences dropped as names though the master lists them",
+            rows.len(),
+            rows.iter().map(|(_, r)| r.count).sum::<usize>()
+        );
+        for (term, row) in rows {
+            println!("{}\t{term}\t{}", row.count, row.example);
+        }
+        return;
+    }
+
     if std::env::var("AUDIT_JOINS").is_ok() {
         return joins(&tk, &lines, &jiten);
     }

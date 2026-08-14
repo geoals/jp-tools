@@ -701,3 +701,29 @@ fn a_katakana_mimetic_joins_the_hiragana_headword_it_sounds_like() {
     let bases: Vec<&str> = tokens.iter().map(|t| t.base_form.as_str()).collect();
     assert!(!bases.contains(&"とする"), "{bases:?}");
 }
+
+/// SudachiDict tags a handful of everyday expressions 固有名詞, and the
+/// highlighter drops every proper noun before it consults the ledger — so
+/// 断腸の思い and 机上の空論 were invisible however often they were read.
+///
+/// Mixed script is what separates them from the cast, and being a master
+/// headword is not: 橘, 出雲, 葵, 司 and シェリー are all master headwords and
+/// all names. A Japanese name does not carry okurigana.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_master_headword_written_with_okurigana_is_not_a_name() {
+    let (tk, _) = setup();
+
+    let tokens = tokens_of(&tk, "少女は断腸の思いでボタンを押した");
+    let idiom = tokens
+        .iter()
+        .find(|t| t.surface == "断腸の思い")
+        .unwrap_or_else(|| panic!("断腸の思い must be one token: {tokens:?}"));
+    assert!(!idiom.proper_noun, "{idiom:?}");
+
+    // And the cast stays gated, which is the whole point of the gate. シェリー
+    // is a master headword too — it is sherry — and it carries no okurigana.
+    let tokens = tokens_of(&tk, "私は橘シェリーっていいますっ");
+    let name = tokens.iter().find(|t| t.surface == "シェリー").unwrap();
+    assert!(name.proper_noun, "{name:?}");
+}

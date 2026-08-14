@@ -306,6 +306,27 @@ impl SudachiTokenizer {
                 .is_none_or(|rank| *rank >= RARE_SPELLING_RANK)
     }
 
+    /// Is this term the master's ordinary word rather than the name Sudachi
+    /// called it?
+    ///
+    /// SudachiDict tags a handful of everyday expressions `名詞,固有名詞,一般`
+    /// — 断腸の思い, 机上の空論, もう少し, 相変わらず, 鳥肌が立つ — and the
+    /// highlighter drops every proper noun before it consults the ledger, so
+    /// those were invisible however often they were read.
+    ///
+    /// **Mixed script is what separates them from the cast**, and nothing else
+    /// tried does. Being a master headword is not enough on its own: シェリー,
+    /// 出雲, 橘, 葵, 司, 水上, デンマーク and 孔子 are all master headwords and
+    /// all names, and admitting them is the whole thing the name gate exists to
+    /// prevent. A Japanese name is written in kanji or in katakana; it does not
+    /// carry okurigana. Over the corpus this admits 63 occurrences of 16 terms,
+    /// every one of them vocabulary, and moves no name at all.
+    fn ordinary_headword(&self, term: &str, reading: &str) -> bool {
+        let mixed_script = term.chars().any(crate::text::kanji::is_kanji)
+            && term.chars().any(crate::text::kana::is_hiragana);
+        mixed_script && self.lists(term, reading)
+    }
+
     /// Is this identity a two-mora coincidence rather than a reading of the
     /// word? See the short-kana guard in
     /// [`identity_ladder`](Self::identity_ladder), which is the only caller and
@@ -1644,13 +1665,14 @@ impl SudachiTokenizer {
         let subclass = m.part_of_speech().get(1).cloned().unwrap_or_default();
         let subsidiary = subclass == "非自立可能";
         let (base_form, reading) = self.resolve_identity(m, subsidiary, trace);
+        let proper_noun = subclass == "固有名詞" && !self.ordinary_headword(&base_form, &reading);
         Token {
             surface: m.surface().to_string(),
             base_form,
             dictionary_form: m.dictionary_form().to_string(),
             reading,
             pos: m.part_of_speech()[0].clone(),
-            proper_noun: subclass == "固有名詞",
+            proper_noun,
             derived_class: (m.part_of_speech()[0] == "接尾辞")
                 .then(|| derived_class(&subclass))
                 .flatten(),
