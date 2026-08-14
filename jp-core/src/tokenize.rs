@@ -1398,7 +1398,16 @@ impl SudachiTokenizer {
 /// named string cannot cost anything that is not named. Everything else the
 /// join builds — ところが, まずは, 実は, 本当に, ために, すぐに, 同時に,
 /// ちなみに, ところで, 医務室 — is the word the sentence used.
-const NEVER_JOIN: [&str; 10] = [
+const NEVER_JOIN: [&str; 16] = [
+    "よって", // よ + って: 「いるんだよって」 — the sentence-final particle and
+    // the quotative, not the conjunction. The real one is
+    // 「彼によって」, and Sudachi hands that over whole, so blocking
+    // the join costs it nothing.
+    "もやる", // も + やる: 「お前らもやるぞ」, 「のあもやる！」
+    "もやっと", // も + やっと: 「立っているのもやっとの様子」
+    "はやめ", // は + やめ: 「その話はやめよ？」, 「するのはやめて」
+    "しゃい", // the tail of いらっしゃい and はしゃい, split and rejoined
+    "ええん", // ええ + ん: crying, every time — 「うえええええぇええんっ」
     "それは", // それ + は: 「それは幸か不幸か」
     "それが", // それ + が: 「それがいつまで続くのか」
     "これは", // これ + は: 「たしかにこれは厄介ね」
