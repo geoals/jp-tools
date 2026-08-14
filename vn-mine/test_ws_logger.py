@@ -49,6 +49,20 @@ class CleanLine(unittest.TestCase):
         self.assertEqual(wl.clean_line("あ<br/>い"), "あ\nい")
         self.assertEqual(wl.clean_line("あ<BR />い"), "あ\nい")
 
+    def test_script_escapes_decoded(self):
+        self.assertEqual(wl.clean_line("\\cd「……は？」"), "「……は？」")
+        self.assertEqual(wl.clean_line("\\cdあれは\\n夢だった。"), "あれは\n夢だった。")
+        self.assertEqual(wl.clean_line("\\cd「誓えるわよね？」\\@"), "「誓えるわよね？」")
+
+    def test_bracket_furigana_becomes_ruby(self):
+        raw = "その[眸/ひとみ]が、おれを見つめている。"
+        text, ruby = wl.split_ruby(wl.clean_line(raw))
+        self.assertEqual(text, "その眸が、おれを見つめている。")
+        self.assertEqual(ruby, [[2, 1, "ひとみ"]])
+
+    def test_other_backslashes_still_drop(self):
+        self.assertIsNone(wl.clean_line("Button\\dText2Buttonルートパーツ"))
+
     def test_rich_text_tags_stripped_content_kept(self):
         # Real capture. The tag goes, the text it wrapped stays.
         raw = "だから……<color=#9c8eff>b</color>！ アリサ！"

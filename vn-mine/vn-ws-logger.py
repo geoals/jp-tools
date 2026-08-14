@@ -287,6 +287,25 @@ def strip_speaker(text):
     return m.group("line") if 0 < len(name) <= MAX_SPEAKER_CHARS else text
 
 
+# A hook that taps the script before the engine reads it hands the script's own
+# escapes through undecoded: \n where the game breaks the line, \cd heading each
+# dialogue line (clear the textbox, then continue), and \@ closing one (wait for
+# the click). Decoded rather than dropped by the backslash rule in clean_line —
+# which still catches every other backslash, so a widget dump has nothing to
+# slip through on. Only these three, because a command that means something else
+# must not be silently swallowed.
+SCRIPT_ESCAPE = re.compile(r"\\(n|cd|@)")
+
+# Furigana as the same hook writes it: [眸/ひとみ]. Rewritten into the engine
+# ruby markup so split_ruby pairs the reading with its text like every other
+# shape, instead of the brackets reaching Sudachi and the character count.
+BRACKET_RUBY = re.compile(r"\[([^\[\]/\n]+)/([^\[\]/\n]+)\]")
+
+
+def _escape(m):
+    return "\n" if m.group(1) == "n" else ""
+
+
 def clean_line(raw):
     """Dialogue text to log for `raw`, or None to drop the capture.
 
@@ -315,6 +334,7 @@ def clean_line(raw):
         text = _SPEAKER.sub("", text).strip()
     else:
         text = raw
+    text = BRACKET_RUBY.sub(r"<ruby=\2>\1</ruby>", SCRIPT_ESCAPE.sub(_escape, text))
     # Textractor hands us already-decoded text, so a backslash never occurs in
     # real dialogue. It does occur in Dohna Dohna's widget-registry dumps, which
     # reach here marker-less (Button\dText2Button\dルートパーツ…) and would
