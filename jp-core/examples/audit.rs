@@ -89,7 +89,13 @@ async fn main() {
         .into_iter()
         .collect();
 
-    let lines: Vec<String> = sqlx::query_scalar("select text from lines order by id")
+    // **`discarded = 0`, as every other reader of this table does.** 106 lines
+    // of mojibake from one badly-hooked session carry 21% of the corpus's
+    // characters, and they were cleared from the reader long ago — measuring
+    // over them describes a tokenizer nobody runs.
+    let lines: Vec<String> = sqlx::query_scalar(
+        "select text from lines where text is not null and discarded = 0 order by id",
+    )
         .fetch_all(pool)
         .await
         .unwrap();
@@ -138,6 +144,59 @@ async fn main() {
     // `AUDIT_NAMES=1`: tokens Sudachi calls 固有名詞 that the master lists as
     // an ordinary headword — the words the name gate drops before it consults
     // the ledger, and 断腸の思い is the one that was noticed.
+    // `AUDIT_SAMPLE=N`: N counted tokens drawn uniformly from the corpus, with
+    // the line each came from — the input to a judged accuracy estimate. Drawn
+    // by occurrence, not by type, because that is what the ledger accumulates.
+    //
+    // `AUDIT_TYPES=N` draws distinct identities instead, one vote each, which is
+    // the shape the two audits at the end of PARSE-DEFECTS.md used.
+    let sample = std::env::var("AUDIT_SAMPLE")
+        .ok()
+        .or_else(|| std::env::var("AUDIT_TYPES").ok())
+        .and_then(|n| n.parse::<usize>().ok());
+    if let Some(n) = sample {
+        let by_type = std::env::var("AUDIT_TYPES").is_ok();
+        let mut seen: Vec<(String, String, String)> = Vec::new();
+        let mut types: HashMap<(String, String), (String, String)> = HashMap::new();
+        for line in &lines {
+            let Ok(tokens) = jp_core::tokenize::Tokenizer::tokenize(&tk, line) else {
+                continue;
+            };
+            for t in tokens {
+                if !jp_core::tokenize::counts_as_word(&t, &words) || t.proper_noun {
+                    continue;
+                }
+                let id = format!("{}/{}", t.base_form, kana::to_hiragana(&t.reading));
+                let clean = line.replace(['\t', '\n'], " ");
+                if by_type {
+                    types
+                        .entry((t.base_form.clone(), t.reading.clone()))
+                        .or_insert((id, clean));
+                } else {
+                    seen.push((t.surface.clone(), id, clean));
+                }
+            }
+        }
+        if by_type {
+            let mut keys: Vec<_> = types.into_iter().collect();
+            keys.sort_by(|a, b| a.0.cmp(&b.0));
+            seen = keys
+                .into_iter()
+                .map(|(_, (id, line))| (String::new(), id, line))
+                .collect();
+        }
+        // A fixed multiplier walk rather than an RNG dependency: coprime stride
+        // over the population, so the draw is spread and reproducible.
+        let total = seen.len();
+        eprintln!("population {total}, drawing {n}");
+        let stride = 7919usize;
+        for i in 0..n.min(total) {
+            let (surface, id, line) = &seen[(i * stride + 13) % total];
+            println!("{}\t{surface}\t{id}\t{line}", i + 1);
+        }
+        return;
+    }
+
     if std::env::var("AUDIT_NAMES").is_ok() {
         let mut found: HashMap<String, Row> = HashMap::new();
         for line in &lines {
