@@ -142,6 +142,12 @@ pub struct VocabRow {
     pub last_seen: Option<f64>,
     pub in_master: bool,
     pub in_name: bool,
+    /// Listed by some dictionary that is neither the master nor a name list —
+    /// `reference` and `standard` both, which is every remaining role.
+    ///
+    /// One flag rather than two because nothing asks the two apart: every
+    /// consumer of these is [`is_word`](VocabRow::is_word), and the vocabulary
+    /// scale is [`in_master`](VocabRow::in_master) alone either way.
     pub in_reference: bool,
     /// Frequency rank, only where the query asked for it ([`QueueOrder::Frequency`]).
     /// `None` also means "the frequency list does not carry this word", so it
@@ -337,8 +343,13 @@ pub async fn refresh_dictionary_flags(k: &Knowledge) -> Result<(), sqlx::Error> 
     // is empty the headword *is* kana (that is the key's convention), and a
     // dictionary having it as a reading is the same evidence of wordhood that
     // having it as a term would be.
-    let clause = |role: &str| {
-        let of_role = format!("(SELECT id FROM dictionaries WHERE role = '{role}')");
+    let clause = |roles: &[&str]| {
+        let list = roles
+            .iter()
+            .map(|r| format!("'{r}'"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let of_role = format!("(SELECT id FROM dictionaries WHERE role IN ({list}))");
         format!(
             "(EXISTS (SELECT 1 FROM dictionary_entries de \
                       WHERE de.dictionary_id IN {of_role} \
@@ -351,9 +362,15 @@ pub async fn refresh_dictionary_flags(k: &Knowledge) -> Result<(), sqlx::Error> 
     };
     sqlx::query(&format!(
         "UPDATE vocabulary SET in_master = {}, in_name = {}, in_reference = {}",
-        clause("master"),
-        clause("name"),
-        clause("reference"),
+        clause(&["master"]),
+        clause(&["name"]),
+        // **`standard` counts here.** The flag answers "some dictionary has
+        // this", and 明鏡 and 小学館 are dictionaries — they are already trusted
+        // with the harder question of where a word ends. Folded into this one
+        // rather than given a column of their own because nothing downstream
+        // tells a reference listing from a standard one: every consumer asks
+        // `is_word`, and the vocabulary scale is `in_master` alone either way.
+        clause(&["reference", "standard"]),
     ))
     .execute(k.pool())
     .await?;
@@ -1871,6 +1888,36 @@ mod tests {
         assert!(fetch(&k, &judged).await.unwrap().is_some(), "judged");
         assert!(fetch(&k, &mined).await.unwrap().is_some(), "in Anki");
         assert!(fetch(&k, &orphan).await.unwrap().is_none(), "nothing left");
+    }
+
+    /// A dictionary trusted to say where a word *ends* is trusted to say it is
+    /// a word. 明鏡 and 小学館 are `standard` for segmentation, and leaving them
+    /// out of wordhood cost 41,645 terms their span — 聞きかじり is in 明鏡 and
+    /// in nothing else.
+    #[tokio::test]
+    async fn a_standard_dictionary_makes_a_term_a_word() {
+        let k = temp().await;
+        record_encounters(&k, &[enc("聞きかじり", "キキカジリ", 1, 1.0)])
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO dictionaries (id, title, source_path, role) \
+                 VALUES (1, 'Sankoku', '/s.zip', 'master'), (2, 'Meikyo', '/m.zip', 'standard');\
+             INSERT INTO dictionary_entries (dictionary_id, term, reading, definitions_json) \
+                 VALUES (2, '聞きかじり', 'ききかじり', '[]');",
+        )
+        .execute(k.pool())
+        .await
+        .unwrap();
+
+        refresh_dictionary_flags(&k).await.unwrap();
+        let row = fetch(&k, &Term::new("聞きかじり", "キキカジリ"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(row.is_word(), "{row:?}");
+        // And it stays off the vocabulary scale, which is the master alone.
+        assert!(!row.in_master, "{row:?}");
     }
 
     #[tokio::test]

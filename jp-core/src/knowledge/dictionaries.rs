@@ -53,6 +53,13 @@ pub async fn master_headwords(pool: &SqlitePool) -> Result<HashSet<String>, sqlx
 /// listing it as the reading of a kanji headword is the same evidence of
 /// wordhood — see [`refresh_dictionary_flags`], which this mirrors.
 ///
+/// **Every role but the master and the name lists**, which is what "lenient:
+/// any dictionary" has to mean. 明鏡 and 小学館 are `standard` because they
+/// decide segmentation, and being trusted to say where a word *ends* while not
+/// being trusted to say it is a word at all was backwards: 41,645 terms are in
+/// one of them and in nothing else, and every one of them — 聞きかじり is the
+/// noticed case — lost its span and its popup.
+///
 /// [`VocabRow::is_word`]: crate::knowledge::vocabulary::VocabRow::is_word
 /// [`refresh_dictionary_flags`]: crate::knowledge::vocabulary::refresh_dictionary_flags
 pub async fn wordhood_entries(
@@ -61,7 +68,7 @@ pub async fn wordhood_entries(
     let rows: Vec<(String, String)> = sqlx::query_as(
         "SELECT DISTINCT de.term, de.reading FROM dictionary_entries de \
          JOIN dictionaries d ON d.id = de.dictionary_id \
-         WHERE d.role IN ('master', 'name', 'reference')",
+ WHERE d.role IN ('master', 'name', 'reference', 'standard')",
     )
     .fetch_all(pool)
     .await?;
