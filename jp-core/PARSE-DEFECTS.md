@@ -72,7 +72,7 @@ Cause (1) is now half gone: the `Wordhood` fix at the bottom of this file makes
 all that stands between the reader and お花摘み. Ranking it still needs the
 master.
 
-## 聞きかじり — nominalized verb, master lists only the verb
+## 聞きかじり — nominalized verb, master lists only the verb — HALF FIXED
 
 Sudachi holds it whole (`名詞`), so nothing is split. It is `non-word` because
 Sankoku lists 聞き齧る and not the 連用形 noun. 明鏡 lists both 聞きかじり and
@@ -80,6 +80,21 @@ Sankoku lists 聞き齧る and not the 連用形 noun. 明鏡 lists both 聞き�
 scale.
 
 The class: a 連用形 noun the master only carries as a verb.
+
+**The `non-word` half is fixed, and the premise above was wrong.** A standard
+dictionary *does* decide wordhood now — it always should have, since the gate is
+"lenient: any dictionary" and 明鏡 is a dictionary, already trusted with the
+harder question of where a word ends. 41,645 terms were in 明鏡 or 小学館 and in
+nothing else, and all of them lost their span.
+
+聞きかじり is clickable and defined. It is still off the vocabulary scale, and
+that part is not a defect: the scale is the master alone by design, and adding a
+dictionary must change classification and never the denominator.
+
+Same for 書き込み and 窪み below, and for 砂粒, 連帯感, 蠱毒, 依代 and ムワムワ,
+all of which Jitendex already covered. **What is left of this whole family is one
+question — whether a 連用形 noun should count on the scale when the master lists
+its verb — and that is a rule about the denominator, not a parse defect.**
 
 ## 砂粒 — compound only Jitendex lists
 
@@ -163,7 +178,7 @@ either a re-segmentation check when an alternative split has better dictionary
 support, or the orthographic rewrite pass handling なんて before Sudachi sees
 it.
 
-## 書き込み — same class as 聞きかじり
+## 書き込み — same class as 聞きかじり — HALF FIXED
 
 Sudachi holds it whole and the reading is right. `non-word` because Sankoku
 lists only 書き込む; 明鏡 has both. A common word, so this class is not a tail
@@ -302,7 +317,7 @@ match on a kanji spelling guarantees nothing about the popup, whenever the
 ladder falls through to the kana surface. Fixing (1) removes this instance;
 the mismatch itself is wider.
 
-## 窪み — same class as 聞きかじり and 書き込み
+## 窪み — same class as 聞きかじり and 書き込み — HALF FIXED
 
 Sudachi holds it whole and the reading is right. Off the master scale because
 Sankoku lists only 窪む; 明鏡, 小学館 and Jitendex all have 窪み. The popup is
