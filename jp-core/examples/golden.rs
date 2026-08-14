@@ -109,6 +109,32 @@ async fn main() {
         .unwrap();
     write_map(out.join("frequency.tsv"), &ranks);
 
+    // The reader-facing rank of every master headword these lines can reach.
+    // Narrowed to `lexicon` and no further: the short-kana guard reads an absent
+    // term as rare, so a fixture missing a ranked headword would answer
+    // differently from production rather than merely less often.
+    let reader = dictionaries::by_title(pool, dictionaries::READER_FREQUENCY)
+        .await
+        .unwrap()
+        .unwrap();
+    let reader_ranks: HashMap<String, i64> = sqlx::query_as::<_, (String, i64)>(
+        "SELECT term, MIN(frequency) FROM dictionary_frequency
+         WHERE dictionary_id = ? GROUP BY term",
+    )
+    .bind(reader.id)
+    .fetch_all(pool)
+    .await
+    .unwrap()
+    .into_iter()
+    .filter(|(term, _)| lexicon.contains(term))
+    .collect();
+    let mut reader_rows: Vec<String> = reader_ranks
+        .iter()
+        .map(|(t, n)| format!("{t}\t{n}\n"))
+        .collect();
+    reader_rows.sort();
+    std::fs::write(out.join("reader_ranks.tsv"), reader_rows.concat()).unwrap();
+
     let jitendex = dictionaries::by_title(pool, "Jitendex")
         .await
         .unwrap()
@@ -168,6 +194,7 @@ async fn main() {
         &master,
         &standard,
         ranks,
+        reader_ranks,
         all_prefs,
         conjugatable,
     );

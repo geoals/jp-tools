@@ -98,7 +98,7 @@ pub enum BuildError {
 /// The tokenizer as jp-tools configures it, plus the two dictionary sets its
 /// callers need beside it.
 ///
-/// **The seven inputs are one list and every caller takes all of them.** A
+/// **The eight inputs are one list and every caller takes all of them.** A
 /// tokenizer missing any one is a second pipeline that answers differently, and
 /// the answers are compared: the reader's tint and the ledger row it is drawn
 /// from have to agree about where a word ends and what it is called. Without
@@ -115,7 +115,7 @@ pub struct Pipeline {
     pub master: MasterWords,
 }
 
-/// Fetch the seven inputs from `knowledge.db` and build the tokenizer.
+/// Fetch the eight inputs from `knowledge.db` and build the tokenizer.
 ///
 /// The dictionary load is CPU-bound and measured in seconds, so it runs on a
 /// blocking thread rather than on the runtime other requests are polling.
@@ -128,6 +128,7 @@ pub async fn pipeline(
     let lexicon = crate::knowledge::dictionaries::master_headwords(pool).await?;
     let readings = crate::knowledge::dictionaries::master_entries(pool).await?;
     let ranks = ambiguous_ranks(pool, &readings).await?;
+    let reader = reader_ranks(pool).await?;
     let preferred = preferred(pool).await?;
     let conjugatable = crate::knowledge::dictionaries::master_conjugatable(pool).await?;
     let standard = crate::knowledge::dictionaries::standard_entries(pool).await?;
@@ -139,6 +140,7 @@ pub async fn pipeline(
             .with_lexicon(lexicon.clone())
             .with_master_readings(&readings)
             .with_frequency(ranks)
+            .with_reader_frequency(reader)
             .with_preferred_readings(preferred)
             .with_conjugatable(conjugatable)
             .with_standard(&standard);
@@ -169,6 +171,27 @@ async fn ambiguous_ranks(
     };
     let terms = crate::tokenize::ambiguous_headwords(readings);
     crate::knowledge::dictionaries::frequency_ranks(pool, bccwj.id, &terms).await
+}
+
+/// The reader-facing rank per spelling, for the tokenizer's short-kana guard.
+///
+/// **Jiten, not BCCWJ**, for the reason `READER_FREQUENCY` exists: the question
+/// is whether a spelling is one the fiction being read actually uses, and a
+/// newspaper corpus ranks 船舶 eight times commoner than a novel does. Not being
+/// loaded is not an error — the guard is then simply off.
+async fn reader_ranks(pool: &sqlx::SqlitePool) -> Result<HashMap<String, i64>, sqlx::Error> {
+    use crate::knowledge::dictionaries as d;
+    let Some(jiten) = d::by_title(pool, d::READER_FREQUENCY).await? else {
+        return Ok(HashMap::new());
+    };
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT term, MIN(frequency) FROM dictionary_frequency
+         WHERE dictionary_id = ? GROUP BY term",
+    )
+    .bind(jiten.id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().collect())
 }
 
 async fn preferred(

@@ -160,6 +160,11 @@ pub struct SudachiTokenizer {
     /// Readings of headwords re-tokenized standalone, for the ladder's last
     /// repair step. It fires rarely, but on words that recur forever.
     rederived: Mutex<HashMap<String, String>>,
+    /// How common each master headword is in fiction — the reader-facing rank,
+    /// not BCCWJ's. The only question asked of it is whether a spelling is one
+    /// almost nothing uses; see [`vanishingly_rare`](Self::vanishingly_rare).
+    /// Empty disables the short-kana guard entirely.
+    reader_ranks: HashMap<String, i64>,
 }
 
 impl SudachiTokenizer {
@@ -191,6 +196,7 @@ impl SudachiTokenizer {
             conjugatable: HashSet::new(),
             katakana_native: HashSet::new(),
             rederived: Mutex::new(HashMap::new()),
+            reader_ranks: HashMap::new(),
         })
     }
 
@@ -270,6 +276,45 @@ impl SudachiTokenizer {
         }
         self.frequency = ranks;
         self
+    }
+
+    /// Teach it how common each spelling is in the fiction being read, which is
+    /// what the short-kana guard needs and BCCWJ cannot answer — see
+    /// `READER_FREQUENCY` in `knowledge::dictionaries`.
+    ///
+    /// Separate from [`with_frequency`](Self::with_frequency) because the two
+    /// ask different questions of different corpora. That one arbitrates between
+    /// master headwords sharing a reading and needs the rank of a
+    /// `(spelling, reading)` pair; this one asks only whether a spelling is one
+    /// anybody writes, and a newspaper corpus answers that badly.
+    pub fn with_reader_frequency(mut self, ranks: HashMap<String, i64>) -> Self {
+        self.reader_ranks = ranks;
+        self
+    }
+
+    /// Is this spelling one that almost nothing written in Japanese uses?
+    ///
+    /// Absent from the frequency list counts as rare — it lists 300k terms, so
+    /// falling off it is itself the answer. An empty list means the question
+    /// cannot be asked and nothing is rare, which is what leaves the guard off
+    /// for a tokenizer built without one.
+    fn vanishingly_rare(&self, term: &str) -> bool {
+        !self.reader_ranks.is_empty()
+            && self
+                .reader_ranks
+                .get(term)
+                .is_none_or(|rank| *rank >= RARE_SPELLING_RANK)
+    }
+
+    /// Is this identity a two-mora coincidence rather than a reading of the
+    /// word? See the short-kana guard in
+    /// [`identity_ladder`](Self::identity_ladder), which is the only caller and
+    /// carries the argument.
+    fn short_kana_coincidence(&self, term: &str, reading: &str, short_kana: bool) -> bool {
+        short_kana
+            && morae(&crate::text::kana::to_hiragana(reading)) <= SHORT_KANA_MORAE
+            && term.chars().any(crate::text::kanji::is_kanji)
+            && self.vanishingly_rare(term)
     }
 
     /// Teach it which master headwords are conjugatable lemmas, so an inflected
@@ -824,6 +869,20 @@ impl SudachiTokenizer {
 /// are Sankoku headwords too, and are still refused for holding an inflection.
 const MAX_COMPOUND_PARTS: usize = 5;
 
+/// A kana token this short spells too little to name a rare kanji word — see
+/// [`SudachiTokenizer::identity_ladder`]'s short-kana guard.
+const SHORT_KANA_MORAE: usize = 2;
+
+/// Where "nobody writes it this way" begins, on the reader-facing scale.
+///
+/// Measured, not chosen: over the 32,207 lines read so far, a two-mora kana
+/// surface that took a kanji identity ranked worse than this was wrong 90% of
+/// the time (159 of 176 occurrences — 篠 off あてぃ**しの**, 歯牙 off
+/// あてぃ**しが**, 縷々 off るーるーるー, 河豚 off a choking noise). Above the
+/// threshold the same shape is mostly right, and at three morae it is right
+/// either way, which is why the guard is fenced to both.
+const RARE_SPELLING_RANK: i64 = 15_000;
+
 /// The headwords that share a reading with another headword — the only ones
 /// [`SudachiTokenizer::with_frequency`] can ever be asked about, so the only
 /// ones worth fetching ranks for.
@@ -1047,6 +1106,13 @@ impl SudachiTokenizer {
         // word anyone read.
         let mora_of_kana = crate::text::kana::is_all_kana(&surface)
             && is_one_mora(&crate::text::kana::to_hiragana(&surface));
+        // **Hiragana only.** Katakana is already a decision about spelling, and
+        // the decision it usually records is that the kanji is one nobody reads
+        // — ハエ, キク, ツタ, カス, アザ are exactly the words this guard would
+        // otherwise throw away, and their katakana is why they are written that
+        // way at all.
+        let short_kana = crate::text::kana::is_all_hiragana(&surface)
+            && morae(&surface) <= SHORT_KANA_MORAE;
         // **The kana alphabet is part of the spelling.** Sudachi normalises ザル
         // onto ざる, and the master lists those as two words: ザル is the
         // colander, ざる the classical negative. マジ/まじ is the same pair, 32
@@ -1111,6 +1177,29 @@ impl SudachiTokenizer {
         // spelling the text used.
         if mora_of_kana {
             candidates.retain(|(term, _)| !term.chars().any(crate::text::kanji::is_kanji));
+        }
+        // **Two morae of kana spell almost nothing either, once the word being
+        // claimed is one nobody writes.** The one-mora rule above is this same
+        // argument at its limit, and the limit is not where the evidence stops:
+        // a two-kana string is homophonous with a dozen rare entries, so the
+        // match is found every time and is evidence none of the times. 弥 off
+        // the いや of 居やしない and 対置 off the たいち of またいちから are the
+        // shape of it — a rank-40,000 word asserted on one encounter, from a
+        // reading the sentence never had in it.
+        //
+        // Rarity is the other half, and it has to be: とき/時, あと/後 and
+        // はず/筈 are the same two morae and are simply right. What separates
+        // them is that those spellings are ones the language uses.
+        //
+        // **Measured on the reading, not on the surface.** A two-kana surface
+        // can be the stem of a longer word — なれ is 慣れる, はけ is 捌ける — and
+        // there the match was made by a three-mora reading that does carry
+        // information. Only where the whole word is as short as the surface is
+        // the coincidence argument the one being made.
+        if short_kana {
+            candidates.retain(|(term, reading)| {
+                !self.short_kana_coincidence(term, reading, short_kana)
+            });
         }
 
         if let Some((term, reading)) = candidates
@@ -1177,9 +1266,16 @@ impl SudachiTokenizer {
             // verb ending is a form of. Same rule the candidate ladder applies
             // above, and it has to be applied inside the arbitration — dropping
             // 砂漠 afterwards would only lose the match, not hand it to 捌く.
+            // The short-kana guard applies here for the same reason it applies
+            // to the candidates, and it has to be applied *inside* the
+            // arbitration rather than to its answer: dropping a rare headword
+            // afterwards would only lose the match, where refusing it here lets
+            // a commoner spelling with the same reading still win.
             if !is_one_mora(&spoken)
-                && let Some(term) = self
-                    .headword_for_reading(&spoken, |t| uninflected || self.conjugatable_lemma(t))
+                && let Some(term) = self.headword_for_reading(&spoken, |t| {
+                    (uninflected || self.conjugatable_lemma(t))
+                        && !self.short_kana_coincidence(t, &spoken, short_kana)
+                })
             {
                 return (
                     term.clone(),
@@ -1346,11 +1442,16 @@ fn starts_a_word(c: char) -> bool {
 
 /// One beat of speech: a kana, optionally followed by a small ゃゅょ.
 fn is_one_mora(reading: &str) -> bool {
-    let mut chars = reading.chars();
-    let (Some(_), second, None) = (chars.next(), chars.next(), chars.next()) else {
-        return false;
-    };
-    second.is_none_or(|c| matches!(c, 'ゃ' | 'ゅ' | 'ょ' | 'ャ' | 'ュ' | 'ョ'))
+    morae(reading) == 1
+}
+
+/// Beats of speech. A small ゃゅょ rides on the kana before it; everything else,
+/// っ and ん included, is its own beat.
+fn morae(reading: &str) -> usize {
+    reading
+        .chars()
+        .filter(|c| !matches!(c, 'ゃ' | 'ゅ' | 'ょ' | 'ャ' | 'ュ' | 'ョ' | 'ゎ' | 'ヮ'))
+        .count()
 }
 
 /// Is this kanji a numeral standing in for a digit the surface wrote in figures?

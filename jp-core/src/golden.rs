@@ -22,6 +22,7 @@ pub fn tokenizer(
     master: &[(String, String)],
     standard: &[(String, String)],
     ranks: HashMap<(String, String), i64>,
+    reader_ranks: HashMap<String, i64>,
     preferences: HashMap<String, PreferredReading>,
     conjugatable: HashSet<String>,
 ) -> SudachiTokenizer {
@@ -33,6 +34,7 @@ pub fn tokenizer(
         .with_master_readings(master)
         .with_standard(standard)
         .with_frequency(ranks)
+        .with_reader_frequency(reader_ranks)
         .with_preferred_readings(preferences)
         .with_conjugatable(conjugatable)
 }
@@ -46,6 +48,7 @@ pub fn snapshot(
     master: &[(String, String)],
     standard: &[(String, String)],
     ranks: HashMap<(String, String), i64>,
+    reader_ranks: HashMap<String, i64>,
     preferences: HashMap<String, PreferredReading>,
     conjugatable: HashSet<String>,
 ) -> String {
@@ -54,6 +57,7 @@ pub fn snapshot(
         master,
         standard,
         ranks,
+        reader_ranks,
         preferences,
         conjugatable,
     );

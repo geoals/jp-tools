@@ -46,6 +46,24 @@ fn ranks() -> HashMap<(String, String), i64> {
     .collect()
 }
 
+/// Jiten's rank per spelling, for the short-kana guard. Real numbers: 時 and
+/// 筈 are spellings the language uses at two morae, 弥 and 滓 are not.
+fn reader_ranks() -> HashMap<String, i64> {
+    [
+        ("時", 275),
+        ("筈", 257),
+        ("後", 130),
+        ("弥", 36070),
+        ("滓", 19422),
+        ("箒", 22217),
+        ("伺う", 6482),
+        ("窺う", 12180),
+    ]
+    .into_iter()
+    .map(|(t, n)| (t.to_string(), n))
+    .collect()
+}
+
 /// What `dictionaries::preferred_readings` derives for these words from
 /// Jitendex and BCCWJ; that derivation has its own tests.
 fn preferences() -> HashMap<String, PreferredReading> {
@@ -112,6 +130,7 @@ fn setup() -> (SudachiTokenizer, MasterWords) {
         .with_lexicon(lexicon.clone())
         .with_master_readings(&entries)
         .with_frequency(ranks())
+        .with_reader_frequency(reader_ranks())
         .with_preferred_readings(preferences())
         .with_conjugatable(conjugatable());
     (tokenizer, MasterWords::new(lexicon, &entries))
@@ -589,4 +608,58 @@ fn explaining_a_line_yields_the_tokens_tokenizing_it_does() {
         assert_eq!(explained, tokens_of(&tk, line), "{line}");
         assert!(!steps.is_empty(), "no steps recorded for {line}");
     }
+}
+
+/// Two morae of kana name a rare kanji word by coincidence, never by evidence.
+///
+/// 居やしない is the emphatic negative of いる, so the correct split has no いや
+/// in it; Sudachi's does, and 弥 is a master headword reading いや, so the pair
+/// matched exactly and a rank-36,000 adverb entered the ledger off one
+/// encounter. The guard is the one-mora rule at the next mora out — a two-kana
+/// string is homophonous with a dozen rare entries, so the match is found every
+/// time and means nothing any of them.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn two_morae_of_kana_never_name_a_spelling_nobody_writes() {
+    let (tk, _) = setup();
+    let tokens = tokens_of(&tk, "ひとりもいやしないんだ");
+
+    let bases: Vec<&str> = tokens.iter().map(|t| t.base_form.as_str()).collect();
+    assert!(!bases.contains(&"弥"), "{bases:?}");
+}
+
+/// And the rarity is half the rule, not decoration: とき, あと and はず are the
+/// same two morae, and 時, 後 and 筈 are simply what they are. A guard keyed on
+/// length alone would take the commonest words in the language off the scale.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn two_morae_of_kana_still_name_a_spelling_the_language_uses() {
+    let (tk, _) = setup();
+    let tokens = tokens_of(&tk, "そのときが来た");
+
+    assert_eq!(identity_of(&tokens, "とき"), pair("時", "とき"));
+}
+
+/// Katakana is exempt, because katakana is itself the decision. A word gets
+/// written ハエ, キク, ツタ, カス or アザ precisely because its kanji is one
+/// nobody reads, so the rare spelling is the right answer there and the guard
+/// would throw away exactly the words it exists to protect.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn katakana_may_still_name_a_rare_spelling() {
+    let (tk, _) = setup();
+    let tokens = tokens_of(&tk, "中身はカスだ");
+
+    assert_eq!(identity_of(&tokens, "カス"), pair("滓", "かす"));
+}
+
+/// Three morae is where the coincidence stops and the evidence starts: ほうき
+/// is 箒 at rank 22,217 and is right, which is why the guard stops at two.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn three_morae_of_kana_may_name_a_rare_spelling() {
+    let (tk, _) = setup();
+    let tokens = tokens_of(&tk, "長い柄のほうきがある");
+
+    assert_eq!(identity_of(&tokens, "ほうき"), pair("箒", "ほうき"));
 }

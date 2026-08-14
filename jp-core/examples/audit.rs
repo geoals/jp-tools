@@ -1,0 +1,197 @@
+//! Mechanical audit of the identities the corpus yields — no judgement in it.
+//!
+//! ```text
+//! cargo run --release --example audit -p jp-core --features test-support -- \
+//!     <knowledge.db> <system_full.dic> [class]
+//! ```
+//!
+//! Two tests, both decidable from the token alone, and between them they are
+//! the two ways an identity can be an assertion nobody read:
+//!
+//! - `added-kanji` — the identity spells a kanji the surface does not contain.
+//!   とうもろこし keyed as 玉蜀黍, いびき as 鼾, ご祝儀 as 御祝儀. Legitimate
+//!   folding (いう → 言う) looks identical, so the rank is printed beside it:
+//!   the question this is really asking is how rare the spelling being asserted
+//!   is.
+//! - `kana-to-kanji` — an all-hiragana surface that took a kanji identity, with
+//!   the rank of what it took. This is where the false positives live: 弥 off
+//!   いや, 対置 off たいち.
+//!
+//! Output is TSV, sorted by occurrences, so a threshold can be chosen by
+//! reading the distribution rather than guessed.
+
+use std::collections::HashMap;
+use std::path::Path;
+
+use jp_core::knowledge::Knowledge;
+use jp_core::knowledge::dictionaries;
+use jp_core::text::kana;
+use jp_core::text::kanji::is_kanji;
+
+#[derive(Default)]
+struct Row {
+    count: usize,
+    example: String,
+}
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let db = &args[1];
+    let dict_path = Path::new(&args[2]);
+    let only = args.get(3).cloned();
+
+    let k = Knowledge::open(db).await.unwrap();
+    let pool = k.pool();
+
+    let master = dictionaries::master_entries(pool).await.unwrap();
+    let standard = dictionaries::standard_entries(pool).await.unwrap();
+    let ambiguous = jp_core::tokenize::ambiguous_headwords(&master);
+    let bccwj = dictionaries::by_title(pool, "BCCWJ")
+        .await
+        .unwrap()
+        .unwrap();
+    let ranks = dictionaries::frequency_ranks(pool, bccwj.id, &ambiguous)
+        .await
+        .unwrap();
+    let jitendex = dictionaries::by_title(pool, "Jitendex")
+        .await
+        .unwrap()
+        .unwrap();
+    let master_dict = dictionaries::master(pool).await.unwrap().unwrap();
+    let prefs = dictionaries::preferred_readings(pool, master_dict.id, jitendex.id, bccwj.id)
+        .await
+        .unwrap();
+    let conjugatable = dictionaries::master_conjugatable(pool).await.unwrap();
+
+    // The reader-facing rank, which is the one that says whether a spelling is
+    // one anybody writes — see `READER_FREQUENCY` in jp-core's CLAUDE.md.
+    let reader_freq = dictionaries::by_title(pool, dictionaries::READER_FREQUENCY)
+        .await
+        .unwrap()
+        .unwrap();
+    let jiten: HashMap<String, i64> =
+        sqlx::query_as::<_, (String, i64)>(
+            "select term, min(frequency) from dictionary_frequency where dictionary_id = ? group by term",
+        )
+        .bind(reader_freq.id)
+        .fetch_all(pool)
+        .await
+        .unwrap()
+        .into_iter()
+        .collect();
+
+    let lines: Vec<String> = sqlx::query_scalar("select text from lines order by id")
+        .fetch_all(pool)
+        .await
+        .unwrap();
+
+    // `AUDIT_GUARD=off` builds the tokenizer without the reader ranks, which is
+    // the only thing the short-kana guard needs — so the two runs differ in that
+    // rule and nothing else, and their diff is the rule's whole blast radius.
+    let guarded = std::env::var("AUDIT_GUARD").as_deref() != Ok("off");
+    let tk = jp_core::golden::tokenizer(
+        dict_path,
+        &master,
+        &standard,
+        ranks,
+        if guarded { jiten.clone() } else { HashMap::new() },
+        prefs,
+        conjugatable,
+    );
+
+    let mut found: HashMap<(String, String, String, String, String), Row> = HashMap::new();
+    let mut counted = 0usize;
+    for line in &lines {
+        let Ok((_, steps)) = tk.explain(line) else {
+            continue;
+        };
+        for step in steps {
+            let jp_core::tokenize::trace::Step::Identity {
+                surface,
+                headword,
+                reading,
+                rule,
+                ..
+            } = step
+            else {
+                continue;
+            };
+            counted += 1;
+            if headword == surface {
+                continue;
+            }
+            // The identity puts a kanji on the page the surface has none of.
+            if !headword
+                .chars()
+                .any(|c| is_kanji(c) && !surface.contains(c))
+            {
+                continue;
+            }
+            let class = if kana::is_all_hiragana(&surface) {
+                "kana-to-kanji"
+            } else {
+                "added-kanji"
+            };
+            if only.as_deref().is_some_and(|c| c != class) {
+                continue;
+            }
+            let rank = jiten
+                .get(&headword)
+                .map(|r| r.to_string())
+                .unwrap_or_else(|| "-".into());
+            let row = found
+                .entry((
+                    class.to_string(),
+                    surface.clone(),
+                    format!("{headword}/{}", kana::to_hiragana(&reading)),
+                    rank,
+                    rung(rule).to_string(),
+                ))
+                .or_default();
+            row.count += 1;
+            if row.example.is_empty() {
+                row.example = line.replace(['\t', '\n'], " ");
+            }
+        }
+    }
+
+    let mut rows: Vec<_> = found.into_iter().collect();
+    rows.sort_by_key(|((class, surface, id, _, _), r)| {
+        (
+            class.clone(),
+            std::cmp::Reverse(r.count),
+            surface.clone(),
+            id.clone(),
+        )
+    });
+    let total: usize = rows.iter().map(|(_, r)| r.count).sum();
+    eprintln!(
+        "{} lines, {counted} identities, {total} flagged ({:.2}%), {} distinct",
+        lines.len(),
+        100.0 * total as f64 / counted.max(1) as f64,
+        rows.len()
+    );
+    println!("class\tn\tsurface\tidentity\trank\trung\texample");
+    for ((class, surface, id, rank, rung), row) in rows {
+        println!(
+            "{class}\t{}\t{surface}\t{id}\t{rank}\t{rung}\t{}",
+            row.count, row.example
+        );
+    }
+}
+
+/// The ladder rung, shortened to something a column can hold.
+fn rung(rule: &str) -> &'static str {
+    match rule {
+        r if r.starts_with("Exact match") => "exact",
+        r if r.starts_with("Matched by spelling") => "spelling",
+        r if r.starts_with("Matched by reading only") => "reading-only",
+        r if r.starts_with("Obsolete reading") => "preferred",
+        r if r.starts_with("Not in master dictionary: kept") => "kept-as-written",
+        r if r.starts_with("Not in master dictionary") => "sudachi",
+        r if r.starts_with("Single-mora") => "one-mora",
+        r if r.starts_with("Invalid word start") => "bad-onset",
+        _ => "other",
+    }
+}

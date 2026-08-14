@@ -71,6 +71,13 @@ fn the_identities_a_corpus_yields_have_not_moved() {
         })
         .collect();
 
+    // Rank per spelling, for the short-kana guard. An absent term reads as
+    // rare, which is what makes this fixture load-bearing rather than optional.
+    let reader_ranks: HashMap<String, i64> = tsv("reader_ranks.tsv")
+        .into_iter()
+        .filter_map(|r| Some((r[0].clone(), r.get(1)?.parse().ok()?)))
+        .collect();
+
     let conjugatable: HashSet<String> = include_str!("golden/conjugatable.txt")
         .lines()
         .filter(|l| !l.trim().is_empty())
@@ -83,6 +90,7 @@ fn the_identities_a_corpus_yields_have_not_moved() {
         &master,
         &standard,
         ranks,
+        reader_ranks,
         preferences,
         conjugatable,
     );
