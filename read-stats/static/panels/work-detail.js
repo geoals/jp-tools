@@ -15,6 +15,7 @@ import { DailyBarChart, ProgressBar } from "../charts.js";
 import { api } from "../api.js";
 import { fmtChars, fmtDateStr, fmtHours, fmtMins } from "../lib/format.js";
 import { WorkMetaForm, setCurrentWork } from "../panels/work-form.js";
+import { WorkTriage } from "../panels/work-triage.js";
 
 const SITTINGS_SHOWN = 20;
 
@@ -28,6 +29,7 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
   const [error, setError] = useState(null);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [triaging, setTriaging] = useState(false);
 
   const isCurrent = settings?.current_work === work;
   // "Read this next" points the logger at a title: every line it captures from
@@ -47,13 +49,16 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
     }
   }
 
-  useEffect(() => {
+  // Named rather than inline so leaving a triage session can re-run it: the
+  // session exists to move the figures this fetches.
+  const load = () => {
     setDetail(null);
     setError(null);
     api(`/api/works/detail?work=${encodeURIComponent(work)}`)
       .then(setDetail)
       .catch((e) => setError(e.message));
-  }, [work]);
+  };
+  useEffect(load, [work]);
 
   // The shelf row for this work, which is what `WorkMetaForm` edits by id.
   const row = works.find((w) => w.work === work) ?? null;
@@ -101,6 +106,18 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
     detail.remaining_secs !== null && detail.remaining_secs !== undefined
       ? `${fmtHours(detail.remaining_secs)} left at this work's ${fmtChars(Math.round(speed))}/h`
       : null;
+
+  if (triaging) {
+    // Reloads the page's own figures on the way out: a session's whole point
+    // is to move them.
+    return html`<${WorkTriage}
+      work=${work}
+      onBack=${() => {
+        setTriaging(false);
+        load();
+      }}
+    />`;
+  }
 
   return html`
     <div class="card">
@@ -193,231 +210,88 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
       }
     </div>
 
-    <${GaveCard}
-      mined=${detail.mined}
-      minedCount=${detail.mined_count}
-      taught=${detail.taught}
-      taughtCount=${detail.taught_count}
-      days=${detail.days}
-      firstRead=${detail.first_read}
-    />
     <${VocabCard}
       vocab=${detail.vocabulary}
-      unknown=${detail.top_unknown}
-      distinctive=${detail.distinctive}
-    />
-    <${ProseCard}
-      prose=${detail.prose}
-      corpus=${detail.corpus_prose}
-      workChars=${detail.chars}
+      script=${detail.script}
+      onTriage=${() => setTriaging(true)}
     />
     <${SittingsCard} sittings=${detail.sittings} />
   `;
 }
 
-/** What came out of the work: cards mined while reading it, and the words it
- *  put in front of you first.
+/** The work's vocabulary, twice over: what has been met in it, and what its
+ *  whole script holds.
  *
- *  Both attribute by time — note ids are epoch milliseconds and the ledger
- *  holds each term's first sighting — so a card added while nothing was hooked
- *  belongs to no work rather than to a guessed one. */
-function GaveCard({ mined, minedCount, taught, taughtCount, days, firstRead }) {
-  if (!minedCount && !taughtCount) return null;
-  const perDay = (days || []).filter((d) => d.cards > 0);
-  const peak = Math.max(...perDay.map((d) => d.cards), 1);
+ *  Met-so-far alone is a sample of the work drawn by how far you happen to
+ *  have read, and it flatters it — the words met first are the ones it
+ *  repeats. The pair is the figure. By text says how the prose will read; by
+ *  word says how much of its vocabulary is still ahead, and the two routinely
+ *  disagree.
+ *
+ *  The script row needs an imported script (`jp-script profile`) and most
+ *  works will never have one, so the card degrades to the met row alone. */
+function VocabCard({ vocab, script, onTriage }) {
+  if (!vocab || !vocab.types) return null;
+  const rows = [{ label: "met so far", ...vocab }];
+  if (script) rows.push({ label: "whole script", ...script });
+
+  // Progress through the work's vocabulary, which is not progress through its
+  // text: the long tail arrives late, so this trails the character count.
+  const metPct =
+    script && script.types
+      ? Math.round((script.met_types / script.types) * 100)
+      : null;
+  const metLabel =
+    metPct === null
+      ? null
+      : `${script.met_types.toLocaleString("en")} of ${script.types.toLocaleString("en")} words met — ${metPct}%`;
 
   return html`
     <div class="card">
-      <h2>What it gave you</h2>
-      <div class="tile-row">
-        <div class="tile">
-          <div class="label">cards mined here</div>
-          <div class="value">${minedCount.toLocaleString("en")}</div>
-        </div>
-        <div class="tile">
-          <div class="label">words met here first</div>
-          <div class="value">${taughtCount.toLocaleString("en")}</div>
-        </div>
+      <div class="card-head">
+        <h2>Vocabulary</h2>
+        ${
+          script &&
+          html`<div class="card-controls">
+            <button class="ghost" onClick=${onTriage}>triage the script</button>
+          </div>`
+        }
       </div>
-
+      <table class="vocab-split">
+        <thead>
+          <tr>
+            <th></th>
+            <th>distinct</th>
+            <th title="Of the distinct words, how many you know — how much studying it needs.">
+              known, by word
+            </th>
+            <th title="Of the running text, how much you know — how it will feel to read.">
+              known, by text
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(
+            (r) => html`<tr>
+              <th scope="row">${r.label}</th>
+              <td>${r.types.toLocaleString("en")}</td>
+              <td>${Math.round(r.known_type_pct)}%</td>
+              <td>${Math.round(r.known_token_pct)}%</td>
+            </tr>`,
+          )}
+        </tbody>
+      </table>
       ${
-        perDay.length > 1 &&
-        html`<div class="mine-strip">
-          ${perDay.map((d) => {
-            const label = `${d.date}: ${d.cards} card${d.cards === 1 ? "" : "s"}`;
-            return html`<span
-              class="mine-bar"
-              title=${label}
-              style=${`height:${Math.max(8, (d.cards / peak) * 44)}px`}
-            ></span>`;
-          })}
-        </div>`
-      }
-
-      <${TermList}
-        title="Words it put in front of you first"
-        note=${`Known now, and first met while reading this — as far back as the line stream goes. A work read before tracking began, or the earliest one in it, inherits words you already knew: this one starts at ${firstRead ?? "the beginning"}.`}
-        terms=${taught}
-      />
-      ${
-        mined.length > 0 &&
-        html`<div class="term-list">
-          <div class="word-list-label">Latest cards from it</div>
-          <div class="word-chips">
-            ${mined.map((m) => html`<span class="chip">${m.vocab}</span>`)}
-          </div>
+        metLabel &&
+        html`<div class="progress-caption">
+          <span>${metLabel}</span>
+          <span title="A branching work's script holds every route, so more of it exists than any one playthrough reads.">
+            whole script, every route
+          </span>
         </div>`
       }
     </div>
   `;
-}
-
-/** What this work is made of, in words, and how much of it you have.
- *
- *  Two coverage figures, never one. By type — of the distinct words here, how
- *  many are known — is how much studying it needs. By token — of the running
- *  text — is how it will feel to read. They sit forty points apart in practice,
- *  because the words a work repeats are the ones you already know. */
-function VocabCard({ vocab, unknown, distinctive }) {
-  if (!vocab || !vocab.types) {
-    return html`<div class="card">
-      <h2>What it is made of</h2>
-      <p class="chart-empty">
-        No vocabulary counted yet — the per-work ledger fills on the next Anki
-        refresh.
-      </p>
-    </div>`;
-  }
-  const typePct = `${vocab.known_type_pct.toFixed(0)}%`;
-  const tokenPct = `${vocab.known_token_pct.toFixed(0)}%`;
-  const typeOf = ` (${vocab.known_types.toLocaleString("en")} / ${vocab.types.toLocaleString("en")})`;
-  const tokenOf = ` (${vocab.known_tokens.toLocaleString("en")} / ${vocab.tokens.toLocaleString("en")})`;
-
-  return html`
-    <div class="card">
-      <h2>What it is made of</h2>
-      <div class="tile-row">
-        <div class="tile">
-          <div class="label">distinct words</div>
-          <div class="value">${vocab.types.toLocaleString("en")}</div>
-        </div>
-        <div
-          class="tile"
-          title="Of the distinct words here, how many you know — how much studying it needs."
-        >
-          <div class="label">known, by word</div>
-          <div class="value">
-            ${typePct}<span class="value-sub">${typeOf}</span>
-          </div>
-        </div>
-        <div
-          class="tile"
-          title="Of the running text, how much you know — how it will feel to read."
-        >
-          <div class="label">known, by text</div>
-          <div class="value">
-            ${tokenPct}<span class="value-sub">${tokenOf}</span>
-          </div>
-        </div>
-        <div class="tile">
-          <div class="label">never judged</div>
-          <div class="value">${vocab.new_types.toLocaleString("en")}</div>
-        </div>
-      </div>
-
-      <${TermList}
-        title="Unknown, commonest here first"
-        note="Ranked by how often each occurs in this work, not by how common it
-              is in general — that is what makes it a list for this work.
-              Anything judged known or already carded is out; names drop out as
-              you mark them in triage."
-        terms=${unknown}
-      />
-      <${TermList}
-        title="Words it keeps to itself"
-        note="Used here and barely anywhere else in your reading. Learning these
-              buys this work and little beyond it, which is worth knowing before
-              spending a week on them."
-        terms=${distinctive}
-      />
-    </div>
-  `;
-}
-
-function TermList({ title, note, terms }) {
-  if (!terms || !terms.length) return null;
-  return html`
-    <div class="term-list">
-      <div class="word-list-label" title=${note.replace(/\s+/g, " ").trim()}>
-        ${title}
-      </div>
-      <div class="word-chips">
-        ${terms.map((t) => {
-          const reading =
-            t.reading && t.reading !== t.headword ? t.reading : "";
-          const here = `×${t.count}`;
-          const elsewhere =
-            t.elsewhere > 0 ? `, ${t.elsewhere} elsewhere` : ", only here";
-          return html`<span class="chip" title=${`${here}${elsewhere}`}>
-            ${t.headword}
-            ${reading && html`<span class="chip-reading">${reading}</span>`}
-            <b>${here}</b>
-          </span>`;
-        })}
-      </div>
-    </div>
-  `;
-}
-
-/** How something compares with the rest of your reading, as "1.4× your usual".
- *  A bare number here says nothing on its own. */
-function ratio(mine, theirs) {
-  if (!mine || !theirs) return null;
-  const r = mine / theirs;
-  if (r >= 0.97 && r <= 1.03) return "about your usual";
-  return `${r.toFixed(2)}× your usual`;
-}
-
-/** What the writing is like — context for the numbers above it, not a finding
- *  of its own. Kept to one row of facts on purpose. */
-function ProseCard({ prose, corpus, workChars }) {
-  if (!prose || !prose.chars) return null;
-  const lenNote = ratio(prose.median_len, corpus.median_len);
-  // Built whole — htm collapses the whitespace where a literal and an
-  // interpolation straddle a line break.
-  const sentenceLabel = prose.median_len
-    ? `${prose.median_len} chars`
-    : `too few sentences yet (${prose.sentences.toLocaleString("en")})`;
-  const tailLabel = prose.p90_len
-    ? `longest tenth from ${prose.p90_len}`
-    : null;
-  // Only text the tracker actually captured can be measured. A work read
-  // mostly before hooking — logged by hand with a character count and no text
-  // — has prose figures drawn from whatever fraction was hooked, and saying
-  // which fraction is the difference between a caveat and a wrong number.
-  const covered = workChars ? prose.chars / workChars : 1;
-  const coverageNote =
-    covered < 0.9
-      ? ` Over the ${(covered * 100).toFixed(0)}% of this work whose text was captured — the rest was logged by hand, as a character count with no text to read.`
-      : "";
-
-  return html` <div class="card">
-    <h2>What the prose is like</h2>
-    <div class="prose-facts">
-      <div class="prose-fact">
-        <span class="label">median sentence</span>
-        <span class="value">${sentenceLabel}</span>
-        ${lenNote && html`<span class="prose-note">${lenNote}</span>`}
-      </div>
-      ${
-        tailLabel &&
-        html`<div class="prose-fact">
-          <span class="label">the tail</span>
-          <span class="value">${tailLabel}</span>
-        </div>`
-      }
-    </div>
-  </div>`;
 }
 
 /** Every sitting with the work, newest first: how long, how much, how fast.

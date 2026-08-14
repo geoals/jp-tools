@@ -538,6 +538,57 @@ pub async fn sync_vocabulary(state: &AppState) -> Result<i64, AppError> {
     Ok(mined)
 }
 
+/// Fold a whole extracted script into per-work term counts.
+///
+/// Goes through `Harvest` and so through the same wordhood gate and the same
+/// name-majority rule reading does, because the point of the result is to be
+/// compared with the ledger: a count derived by a second pipeline would answer
+/// a different question while looking like this one.
+///
+/// Only the per-work sink is filled. A script is text that exists, not text
+/// that was read, so it must not touch `word_days`, the ledger, or the
+/// spellings sink — nothing here is an encounter.
+pub async fn profile_script(
+    knowledge: &jp_core::knowledge::Knowledge,
+    dict_path: &std::path::Path,
+    work: &str,
+    lines: Vec<String>,
+) -> Result<(Vec<WorkEncounter>, i64), AppError> {
+    let p = jp_core::highlight::pipeline(knowledge, dict_path)
+        .await
+        .map_err(|e| AppError::Upstream(e.to_string()))?;
+
+    let work = work.to_string();
+    let encounters = tokio::task::spawn_blocking(move || {
+        let tokenizer = p.tokenizer;
+        let mut harvest = Harvest::new(p.master);
+        let sinks = Sinks {
+            days: false,
+            terms: false,
+            works: true,
+            surfaces: false,
+            work: Some(&work),
+            line_id: None,
+        };
+        for line in &lines {
+            match tokenizer.tokenize(line) {
+                Ok(tokens) => {
+                    for t in tokens {
+                        harvest.add(t, "", 0.0, sinks);
+                    }
+                }
+                Err(e) => warn!(error = %e, "tokenize failed, skipping line"),
+            }
+        }
+        harvest.work_encounters()
+    })
+    .await
+    .map_err(|e| AppError::Upstream(format!("tokenize task panicked: {e}")))?;
+
+    let total = encounters.iter().map(|e| e.count).sum();
+    Ok((encounters, total))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

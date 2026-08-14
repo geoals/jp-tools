@@ -967,7 +967,7 @@ pub async fn vocab_frequency_commit(
 /// Triage and the reader's underline must rank off the *same* list — they are
 /// one claim about which words are common, made in two places — and it is not
 /// the tokenizer's BCCWJ. `ingest::READER_FREQUENCY` says why.
-async fn reader_frequency(state: &AppState) -> Result<i64, AppError> {
+pub(crate) async fn reader_frequency(state: &AppState) -> Result<i64, AppError> {
     Ok(
         dictionaries::by_title(state.knowledge.pool(), crate::ingest::READER_FREQUENCY)
             .await?

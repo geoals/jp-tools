@@ -15,6 +15,8 @@ pub mod dictionaries;
 pub mod lexeme;
 pub mod term_surfaces;
 pub mod vocabulary;
+pub mod work_names;
+pub mod work_scripts;
 pub mod work_terms;
 
 use std::time::Duration;
@@ -37,6 +39,8 @@ const MIGRATION_STRIP_CONTROL: &str =
     include_str!("../../migrations/knowledge/010_strip_control_chars.sql");
 const MIGRATION_STRIP_OKURIGANA_MARKER: &str =
     include_str!("../../migrations/knowledge/011_strip_okurigana_marker.sql");
+const MIGRATION_WORK_SCRIPTS: &str = include_str!("../../migrations/knowledge/012_work_scripts.sql");
+const MIGRATION_WORK_NAMES: &str = include_str!("../../migrations/knowledge/013_work_names.sql");
 
 /// A connection pool for `knowledge.db`.
 ///
@@ -109,6 +113,8 @@ impl Knowledge {
             MIGRATION_READING,
             MIGRATION_VOCAB,
             MIGRATION_WORK_TERMS,
+            MIGRATION_WORK_SCRIPTS,
+            MIGRATION_WORK_NAMES,
             MIGRATION_TERM_SURFACES,
             MIGRATION_STRIP_CONTROL,
         ] {

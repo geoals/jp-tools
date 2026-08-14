@@ -345,3 +345,107 @@ td.work-name {
   text-align: left;
   color: var(--text-primary);
 }
+
+/* The met-so-far / whole-script split. A table rather than two tile rows:
+   the point is reading down a column, and tiles put the two claims side by
+   side with nothing lining up. Same ink and rhythm as `table.days`. */
+table.vocab-split {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+table.vocab-split th {
+  text-align: right;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--grid);
+}
+table.vocab-split th[scope="row"] {
+  text-align: left;
+  color: var(--text-secondary);
+  font-size: 14px;
+  border-bottom: none;
+}
+table.vocab-split td {
+  text-align: right;
+  padding: 6px 8px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+/* The whole-script row is the claim about the work; the met row is the sample
+   of it read so far, and reads as the reference line under it. */
+table.vocab-split tbody tr:first-child th[scope="row"],
+table.vocab-split tbody tr:first-child td {
+  color: var(--text-secondary);
+}
+
+/* A triage session: one word, large, with a key under each answer. The word
+   is the whole interface, so everything else is set small and quiet around
+   it — the eye should land on the term and nowhere else. */
+.triage-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 56px 16px 40px;
+}
+.triage-term {
+  font-size: 72px;
+  line-height: 1.15;
+  color: var(--text-primary);
+  text-align: center;
+  word-break: break-all;
+}
+.triage-reading {
+  font-size: 22px;
+  color: var(--text-secondary);
+}
+.triage-facts {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.triage-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  padding-bottom: 12px;
+}
+.triage-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: 1px solid var(--grid);
+  background: var(--card);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+.triage-btn:hover {
+  background: var(--meter-track);
+}
+/* Status colour is one scale (base.css): a verdict here is the same claim the
+   feed's tint and the vocab piles make, so it wears the same hue. */
+.triage-btn.known {
+  border-color: var(--good);
+}
+.triage-btn.unknown {
+  border-color: var(--vocab-unknown);
+}
+.triage-btn kbd {
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid var(--grid);
+  border-radius: 4px;
+  padding: 1px 6px;
+}

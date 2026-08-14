@@ -263,7 +263,7 @@ print(urllib.parse.quote(max(rows, key=lambda w: w["chars"])["work"]) if rows el
   if [ -n "$WORKED" ]; then
     "$CHROME" --headless --disable-gpu --no-sandbox --dump-dom --virtual-time-budget=15000 \
       "http://127.0.0.1:$PORT/#library/$WORKED" >"$WORK/dom-work.html" 2>>"$WORK/console.log"
-    for want in "How it was read" "Sittings" "What the prose is like" "What it is made of"; do
+    for want in "How it was read" "Sittings" "Vocabulary" "met so far"; do
       grep -qF "$want" "$WORK/dom-work.html" || die "work page is missing: $want"
     done
     say "work page renders ($(wc -c <"$WORK/dom-work.html") bytes)"

@@ -98,7 +98,7 @@ impl WorkVocabulary {
 /// including them would put a floor under every "unknown" figure that has
 /// nothing to do with the work. This is the same lenient wordhood gate the
 /// triage queue uses — any loaded dictionary having it is enough.
-const IS_WORD: &str = "(v.in_master = 1 OR v.in_name = 1 OR v.in_reference = 1)";
+pub(crate) const IS_WORD: &str = "(v.in_master = 1 OR v.in_name = 1 OR v.in_reference = 1)";
 
 /// Known: asserted so, mined, **or** known under another reading of the same
 /// headword.
@@ -110,7 +110,7 @@ const IS_WORD: &str = "(v.in_master = 1 OR v.in_name = 1 OR v.in_reference = 1)"
 /// The cost is a genuine homograph whose readings differ in knownness counting
 /// as known throughout — the same trade the queue makes, and making it in one
 /// place but not the other would be worse than either choice.
-const IS_KNOWN: &str = "(v.status = 'known' OR v.mined = 1 OR EXISTS ( \
+pub(crate) const IS_KNOWN: &str = "(v.status = 'known' OR v.mined = 1 OR EXISTS ( \
      SELECT 1 FROM vocabulary o WHERE o.headword = v.headword AND o.status = 'known'))";
 
 /// The known/unknown split for one work, by type and by token.

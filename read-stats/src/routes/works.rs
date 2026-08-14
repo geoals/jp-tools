@@ -18,25 +18,11 @@ use crate::db;
 use crate::error::AppError;
 use crate::history::History;
 use crate::stats;
-use jp_core::knowledge::work_terms;
+use jp_core::knowledge::{work_scripts, work_terms};
 
 /// How many words each per-work list carries. Short enough to read in one
 /// pass — a list of two hundred unknown words is a wall, not a plan.
-const UNKNOWN_LEN: i64 = 40;
-const DISTINCTIVE_LEN: i64 = 24;
 const MINED_LEN: usize = 24;
-const TAUGHT_LEN: usize = 24;
-
-fn term_json(t: &work_terms::WorkTerm) -> Value {
-    json!({
-        "headword": t.headword,
-        "reading": t.reading,
-        "pos": t.pos,
-        "status": t.status,
-        "count": t.count,
-        "elsewhere": t.elsewhere,
-    })
-}
 
 fn meta_json(m: &db::Work) -> Value {
     json!({
@@ -220,34 +206,16 @@ pub async fn work_detail(
             .total_cmp(&a["start_ts"].as_f64().unwrap_or(0.0))
     });
 
-    // What the prose is like, and what the rest of your reading is like — one
-    // pass, because the figure is only legible as a comparison. Pasted session
-    // content counts: it is text that was read, and this asks what the writing
-    // is, not what it cost.
-    let mut mine = stats::ProseAcc::default();
-    let mut rest = stats::ProseAcc::default();
-    for (text, work) in db::fetch_line_texts(&state.knowledge).await? {
-        if work.as_deref() == Some(title) {
-            mine.push(&text);
-        } else {
-            rest.push(&text);
-        }
-    }
-    for s in db::fetch_session_texts_after(&state.knowledge, 0).await? {
-        let key = stats::work_key(&s.source, s.work.as_deref());
-        if key.as_deref() == Some(title) {
-            mine.push(&s.content);
-        } else {
-            rest.push(&s.content);
-        }
-    }
-
-    // What the work is made of, and how much of it is already known. Empty
-    // until the ingest has run over this work's text — `work_terms` is filled
-    // by the same watermarked pass as the ledger.
+    // The work's vocabulary twice over: what has been met in it so far, and
+    // what its whole script holds. The pair is the figure — met-so-far alone
+    // is a sample of the work drawn by how far you happen to have got.
+    //
+    // `work_terms` fills line by line behind the ingest watermark, so it is
+    // empty until the ingest has run. `work_scripts` is empty until the script
+    // has been imported (`jp-script profile`), which most works never will be.
     let vocab = work_terms::summary(&state.knowledge, title).await?;
-    let unknown = work_terms::top_unknown(&state.knowledge, title, UNKNOWN_LEN).await?;
-    let distinctive = work_terms::distinctive(&state.knowledge, title, DISTINCTIVE_LEN).await?;
+    let script = work_scripts::coverage(&state.knowledge, title).await?;
+    let met_types = work_scripts::met_types(&state.knowledge, title).await?;
 
     // What the work gave back. Note ids are epoch milliseconds, so a card
     // attributes to whatever was on screen when it was added — the same
@@ -268,17 +236,6 @@ pub async fn work_detail(
     mined.reverse();
     let mined_count = mined.len();
     mined.truncate(MINED_LEN);
-
-    // Words this work taught: known now, and first met while reading it. The
-    // ledger holds the moment, the line stream holds the work.
-    let mut taught: Vec<Value> = work_terms::known_with_first_seen(&state.knowledge, title)
-        .await?
-        .into_iter()
-        .filter(|(_, first_seen)| h.work_at(*first_seen) == Some(title))
-        .map(|(t, _)| term_json(&t))
-        .collect();
-    let taught_count = taught.len();
-    taught.truncate(TAUGHT_LEN);
 
     // What is left, at this work's own pace rather than the reader's average —
     // a work that reads slower than usual should say so in its own estimate.
@@ -315,30 +272,71 @@ pub async fn work_detail(
             }))
             .collect::<Vec<_>>(),
         "sittings": sittings,
-        "prose": mine.finish(),
-        "corpus_prose": rest.finish(),
         "vocabulary": {
             "types": vocab.types,
             "tokens": vocab.tokens,
             "known_types": vocab.known_types,
             "known_tokens": vocab.known_tokens,
-            "unknown_types": vocab.unknown_types,
-            "new_types": vocab.new_types,
             "known_type_pct": vocab.known_type_pct(),
             "known_token_pct": vocab.known_token_pct(),
         },
-        "top_unknown": unknown.iter().map(term_json).collect::<Vec<_>>(),
-        "distinctive": distinctive.iter().map(term_json).collect::<Vec<_>>(),
+        // Absent rather than zeroed when no script has been imported: the page
+        // has to tell "none of it is known" from "nothing has been counted".
+        "script": (script.types > 0).then(|| json!({
+            "types": script.types,
+            "tokens": script.tokens,
+            "known_types": script.known_types,
+            "known_tokens": script.known_tokens,
+            "known_type_pct": script.known_types as f64 / script.types as f64 * 100.0,
+            "known_token_pct": script.token_coverage() * 100.0,
+            "met_types": met_types,
+        })),
         "mined_count": mined_count,
         "mined": mined,
-        "taught_count": taught_count,
-        "taught": taught,
     })))
 }
 
 #[derive(Deserialize)]
 pub struct WorkDetailParams {
     pub work: String,
+}
+
+/// How many terms a session loads at once. Long enough to sit down to, short
+/// enough that the queue is re-derived often — one judgement can take another
+/// term off it (a headword judged under one reading takes every reading of it),
+/// and the next fetch is where that is noticed.
+const TRIAGE_LEN: i64 = 300;
+
+/// `GET /api/works/triage?work=<title>` — the script's unjudged words,
+/// commonest in this work first.
+///
+/// Distinct from the encounter-driven triage queue, and it has to be: that one
+/// offers words the reader has met, ranked by how often. Most of a script is
+/// words never met, which can never reach it.
+///
+/// Nothing here is preselected and nothing is written by loading it. A word
+/// judged on sight has no encounters and no lookup record, which is exactly
+/// what `preselects_known` requires before it will default anything to `known`.
+pub async fn work_triage(
+    State(state): State<AppState>,
+    Query(params): Query<WorkDetailParams>,
+) -> Result<Json<Value>, AppError> {
+    let title = params.work.trim();
+    if title.is_empty() {
+        return Err(AppError::BadRequest("work required".into()));
+    }
+    let frequency = crate::routes::vocab::reader_frequency(&state).await?;
+    let terms = work_scripts::triage_queue(&state.knowledge, title, frequency, TRIAGE_LEN).await?;
+    Ok(Json(json!({
+        "work": title,
+        "terms": terms.iter().map(|t| json!({
+            "headword": t.headword,
+            "reading": t.reading,
+            "count": t.count,
+            "rank": t.rank,
+            "met": t.met,
+        })).collect::<Vec<_>>(),
+    })))
 }
 
 #[derive(Deserialize)]
