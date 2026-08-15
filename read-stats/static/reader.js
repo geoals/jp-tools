@@ -79,11 +79,12 @@ export function Reader() {
   const [explain, setExplain] = useState(null);
   const [toast, setToast] = useState(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  /** BCCWJ rank at or below which an unknown word is called common and gets an
-   *  underline. Held here rather than applied server-side so changing the
-   *  setting repaints the feed already on screen. 0 until the settings arrive,
-   *  which underlines nothing — the safe way to be wrong for one paint. */
-  const [commonMaxRank, setCommonMaxRank] = useState(0);
+  /** The two ranks at or below which an unknown word is called common and gets
+   *  an underline, one per frequency list, tested independently. Held here
+   *  rather than applied server-side so changing a setting repaints the feed
+   *  already on screen. Both 0 until the settings arrive, which underlines
+   *  nothing — the safe way to be wrong for one paint. */
+  const [commonRanks, setCommonRanks] = useState(NO_COMMON_RANKS);
   /** Set once a backscroll page comes back empty, to stop the trigger firing.
    *  A ref rather than state: nothing on screen changes when it flips. */
   const historyExhausted = useRef(false);
@@ -137,7 +138,12 @@ export function Reader() {
 
   useEffect(() => {
     api("/api/settings")
-      .then((s) => setCommonMaxRank(s.reader_common_max_freq_rank || 0))
+      .then((s) =>
+        setCommonRanks({
+          freq: s.reader_common_max_freq_rank || 0,
+          bccwj: s.reader_common_max_bccwj_rank || 0,
+        }),
+      )
       .catch(() => {});
   }, []);
 
@@ -282,8 +288,8 @@ export function Reader() {
   // What the painter reads, held in a ref rather than captured: the frame it
   // runs in is not the render that asked for it, and the observer below is
   // built once and must still see the current feed.
-  const paintInput = useRef({ visible, highlightOn, commonMaxRank });
-  paintInput.current = { visible, highlightOn, commonMaxRank };
+  const paintInput = useRef({ visible, highlightOn, commonRanks });
+  paintInput.current = { visible, highlightOn, commonRanks };
 
   /** Ask for a repaint, at most one per frame.
    *
@@ -302,14 +308,14 @@ export function Reader() {
     paintPending.current = true;
     requestAnimationFrame(() => {
       paintPending.current = false;
-      const { visible, highlightOn, commonMaxRank } = paintInput.current;
+      const { visible, highlightOn, commonRanks } = paintInput.current;
       paintMarks(
         visible,
         lineEls.current,
         highlightOn,
         listRef.current,
         marksRef.current,
-        commonMaxRank,
+        commonRanks,
       );
     });
   }, []);
@@ -330,7 +336,7 @@ export function Reader() {
     highlightOn,
     fontPx,
     markedOnly,
-    commonMaxRank,
+    commonRanks,
   ]);
 
   // The other way the text reflows: the window or the split pane changing width.
@@ -882,17 +888,27 @@ function hasMark(line) {
 }
 
 /** Whether a word is one worth stopping on: not known, and common enough in
- *  the corpus that not knowing it is a real gap. A word BCCWJ does not rank is
- *  never common — the underline says "you should have this one", and an
- *  unranked word is the case where that cannot be claimed. */
-function isCommonGap(token, commonMaxRank) {
+ *  either corpus that not knowing it is a real gap. A word neither list ranks
+ *  is never common — the underline says "you should have this one", and an
+ *  unranked word is the case where that cannot be claimed.
+ *
+ *  The two lists are asked separately rather than reconciled: they disagree
+ *  about what fiction and what prose use, and passing either is enough. */
+function isCommonGap(token, commonRanks) {
+  if (!UNDERLINED.includes(token.status)) return false;
   return (
-    UNDERLINED.includes(token.status) &&
-    commonMaxRank > 0 &&
-    token.freq_rank != null &&
-    token.freq_rank <= commonMaxRank
+    underRank(token.freq_rank, commonRanks.freq) ||
+    underRank(token.bccwj_rank, commonRanks.bccwj)
   );
 }
+
+/** A rank at or under a threshold, with 0 meaning the threshold is off. */
+function underRank(rank, max) {
+  return max > 0 && rank != null && rank <= max;
+}
+
+/** Underlines nothing, for before the settings arrive. */
+const NO_COMMON_RANKS = { freq: 0, bccwj: 0 };
 
 /** Draw the marks: one rounded, padded rectangle behind each flagged word, in a
  *  layer underneath the text.
@@ -909,7 +925,7 @@ function isCommonGap(token, commonMaxRank) {
  *  Every rect is measured before a node is inserted: interleaving reads and
  *  writes would force a layout per mark, on the path that runs while a line is
  *  being read. */
-function paintMarks(lines, els, enabled, listEl, layerEl, commonMaxRank) {
+function paintMarks(lines, els, enabled, listEl, layerEl, commonRanks) {
   if (!listEl || !layerEl) return;
   const boxes = [];
   if (enabled) {
@@ -937,7 +953,7 @@ function paintMarks(lines, els, enabled, listEl, layerEl, commonMaxRank) {
           if (!r.width) continue;
           boxes.push({
             tier: t.status,
-            common: isCommonGap(t, commonMaxRank),
+            common: isCommonGap(t, commonRanks),
             left: r.left + dx + MARK_INSET_PX,
             top: r.top + dy,
             width: Math.max(1, r.width - MARK_INSET_PX * 2),

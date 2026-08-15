@@ -48,6 +48,11 @@ pub struct Settings {
     /// this rank that is `new` or `unknown` is underlined: not knowing a rare
     /// word is expected, not knowing a common one is the gap worth seeing.
     pub reader_common_max_freq_rank: i64,
+    /// The same threshold against BCCWJ, tested independently: the two corpora
+    /// disagree about which words are common, and a word common in newspaper
+    /// and government prose is a gap worth seeing even when the fiction list
+    /// ranks it rare. Underlined if either rank passes.
+    pub reader_common_max_bccwj_rank: i64,
     /// Capture is suspended: vn-ws-logger.py closes its Textractor WebSocket
     /// while this is set, so nothing reaches the line stream at all. Stopping
     /// the source beats the old interval log, which left the raw stream full of
@@ -77,6 +82,7 @@ impl Default for Settings {
             triage_min_encounters: 3,
             triage_max_freq_rank: 6000,
             reader_common_max_freq_rank: 5000,
+            reader_common_max_bccwj_rank: 10000,
             capture_paused: false,
         }
     }
@@ -95,6 +101,7 @@ pub const SETTING_KEYS: &[&str] = &[
     "triage_min_encounters",
     "triage_max_freq_rank",
     "reader_common_max_freq_rank",
+    "reader_common_max_bccwj_rank",
     "capture_paused",
 ];
 
@@ -141,6 +148,11 @@ pub async fn load_settings(pool: &SqlitePool) -> Result<Settings, sqlx::Error> {
                 settings.reader_common_max_freq_rank = value
                     .parse()
                     .unwrap_or(settings.reader_common_max_freq_rank)
+            }
+            "reader_common_max_bccwj_rank" => {
+                settings.reader_common_max_bccwj_rank = value
+                    .parse()
+                    .unwrap_or(settings.reader_common_max_bccwj_rank)
             }
             "capture_paused" => settings.capture_paused = value == "1",
             _ => {}

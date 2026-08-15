@@ -84,13 +84,22 @@ let windowName = "";
 // take it back. Cleared with the popup: a retraction is only ever the popup
 // that made the row undoing itself.
 let openLookup = null;
-// The rank at or under which an unknown word is called common. Fetched once;
-// the same setting the reading view underlines by, so both agree.
-let commonMaxRank = 0;
+// The ranks at or under which an unknown word is called common, one per
+// frequency list and tested independently. Fetched once; the same settings the
+// reading view underlines by, so both agree.
+let commonRanks = { freq: 0, bccwj: 0 };
 fetch("/api/settings")
   .then((r) => r.json())
-  .then((s) => (commonMaxRank = s.reader_common_max_freq_rank || 0))
+  .then((s) => {
+    commonRanks = {
+      freq: s.reader_common_max_freq_rank || 0,
+      bccwj: s.reader_common_max_bccwj_rank || 0,
+    };
+  })
   .catch(() => {});
+
+// A rank at or under a threshold, with 0 meaning the threshold is off.
+const underRank = (rank, max) => max > 0 && rank && rank <= max;
 
 // Lines sent to the model with the one to explain, matching `#read`. Also the
 // backlog asked for, so an overlay opened mid-scene can explain the first line
@@ -213,9 +222,8 @@ function draw(incoming) {
       const word = document.createElement("span");
       // `known` gets no class, so it draws as plain text.
       const common =
-        commonMaxRank &&
-        span.freq_rank &&
-        span.freq_rank <= commonMaxRank &&
+        (underRank(span.freq_rank, commonRanks.freq) ||
+          underRank(span.bccwj_rank, commonRanks.bccwj)) &&
         (span.status === "new" || span.status === "unknown");
       word.className = ["w", span.status === "known" ? "" : span.status, common ? "common" : ""]
         .filter(Boolean)

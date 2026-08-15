@@ -97,10 +97,19 @@ const FIELDS = [
     group: "Vocabulary",
     key: "reader_common_max_freq_rank",
     label: "Common word rank",
-    unit: "BCCWJ rank",
+    unit: "jiten rank",
     step: 500,
     min: 0,
-    hint: "In #read, a new or unknown word this common or commoner is underlined as well as tinted. Not knowing a rare word is expected; a common one is the gap worth seeing. Words the corpus does not rank are never underlined.",
+    hint: "In #read, a new or unknown word this common or commoner is underlined as well as tinted. Not knowing a rare word is expected; a common one is the gap worth seeing. Words the list does not rank are never underlined by this threshold.",
+  },
+  {
+    group: "Vocabulary",
+    key: "reader_common_max_bccwj_rank",
+    label: "Common word rank",
+    unit: "BCCWJ rank",
+    step: 1000,
+    min: 0,
+    hint: "The same underline against BCCWJ, tested on its own: a word passing either threshold is underlined. BCCWJ is newspaper and government prose, so it catches common words the fiction list ranks rare. 0 turns this half off.",
   },
 ];
 

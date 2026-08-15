@@ -58,6 +58,11 @@ pub struct Span {
     /// a common word it does not know more loudly than a rare one — a rare word
     /// unknown is expected, a common one is the gap worth seeing.
     pub freq_rank: Option<i64>,
+    /// BCCWJ rank, `None` for a word it does not carry. Sent beside the
+    /// reader-facing rank rather than instead of it: the two corpora disagree
+    /// about which words are common, and a word common in either is one worth
+    /// seeing. The client tests both.
+    pub bccwj_rank: Option<i64>,
 }
 
 /// What a word is to the reader.
@@ -322,6 +327,8 @@ pub struct Highlighter {
     /// `dictionary_frequency` lookup per word on the path that draws a line as
     /// it is being read.
     ranks: HashMap<(String, String), i64>,
+    /// BCCWJ ranks for the same headwords, held for the same reason.
+    bccwj_ranks: HashMap<(String, String), i64>,
 }
 
 impl Highlighter {
@@ -333,22 +340,19 @@ impl Highlighter {
     ) -> Result<Highlighter, BuildError> {
         let p = pipeline(k, dict_path).await?;
         let headwords: Vec<String> = p.lexicon.iter().cloned().collect();
-        let ranks = match crate::knowledge::dictionaries::by_title(
-            k.pool(),
+        let ranks = ranks_from(
+            k,
             crate::knowledge::dictionaries::READER_FREQUENCY,
+            &headwords,
         )
-        .await?
-        {
-            Some(d) => {
-                crate::knowledge::dictionaries::frequency_ranks(k.pool(), d.id, &headwords).await?
-            }
-            None => HashMap::new(),
-        };
+        .await?;
+        let bccwj_ranks = ranks_from(k, "BCCWJ", &headwords).await?;
         Ok(Highlighter::new(
             std::sync::Arc::new(p.tokenizer),
             p.wordhood,
             p.master,
             ranks,
+            bccwj_ranks,
         ))
     }
 
@@ -366,12 +370,14 @@ impl Highlighter {
         wordhood: Wordhood,
         master: MasterWords,
         ranks: HashMap<(String, String), i64>,
+        bccwj_ranks: HashMap<(String, String), i64>,
     ) -> Highlighter {
         Highlighter {
             tokenizer,
             wordhood,
             master,
             ranks,
+            bccwj_ranks,
         }
     }
 
@@ -380,11 +386,13 @@ impl Highlighter {
     /// which is how jiten files a kana headword — answers for every reading of
     /// the spelling.
     fn rank(&self, term: &Term) -> Option<i64> {
-        let key = (term.headword.clone(), term.display_reading().to_string());
-        self.ranks
-            .get(&key)
-            .or_else(|| self.ranks.get(&(term.headword.clone(), String::new())))
-            .copied()
+        lookup_rank(&self.ranks, term)
+    }
+
+    /// The same word's rank in BCCWJ, which the reader tests beside the
+    /// reader-facing one — see [`Span::bccwj_rank`].
+    fn bccwj_rank(&self, term: &Term) -> Option<i64> {
+        lookup_rank(&self.bccwj_ranks, term)
     }
 
     /// The ledger key a spelling from outside the tokenizer stands for — an
@@ -537,6 +545,8 @@ pub struct Analyzed {
     pub lookup_count: Option<i64>,
     /// Frequency rank of the term, `None` when the list does not carry it.
     pub freq_rank: Option<i64>,
+    /// BCCWJ rank of the term, `None` when it does not carry it.
+    pub bccwj_rank: Option<i64>,
 }
 
 /// Pair each token with where it sits in the line.
@@ -576,6 +586,7 @@ fn locate(text: &str, tokens: Vec<crate::tokenize::Token>, master: &MasterWords)
             headword: term.headword.clone(),
             reading: term.reading.clone(),
             freq_rank: None,
+            bccwj_rank: None,
         };
         out.push(Candidate {
             term,
@@ -610,6 +621,7 @@ pub async fn spans(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Span> {
                 // `analyze` keeps the two apart; only the feed folds them.
                 reading: a.judged_as.unwrap_or(a.reading),
                 freq_rank: a.freq_rank,
+                bccwj_rank: a.bccwj_rank,
             })
         })
         .collect()
@@ -684,6 +696,7 @@ pub async fn analyze(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Analyzed
                 }
             };
             let freq_rank = h.rank(&c.term);
+            let bccwj_rank = h.bccwj_rank(&c.term);
             Analyzed {
                 surface: c.surface,
                 start: c.span.start,
@@ -697,9 +710,32 @@ pub async fn analyze(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Analyzed
                 encounter_count: row.map(|r| r.encounter_count),
                 lookup_count: row.map(|r| r.lookup_count),
                 freq_rank,
+                bccwj_rank,
             }
         })
         .collect()
+}
+
+fn lookup_rank(ranks: &HashMap<(String, String), i64>, term: &Term) -> Option<i64> {
+    let key = (term.headword.clone(), term.display_reading().to_string());
+    ranks
+        .get(&key)
+        .or_else(|| ranks.get(&(term.headword.clone(), String::new())))
+        .copied()
+}
+
+/// Ranks per `(headword, reading)` from one frequency dictionary, empty when it
+/// is not loaded.
+async fn ranks_from(
+    k: &Knowledge,
+    title: &str,
+    headwords: &[String],
+) -> Result<HashMap<(String, String), i64>, sqlx::Error> {
+    use crate::knowledge::dictionaries as d;
+    match d::by_title(k.pool(), title).await? {
+        Some(dict) => d::frequency_ranks(k.pool(), dict.id, headwords).await,
+        None => Ok(HashMap::new()),
+    }
 }
 
 /// One ledger row's tier, or why the word gets no mark at all.
