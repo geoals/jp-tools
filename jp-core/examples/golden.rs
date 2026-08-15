@@ -38,6 +38,11 @@ fn is_kanji_line(line: &str) -> bool {
 
 /// Deterministic sample: every nth line of the eligible ones. No RNG, so
 /// regenerating on the same corpus gives the same fixture.
+///
+/// **Only for a fixture that does not exist yet.** The step is `len / 250`, so
+/// it moves as the corpus grows and a resample would swap the 250 sentences
+/// under the snapshot — leaving a diff no one can read against the rule that
+/// was changed. Delete `corpus.txt` to draw a new sample deliberately.
 fn sample(lines: Vec<&str>) -> Vec<String> {
     let step = (lines.len() / LINES).max(1);
     lines
@@ -56,13 +61,18 @@ async fn main() {
     let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/golden");
     std::fs::create_dir_all(&out).unwrap();
 
-    let corpus = sample(
-        corpus_src
-            .lines()
-            .map(str::trim)
-            .filter(|l| is_kanji_line(l))
-            .collect(),
-    );
+    let existing = std::fs::read_to_string(out.join("corpus.txt")).unwrap_or_default();
+    let corpus: Vec<String> = if existing.trim().is_empty() {
+        sample(
+            corpus_src
+                .lines()
+                .map(str::trim)
+                .filter(|l| is_kanji_line(l))
+                .collect(),
+        )
+    } else {
+        existing.lines().map(str::to_string).collect()
+    };
     let text: String = corpus.concat();
     std::fs::write(out.join("corpus.txt"), corpus.join("\n") + "\n").unwrap();
 
