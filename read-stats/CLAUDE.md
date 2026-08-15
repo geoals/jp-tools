@@ -133,7 +133,10 @@ and a ledger row cannot disagree):
   slang against the classical negative. A katakana surface Sankoku lists and
   reads in hiragana keeps its own spelling; a katakana entry read in katakana is
   a loanword (モノ is monochrome), so モノ still folds onto もの, and サクラ →
-  桜 still folds because that is orthography and not the alphabet.
+  桜 still folds because that is orthography and not the alphabet. The other
+  direction is a word too: where the master lists **only** the hiragana, the
+  katakana spells nothing and the line means the word — ウチ is うち, コイツ is
+  こいつ. Never on a name, which is what keeps ココ a character.
 - **Two dictionary authorities, and they answer different questions.** The
   master (Sankoku) says how a word is *spelt* and is the vocabulary scale; the
   `standard` role — 明鏡, 小学館 — says only what is *one word*
@@ -429,9 +432,9 @@ Mining:
   - **The scan also offers the other kana alphabet.** アレ is a Jitendex
     redirect and Sankoku has no entry for it, so the popup opened on a
     cross-reference; the hiragana spelling of every candidate is offered
-    beside it. Not folded in the tokenizer: 23 katakana ledger rows would fold
-    onto a master hiragana headword and 424 of their 549 encounters are ココ,
-    a character in the VN — the pronoun ここ would take all of them.
+    beside it. The tokenizer folds too now — the objection was that 424 of the
+    549 encounters were ココ, a character in the VN, and the cast list answers
+    that.
   - **A candidate carries its ledger key beside its spelling**, resolved
     through the shared `Highlighter` — a dictionary headword is text from
     outside the tokenizer, and Jitendex's 素振 would otherwise become a second

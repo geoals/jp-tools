@@ -3,7 +3,7 @@
 Words noticed misparsed while reading, worked through in batches. One entry per
 word: what the pipeline does with it today, and the cause where it is known.
 
-**13 open**, each re-checked against the live pipeline on 2026-08-15. Three
+**12 open**, each re-checked against the live pipeline on 2026-08-15. Three
 further questions are about the vocabulary denominator rather than the parse and
 are kept apart from them; what has been fixed is one line each at the bottom.
 
@@ -51,35 +51,32 @@ lever that reaches them otherwise.
 
 ## Then, in value order
 
-1. **うるせー → 煩い/わずらい**, and its family. Needs the colloquial adjective
-   ending as kana arithmetic (〜あい → 〜えー: すげー, やべー, あぶねー,
-   おもしれー), which is a small mapping table over the gojūon rows. ~25
-   encounters, and 煩い is the only one wrong today because it is the only one
-   whose master spelling carries two readings. **A similarity score over
-   readings was tried and backed out** — see that entry.
-2. **The katakana fold**, and it is newly unblocked. read-stats' CLAUDE.md
-   records it as measured and rejected because "424 of their 549 encounters are
-   ココ, a character in the VN" — ココ is in `work_names` now, so that objection
-   is gone. What is left is **25 rows / 178 encounters** whose hiragana form the
-   master lists while the katakana is listed by nothing: ウチ→うち ×107,
-   アレ→あれ ×17, コイツ→こいつ ×13, ソレ, ソッチ, ソコ, ミライ, シケイ. Note
-   the fold must not touch a loanword — スマホ, ルーム, シャワー are katakana
-   rows too and are simply words.
-3. **The が swallowed into an unlisted mimetic** (the ふよふよ entry). The rule
-   is clear — が, を and へ essentially never begin a Japanese word — but it
-   fires about four times over the read corpus today, which is not enough
-   evidence. Revisit when more of 白昼夢の青写真 has been read; its script holds
-   10 sightings of ふよふよ alone.
-4. **The three denominator questions**, which are decisions rather than code.
+The two that were 1 and 2 here are done — the katakana fold and the colloquial
+adjective ending, both under *Fixed*. What is left is thin, which is the point
+of the section below it.
+
+1. **The three denominator questions**, which are decisions rather than code.
    They change the headline number the whole system reports, and until one is
    made that number has an unstated policy inside it.
+2. **The が swallowed into an unlisted mimetic** (the ふよふよ entry). The rule
+   is clear — が, を and へ essentially never begin a Japanese word — but it
+   fires twice over the read corpus today, which is not enough evidence.
+   Revisit when more of 白昼夢の青写真 has been read; its script holds 10
+   sightings of ふよふよ alone.
+3. **うっさい**, the last of the うるさい family. It drops the る rather than
+   holding the vowel, so the kana arithmetic that fixed うるせー/うるせえ/うるせぇ
+   cannot reach it and the master lists only うるさい. 3 encounters.
+4. **Everything else in the open list, at one or two encounters each.** 一日,
+   塵, 砂粒, 何時, かたや, いやがおうにも, きわまり, お花摘み, 満足げ — the
+   corpus dump has 1–4 of each. They are worth doing as a batch, on a day when
+   the tools are already loaded, and not one at a time.
 
 ## Where the value is *not*
 
 **The parser is at diminishing returns and this is measured, not felt.** The
 name batch moved ~9,000 fabricated occurrences and the noise rule 338; *every*
 remaining open defect is worth tens — 牛乳粥 was 47, the spelling class ~60,
-うるせー 22, かたや and いやがおうにも 1 each. The last two uniform draws put it
+the うるさい family 17, かたや and いやがおうにも 1 each. The last two uniform draws put it
 at 59 of 60 right by token and 51 of 60 clean by type, and **segmentation and
 identity errors did not appear in either**. Two things outside this file are
 worth more than the next parse defect: the lookup-tax study (4,138 lookups over
@@ -143,20 +140,6 @@ One thing to note when it is fixed, because it looks like a second defect and is
 not: 何時/なんどき paints `known`, borrowed from the known 何時/いつ row by the
 judged-under-another-reading rule. That rule is right; it was applied to a key
 that should never have been built.
-
-## うるせー — read 煩い/わずらい
-
-The colloquial うるさい is identified as the noun 煩い. 22 encounters on that row.
-
-**One fix was tried and backed out**: preferring whichever listed reading shares
-an onset with the kana surface picks うるさい here, and over the corpus it also
-turns コイツ into 此奴/こやつ, きわまり into 極まり/きまり, まじか into 間近 and
-いーっぱい into 一杯. A reading is too weak a signal to arbitrate a spelling on.
-
-What the family needs is the colloquial ending itself — 〜あい → 〜えー, which is
-kana arithmetic (すげー, やべー, あぶねー, おもしれー) and not a similarity
-score. Only 煩い is wrong today, because it is the only one of them whose master
-spelling carries two readings.
 
 ## 一日 — read ついたち where the line means いちにち
 
@@ -544,15 +527,19 @@ Three things the list needed before it could be trusted:
 | この家 read このや | `NEVER_JOIN` | 3, and 48 in the script |
 | 下に出る built out of 下 + に + 出る | `NEVER_JOIN` | 0 read, 6 in the script |
 | 宣戦布告 split by the gate | a Mode C form commoner than all its parts is kept | 3 |
-| うるせー read わずらい | **tried and backed out** — see that entry | — |
+| うるせー read わずらい | **tried and backed out** — see *What was refused*; fixed later by kana arithmetic | — |
 
 ### What was refused
 
 Three rules that looked right and were measured wrong. Recorded so they are not
 tried again.
 
-- **Arbitrating a spelling by how much its reading resembles the surface** —
-  see the うるせー entry.
+- **Arbitrating a spelling by how much its reading resembles the surface.**
+  Preferring whichever listed reading shares an onset with the kana surface
+  picks うるさい for うるせー, and over the corpus it also turns コイツ into
+  此奴/こやつ, きわまり into 極まり/きまり, まじか into 間近 and いーっぱい into
+  一杯. A reading is too weak a signal to arbitrate a spelling on — what the
+  うるさい family needed was the ending itself, as arithmetic.
 - **Taking the master's single reading whenever Sudachi's is unlisted.** The
   first form of the 深い fix. It rewrote 所為/せい to しょい and 出入/でいり to
   しゅつにゅう — spellings the master merely reads some other way, which are
@@ -603,6 +590,21 @@ One line each; the argument that settled it is in the code, next to the rule.
   over the corpus, all one word.
 - **36 counted as a word, 寝よう cut to 寝, 頂 broken out of 絶頂** — the three
   ordinary parse errors from the random-sample audit, all gone by 2026-08-15.
+- **ウチ, アレ, コイツ keyed on themselves** — the master lists only the
+  hiragana, so a katakana line opened a second row beside うち, あれ and こいつ.
+  The fold is the last candidate on the identity ladder, so it can only win
+  where nothing the text wrote is listed: スマホ and シャワー are katakana
+  headwords, ザル and マジ match at the alphabet rung, and ハエ folds to はえ,
+  which is nothing. 187 tokens, 25 spellings — including two identity fixes,
+  アイツ off 彼奴/きゃつ and アンタ off 貴方/あなた. **It asks the cast list
+  itself**: the name gate vetoes a cast name common enough to be a word and it
+  asks the *identity*, so folding first put ココ's 421 sightings on the pronoun.
+- **うるせー read 煩い/わずらい** — 〜あい and 〜おい contract to 〜えー, and
+  Sudachi reads すげえ, くせえ and あぶねー right; 煩い alone carries a second
+  reading. Kana arithmetic offering only a reading the master already lists for
+  that spelling, and only onto a kanji spelling, since a kana headword matches
+  on the headword alone and へえ would have taken はい. 17 tokens over three
+  spellings of the held vowel — ー, え and the commonest, small ぇ.
 - **なんてひどい → 何 + 手酷い, またいちから → ま + たいち + から, 牛乳粥 → 牛 +
   乳粥** — the boundary family, and the one class no rule over the finished
   tokens could reach: recomposition merges adjacent tokens and never moves a
