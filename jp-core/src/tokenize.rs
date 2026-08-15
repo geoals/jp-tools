@@ -2005,12 +2005,15 @@ fn unvoices_to(voiced: &str, plain: &str) -> bool {
 /// Both rows, because the contraction loses which one it came from — え is the
 /// same whether あ or お was there. The master decides which of the two is a
 /// word; see the ladder's colloquial rung, the only caller.
+///
+/// All three spellings of the held vowel. うるせー, うるせえ and うるせぇ are
+/// one word written three ways, and the small ぇ is the commonest of them.
 fn uncontracted(surface: &str) -> Vec<String> {
     const E: &str = "えけせてねへめれげぜでべぺ";
     const A: &str = "あかさたなはまらがざだばぱ";
     const O: &str = "おこそとのほもろごぞどぼぽ";
     let mut chars: Vec<char> = surface.chars().collect();
-    if !matches!(chars.last(), Some('ー' | 'え')) {
+    if !matches!(chars.last(), Some('ー' | 'え' | 'ぇ')) {
         return Vec::new();
     }
     chars.pop();
