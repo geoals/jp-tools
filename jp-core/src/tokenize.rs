@@ -1769,6 +1769,106 @@ const NEVER_JOIN: [&str; 18] = [
                 // all 30 sightings are 襲われたらしい, 死んだらしい.
 ];
 
+/// Strings Sudachi must not analyse across the edges of.
+///
+/// The lattice picks the cheapest path over the whole line, and where a word it
+/// lacks sits next to one it has, the cheapest path can run straight through
+/// the boundary between them: 「なんてひどい怪我」 comes back as なん + てひどい,
+/// and 手酷い is a real Sankoku headword reading てひどい, so every rule after
+/// the segmentation confirms it. 「またいちから」 is ま + たいち + から the same
+/// way, and the reading fallback then names 対置, a rank-151,785 word, off a
+/// token the gate had already refused.
+///
+/// **This is the one class no rule over the finished tokens can reach.**
+/// Recomposition merges adjacent tokens and never moves a boundary, and by the
+/// time the identity ladder sees たいち the evidence that it was never a word
+/// is gone.
+///
+/// **A named list, not a rule** — the same shape as [`NEVER_JOIN`] and for the
+/// same reason. Matching every master headword against the raw line was
+/// measured and rejected: at a four-character floor it freezes じゃない,
+/// しまった and どうして into single tokens, because longest-match cannot tell a
+/// word from a construction. Each entry here is one reviewed judgement about
+/// one string, and cutting at a named string cannot cost anything not named.
+///
+/// The cut adds and removes nothing, so every surface is still an in-order
+/// substring of the caller's line and [`crate::highlight`]'s offsets still
+/// recover.
+const CUT_BEFORE_AND_AFTER: [&str; 3] = [
+    "なんて", // なん + てひどい, and 手酷い is listed
+    "また",   // ま + たいち + から
+    "牛乳",   // 牛 + 乳粥, where the next clause of the same line gets 牛乳 right
+];
+
+/// The first [`CUT_BEFORE_AND_AFTER`] string a token boundary falls *inside* of.
+///
+/// Inside, not at the edges: また lies wholly within the single token たまたま
+/// and within 跨いで, and cutting those apart is how a rule meant for
+/// またいちから destroys three ordinary words. A boundary strictly inside the
+/// string is the thing that cannot be right — なん | てひどい, 牛 | 乳粥.
+fn straddled(text: &str, tokens: &[Token]) -> Option<String> {
+    let mut boundaries = std::collections::HashSet::new();
+    let mut at = 0usize;
+    for t in tokens {
+        boundaries.insert(at);
+        at += t.surface.len();
+    }
+    for word in CUT_BEFORE_AND_AFTER {
+        let mut from = 0;
+        while let Some(rel) = text[from..].find(word) {
+            let start = from + rel;
+            // **Beginning where a token begins**, and running past its end.
+            // That is the defect: Sudachi started the word in the right place
+            // and then took the cheapest path straight through its far edge.
+            // Without it, また crossing the まま | ただ of 「縛られたままただ」
+            // looks the same as the また of またいちから, and is a coincidence.
+            let crosses = ((start + 1)..(start + word.len())).any(|b| boundaries.contains(&b));
+            if crosses && boundaries.contains(&start) {
+                return Some(word.to_string());
+            }
+            from = start + word.len();
+        }
+    }
+    None
+}
+
+/// Split the line so that no [`CUT_BEFORE_AND_AFTER`] string straddles a piece.
+///
+/// Longest first at each position, so a list holding both a string and its
+/// prefix cuts at the longer one.
+fn cut_at_boundaries(text: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let (mut start, mut i) = (0, 0);
+    while i < text.len() {
+        if !text.is_char_boundary(i) {
+            i += 1;
+            continue;
+        }
+        let hit = CUT_BEFORE_AND_AFTER
+            .iter()
+            .filter(|w| text[i..].starts_with(**w))
+            .max_by_key(|w| w.len());
+        match hit {
+            Some(word) => {
+                if start < i {
+                    out.push(&text[start..i]);
+                }
+                out.push(&text[i..i + word.len()]);
+                i += word.len();
+                start = i;
+            }
+            None => i += 1,
+        }
+    }
+    if start < text.len() {
+        out.push(&text[start..]);
+    }
+    if out.is_empty() {
+        out.push(text);
+    }
+    out
+}
+
 /// Remove the emphatic っ — the one written for a hard stop at the end of an
 /// utterance, not to double a consonant: 早くっ, ですっ, ごめんなさいっ.
 ///
@@ -2023,7 +2123,40 @@ impl SudachiTokenizer {
             let (from, to) = (text.to_string(), stripped.clone());
             trace.push(|| Step::Rewrite { from, to });
         }
-        let text = &stripped;
+
+        let mut tokens = Vec::new();
+        self.analyse(&stripped, &mut tokens, trace)?;
+        // **Only where the boundary actually came out wrong.** Cutting the line
+        // costs the lattice its context, and the lattice is usually right:
+        // handing 「学校なんて通ってんだ」 over in pieces turned 通う into 通る,
+        // 「なんて感じちゃいない」 lost 感じる, and over the corpus that was
+        // fifty lines degraded against three repaired. Asked of the analysis
+        // rather than of the string, so the pass is inert on every line Sudachi
+        // already segments right.
+        if let Some(split) = straddled(&stripped, &tokens) {
+            trace.push(|| Step::Split {
+                surface: split.clone(),
+                mode: "boundary",
+                parts: cut_at_boundaries(&stripped)
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+            });
+            tokens.clear();
+            for part in cut_at_boundaries(&stripped) {
+                self.analyse(part, &mut tokens, trace)?;
+            }
+        }
+        Ok(self.finish(tokens, trace))
+    }
+
+    /// One stretch of the line, through Sudachi and the C→B→A pass.
+    fn analyse(
+        &self,
+        text: &str,
+        tokens: &mut Vec<Token>,
+        trace: &mut Trace,
+    ) -> Result<(), TokenizeError> {
         let tokenizer = StatelessTokenizer::new(&self.dict);
 
         if self.mined.is_empty() && self.segments.is_empty() {
@@ -2032,10 +2165,8 @@ impl SudachiTokenizer {
                 .tokenize(text, Mode::B, false)
                 .map_err(|e| TokenizeError::Failed(e.to_string()))?;
             record_segmentation("B", &morphemes, trace);
-            let plain: Vec<Token> = morphemes.iter().map(|m| self.to_token(&m, trace)).collect();
-            // Still recomposed: having no wordhood gate is a reason to skip it,
-            // not a reason to shred every compound the master lists.
-            return Ok(self.finish(plain, trace));
+            tokens.extend(morphemes.iter().map(|m| self.to_token(&m, trace)));
+            return Ok(());
         }
         // Dictionary-validated splitting: C → B → A.
         // Keep tokens that are words in their own right. Split unknown
@@ -2049,7 +2180,6 @@ impl SudachiTokenizer {
         let err = |e: sudachi::error::SudachiError| TokenizeError::Failed(e.to_string());
         let mut buf_b = morphemes.empty_clone();
         let mut buf_a = morphemes.empty_clone();
-        let mut tokens = Vec::new();
 
         for m in morphemes.iter() {
             if self.keeps_whole(&m, trace) {
@@ -2115,8 +2245,7 @@ impl SudachiTokenizer {
                 }
             }
         }
-
-        Ok(self.finish(tokens, trace))
+        Ok(())
     }
 
     /// The three passes over the finished token stream, in the order they have

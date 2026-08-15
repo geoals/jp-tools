@@ -875,3 +875,51 @@ fn a_compound_commoner_than_its_halves_is_not_split() {
         .collect();
     assert!(surfaces.contains(&"宣戦布告".to_string()), "{surfaces:?}");
 }
+
+/// The lattice picks the cheapest path over the whole line, and where a word
+/// Sudachi lacks sits next to one it has, that path can run straight through
+/// the boundary: なんてひどい comes back as なん + てひどい, and 手酷い is a real
+/// Sankoku headword reading てひどい, so every rule after the segmentation
+/// confirms it.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_word_the_lattice_ran_past_the_end_of_is_cut_back() {
+    let (tk, _) = setup();
+    for (line, want, gone) in [
+        ("なんてひどい怪我なんだ", "なんて", "てひどい"),
+        ("またいちからやり直しだ", "また", "たいち"),
+        ("イギリスには牛乳粥があった", "牛乳", "乳粥"),
+    ] {
+        let surfaces: Vec<String> = tokens_of(&tk, line)
+            .into_iter()
+            .map(|t| t.surface)
+            .collect();
+        assert!(surfaces.contains(&want.to_string()), "{line}: {surfaces:?}");
+        assert!(
+            !surfaces.contains(&gone.to_string()),
+            "{line}: {surfaces:?}"
+        );
+    }
+}
+
+/// And nowhere else. Cutting the line costs the lattice its context, so the
+/// pass asks the *analysis* whether the boundary came out wrong rather than
+/// asking the string whether it is present — また lies wholly inside たまたま
+/// and 跨いで, and crosses the まま | ただ of 「縛られたままただ」 by accident.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_word_that_merely_contains_one_is_left_alone() {
+    let (tk, _) = setup();
+    for (line, want) in [
+        ("本当にたまたまだったな", "たまたま"),
+        ("三つの季節をまたいで作った", "またい"),
+        ("後ろ手に縛られたままただ待った", "まま"),
+        ("学校なんて通ってんだ", "通っ"),
+    ] {
+        let surfaces: Vec<String> = tokens_of(&tk, line)
+            .into_iter()
+            .map(|t| t.surface)
+            .collect();
+        assert!(surfaces.contains(&want.to_string()), "{line}: {surfaces:?}");
+    }
+}

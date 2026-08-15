@@ -3,7 +3,7 @@
 Words noticed misparsed while reading, worked through in batches. One entry per
 word: what the pipeline does with it today, and the cause where it is known.
 
-**15 open**, listed below and each one re-checked against the live pipeline on
+**13 open**, listed below and each re-checked against the live pipeline on
 2026-08-15. Three further questions are about the vocabulary denominator rather
 than the parse and are kept apart from them; what has been fixed is one line
 each at the bottom.
@@ -19,40 +19,24 @@ curl -s localhost:3200/api/tokenize -H 'content-type: application/json' \
 
 # Open
 
-## なんてひどい — the boundary is in the wrong place, and 手酷い is invented
+## ロボットがふよふよと — the particle is swallowed into an unlisted mimetic
 
-Sudachi Mode C returns `なん` + `てひどい`, not `なんて` + `ひどい`. Everything
-downstream then confirms it: 手酷い is a real Sankoku headword reading てひどい,
-so the gate keeps it and identity matches exactly. The line reads as 何 +
-手酷い + 怪我.
+`ロボット` + **`がふ`** + `よ` + `ふ` + `よ` + `と`. Sudachi has no ふよふよ, so
+the cheapest path over 「ロボットがふよふよと」 takes the subject particle が into
+a nonsense 副詞 and shreds the mimetic. Two false rows come out of it: がふ as an
+adverb, and よ resolved to the adjective よい.
 
-Worse than a `non-word`: a false positive on a rare word — freq_rank 27,753,
-entered the ledger as `new` on one encounter — so the defect writes an assertion
-rather than failing to make one.
+**No dictionary lists ふよふよ at all** — not Sankoku, not 明鏡, not Jitendex —
+so even a perfect segmentation leaves it a `non-word`. What is lost is the が,
+and the two assertions.
 
-The join pass cannot help: it merges adjacent tokens and never moves a boundary.
-なんて and ひどい are both master headwords, so the fix is either a
-re-segmentation check when an alternative split has better dictionary support,
-or handling なんて in the orthographic rewrite before Sudachi sees it.
-
-## またいちから — the same boundary defect, and a rank-151,785 false positive
-
-Sudachi Mode C returns `ま` + `たいち` + `から`, not `また` + `いち` + `から`.
-The gate drops たいち, but identity then matches it *by reading only* and the
-line acquires 対置 (freq_rank 151,785).
-
-The worst of the boundary family: the assertion is written by the reading-only
-fallback on a token the gate had already refused. The two-mora guard does not
-reach it — 対置 is three morae — and a frequency floor wide enough to catch it
-also refuses そっぽ/外方 at rank 209,173, which is right. また before Sudachi, in
-the orthographic rewrite, is the same fix なんて wants.
-
-## 牛乳粥 — Mode C's own boundary
-
-`牛` + `乳粥`. 牛 is counted, 乳粥 is dropped `non-word`, and 牛乳 in the next
-clause of the same line is right. Third of the boundary family and the only one
-with no kana in it; nothing after Sudachi can move it. 47 occurrences in one
-script.
+Same family as the three above, and the named list cannot take it: mimetics are
+coined freely and no list will hold them. The rule that would is one keyed on
+the *particle* rather than on the word — が, を and へ essentially never begin a
+Japanese word, so an unlisted token that starts at a token boundary and begins
+with one of them has swallowed it. Measured over the read corpus that fires
+about four times (ががががが, a scream), which is too little evidence to build
+on; 10 sightings of ふよふよ in one script is the case for revisiting it.
 
 ## 何時 — the clock reading なんじ is never produced, and the まで/でも forms vanish
 
@@ -530,3 +514,10 @@ One line each; the argument that settled it is in the code, next to the rule.
   over the corpus, all one word.
 - **36 counted as a word, 寝よう cut to 寝, 頂 broken out of 絶頂** — the three
   ordinary parse errors from the random-sample audit, all gone by 2026-08-15.
+- **なんてひどい → 何 + 手酷い, またいちから → ま + たいち + から, 牛乳粥 → 牛 +
+  乳粥** — the boundary family, and the one class no rule over the finished
+  tokens could reach: recomposition merges adjacent tokens and never moves a
+  boundary. `CUT_BEFORE_AND_AFTER` is a named list of strings handed to Sudachi
+  on their own, applied **only where the analysis shows the boundary actually
+  came out wrong** — 14 lines over the corpus, against 59 when the cut was
+  unconditional. See the entry below for why it is a list and not a rule.
