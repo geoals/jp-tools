@@ -759,8 +759,29 @@ identity rules could be judged on their own.
 Against the script, where the cast actually lives: **92 terms disappeared
 entirely (3,644 occurrences) and 42 shrank (5,230 more)** — 凪/なぎ from 2,385 to
 6, 世/よ from 2,412 to 42, 凛 1,442 → 0, 李/すもも 682 → 0, ロブ 118 → 0,
-凛と 72 → 0, 鯱 70 → 0. Against the read corpus it is 388 lines and nothing but
-names.
+凛と 72 → 0, 鯱 70 → 0.
+
+All five works read have their cast now, and against the 32,353 lines already
+read that is **3,552 lines, every changed token a name or a fragment of one**:
+ナノカ ×461, ココ ×421, ミリア ×391, ノア ×324, メルル ×289, ゴクチョー ×220 —
+the "about 1,500 tokens" read-stats' CLAUDE.md had listed as unfixable — and
+皆守 as 皆 + 守 across 185 lines of 素晴らしき日々. `POST /api/vocab/rebuild`
+pruned 109 ledger rows and carried 7 judgements across.
+
+Three things reading that diff caught, none of them visible from one work:
+
+- **A romanized alias is prose, not a name.** VNDB gives "Prison guard", "Old
+  man", "Magical Girl Riruru"; splitting those on their spaces made guard, man,
+  Old and Girl into people. Only a Japanese form is split now, and the tokenizer
+  is handed nothing without Japanese in it.
+- **Some cast names really are the word, past any threshold.** 看守 is 24,066th
+  in fiction — rare enough that a name would be believable — and means a prison
+  guard 230 times in a VN set in a prison. `jp-script names <work> drop` records
+  that judgement under its own source.
+- **An empty surface let a run spell a name it did not contain.** 皆守 came out
+  read ．みなまもる off a stray 「…」, since the join concatenated that token's
+  reading in. `join_run` already refused an empty surface; `join_names` does
+  now too.
 
 Three things the list needed before it could be trusted:
 
