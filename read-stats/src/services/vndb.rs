@@ -75,8 +75,14 @@ pub async fn find_vn_id(client: &reqwest::Client, title: &str) -> Result<Option<
 /// オリーヴ throughout.
 ///
 /// Romanized names are kept only where a character has no Japanese spelling,
-/// since a Japanese script will not use them and an ASCII entry cannot collide
-/// with a Japanese word.
+/// since a Japanese script will not use them and a whole ASCII entry cannot
+/// collide with a Japanese word.
+///
+/// **Whole is the operative word, and only a Japanese form is split.** VNDB's
+/// aliases are prose as often as names — "Prison guard", "Old man", "Magical
+/// Girl Riruru" — and splitting those on their spaces taught the tokenizer that
+/// guard, man, Old and Girl are somebody. A romanized form is taken as it
+/// stands.
 pub async fn fetch_cast(client: &reqwest::Client, vndb_id: &str) -> Result<Vec<String>, AppError> {
     let body = serde_json::json!({
         "filters": ["vn", "=", ["id", "=", vndb_id]],
@@ -101,8 +107,10 @@ pub async fn fetch_cast(client: &reqwest::Client, vndb_id: &str) -> Result<Vec<S
             None => forms.push(c.name),
         }
         for form in forms {
-            for part in form.split_whitespace() {
-                names.push(part.to_string());
+            if form.chars().any(is_japanese_char) {
+                for part in form.split_whitespace() {
+                    names.push(part.to_string());
+                }
             }
             let whole: String = form.split_whitespace().collect();
             if !whole.is_empty() {
@@ -113,6 +121,11 @@ pub async fn fetch_cast(client: &reqwest::Client, vndb_id: &str) -> Result<Vec<S
     names.sort();
     names.dedup();
     Ok(names)
+}
+
+/// Kana or kanji — what makes a form a name a Japanese script would write.
+fn is_japanese_char(c: char) -> bool {
+    jp_core::text::kana::is_all_kana(&c.to_string()) || jp_core::text::kanji::is_kanji(c)
 }
 
 /// Accept "v3144", "3144", or a vndb.org URL; return the canonical "v3144".

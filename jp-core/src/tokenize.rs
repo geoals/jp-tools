@@ -773,6 +773,12 @@ impl SudachiTokenizer {
             let longest = MAX_COMPOUND_PARTS.min(tokens.len() - i);
             let joined = (2..=longest).rev().find_map(|n| {
                 let run = &tokens[i..i + n];
+                // An empty surface would let a run spell a name it does not
+                // contain, and carry that token's reading into it: 皆守 came
+                // out read ．みなまもる off a stray 「…」.
+                if run.iter().any(|t| t.surface.is_empty()) {
+                    return None;
+                }
                 let surface: String = run.iter().map(|t| t.surface.as_str()).collect();
                 self.cast_name(&surface, &surface).then(|| {
                     let reading: String = run.iter().map(|t| t.reading.as_str()).collect();

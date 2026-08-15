@@ -188,8 +188,18 @@ and a ledger row cannot disagree):
 
   **A cast name common enough to be an everyday word is the word.** VNDB lists 母
   as a character; it is rank 872 in fiction and the work writes it to mean a
-  mother on nearly every page. `NAME_VETO_RANK` is 5,000, and nothing else in an
-  imported cast has come near it — 凛 is 9,368th and 親方 19,076th.
+  mother on nearly every page. `NAME_VETO_RANK` is 5,000, which also vetoes 唯,
+  おじさん, 鏡, 南 and 翼; 凛 at 9,368 and 親方 at 19,076 are names. Where the
+  frequency cannot decide — 看守 is 24,066th and is a prison guard 230 times in
+  a VN set in a prison — `jp-script names <work> drop` records the judgement,
+  under its own source so a refetch cannot undo it.
+
+  **VNDB's aliases are prose as often as names.** "Prison guard", "Old man",
+  "Magical Girl Riruru": splitting a romanized form on its spaces made guard,
+  man, Old and Girl into people. `fetch_cast` splits only a Japanese form, and
+  `work_names::all` hands the tokenizer nothing that has no Japanese in it —
+  a romanized name is not what a Japanese script writes, and can only collide
+  with English the text really contains.
 
   What is left is the mirror error, a common noun SudachiDict tags 固有名詞.
   `ordinary_headword`'s mixed-script rule catches it wherever the term carries
@@ -305,10 +315,9 @@ already does, which is why the length cap was the right thing to widen instead.
   spelling exactly one master headword, and they are て + いく → テイク,
   ない + ん → ナイン, は + ない → 派内, いる + か → 海豚. Five tokens of gain
   against three thousand ways to be wrong.
-- **皆守 → 皆 + 守**, 191 lines — and now fixable rather than known: it is the
-  case `work_names` exists for, and 魔法少女ノ魔女裁判's cast has simply not been
-  imported. `jp-script names <work>` then `POST /api/vocab/rebuild` re-derives
-  what was counted.
+- **皆守 → 皆 + 守**, 191 lines of 素晴らしき日々 — and now fixable rather than
+  known: it is the case `work_names` exists for. `jp-script names <work>` then
+  `POST /api/vocab/rebuild` re-derives what was counted.
 - **擦る is する.** Sudachi gives the 五段 verb both the dictionary form and the
   normalised form する, identical to the irregular. Only the conjugation class
   separates them, and using it means narrowing the kana exemption in

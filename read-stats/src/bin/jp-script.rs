@@ -32,6 +32,8 @@ usage:
                                         a minor character, a place. Kept
                                         separately, so a refetch cannot drop
                                         them
+  jp-script names <work> drop <name>... a name VNDB lists that the text uses
+                                        as a word (看守), kept out for good
   jp-script names <work> list           what the tokenizer will be told
   jp-script show <work> [limit]         coverage, and the unknown words it
                                         leans on hardest (default limit 30)
@@ -68,7 +70,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 return Err(format!("names needs a work\n\n{USAGE}").into());
             };
             match args.get(2).map(String::as_str) {
-                Some("add") => add_names(&knowledge, work, &args[3..]).await,
+                Some("add") => write_names(&knowledge, work, "manual", &args[3..]).await,
+                Some("drop") => {
+                    write_names(&knowledge, work, work_names::EXCLUDED, &args[3..]).await
+                }
                 Some("list") => list_names(&knowledge, work).await,
                 vndb_id => names(&knowledge, work, vndb_id).await,
             }
@@ -139,24 +144,26 @@ async fn names(
     Ok(())
 }
 
-/// Add names by hand, under their own source so a VNDB refetch keeps them.
+/// Add to one of the two hand-kept sources, so a VNDB refetch cannot undo it.
 ///
-/// VNDB lists the cast a player would name — it has ウィリアム・シェイクスピア
-/// and not the ウィル everyone in the script calls him, and no walk-on part at
-/// all. Those are exactly the names the tokenizer splits.
-async fn add_names(
+/// `manual` is what VNDB does not have — it lists ウィリアム・シェイクスピア and
+/// not the ウィル everyone in the script calls him, and no walk-on part at all.
+/// `excluded` is the reverse: a name it does list that the text uses as a word.
+async fn write_names(
     knowledge: &Knowledge,
     work: &str,
+    source: &str,
     names: &[String],
 ) -> Result<(), Box<dyn std::error::Error>> {
     if names.is_empty() {
-        return Err(format!("add needs at least one name\n\n{USAGE}").into());
+        return Err(format!("{source} needs at least one name\n\n{USAGE}").into());
     }
     // `replace` writes one source's whole set, so read what is there, add to
     // it, and put it back.
     let mut kept: Vec<String> =
-        sqlx::query_scalar("SELECT name FROM work_names WHERE work = ? AND source = 'manual'")
+        sqlx::query_scalar("SELECT name FROM work_names WHERE work = ? AND source = ?")
             .bind(work)
+            .bind(source)
             .fetch_all(knowledge.pool())
             .await?;
     for name in names {
@@ -164,8 +171,8 @@ async fn add_names(
             kept.push(name.clone());
         }
     }
-    work_names::replace(knowledge, work, "manual", &kept).await?;
-    println!("{work}: {} names added by hand", kept.len());
+    work_names::replace(knowledge, work, source, &kept).await?;
+    println!("{work}: {} names under {source}", kept.len());
     list_names(knowledge, work).await
 }
 

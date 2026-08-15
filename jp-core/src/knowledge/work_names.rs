@@ -53,12 +53,25 @@ pub async fn replace(
 }
 
 pub async fn of_work(k: &Knowledge, work: &str) -> Result<Vec<String>, sqlx::Error> {
-    let rows = sqlx::query("SELECT name FROM work_names WHERE work = ? ORDER BY LENGTH(name) DESC")
-        .bind(work)
-        .fetch_all(k.pool())
-        .await?;
+    let rows = sqlx::query(
+        "SELECT name FROM work_names WHERE work = ? AND source <> ? \
+         ORDER BY LENGTH(name) DESC",
+    )
+    .bind(work)
+    .bind(EXCLUDED)
+    .fetch_all(k.pool())
+    .await?;
     Ok(rows.iter().map(|r| r.get("name")).collect())
 }
+
+/// The source a dropped name is filed under.
+///
+/// VNDB credits a character as 看守 and the script says 看守 to mean a prison
+/// guard, 230 times. The frequency veto cannot reach it — the word is 24,066th
+/// in fiction, which is rare enough that a rarer name would be believable — so
+/// the judgement has to be recorded. A row rather than a delete, because a
+/// refetch rewrites the whole `vndb` source and would put it straight back.
+pub const EXCLUDED: &str = "excluded";
 
 /// Every work's names at once, for the tokenizer.
 ///
@@ -69,12 +82,24 @@ pub async fn of_work(k: &Knowledge, work: &str) -> Result<Vec<String>, sqlx::Err
 /// work whose text meant the ordinary word is one term, against 2,385
 /// fabricated sightings from splitting it.
 pub async fn all(k: &Knowledge) -> Result<Vec<String>, sqlx::Error> {
-    let rows = sqlx::query("SELECT DISTINCT name FROM work_names")
-        .fetch_all(k.pool())
-        .await?;
+    let rows = sqlx::query(
+        "SELECT DISTINCT name FROM work_names WHERE name NOT IN \
+           (SELECT name FROM work_names WHERE source = ?)",
+    )
+    .bind(EXCLUDED)
+    .fetch_all(k.pool())
+    .await?;
     let mut names: HashSet<String> = HashSet::new();
     for row in &rows {
         let name: String = row.get("name");
+        // A romanized name is not what a Japanese script writes, and VNDB's
+        // aliases are prose as often as names — Master, Savior, Prisonguard.
+        // Kept in the table, since a refetch diffs against what VNDB said;
+        // never handed to the tokenizer, where they could only collide with
+        // English the text actually contains.
+        if !name.chars().any(is_japanese) {
+            continue;
+        }
         names.extend(parts(&name));
         names.insert(name);
     }
@@ -96,4 +121,9 @@ fn parts(name: &str) -> impl Iterator<Item = String> {
         .map(str::to_string)
         .collect::<Vec<_>>()
         .into_iter()
+}
+
+/// Kana or kanji — what makes a name one a Japanese script would write.
+fn is_japanese(c: char) -> bool {
+    crate::text::kana::is_all_kana(&c.to_string()) || crate::text::kanji::is_kanji(c)
 }
