@@ -3,7 +3,7 @@
 Words noticed misparsed while reading, worked through in batches. One entry per
 word: what the pipeline does with it today, and the cause where it is known.
 
-**19 open**, each checked against the live pipeline on 2026-08-15. Three
+**21 open**, each checked against the live pipeline on 2026-08-15. Three
 further questions are about the vocabulary denominator rather than the parse and
 are kept apart from them; what has been fixed is one line each at the bottom.
 
@@ -11,10 +11,10 @@ are kept apart from them; what has been fixed is one line each at the bottom.
 so it is not measured twice, and names the one change that is waiting on a
 decision rather than on work.
 
-The seven newest entries came from auditing the pipeline two ways in one pass —
-every join it made, grouped by what was built, and twenty random lines read as
-sentences. Both are worth repeating; see *Where the value is not* for why the
-earlier draws missed the largest class in the list.
+The nine newest entries came from auditing the pipeline two ways — every join
+it made, grouped by what was built, and 160 uniform lines read as *sentences*
+rather than as tokens. Both are worth repeating; see *Where the value is not*
+for why the earlier draws missed the largest class in the list.
 
 Check one with `#tokenize`, or:
 
@@ -59,25 +59,36 @@ lever that reaches them otherwise.
 The two that were 1 and 2 here are done — the katakana fold and the colloquial
 adjective ending, both under *Fixed*.
 
-1. **The grammar points built out of the words that spell them** — ところで,
-   そこで, すると, and ものの behind them. **~161 wrong tokens over three
-   strings**, which is an order of magnitude more than anything else left, and
-   すると damages the verb it takes the と from. The rule that fits two of the
-   three is *clause-initial*, not a `NEVER_JOIN` entry; see that section.
-   `examples/joined.rs` lists every join the corpus made, and is how the next
-   one is found.
-2. **The three denominator questions**, which are decisions rather than code.
+1. **The join's fences, both directions at once, on one signal.** They are the
+   same defect seen from two sides and the same test settles both — whether the
+   run starts a clause.
+   - **It fires mid-clause where the sentence had the plain words**: ところで,
+     すると, それで, 中には, ちゃんと, 手を入れる. ~161 tokens, and すると
+     destroys the verb it takes the と from.
+   - **It is refused clause-initially where the sentence had the conjunction**,
+     because a run must open on a content word: でも **654**, だが **119**.
+     ~773 tokens, never built once over the whole corpus.
+
+   Build the clause-initial signal first and measure both against it.
+   `examples/joined.rs` lists every join the corpus made; the refusals are found
+   by looking for adjacent pairs that spell a listed word and never joined.
+2. **The kanji swap** — 兄妹 keyed on 兄弟, 傍 on 側, 超え on 越える, なれる on
+   慣れる, すま on 住む, 行って on 行く where the line meant 行う. Ten in 160
+   lines, each a wrong word rather than a spelling choice, and the popup opens
+   on it. No single rule covers them; two lemmas sharing a surface is the
+   commonest shape.
+3. **The three denominator questions**, which are decisions rather than code.
    They change the headline number the whole system reports, and until one is
    made that number has an unstated policy inside it.
-3. **The が swallowed into an unlisted mimetic** (the ふよふよ entry). The rule
+4. **The が swallowed into an unlisted mimetic** (the ふよふよ entry). The rule
    is clear — が, を and へ essentially never begin a Japanese word — but it
    fires twice over the read corpus today, which is not enough evidence.
    Revisit when more of 白昼夢の青写真 has been read; its script holds 10
    sightings of ふよふよ alone.
-4. **うっさい**, the last of the うるさい family. It drops the る rather than
+5. **うっさい**, the last of the うるさい family. It drops the る rather than
    holding the vowel, so the kana arithmetic that fixed うるせー/うるせえ/うるせぇ
    cannot reach it and the master lists only うるさい. 3 encounters.
-5. **Everything else in the open list, at one or two encounters each.** 一日,
+6. **Everything else in the open list, at one or two encounters each.** 一日,
    塵, 砂粒, 何時, かたや, いやがおうにも, きわまり, お花摘み, 満足げ — the
    corpus dump has 1–4 of each. They are worth doing as a batch, on a day when
    the tools are already loaded, and not one at a time.
@@ -95,9 +106,14 @@ worth ones and tens — 牛乳粥 was 47, the spelling class ~60, the うるさ�
 keeping.** Judging a token against its line asks "is this word right", and a
 wrongly-built ところで *is* a word — it is the wrong one for that sentence, and
 it reads as fine unless the line is read as a sentence rather than as a bag of
-tokens. Sampling the joins themselves, grouped by what was built and shown with
-the lines they were built on, found ~161 wrong tokens in one pass.
-`examples/joined.rs` is that pass.
+tokens. A token draw is also weighted the wrong way: half of it is だ, た, は
+and を, which are never wrong, so 1-in-60 by token is 1-in-3 by *line*.
+
+Two passes found everything above, and both are worth repeating. Sampling the
+joins themselves, grouped by what was built and shown with the lines they were
+built on (`examples/joined.rs`). And reading 160 uniform lines as sentences,
+which put the rate at ~70 of 2,499 tokens and turned up six classes the join
+sweep could not see.
 
 The lookup-tax study (4,138 lookups over 26 days, never analysed) and the
 denominator decision are still worth more than the tail of this list.
@@ -134,6 +150,62 @@ the one that needs the list, since both readings are clause-initial.
 Measured but not built: the clause-initial rule is a change to `recompose`'s
 fences rather than an entry in a list, and it wants its own before/after over
 the corpus.
+
+## でも, だが, とはいえ — a listed conjunction the join may not build
+
+The same fence, from the other side, and it is the larger number. `recompose`
+requires a run to **open on a content word**, so a conjunction made of function
+words can never be built however many dictionaries list it. Not one of these was
+built once over 33,949 lines:
+
+| left as parts | adjacent pairs | of those, clause-initial | listed by |
+| --- | --- | --- | --- |
+| で + も | 1,347 | **654** | master, 明鏡, 小学館, Jitendex |
+| だ + が | 207 | **119** | master, 明鏡, 小学館, Jitendex |
+| た + まえ | 19 | 0 (always 待ちたまえ) | 小学館 |
+| 確か + に | 16 | 8 | master, Jitendex |
+| お + 経 | 3 | — | master, Jitendex |
+
+**Only the clause-initial ones are the conjunction.** 「読んでも」, 「一人でも」
+and 「それでも」 are で + も and must stay apart, which is why the count that
+matters is 654 and not 1,347 — and which is exactly the test the over-firing
+side needs. One signal, two directions:
+
+- ところで, すると, それで are built mid-clause where the sentence had the plain
+  words, ~161 times;
+- でも and だが are refused clause-initially where the sentence had the
+  conjunction, ~773 times.
+
+**The ledger damage runs the other way from the count.** で, も, だ and が are
+grammar judged long ago, so 773 splits cost nothing there and only cost the
+reader a word to tap; a wrongly-built すると writes a row *and* destroys 油断する.
+
+お + 経 is the お花摘み entry's fence, met again. たまえ is worth noting on its
+own: 「待ちたまえ」 comes out 待ち + た + まえ, and まえ is keyed on 前.
+
+## The kanji swap — a spelling the line did not write, and not the same word
+
+Distinct from the spelling class below, which puts a word's kanji on a line that
+wrote it in kana. This replaces a kanji the reader saw with a **different**
+one, or picks the wrong one of two homophones:
+
+| line | keyed on | should be |
+| --- | --- | --- |
+| 双子の**兄妹**である | 兄弟 | 兄妹 |
+| すぐ**傍**に | 側 | 傍 |
+| 許容量を**超え**た | 越える | 超える |
+| 【**眼**】が宝石になる | 目 | 眼 |
+| **綺麗**な状態 | 奇麗 | 綺麗 |
+| **なれる**と思います | 慣れる | なる |
+| **すま**ない | 住む | 済まない |
+| 誰が**行っ**ている | 行く | 行う |
+| 手書きの**チラシ** | 散らし | チラシ |
+| 【**なれ**はて】 | 汝 | 成れの果て |
+
+Ten in 160 lines, and each is a wrong assertion rather than an orthography
+choice: the popup opens on another word. 行って between 行く and 行う, and なれる
+between なる and 慣れる, are the general shape — two lemmas share a surface and
+nothing weighs them.
 
 ## ものの — the concessive, built on every ordinary noun + の
 
@@ -558,6 +630,42 @@ all filter that flag, so nothing downstream ever saw them. **Any new analysis
 must filter it too**: before it did, a uniform token draw came back 32% rubble
 and the name audit's three largest entries (キー ×2220, 泉 ×892, タン ×231) were
 all of it.
+
+## 160 lines read as sentences — 2026-08-15, and where the errors actually are
+
+Uniform draw over the 33,949 lines read, **judged as sentences rather than as
+tokens**: the line first, then every token checked against what the sentence
+meant. 2,499 tokens. This is the draw that found the join class, and the reason
+it found it is the method — see *Where the value is not*.
+
+| class | tokens | fixable how |
+| --- | --- | --- |
+| noise, one-mora shrapnel | ~25 | wordhood; two lines carry all of it |
+| **spelling class** (deliberate) | ~25 | a denominator decision, not a fix |
+| wrong identity, right span | 12 | ten of them the kanji swap above |
+| **split: nothing lists the whole** | ~10 | not by joining — see below |
+| **join refused: a listed conjunction** | 8 | the content-word fence |
+| **join fired: a grammar point** | 7 | the clause-initial signal |
+| names | 3 | 皆守って → 皆 + 守る, 佐奈実, hiragana のあ |
+| particle filed under the copula だ | ~3 | Sudachi's analysis |
+| numbers | 2 | ９０ read きゅうれい |
+
+**~70 of 2,499 tokens, 2.8%**, excluding the spelling class; about a third of
+lines carry at least one. The earlier uniform *token* draws put this at 1 in 60,
+and both numbers are right — half of any token draw is だ, た, は, を, and those
+are never wrong. A rate per token flatters; a rate per sentence is what the
+reader meets.
+
+**The splits divide on whether anything lists the whole**, and that decides
+whether there is a fix at all:
+
+- **A segmentation authority lists it** — でも, だが, とはいえ, なんでも, 確かに,
+  お経, たまえ. The join is refused by its own fence; see that entry.
+- **Only Jitendex lists it** — 抵抗感, 死ね, 氷漬け, 許容量, 白濁液. `reference`
+  role, so it decides nothing about segmentation, and that is the design rather
+  than a defect.
+- **Nothing lists it** — 念動力, メインルーム, わがはい (吾輩 is listed, the kana
+  is not), リチャード三世. No rule over dictionaries reaches these.
 
 ## The name batch — 2026-08-15, and what it moved
 

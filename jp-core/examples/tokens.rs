@@ -145,6 +145,14 @@ async fn run() {
                 format!("{}/{}/{reading}{name}", t.surface, t.base_form)
             })
             .collect();
-        println!("{text}\t{}", out.join(" "));
+        // One record per output line, always. 1,040 of the 33,949 lines read
+        // carry a newline, and printed raw they came out as several rows whose
+        // text column held the last fragment and whose tokens held the whole
+        // line — so anything sampling this file read the wrong sentence for 3%
+        // of it. Escaped after joining, because the surface, the headword and
+        // the reading can each be a newline too. The tokenizer still sees the
+        // line whole.
+        let row = format!("{text}\t{}", out.join(" "));
+        println!("{}", row.replace('\n', "⏎").replace('\r', "⏎"));
     }
 }
