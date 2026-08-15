@@ -127,6 +127,11 @@ fn conjugatable() -> HashSet<String> {
         "裁く",
         "潜める",
         "深い",
+        "煩い",
+        "凄い",
+        "臭い",
+        "危ない",
+        "面白い",
     ]
     .into_iter()
     .map(str::to_string)
@@ -575,6 +580,31 @@ fn katakana_the_master_does_not_list_folds_onto_the_hiragana_it_does() {
         ("ウチが必要だ", "ウチ", "うち", "うち"),
         ("コイツは誰だ", "コイツ", "こいつ", "こいつ"),
         ("スマホを見た", "スマホ", "スマホ", "すまほ"),
+    ] {
+        let tokens = tokens_of(&tk, text);
+        assert_eq!(identity_of(&tokens, surface), pair(term, reading), "{text}");
+    }
+}
+
+/// 〜あい and 〜おい contract to 〜えー in speech, and Sudachi reads all of them
+/// right except where the spelling it normalises onto carries a second reading:
+/// 煩い is わずらい as well as うるさい, and うるせー took the noun 23 times.
+///
+/// The un-contraction only ever offers a reading the master already lists for
+/// that spelling, so the family that was already right stays right — and a word
+/// simply spelt the way it is read is untouched, since a kana headword matches
+/// on the headword alone and へえ would have taken はい.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_colloquial_adjective_ending_names_the_reading_it_contracts_from() {
+    let (tk, _) = setup();
+    for (text, surface, term, reading) in [
+        ("うるせーぞ黙れ", "うるせー", "煩い", "うるさい"),
+        ("うるせえって言ってんだろ", "うるせえ", "煩い", "うるさい"),
+        ("すげえ量の本だ", "すげえ", "凄い", "すごい"),
+        ("この部屋くせえな", "くせえ", "臭い", "くさい"),
+        ("あぶねーから下がれ", "あぶねー", "危ない", "あぶない"),
+        ("へえ、そうなんだ", "へえ", "へえ", "へえ"),
     ] {
         let tokens = tokens_of(&tk, text);
         assert_eq!(identity_of(&tokens, surface), pair(term, reading), "{text}");

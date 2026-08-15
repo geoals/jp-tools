@@ -1475,6 +1475,32 @@ impl SudachiTokenizer {
         {
             candidates.push((surface.clone(), m.reading_form().to_string()));
         }
+        // **The colloquial adjective ending, undone.** 〜あい and 〜おい contract
+        // to 〜えー in speech, and Sudachi reads every one of them right —
+        // すげー, やべー, あぶねー, おもしれー, くせえ — except where the
+        // spelling it normalises onto carries a second reading. 煩い is わずらい
+        // as well as うるさい, so うるせー came out the noun.
+        //
+        // Kana arithmetic rather than a similarity score. Scoring a reading
+        // against the surface was tried over the whole corpus and backed out:
+        // it also made コイツ 此奴/こやつ, きわまり 極まり/きまり and まじか
+        // 間近. This offers nothing but a reading the master already lists for
+        // the spelling, and only where the surface is a contraction of it.
+        //
+        // **Only onto a kanji spelling.** `lists` matches a kana headword on
+        // the headword alone, so offering this for へえ or ええー would attach
+        // はい to a word that is simply spelt the way it was read.
+        if surface.chars().count() >= 3
+            && crate::text::kana::is_all_kana(&surface)
+            && m.normalized_form()
+                .chars()
+                .any(crate::text::kanji::is_kanji)
+        {
+            let spoken = crate::text::kana::to_hiragana(&surface);
+            for reading in uncontracted(&spoken) {
+                candidates.push((m.normalized_form().to_string(), reading));
+            }
+        }
         candidates.push(sudachi());
         // The normalised spelling with *its own* reading, where the lemma's is
         // not the same word's. Sudachi normalises 信じ to 信じる but reads it off
@@ -1971,6 +1997,33 @@ fn unvoices_to(voiced: &str, plain: &str) -> bool {
         return false;
     };
     PLAIN.chars().nth(i) == Some(want) && voiced.chars().skip(1).eq(plain.chars().skip(1))
+}
+
+/// The plain endings a colloquial 〜えー contracts from: うるせー is うるさい,
+/// すげー is すごい, ひでー is ひどい.
+///
+/// Both rows, because the contraction loses which one it came from — え is the
+/// same whether あ or お was there. The master decides which of the two is a
+/// word; see the ladder's colloquial rung, the only caller.
+fn uncontracted(surface: &str) -> Vec<String> {
+    const E: &str = "えけせてねへめれげぜでべぺ";
+    const A: &str = "あかさたなはまらがざだばぱ";
+    const O: &str = "おこそとのほもろごぞどぼぽ";
+    let mut chars: Vec<char> = surface.chars().collect();
+    if !matches!(chars.last(), Some('ー' | 'え')) {
+        return Vec::new();
+    }
+    chars.pop();
+    let Some(i) = chars.last().and_then(|c| E.chars().position(|e| e == *c)) else {
+        return Vec::new();
+    };
+    chars.pop();
+    let stem: String = chars.into_iter().collect();
+    [A, O]
+        .into_iter()
+        .filter_map(|row| row.chars().nth(i))
+        .map(|c| format!("{stem}{c}い"))
+        .collect()
 }
 
 /// One beat of speech: a kana, optionally followed by a small ゃゅょ.
