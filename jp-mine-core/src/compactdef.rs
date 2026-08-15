@@ -230,7 +230,9 @@ pub fn compact_def_batch_cli(items: &[(String, String)]) -> Vec<Result<String, C
     let message = items
         .iter()
         .enumerate()
-        .map(|(i, (target, sentence))| format!("{}. Sentence: {sentence} | Target: {target}", i + 1))
+        .map(|(i, (target, sentence))| {
+            format!("{}. Sentence: {sentence} | Target: {target}", i + 1)
+        })
         .collect::<Vec<_>>()
         .join("\n");
 

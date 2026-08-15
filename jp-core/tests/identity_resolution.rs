@@ -58,6 +58,17 @@ fn reader_ranks() -> HashMap<String, i64> {
         ("箒", 22217),
         ("伺う", 6482),
         ("窺う", 12180),
+        // 母 is in this work's cast list and is rank 872 in fiction, which is
+        // the whole reason the cast has a frequency veto on it.
+        ("母", 872),
+        ("凛", 9368),
+        ("ロブ", 44139),
+        ("出雲", 40106),
+        // Jiten's own numbers: the compound is a word the reader meets whole,
+        // and both halves are rarer than it.
+        ("宣戦布告", 11761),
+        ("宣戦", 47197),
+        ("布告", 34041),
     ]
     .into_iter()
     .map(|(t, n)| (t.to_string(), n))
@@ -112,6 +123,7 @@ fn conjugatable() -> HashSet<String> {
         "捌く",
         "裁く",
         "潜める",
+        "深い",
     ]
     .into_iter()
     .map(str::to_string)
@@ -119,6 +131,16 @@ fn conjugatable() -> HashSet<String> {
 }
 
 fn setup() -> (SudachiTokenizer, MasterWords) {
+    build(HashSet::new())
+}
+
+/// The same tokenizer, told who the cast are — `work_names`, which is the only
+/// term-level answer to whether a token is a name.
+fn with_cast(names: &[&str]) -> SudachiTokenizer {
+    build(names.iter().map(|n| n.to_string()).collect()).0
+}
+
+fn build(names: HashSet<String>) -> (SudachiTokenizer, MasterWords) {
     let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
         .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
     let entries = master_entries();
@@ -132,7 +154,8 @@ fn setup() -> (SudachiTokenizer, MasterWords) {
         .with_frequency(ranks())
         .with_reader_frequency(reader_ranks())
         .with_preferred_readings(preferences())
-        .with_conjugatable(conjugatable());
+        .with_conjugatable(conjugatable())
+        .with_names(names);
     (tokenizer, MasterWords::new(lexicon, &entries))
 }
 
@@ -726,4 +749,129 @@ fn a_master_headword_written_with_okurigana_is_not_a_name() {
     let tokens = tokens_of(&tk, "私は橘シェリーっていいますっ");
     let name = tokens.iter().find(|t| t.surface == "シェリー").unwrap();
     assert!(name.proper_noun, "{name:?}");
+}
+
+/// Sudachi has no entry for most of a VN's cast, so it does not merely leave
+/// the name untagged — it *splits* it, and both halves are ordinary words the
+/// ledger then counts forever. 世/よ ×2,412 and 凪/なぎ ×2,385 over one script.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_name_the_cast_list_holds_is_one_token_and_a_name() {
+    let tk = with_cast(&["世凪"]);
+    let tokens = tokens_of(&tk, "名前は世凪。");
+    let name = tokens
+        .iter()
+        .find(|t| t.surface == "世凪")
+        .unwrap_or_else(|| panic!("世凪 must be one token: {tokens:?}"));
+    assert!(name.proper_noun, "{name:?}");
+    assert_eq!(name.base_form, "世凪");
+}
+
+/// The verdict is a fact about the term, not about the sentence. ウィル came
+/// out `excluded: "name"` 16 times and vocabulary 11 more in one session,
+/// because Sudachi's 固有名詞 is a per-occurrence tag.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_cast_name_is_a_name_in_every_sentence() {
+    let tk = with_cast(&["ロブ"]);
+    for line in ["おいウィル、ロブを殴れ。", "さっきのロブの話……"] {
+        let token = tokens_of(&tk, line)
+            .into_iter()
+            .find(|t| t.surface == "ロブ")
+            .unwrap_or_else(|| panic!("no ロブ in {line}"));
+        assert!(token.proper_noun, "{line}: {token:?}");
+    }
+}
+
+/// A name Sudachi cannot account for comes back glued to whatever follows it:
+/// 「凛とオリヴィア」 analyses as the adverb 凛と, 72 times over one script.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_name_glued_to_a_particle_comes_apart() {
+    let tk = with_cast(&["凛"]);
+    let surfaces: Vec<String> = tokens_of(&tk, "凛とオリヴィアが並んでいる")
+        .into_iter()
+        .map(|t| t.surface)
+        .collect();
+    assert!(surfaces.contains(&"凛".to_string()), "{surfaces:?}");
+    assert!(!surfaces.contains(&"凛と".to_string()), "{surfaces:?}");
+}
+
+/// And only where what is left over is grammar: ウィルス is a word with a name
+/// inside it, and 出雲大社 is a word every dictionary lists.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_word_that_merely_starts_with_a_name_stays_whole() {
+    let tk = with_cast(&["ウィル", "出雲"]);
+    for (line, word) in [
+        ("ウィルスに感染した", "ウィルス"),
+        ("出雲大社に行った", "出雲"),
+    ] {
+        let surfaces: Vec<String> = tokens_of(&tk, line)
+            .into_iter()
+            .map(|t| t.surface)
+            .collect();
+        assert!(surfaces.contains(&word.to_string()), "{line}: {surfaces:?}");
+    }
+}
+
+/// A cast name common enough to be an ordinary word is the word. VNDB lists 母
+/// as a character of this very work, and it is rank 872 in fiction.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn an_everyday_word_in_the_cast_list_is_still_a_word() {
+    let tk = with_cast(&["母"]);
+    let token = tokens_of(&tk, "母の遺した車")
+        .into_iter()
+        .find(|t| t.surface == "母")
+        .unwrap();
+    assert!(!token.proper_noun, "{token:?}");
+}
+
+/// Sudachi reads a bare 深い as ブカイ and a bare 箱 as バコ — the readings
+/// 奥深い and 靴箱 give them — so the pair is one no dictionary lists and the
+/// word falls off the master scale.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_word_standing_alone_loses_the_compounds_voicing() {
+    let (tk, master) = setup();
+    for (line, surface, want) in [
+        ("海よりも深い", "深い", "ふかい"),
+        ("傷は深かったのだ", "深かっ", "ふかい"),
+    ] {
+        let token = tokens_of(&tk, line)
+            .into_iter()
+            .find(|t| t.surface == surface)
+            .unwrap_or_else(|| panic!("no {surface} in {line}"));
+        assert_eq!(to_hiragana(&token.reading), want, "{line}");
+        assert!(master.lists(&token.base_form, &token.reading), "{line}");
+    }
+}
+
+/// But only the voicing. 所為 is せい in the text and しょい in the master, and
+/// those are two words rather than one word's compound form — rewriting the
+/// reading there asserts a word nobody read.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_reading_the_master_merely_lacks_is_left_alone() {
+    let (tk, _) = setup();
+    let token = tokens_of(&tk, "私が生まれた所為で起きた")
+        .into_iter()
+        .find(|t| t.surface == "所為")
+        .unwrap();
+    assert_eq!(to_hiragana(&token.reading), "せい", "{token:?}");
+}
+
+/// Mode C hands 宣戦布告 over as one morpheme and only Jitendex lists it, so
+/// the gate broke an everyday word into two rarer ledger rows. A compound the
+/// reader-facing list ranks above both its halves is one word.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_compound_commoner_than_its_halves_is_not_split() {
+    let (tk, _) = setup();
+    let surfaces: Vec<String> = tokens_of(&tk, "国に対する宣戦布告に等しい")
+        .into_iter()
+        .map(|t| t.surface)
+        .collect();
+    assert!(surfaces.contains(&"宣戦布告".to_string()), "{surfaces:?}");
 }

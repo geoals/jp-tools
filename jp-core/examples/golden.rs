@@ -186,17 +186,39 @@ async fn main() {
     )
     .unwrap();
 
+    // The cast of every work read, which is what the name pass consults. The
+    // whole list, not the part the corpus reaches: it is 62 strings, and a
+    // filtered one would hide the name that a later sample happens to contain.
+    let names: HashSet<String> = jp_core::knowledge::work_names::all(&k)
+        .await
+        .unwrap()
+        .into_iter()
+        .collect();
+    let mut name_rows: Vec<&String> = names.iter().collect();
+    name_rows.sort();
+    std::fs::write(
+        out.join("names.txt"),
+        name_rows
+            .iter()
+            .map(|n| format!("{n}\n"))
+            .collect::<String>(),
+    )
+    .unwrap();
+
     // The snapshot itself, produced by the same code the test will run.
     let dict_path = Path::new(&args[3]);
     let snapshot = jp_core::golden::snapshot(
         dict_path,
         &corpus,
-        &master,
-        &standard,
-        ranks,
-        reader_ranks,
-        all_prefs,
-        conjugatable,
+        &jp_core::golden::Inputs {
+            master: master.clone(),
+            standard,
+            ranks,
+            reader_ranks,
+            preferences: all_prefs,
+            conjugatable,
+            names,
+        },
     );
     std::fs::write(out.join("identities.txt"), snapshot).unwrap();
     eprintln!(

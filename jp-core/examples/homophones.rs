@@ -63,12 +63,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let tk = jp_core::golden::tokenizer(
         Path::new(&dict_path),
-        &master,
-        &standard,
-        ranks,
-        HashMap::new(),
-        preferences,
-        conjugatable.clone(),
+        &jp_core::golden::Inputs {
+            master: master.clone(),
+            standard,
+            ranks,
+            preferences,
+            conjugatable: conjugatable.clone(),
+            ..Default::default()
+        },
     );
 
     let mut total = 0usize;

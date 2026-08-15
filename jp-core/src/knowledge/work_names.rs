@@ -9,6 +9,8 @@
 //! A list per work fixes what no rule can, because the cast is knowable before
 //! the work is read. See the migration for why it is scoped per work.
 
+use std::collections::HashSet;
+
 use sqlx::Row;
 
 use super::Knowledge;
@@ -70,5 +72,28 @@ pub async fn all(k: &Knowledge) -> Result<Vec<String>, sqlx::Error> {
     let rows = sqlx::query("SELECT DISTINCT name FROM work_names")
         .fetch_all(k.pool())
         .await?;
-    Ok(rows.iter().map(|r| r.get("name")).collect())
+    let mut names: HashSet<String> = HashSet::new();
+    for row in &rows {
+        let name: String = row.get("name");
+        names.extend(parts(&name));
+        names.insert(name);
+    }
+    Ok(names.into_iter().collect())
+}
+
+/// The halves of a full name, which is what the text mostly uses.
+///
+/// A cast list gives ウィリアム・シェイクスピア and the script says
+/// シェイクスピア, オリヴィア・ベリー and the script says オリヴィア. Only for
+/// the tokenizer: the stored list stays what was imported, so a refetch still
+/// diffs against VNDB rather than against what was derived from it.
+///
+/// One character is never a part. ピーチ・ザ・ビッチ would otherwise teach it
+/// that ザ is somebody.
+fn parts(name: &str) -> impl Iterator<Item = String> {
+    name.split(['・', '＝'])
+        .filter(|p| p.chars().count() > 1)
+        .map(str::to_string)
+        .collect::<Vec<_>>()
+        .into_iter()
 }

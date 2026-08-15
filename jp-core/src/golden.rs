@@ -16,53 +16,46 @@ use crate::knowledge::dictionaries::PreferredReading;
 use crate::text::kana::to_hiragana;
 use crate::tokenize::{MasterWords, SudachiTokenizer, Tokenizer, counts_as_word};
 
+/// Everything the tokenizer is configured from, as one value.
+///
+/// A struct rather than positional arguments because four of them are a
+/// `HashSet<String>` or a `HashMap<String, _>`: a swapped pair would still
+/// compile and would quietly build a different pipeline, which is the one
+/// failure this whole file exists to catch.
+#[derive(Default)]
+pub struct Inputs {
+    pub master: Vec<(String, String)>,
+    pub standard: Vec<(String, String)>,
+    pub ranks: HashMap<(String, String), i64>,
+    pub reader_ranks: HashMap<String, i64>,
+    pub preferences: HashMap<String, PreferredReading>,
+    pub conjugatable: HashSet<String>,
+    pub names: HashSet<String>,
+}
+
 /// Build the tokenizer exactly as `read-stats` ingest does.
-pub fn tokenizer(
-    dict_path: &Path,
-    master: &[(String, String)],
-    standard: &[(String, String)],
-    ranks: HashMap<(String, String), i64>,
-    reader_ranks: HashMap<String, i64>,
-    preferences: HashMap<String, PreferredReading>,
-    conjugatable: HashSet<String>,
-) -> SudachiTokenizer {
-    let lexicon: HashSet<String> = master.iter().map(|(t, _)| t.clone()).collect();
+pub fn tokenizer(dict_path: &Path, i: &Inputs) -> SudachiTokenizer {
+    let lexicon: HashSet<String> = i.master.iter().map(|(t, _)| t.clone()).collect();
     // A non-empty deck is what puts it on the C→B→A path that production runs.
     SudachiTokenizer::new(dict_path, HashSet::from(["x".to_string()]))
         .expect("sudachi dictionary")
         .with_lexicon(lexicon)
-        .with_master_readings(master)
-        .with_standard(standard)
-        .with_frequency(ranks)
-        .with_reader_frequency(reader_ranks)
-        .with_preferred_readings(preferences)
-        .with_conjugatable(conjugatable)
+        .with_master_readings(&i.master)
+        .with_standard(&i.standard)
+        .with_frequency(i.ranks.clone())
+        .with_reader_frequency(i.reader_ranks.clone())
+        .with_preferred_readings(i.preferences.clone())
+        .with_conjugatable(i.conjugatable.clone())
+        .with_names(i.names.clone())
 }
 
 /// One block per line: the sentence, then the identities the ledger would get
 /// from it. An identity the master does not list is marked `?`, since those are
 /// what the vocabulary count is blind to.
-pub fn snapshot(
-    dict_path: &Path,
-    corpus: &[String],
-    master: &[(String, String)],
-    standard: &[(String, String)],
-    ranks: HashMap<(String, String), i64>,
-    reader_ranks: HashMap<String, i64>,
-    preferences: HashMap<String, PreferredReading>,
-    conjugatable: HashSet<String>,
-) -> String {
-    let tk = tokenizer(
-        dict_path,
-        master,
-        standard,
-        ranks,
-        reader_ranks,
-        preferences,
-        conjugatable,
-    );
-    let lexicon: HashSet<String> = master.iter().map(|(t, _)| t.clone()).collect();
-    let words = MasterWords::new(lexicon, master);
+pub fn snapshot(dict_path: &Path, corpus: &[String], i: &Inputs) -> String {
+    let tk = tokenizer(dict_path, i);
+    let lexicon: HashSet<String> = i.master.iter().map(|(t, _)| t.clone()).collect();
+    let words = MasterWords::new(lexicon, &i.master);
 
     let mut body = String::new();
     let (mut counted, mut unlisted) = (0usize, 0usize);

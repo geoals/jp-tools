@@ -77,10 +77,7 @@ pub async fn find_vn_id(client: &reqwest::Client, title: &str) -> Result<Option<
 /// Romanized names are kept only where a character has no Japanese spelling,
 /// since a Japanese script will not use them and an ASCII entry cannot collide
 /// with a Japanese word.
-pub async fn fetch_cast(
-    client: &reqwest::Client,
-    vndb_id: &str,
-) -> Result<Vec<String>, AppError> {
+pub async fn fetch_cast(client: &reqwest::Client, vndb_id: &str) -> Result<Vec<String>, AppError> {
     let body = serde_json::json!({
         "filters": ["vn", "=", ["id", "=", vndb_id]],
         "fields": "name,original,aliases",

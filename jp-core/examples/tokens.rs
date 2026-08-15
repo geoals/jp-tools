@@ -85,14 +85,48 @@ async fn run() {
         .into_iter()
         .collect();
 
+    // The rank per spelling, which the short-kana guard is the only consumer
+    // of. Left out of this dump for its first year, so what it printed was a
+    // pipeline with one rule switched off — see `Pipeline`'s nine inputs.
+    let reader_ranks: HashMap<String, i64> =
+        match dictionaries::by_title(pool, dictionaries::READER_FREQUENCY)
+            .await
+            .unwrap()
+        {
+            Some(d) => sqlx::query_as::<_, (String, i64)>(
+                "SELECT term, MIN(frequency) FROM dictionary_frequency \
+                 WHERE dictionary_id = ? GROUP BY term",
+            )
+            .bind(d.id)
+            .fetch_all(pool)
+            .await
+            .unwrap()
+            .into_iter()
+            .collect(),
+            None => HashMap::new(),
+        };
+    // `TOKENS_NAMES=off` drops the cast, so two runs differ in the name pass
+    // and nothing else.
+    let names: HashSet<String> = if std::env::var("TOKENS_NAMES").as_deref() == Ok("off") {
+        HashSet::new()
+    } else {
+        jp_core::knowledge::work_names::all(&k)
+            .await
+            .unwrap()
+            .into_iter()
+            .collect()
+    };
+
     let tk = SudachiTokenizer::new(Path::new(&a[2]), mined)
         .unwrap()
         .with_lexicon(lexicon)
         .with_master_readings(&entries)
         .with_frequency(ranks)
+        .with_reader_frequency(reader_ranks)
         .with_preferred_readings(preferred)
         .with_conjugatable(conjugatable)
-        .with_standard(&standard);
+        .with_standard(&standard)
+        .with_names(names);
 
     let lines: Vec<String> =
         sqlx::query_scalar("SELECT text FROM lines WHERE discarded = 0 ORDER BY id")
@@ -105,7 +139,11 @@ async fn run() {
         };
         let out: Vec<String> = tokens
             .iter()
-            .map(|t| format!("{}/{}", t.surface, t.base_form))
+            .map(|t| {
+                let name = if t.proper_noun { "!" } else { "" };
+                let reading = jp_core::text::kana::to_hiragana(&t.reading);
+                format!("{}/{}/{reading}{name}", t.surface, t.base_form)
+            })
             .collect();
         println!("{text}\t{}", out.join(" "));
     }

@@ -39,7 +39,8 @@ const MIGRATION_STRIP_CONTROL: &str =
     include_str!("../../migrations/knowledge/010_strip_control_chars.sql");
 const MIGRATION_STRIP_OKURIGANA_MARKER: &str =
     include_str!("../../migrations/knowledge/011_strip_okurigana_marker.sql");
-const MIGRATION_WORK_SCRIPTS: &str = include_str!("../../migrations/knowledge/012_work_scripts.sql");
+const MIGRATION_WORK_SCRIPTS: &str =
+    include_str!("../../migrations/knowledge/012_work_scripts.sql");
 const MIGRATION_WORK_NAMES: &str = include_str!("../../migrations/knowledge/013_work_names.sql");
 
 /// A connection pool for `knowledge.db`.

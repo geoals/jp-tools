@@ -12,8 +12,9 @@
 //!   sent but never painted; the absence of a mark is the signal. Sent because a
 //!   span is also the region a tap judges, so a word just marked known has to
 //!   stay tappable to be taken back.
-//! - **Names** (Sudachi's 固有名詞, same as ingest) — a VN's cast would
-//!   otherwise be the loudest thing on every line.
+//! - **Names** — the work's cast (`work_names`) first, Sudachi's 固有名詞 for
+//!   anyone it does not list. A VN's cast would otherwise be the loudest thing
+//!   on every line.
 //! - **Non-words**: tokenizer noise, and anything no dictionary lists. The
 //!   ledger answers for a term it has a row for and [`Wordhood`] for one it does
 //!   not — a word hooked ten seconds ago has no row yet, and that word is what
@@ -98,7 +99,7 @@ pub enum BuildError {
 /// The tokenizer as jp-tools configures it, plus the two dictionary sets its
 /// callers need beside it.
 ///
-/// **The eight inputs are one list and every caller takes all of them.** A
+/// **The nine inputs are one list and every caller takes all of them.** A
 /// tokenizer missing any one is a second pipeline that answers differently, and
 /// the answers are compared: the reader's tint and the ledger row it is drawn
 /// from have to agree about where a word ends and what it is called. Without
@@ -115,7 +116,7 @@ pub struct Pipeline {
     pub master: MasterWords,
 }
 
-/// Fetch the eight inputs from `knowledge.db` and build the tokenizer.
+/// Fetch the nine inputs from `knowledge.db` and build the tokenizer.
 ///
 /// The dictionary load is CPU-bound and measured in seconds, so it runs on a
 /// blocking thread rather than on the runtime other requests are polling.
@@ -132,6 +133,10 @@ pub async fn pipeline(
     let preferred = preferred(pool).await?;
     let conjugatable = crate::knowledge::dictionaries::master_conjugatable(pool).await?;
     let standard = crate::knowledge::dictionaries::standard_entries(pool).await?;
+    let names: HashSet<String> = crate::knowledge::work_names::all(k)
+        .await?
+        .into_iter()
+        .collect();
 
     let dict_path = dict_path.as_ref().to_path_buf();
     tokio::task::spawn_blocking(move || {
@@ -143,7 +148,8 @@ pub async fn pipeline(
             .with_reader_frequency(reader)
             .with_preferred_readings(preferred)
             .with_conjugatable(conjugatable)
-            .with_standard(&standard);
+            .with_standard(&standard)
+            .with_names(names);
         let master = MasterWords::new(lexicon.clone(), &readings);
         Ok(Pipeline {
             tokenizer,

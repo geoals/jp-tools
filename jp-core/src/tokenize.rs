@@ -135,6 +135,10 @@ pub struct SudachiTokenizer {
     /// A master headword's own reading, so a recomposed token carries the
     /// reading the ledger will key it on rather than one built from parts.
     term_reading: HashMap<String, String>,
+    /// Every reading the master gives a headword, in its own order. What makes
+    /// "the master lists this spelling one way" answerable — see the ladder's
+    /// single-reading rung.
+    readings_of: HashMap<String, Vec<String>>,
     /// The master's `(headword, reading)` pairs — the thing an identity has to
     /// be one of. Same key shape as [`MasterWords`], which is the consumer of
     /// the identities this produces.
@@ -165,6 +169,10 @@ pub struct SudachiTokenizer {
     /// almost nothing uses; see [`vanishingly_rare`](Self::vanishingly_rare).
     /// Empty disables the short-kana guard entirely.
     reader_ranks: HashMap<String, i64>,
+    /// The cast of the works being read, from `work_names`. **The only
+    /// term-level answer to whether something is a name**; Sudachi's tag is a
+    /// property of the sentence. Empty leaves the tag alone.
+    names: HashSet<String>,
 }
 
 impl SudachiTokenizer {
@@ -189,6 +197,7 @@ impl SudachiTokenizer {
             segment_reading: HashMap::new(),
             by_reading: HashMap::new(),
             term_reading: HashMap::new(),
+            readings_of: HashMap::new(),
             pairs: HashSet::new(),
             frequency: HashMap::new(),
             frequency_any_reading: HashMap::new(),
@@ -197,6 +206,7 @@ impl SudachiTokenizer {
             katakana_native: HashSet::new(),
             rederived: Mutex::new(HashMap::new()),
             reader_ranks: HashMap::new(),
+            names: HashSet::new(),
         })
     }
 
@@ -256,6 +266,10 @@ impl SudachiTokenizer {
             self.segment_reading
                 .entry(term.clone())
                 .or_insert_with(|| reading.clone());
+            let readings = self.readings_of.entry(term.clone()).or_default();
+            if !readings.contains(&reading) {
+                readings.push(reading.clone());
+            }
             let terms = self.by_reading.entry(reading).or_default();
             if !terms.contains(term) {
                 terms.push(term.clone());
@@ -304,6 +318,59 @@ impl SudachiTokenizer {
                 .reader_ranks
                 .get(term)
                 .is_none_or(|rank| *rank >= RARE_SPELLING_RANK)
+    }
+
+    /// Teach it the cast of the works being read — `work_names`, imported from
+    /// VNDB or added by hand.
+    ///
+    /// **This is the only signal that survives the sentence.** Sudachi's
+    /// 固有名詞 is a per-occurrence tag, so ウィル came out a name 16 times and
+    /// vocabulary 11 more in one half-hour session, and a name Sudachi has no
+    /// entry for at all is not merely untagged but *split*: 世凪 arrived as
+    /// 世 + 凪 and both halves were counted, 2,385 times over one work.
+    pub fn with_names(mut self, names: HashSet<String>) -> Self {
+        self.names = names;
+        self
+    }
+
+    /// Is this string one of the cast, rather than the everyday word it spells?
+    ///
+    /// Both forms are asked because a name reaches here spelt either way:
+    /// Sudachi normalises the surface すもも onto the fruit 李 and シャチ onto
+    /// the orca 鯱, and it is the surface that names the character.
+    ///
+    /// **A cast name common enough to be an ordinary word is the word.** VNDB
+    /// lists 母 as a character, and a work whose cast includes it still writes
+    /// it to mean a mother on nearly every page. Nothing else in the list comes
+    /// close to the threshold — 凛 is 9,368th and 親方 19,076th, which is where
+    /// a name that happens to be a word belongs.
+    fn cast_name(&self, surface: &str, base_form: &str) -> bool {
+        (self.names.contains(surface) || self.names.contains(base_form))
+            && !self.everyday_word(surface)
+            && !self.everyday_word(base_form)
+    }
+
+    /// Is this spelling one of the few thousand words all fiction uses?
+    fn everyday_word(&self, term: &str) -> bool {
+        self.reader_ranks
+            .get(term)
+            .is_some_and(|rank| *rank < NAME_VETO_RANK)
+    }
+
+    /// Whether this token names a person or a place rather than a word.
+    ///
+    /// The cast list answers first and answers for good; Sudachi's tag is only
+    /// consulted for a name nobody listed. [`NOT_A_NAME`] is the other half of
+    /// that: entries SudachiDict tags 固有名詞 that are ordinary words in every
+    /// sentence they were read in.
+    fn names_someone(&self, surface: &str, base_form: &str, reading: &str, tagged: bool) -> bool {
+        if self.cast_name(surface, base_form) {
+            return true;
+        }
+        tagged
+            && !NOT_A_NAME.contains(&base_form)
+            && !NOT_A_NAME.contains(&surface)
+            && !self.ordinary_headword(base_form, reading)
     }
 
     /// Is this term the master's ordinary word rather than the name Sudachi
@@ -429,6 +496,17 @@ impl SudachiTokenizer {
     /// on: Sudachi's dictionary form for 擦り剥く is the kana すりむく, which
     /// Sankoku has no entry for.
     fn keeps_whole<T: DictionaryAccess>(&self, m: &Morpheme<'_, T>, trace: &mut Trace) -> bool {
+        // A name no dictionary lists is exactly the form the C→B→A pass takes
+        // apart, and the cast list is the one authority that knows better.
+        if self.cast_name(&m.surface(), m.normalized_form()) {
+            let surface = m.surface().to_string();
+            trace.push(|| Step::Gate {
+                surface: surface.clone(),
+                kept: true,
+                why: format!("In the work's cast: {surface}"),
+            });
+            return true;
+        }
         let forms = [m.dictionary_form(), m.normalized_form()];
         let listed = forms
             .iter()
@@ -454,6 +532,29 @@ impl SudachiTokenizer {
             trace.push(|| Step::Gate { surface, kept, why });
         }
         listed.is_some()
+    }
+
+    /// Is this compound commoner in fiction than every piece the gate would
+    /// break it into?
+    ///
+    /// Absent from the list counts as vanishingly rare on both sides: a whole
+    /// form nothing ranks cannot win, and a part nothing ranks cannot save one.
+    fn outranks_its_parts<T: DictionaryAccess>(
+        &self,
+        whole: &str,
+        parts: &sudachi::prelude::MorphemeList<T>,
+    ) -> bool {
+        if parts.len() < 2 {
+            return false;
+        }
+        let Some(rank) = self.reader_ranks.get(whole) else {
+            return false;
+        };
+        parts.iter().all(|p| {
+            self.reader_ranks
+                .get(&*p.surface())
+                .is_none_or(|part| rank < part)
+        })
     }
 
     /// Does the master dictionary list this identity? Same rule as
@@ -569,6 +670,141 @@ impl SudachiTokenizer {
                 Some(token) => {
                     i += token.parts;
                     out.push(token.token);
+                }
+                None => {
+                    out.push(tokens[i].clone());
+                    i += 1;
+                }
+            }
+        }
+        out
+    }
+
+    /// Take apart a token Sudachi glued a cast name to.
+    ///
+    /// A name Sudachi has no entry for is out-of-vocabulary, and its analysis
+    /// then reaches for whatever string it *can* account for: 「凛とオリヴィア」
+    /// comes back with 凛と as one morpheme, which is the adverb, 72 times over
+    /// one work. Mode B and Mode A cannot help — the morpheme is a single
+    /// unknown either way.
+    ///
+    /// Two fences. **No dictionary may list what is being broken** — 凛と is in
+    /// none of them, which is what makes the split free, and 出雲大社 is in all
+    /// of them and stays whole. **And what is left over has to be grammar**: a
+    /// name glued to a particle is the case, and requiring that keeps ウィルス
+    /// from coming apart into ウィル and a shred.
+    fn split_names(&self, tokens: Vec<Token>, trace: &mut Trace) -> Vec<Token> {
+        if self.names.is_empty() {
+            return tokens;
+        }
+        let mut out: Vec<Token> = Vec::with_capacity(tokens.len());
+        for t in tokens {
+            let listed = self.segments.contains(&t.surface) || self.segments.contains(&t.base_form);
+            let prefix = (!t.proper_noun && !listed)
+                .then(|| self.cast_prefix(&t.surface))
+                .flatten();
+            let (Some(name), Ok(rest)) = (
+                prefix.clone(),
+                prefix
+                    .as_ref()
+                    .map(|n| self.tokenize(&t.surface[n.len()..]))
+                    .unwrap_or_else(|| Ok(Vec::new())),
+            ) else {
+                out.push(t);
+                continue;
+            };
+            if rest.is_empty() || !rest.iter().all(|r| is_bound_or_grammar(&r.pos)) {
+                out.push(t);
+                continue;
+            }
+            let surface = t.surface.clone();
+            let parts: Vec<String> = std::iter::once(name.clone())
+                .chain(rest.iter().map(|r| r.surface.clone()))
+                .collect();
+            trace.push(|| Step::Split {
+                surface,
+                mode: "cast",
+                parts,
+            });
+            out.push(Token {
+                reading: self.rederive_reading(&name).unwrap_or_else(|| name.clone()),
+                base_form: name.clone(),
+                dictionary_form: name.clone(),
+                surface: name,
+                pos: "名詞".to_string(),
+                proper_noun: true,
+                derived_class: None,
+                subsidiary: false,
+                counter: false,
+                inflected: false,
+            });
+            out.extend(rest);
+        }
+        out
+    }
+
+    /// The longest cast name this surface begins with, when the surface is more
+    /// than the name itself.
+    fn cast_prefix(&self, surface: &str) -> Option<String> {
+        (1..surface.chars().count())
+            .rev()
+            .map(|n| surface.chars().take(n).collect::<String>())
+            .find(|head| self.cast_name(head, head))
+    }
+
+    /// Put back together a name Sudachi took apart.
+    ///
+    /// The gate can only keep whole what Mode C gave it whole, and Sudachi has
+    /// no entry for most of a cast: 世凪 arrives as 世 + 凪 and タンバレイン as
+    /// タンバ + レイン. Both halves are then ordinary words, counted forever —
+    /// 世/よ ×22 and 凪/なぎ ×21 in a single session, and 2,385 sightings of 凪
+    /// over the work.
+    ///
+    /// Longest match first, like [`recompose`](Self::recompose), and it has to
+    /// run before it: an untagged name beside a particle is a compound waiting
+    /// to be invented, which is how 凛 + と became the adverb 凛と 72 times.
+    fn join_names(&self, tokens: Vec<Token>, trace: &mut Trace) -> Vec<Token> {
+        if self.names.is_empty() {
+            return tokens;
+        }
+        let mut out: Vec<Token> = Vec::with_capacity(tokens.len());
+        let mut i = 0;
+        while i < tokens.len() {
+            let longest = MAX_COMPOUND_PARTS.min(tokens.len() - i);
+            let joined = (2..=longest).rev().find_map(|n| {
+                let run = &tokens[i..i + n];
+                let surface: String = run.iter().map(|t| t.surface.as_str()).collect();
+                self.cast_name(&surface, &surface).then(|| {
+                    let reading: String = run.iter().map(|t| t.reading.as_str()).collect();
+                    (n, surface, reading)
+                })
+            });
+            match joined {
+                Some((n, surface, reading)) => {
+                    let parts: Vec<String> =
+                        tokens[i..i + n].iter().map(|t| t.surface.clone()).collect();
+                    let name = surface.clone();
+                    trace.push(|| Step::Join {
+                        parts,
+                        verdict: Verdict::Joined {
+                            term: name.clone(),
+                            reading: reading.clone(),
+                            signal: "Name match: the parts spell one of the work's cast",
+                        },
+                    });
+                    out.push(Token {
+                        base_form: surface.clone(),
+                        dictionary_form: surface.clone(),
+                        surface,
+                        reading,
+                        pos: "名詞".to_string(),
+                        proper_noun: true,
+                        derived_class: None,
+                        subsidiary: false,
+                        counter: false,
+                        inflected: false,
+                    });
+                    i += n;
                 }
                 None => {
                     out.push(tokens[i].clone());
@@ -951,6 +1187,37 @@ const SHORT_KANA_MORAE: usize = 2;
 /// either way, which is why the guard is fenced to both.
 const RARE_SPELLING_RANK: i64 = 15_000;
 
+/// Where a cast name stops being believable as a name — see
+/// [`SudachiTokenizer::cast_name`].
+///
+/// About 6,200 terms sit inside rank 5,000 on the reader-facing list, which is
+/// the everyday vocabulary of fiction. A character whose name collides with one
+/// of those loses: the work writes the word far more often than it names the
+/// character, and 母 at rank 872 is the only entry any imported cast has put
+/// anywhere near it.
+const NAME_VETO_RANK: i64 = 5_000;
+
+/// Words SudachiDict tags `固有名詞` that are not names in any sentence they
+/// have been read in.
+///
+/// [`ordinary_headword`](SudachiTokenizer::ordinary_headword) catches this
+/// class wherever the term carries okurigana, since a Japanese name does not.
+/// These carry none, so nothing structural separates them from 橘 or 葵 and the
+/// judgement has to be made one term at a time — the same shape as
+/// [`NEVER_JOIN`], and for the same reason.
+///
+/// A work that really does have a character called 悪魔 says so in its cast
+/// list, and the cast list is asked first.
+const NOT_A_NAME: [&str; 7] = [
+    "眸",       // 「二つの眸は閉じられている」, 「真っ赤な眸が…」
+    "予定調和", // 名詞, and only ever the noun
+    "悪魔",
+    "王子",
+    "城",
+    "金",
+    "鏡",
+];
+
 /// The headwords that share a reading with another headword — the only ones
 /// [`SudachiTokenizer::with_frequency`] can ever be asked about, so the only
 /// ones worth fetching ranks for.
@@ -1179,8 +1446,8 @@ impl SudachiTokenizer {
         // — ハエ, キク, ツタ, カス, アザ are exactly the words this guard would
         // otherwise throw away, and their katakana is why they are written that
         // way at all.
-        let short_kana = crate::text::kana::is_all_hiragana(&surface)
-            && morae(&surface) <= SHORT_KANA_MORAE;
+        let short_kana =
+            crate::text::kana::is_all_hiragana(&surface) && morae(&surface) <= SHORT_KANA_MORAE;
         // **The kana alphabet is part of the spelling.** Sudachi normalises ザル
         // onto ざる, and the master lists those as two words: ザル is the
         // colander, ざる the classical negative. マジ/まじ is the same pair, 32
@@ -1265,9 +1532,8 @@ impl SudachiTokenizer {
         // information. Only where the whole word is as short as the surface is
         // the coincidence argument the one being made.
         if short_kana {
-            candidates.retain(|(term, reading)| {
-                !self.short_kana_coincidence(term, reading, short_kana)
-            });
+            candidates
+                .retain(|(term, reading)| !self.short_kana_coincidence(term, reading, short_kana));
         }
 
         if let Some((term, reading)) = candidates
@@ -1302,6 +1568,39 @@ impl SudachiTokenizer {
                     show(&candidates),
                 );
             }
+        }
+
+        // **A word standing alone, read as if it were the tail of a compound.**
+        // Sudachi reads a bare 深い as ブカイ and a bare 箱 as バコ — the voiced
+        // forms 奥深い and 靴箱 give them — so the pair is (深い, ぶかい), which
+        // no dictionary lists, and every 深い, 深く and 深かっ in the corpus fell
+        // off the master scale.
+        //
+        // **Only the voicing, and only where the master has one reading to
+        // offer.** Un-voicing is a mechanical relation between two readings of
+        // one spelling, so it cannot reach a spelling the master merely reads
+        // some other way: 所為 is せい in the text and しょい in the master, 出入
+        // でいり against しゅつにゅう, and those are different words rather than
+        // one word's compound form.
+        //
+        // Not for a bound morpheme, the same fence
+        // [`preferred_reading`](Self::preferred_reading) carries: 数名's 名 is
+        // メイ and 三日's 日 is カ *because* they are bound, and there the
+        // compound reading is what the text said.
+        if !is_bound_morpheme(m.part_of_speech())
+            && let Some((term, reading)) = candidates.iter().find_map(|(term, voiced)| {
+                match self.readings_of.get(term).map(Vec::as_slice) {
+                    Some([only]) if unvoices_to(voiced, only) => Some((term, only)),
+                    _ => None,
+                }
+            })
+        {
+            return (
+                term.clone(),
+                reading.clone(),
+                "Compound reading on a word standing alone: the master's own reading",
+                show(&candidates),
+            );
         }
 
         // Only the reading is left to go on: うかがう is a word Sankoku has, but
@@ -1371,21 +1670,8 @@ impl SudachiTokenizer {
         //
         // Uninflected only: a stem is not the word, and the normalised form is
         // the only thing that knows which word it is a stem of.
-        //
-        // A digit spelt out as its kanji numeral is not that: 2人乗り and
-        // 二人乗り are one word, and the kanji form is the one every dictionary
-        // and every listed word's identity already uses. Keeping the digit made
-        // the identity 2人乗り, which nothing lists, so the highlighter's
-        // wordhood gate dropped a perfectly ordinary word as a non-word.
         let (t, r) = sudachi();
-        if *surface == *m.dictionary_form()
-            && t != surface
-            && t.chars().any(|c| {
-                crate::text::kanji::is_kanji(c)
-                    && !surface.contains(c)
-                    && !spells_out_a_digit(c, &surface)
-            })
-        {
+        if *surface == *m.dictionary_form() && t != surface && adds_kanji(&t, &surface) {
             return (
                 surface,
                 m.reading_form().to_string(),
@@ -1442,23 +1728,29 @@ impl SudachiTokenizer {
 /// named string cannot cost anything that is not named. Everything else the
 /// join builds — ところが, まずは, 実は, 本当に, ために, すぐに, 同時に,
 /// ちなみに, ところで, 医務室 — is the word the sentence used.
-const NEVER_JOIN: [&str; 16] = [
+const NEVER_JOIN: [&str; 18] = [
+    "この家", // この + 家: 「この家じゃ、狭すぎる」 — this house, read
+    // このいえ. The join reads it このや, which is a different word
+    // and 48 sightings of it in one script.
+    "下に出る", // 下 + に + 出る: 「あの空の下に出る」, 「真下に出た」. The
+    // idiom that exists is 下手に出る, and Sudachi hands that
+    // over whole.
     "よって", // よ + って: 「いるんだよって」 — the sentence-final particle and
     // the quotative, not the conjunction. The real one is
     // 「彼によって」, and Sudachi hands that over whole, so blocking
     // the join costs it nothing.
-    "もやる", // も + やる: 「お前らもやるぞ」, 「のあもやる！」
+    "もやる",   // も + やる: 「お前らもやるぞ」, 「のあもやる！」
     "もやっと", // も + やっと: 「立っているのもやっとの様子」
-    "はやめ", // は + やめ: 「その話はやめよ？」, 「するのはやめて」
-    "しゃい", // the tail of いらっしゃい and はしゃい, split and rejoined
-    "ええん", // ええ + ん: crying, every time — 「うえええええぇええんっ」
-    "それは", // それ + は: 「それは幸か不幸か」
-    "それが", // それ + が: 「それがいつまで続くのか」
-    "これは", // これ + は: 「たしかにこれは厄介ね」
-    "ここに", // ここ + に: 「ここにいてほしい」
-    "ものを", // もの + を: 「そぐわないものを目にし」
-    "今日は", // 今日 + は — the greeting is こんにちは, and this is not it
-    "思いで", // 思い + で: 「私がどんな思いで……」 — the noun and the
+    "はやめ",   // は + やめ: 「その話はやめよ？」, 「するのはやめて」
+    "しゃい",   // the tail of いらっしゃい and はしゃい, split and rejoined
+    "ええん",   // ええ + ん: crying, every time — 「うえええええぇええんっ」
+    "それは",   // それ + は: 「それは幸か不幸か」
+    "それが",   // それ + が: 「それがいつまで続くのか」
+    "これは",   // これ + は: 「たしかにこれは厄介ね」
+    "ここに",   // ここ + に: 「ここにいてほしい」
+    "ものを",   // もの + を: 「そぐわないものを目にし」
+    "今日は",   // 今日 + は — the greeting is こんにちは, and this is not it
+    "思いで",   // 思い + で: 「私がどんな思いで……」 — the noun and the
     // particle, not the kana spelling of 思い出.
     "見えるか", // 見える + か: 「大丈夫に見えるか？」 is a question, and both
     // sightings are one.
@@ -1517,6 +1809,24 @@ fn starts_a_word(c: char) -> bool {
     matches!(c, 'ぁ'..='ん' | 'ァ'..='ヶ' | 'ー') || crate::text::kanji::is_kanji(c)
 }
 
+/// Is `plain` the same reading as `voiced` with the first mora's dakuten taken
+/// off — はこ under ばこ, ふかい under ぶかい?
+///
+/// Only the first mora, because that is the one a compound voices, and only
+/// downward: a word whose own reading is voiced has no unvoiced form to lose.
+fn unvoices_to(voiced: &str, plain: &str) -> bool {
+    let voiced = crate::text::kana::to_hiragana(voiced);
+    let (Some(head), Some(want)) = (voiced.chars().next(), plain.chars().next()) else {
+        return false;
+    };
+    const VOICED: &str = "がぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽ";
+    const PLAIN: &str = "かきくけこさしすせそたちつてとはひふへほはひふへほ";
+    let Some(i) = VOICED.chars().position(|c| c == head) else {
+        return false;
+    };
+    PLAIN.chars().nth(i) == Some(want) && voiced.chars().skip(1).eq(plain.chars().skip(1))
+}
+
 /// One beat of speech: a kana, optionally followed by a small ゃゅょ.
 fn is_one_mora(reading: &str) -> bool {
     morae(reading) == 1
@@ -1529,6 +1839,18 @@ fn morae(reading: &str) -> usize {
         .chars()
         .filter(|c| !matches!(c, 'ゃ' | 'ゅ' | 'ょ' | 'ャ' | 'ュ' | 'ョ' | 'ゎ' | 'ヮ'))
         .count()
+}
+
+/// Would keying the token on this spelling put a kanji on the page the text did
+/// not write?
+///
+/// A digit spelt out as its kanji numeral is not that: 2人乗り and 二人乗り are
+/// one word, and the kanji form is the one every dictionary and every listed
+/// word's identity already uses.
+fn adds_kanji(term: &str, surface: &str) -> bool {
+    term.chars().any(|c| {
+        crate::text::kanji::is_kanji(c) && !surface.contains(c) && !spells_out_a_digit(c, surface)
+    })
 }
 
 /// Is this kanji a numeral standing in for a digit the surface wrote in figures?
@@ -1665,9 +1987,21 @@ impl SudachiTokenizer {
         let subclass = m.part_of_speech().get(1).cloned().unwrap_or_default();
         let subsidiary = subclass == "非自立可能";
         let (base_form, reading) = self.resolve_identity(m, subsidiary, trace);
-        let proper_noun = subclass == "固有名詞" && !self.ordinary_headword(&base_form, &reading);
+        let surface = m.surface().to_string();
+        let proper_noun =
+            self.names_someone(&surface, &base_form, &reading, subclass == "固有名詞");
+        // A name is spelt the way the text spelt it. The identity ladder has no
+        // way to know it is looking at one, so it normalises すもも onto the
+        // fruit 李 and シャチ onto the orca 鯱 — and while the highlighter drops
+        // a name before it reaches the ledger either way, `#tokenize` and the
+        // popup would still be naming a word nobody wrote.
+        let (base_form, reading) = if proper_noun && self.cast_name(&surface, &base_form) {
+            (surface.clone(), m.reading_form().to_string())
+        } else {
+            (base_form, reading)
+        };
         Token {
-            surface: m.surface().to_string(),
+            surface,
             base_form,
             dictionary_form: m.dictionary_form().to_string(),
             reading,
@@ -1703,7 +2037,7 @@ impl SudachiTokenizer {
             let plain: Vec<Token> = morphemes.iter().map(|m| self.to_token(&m, trace)).collect();
             // Still recomposed: having no wordhood gate is a reason to skip it,
             // not a reason to shred every compound the master lists.
-            return Ok(self.recompose(drop_stutters(plain, trace), trace));
+            return Ok(self.finish(plain, trace));
         }
         // Dictionary-validated splitting: C → B → A.
         // Keep tokens that are words in their own right. Split unknown
@@ -1741,6 +2075,29 @@ impl SudachiTokenizer {
                 continue;
             }
 
+            // **A compound commoner than either of its halves is one word**,
+            // whatever the segmentation dictionaries happen to list. Mode C
+            // hands 宣戦布告 over whole and only Jitendex lists it, so the gate
+            // broke a rank-11,761 everyday word into 宣戦 (47,197) and 布告
+            // (34,041) — two ledger rows where the reader met one thing.
+            //
+            // The frequency list is deciding segmentation here and not
+            // wordhood: the compound is already a token, and the only question
+            // is whether to take it apart. It gains no vocabulary count from
+            // this — `COUNTS_AS_VOCAB` is the master alone.
+            if self.outranks_its_parts(&m.surface(), &buf_b) {
+                if trace.is_recording() {
+                    let surface = m.surface().to_string();
+                    trace.push(|| Step::Gate {
+                        surface: surface.clone(),
+                        kept: true,
+                        why: format!("Commoner than the parts it would split into: {surface}"),
+                    });
+                }
+                tokens.push(self.to_token(&m, trace));
+                continue;
+            }
+
             // Mode B split — check each sub-token
             self.record_split(&m, "B", &buf_b, trace);
             for sub in buf_b.iter() {
@@ -1761,12 +2118,20 @@ impl SudachiTokenizer {
             }
         }
 
-        // Recomposition goes last, over the finished stream: it has to see the
-        // tokens the splitting passes actually produced, since those are what
-        // shredded the compound in the first place.
-        // Before recomposition: a stammer fragment is not a word, so it must
-        // not be joined into one.
-        Ok(self.recompose(drop_stutters(tokens, trace), trace))
+        Ok(self.finish(tokens, trace))
+    }
+
+    /// The three passes over the finished token stream, in the order they have
+    /// to run in.
+    ///
+    /// Recomposition goes last, over what the splitting passes actually
+    /// produced, since those are what shredded the compound in the first place.
+    /// Before it: a stammer fragment is not a word and must not be joined into
+    /// one, and a name has to be whole and tagged before a run containing it is
+    /// offered to the join.
+    fn finish(&self, tokens: Vec<Token>, trace: &mut Trace) -> Vec<Token> {
+        let tokens = self.split_names(drop_stutters(tokens, trace), trace);
+        self.recompose(self.join_names(tokens, trace), trace)
     }
 
     fn record_split<T: DictionaryAccess>(
@@ -1812,6 +2177,12 @@ fn derived_class(subclass: &str) -> Option<String> {
         _ => return None,
     };
     Some(class.to_string())
+}
+
+/// What may follow a name inside one out-of-vocabulary morpheme: a particle,
+/// an auxiliary, or an honorific suffix — と, は, が, さん, ちゃん.
+fn is_bound_or_grammar(pos: &str) -> bool {
+    matches!(pos, "助詞" | "助動詞" | "接尾辞")
 }
 
 pub fn is_content_word(pos: &str) -> bool {

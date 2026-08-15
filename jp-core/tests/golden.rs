@@ -84,15 +84,26 @@ fn the_identities_a_corpus_yields_have_not_moved() {
         .map(str::to_string)
         .collect();
 
+    // The cast of the works read, which is the only term-level answer to
+    // whether a token is a name.
+    let names: HashSet<String> = include_str!("golden/names.txt")
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(str::to_string)
+        .collect();
+
     let produced = jp_core::golden::snapshot(
         Path::new(&dict_path),
         &corpus,
-        &master,
-        &standard,
-        ranks,
-        reader_ranks,
-        preferences,
-        conjugatable,
+        &jp_core::golden::Inputs {
+            master: master.clone(),
+            standard,
+            ranks,
+            reader_ranks,
+            preferences,
+            conjugatable,
+            names,
+        },
     );
     let expected = include_str!("golden/identities.txt");
     if produced == expected {

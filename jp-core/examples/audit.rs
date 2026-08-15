@@ -96,9 +96,9 @@ async fn main() {
     let lines: Vec<String> = sqlx::query_scalar(
         "select text from lines where text is not null and discarded = 0 order by id",
     )
-        .fetch_all(pool)
-        .await
-        .unwrap();
+    .fetch_all(pool)
+    .await
+    .unwrap();
 
     // `AUDIT_GUARD=off` builds the tokenizer without the reader ranks, which is
     // the only thing the short-kana guard needs — so the two runs differ in that
@@ -107,14 +107,33 @@ async fn main() {
         master.iter().map(|(t, _)| t.clone()).collect();
     let words = MasterWords::new(lexicon, &master);
     let guarded = std::env::var("AUDIT_GUARD").as_deref() != Ok("off");
+    // `AUDIT_CAST=off` builds it without the cast, the same way, so the two
+    // runs differ in the name pass and nothing else.
+    let names: std::collections::HashSet<String> =
+        if std::env::var("AUDIT_CAST").as_deref() == Ok("off") {
+            Default::default()
+        } else {
+            jp_core::knowledge::work_names::all(&k)
+                .await
+                .unwrap()
+                .into_iter()
+                .collect()
+        };
     let tk = jp_core::golden::tokenizer(
         dict_path,
-        &master,
-        &standard,
-        ranks,
-        if guarded { jiten.clone() } else { HashMap::new() },
-        prefs,
-        conjugatable,
+        &jp_core::golden::Inputs {
+            master: master.clone(),
+            standard,
+            ranks,
+            reader_ranks: if guarded {
+                jiten.clone()
+            } else {
+                HashMap::new()
+            },
+            preferences: prefs,
+            conjugatable,
+            names,
+        },
     );
 
     // `AUDIT_TEXT="…"` explains one line the way `#tokenize` does, without a
@@ -126,12 +145,13 @@ async fn main() {
             println!("== {line}");
             for t in &tokens {
                 println!(
-                    "   {:<10} -> {:<12} {:<12} {:<8} word={}",
+                    "   {:<10} -> {:<12} {:<12} {:<8} word={} name={}",
                     t.surface,
                     t.base_form,
                     kana::to_hiragana(&t.reading),
                     t.pos,
-                    jp_core::tokenize::counts_as_word(t, &words)
+                    jp_core::tokenize::counts_as_word(t, &words),
+                    t.proper_noun
                 );
             }
             for step in steps {
@@ -208,11 +228,7 @@ async fn main() {
                     continue;
                 }
                 let row = found
-                    .entry(format!(
-                        "{}/{}",
-                        t.base_form,
-                        kana::to_hiragana(&t.reading)
-                    ))
+                    .entry(format!("{}/{}", t.base_form, kana::to_hiragana(&t.reading)))
                     .or_default();
                 row.count += 1;
                 if row.example.is_empty() {
@@ -336,11 +352,7 @@ fn rung(rule: &str) -> &'static str {
 /// Every join recomposition made, by what it built. The parts are kept because
 /// they are the evidence: よ + って spelling よって is the defect, and よって
 /// arriving whole from Sudachi is not.
-fn joins(
-    tk: &jp_core::tokenize::SudachiTokenizer,
-    lines: &[String],
-    jiten: &HashMap<String, i64>,
-) {
+fn joins(tk: &jp_core::tokenize::SudachiTokenizer, lines: &[String], jiten: &HashMap<String, i64>) {
     use jp_core::tokenize::trace::{Step, Verdict};
     let mut found: HashMap<(String, String, String, String), Row> = HashMap::new();
     let mut total = 0usize;

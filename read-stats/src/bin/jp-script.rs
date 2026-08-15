@@ -11,11 +11,13 @@
 //! a game is the extractor's job, not this one's.
 //!
 //!     jp-script profile <work> <file.txt>    derive and store the profile
+//!     jp-script names <work> [vndb-id]       import the cast, so the tokenizer
+//!                                            stops splitting it
 //!     jp-script show <work>                  coverage and the top unknown words
 
 use std::path::Path;
 
-use jp_core::knowledge::{Knowledge, work_scripts};
+use jp_core::knowledge::{Knowledge, work_names, work_scripts};
 use read_stats::config::Config;
 use read_stats::services::vndb;
 
@@ -26,6 +28,11 @@ usage:
   jp-script profile <work> <file.txt>   tokenize a script and store its profile
   jp-script names <work> [vndb-id]      import the cast from VNDB, so the
                                         tokenizer stops splitting names
+  jp-script names <work> add <name>...  names VNDB does not list — a nickname,
+                                        a minor character, a place. Kept
+                                        separately, so a refetch cannot drop
+                                        them
+  jp-script names <work> list           what the tokenizer will be told
   jp-script show <work> [limit]         coverage, and the unknown words it
                                         leans on hardest (default limit 30)
 
@@ -60,7 +67,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             let Some(work) = args.get(1) else {
                 return Err(format!("names needs a work\n\n{USAGE}").into());
             };
-            names(&knowledge, work, args.get(2).map(String::as_str)).await
+            match args.get(2).map(String::as_str) {
+                Some("add") => add_names(&knowledge, work, &args[3..]).await,
+                Some("list") => list_names(&knowledge, work).await,
+                vndb_id => names(&knowledge, work, vndb_id).await,
+            }
         }
         Some("show") => {
             let Some(work) = args.get(1) else {
@@ -108,8 +119,9 @@ async fn names(
         .user_agent("jp-tools/0.1")
         .build()?;
     let id = match vndb_id {
-        Some(given) => vndb::normalize_id(given)
-            .ok_or_else(|| format!("not a vndb id: {given}"))?,
+        Some(given) => {
+            vndb::normalize_id(given).ok_or_else(|| format!("not a vndb id: {given}"))?
+        }
         None => vndb::find_vn_id(&client, work)
             .await?
             .ok_or_else(|| format!("no VNDB match for {work} — pass the id"))?,
@@ -118,12 +130,49 @@ async fn names(
     if cast.is_empty() {
         return Err(format!("{id} lists no characters").into());
     }
-    let written = jp_core::knowledge::work_names::replace(knowledge, work, "vndb", &cast).await?;
+    let written = work_names::replace(knowledge, work, "vndb", &cast).await?;
     println!("{work} — {id}: {written} names");
     println!("  {}", cast.join("  "));
     println!();
     println!("The tokenizer reads these on its next build; re-ingest to re-derive");
     println!("what has already been counted.");
+    Ok(())
+}
+
+/// Add names by hand, under their own source so a VNDB refetch keeps them.
+///
+/// VNDB lists the cast a player would name — it has ウィリアム・シェイクスピア
+/// and not the ウィル everyone in the script calls him, and no walk-on part at
+/// all. Those are exactly the names the tokenizer splits.
+async fn add_names(
+    knowledge: &Knowledge,
+    work: &str,
+    names: &[String],
+) -> Result<(), Box<dyn std::error::Error>> {
+    if names.is_empty() {
+        return Err(format!("add needs at least one name\n\n{USAGE}").into());
+    }
+    // `replace` writes one source's whole set, so read what is there, add to
+    // it, and put it back.
+    let mut kept: Vec<String> =
+        sqlx::query_scalar("SELECT name FROM work_names WHERE work = ? AND source = 'manual'")
+            .bind(work)
+            .fetch_all(knowledge.pool())
+            .await?;
+    for name in names {
+        if !kept.contains(name) {
+            kept.push(name.clone());
+        }
+    }
+    work_names::replace(knowledge, work, "manual", &kept).await?;
+    println!("{work}: {} names added by hand", kept.len());
+    list_names(knowledge, work).await
+}
+
+async fn list_names(knowledge: &Knowledge, work: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let names = work_names::of_work(knowledge, work).await?;
+    println!("{work}: {} names", names.len());
+    println!("  {}", names.join("  "));
     Ok(())
 }
 

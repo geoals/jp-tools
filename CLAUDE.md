@@ -49,7 +49,7 @@ Cargo workspace for Japanese language learning tools.
 
 | file            | holds                                                                                                             | owner                |
 | --------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `knowledge.db`  | dictionary cache (+ role), `works`, `lines`, `manual_sessions`, `anki_notes`, `word_days`, `lookups`, `vocabulary`, `term_surfaces` | `jp_core::knowledge` |
+| `knowledge.db`  | dictionary cache (+ role), `works`, `lines`, `manual_sessions`, `anki_notes`, `word_days`, `lookups`, `vocabulary`, `term_surfaces`, `work_names` | `jp_core::knowledge` |
 | `read-stats.db` | `settings`, `reader_marks`, `work_covers`                                                                          | read-stats           |
 | `yt-mine.db`    | `mining_jobs`, `mining_sentences`                                                                                  | yt-mine              |
 
@@ -130,6 +130,16 @@ are one subsystem in jp-core rather than separable data.** The ledger keys on a
 canonical `(headword, reading)` — the reading is in the key because 空 is そら or
 から and marking one known must not mark the other. `Term::new` is the only way
 to build that key.
+
+**A name is a fact about the work, not about the sentence.** Sudachi's 固有名詞
+is a per-occurrence tag, so one character came out a name sixteen times and
+vocabulary eleven more in a single session — and a name Sudachi has no entry for
+is not merely untagged but *split*, so 世凪 arrives as 世 + 凪 and both halves
+enter the ledger. `work_names` holds the cast per work, imported from VNDB by
+`jp-script names <work>` and extended by hand with `names <work> add`; the
+tokenizer takes the union of every work's, keeps those names whole, tags them,
+and spells them the way the text did. read-stats' CLAUDE.md carries the rules,
+including the frequency veto that keeps 母 a word.
 
 **Text from outside the tokenizer is spelt the way it was written, and joining
 it to a ledger key as a raw string is silently wrong.** The ledger keys on

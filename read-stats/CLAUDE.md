@@ -171,33 +171,36 @@ and a ledger row cannot disagree):
   and **the run must begin on a content word**. That last one is what keeps
   と + し out of the listed とする; without it the quotative particle was
   swallowed on eight lines of the golden corpus.
-- **A name is not vocabulary** — 固有名詞 keeps a work's cast out of the ledger.
-  The verdict is per _term_ over a whole pass, never per occurrence.
-- **The name filter is the tokenizer's largest known error, and it needs a name
-  dictionary rather than another rule.** It can only ask Sudachi's 固有名詞 tag,
-  and Sudachi does not know a VN's cast. It misses in both directions:
-  ナノカ (tagged a name 14% of the time), メルル (47%, just under the majority),
-  ミリオ (0%, and it is ミリア normalised to a nonsense headword), ココ (6%) and
-  ゴクチョー (3%) are all in the ledger as vocabulary — about 1,500 tokens —
-  while 懲罰房 is tagged 固有名詞/地名 every time and gets dropped though it is a
-  real word. ノア passes the vote at 51%, four sightings from flipping. 皆守 is
-  worse than either: Sudachi has no entry for it at all, so it splits into
-  皆 + 守 across 191 lines and credits ~190 sightings of みな.
+- **A name is not vocabulary, and which words are names is a fact about the
+  work.** `work_names` holds its cast — imported from VNDB by
+  `jp-script names <work>`, extended by hand with `names <work> add` — and the
+  tokenizer asks that list before it asks Sudachi. Sudachi's 固有名詞 is a
+  per-occurrence tag and answers only for a name nobody listed; ingest's
+  majority vote still folds that per _term_ over a whole pass.
 
-  No threshold fixes this — the misses run from 0% to 47%. Per-work
-  concentration (`work_terms`) is the right signal and is not usable yet: with
-  three works read, パソコン looks exactly like ナノカ. Until a user dictionary
-  of cast names exists, per VN, expect to blacklist about five names per work in
-  triage, and read 皆/みな's count as inflated.
+  The cast list does three things no rule could. It **keeps a name whole**
+  (`join_names`): 世凪 arrived as 世 + 凪 and both halves were counted, 2,412 and
+  2,385 times over one script. It **takes apart what Sudachi glued to a name**
+  (`split_names`): 凛と came back as the adverb 72 times, and the split is
+  allowed only where no dictionary lists the whole and what is left over is
+  grammar, so ウィルス and 出雲大社 stay whole. And it **spells the name as the
+  text spelt it**, so すもも is not the fruit 李 and シャチ not the orca 鯱.
 
-  **TODO: import a per-VN blacklist.** The cast of a VN is knowable before it is
-  read — VNDB has it, and so does anyone who has played it — so the fix is a
-  list per work that ingest consults, not a rule that has to infer names from
-  three works of evidence. Same list, same shape, for the other thing a work
-  brings with it: its spelling of the pronouns, あてぃし and わたくしめ and
-  ぼくちん, which are that character's voice and not vocabulary. Blacklisting
-  after the fact works and is what to do meanwhile; it just has to be redone
-  every VN, and the encounters are already counted by the time triage sees them.
+  **A cast name common enough to be an everyday word is the word.** VNDB lists 母
+  as a character; it is rank 872 in fiction and the work writes it to mean a
+  mother on nearly every page. `NAME_VETO_RANK` is 5,000, and nothing else in an
+  imported cast has come near it — 凛 is 9,368th and 親方 19,076th.
+
+  What is left is the mirror error, a common noun SudachiDict tags 固有名詞.
+  `ordinary_headword`'s mixed-script rule catches it wherever the term carries
+  okurigana, since a Japanese name does not; where it carries none — 眸, 王子,
+  城, 金, 鏡, 悪魔, 予定調和 — nothing structural separates it from 橘 or 葵 and
+  `NOT_A_NAME` names them one at a time. A work that really does have a
+  character called 悪魔 says so in its cast list, which is asked first.
+
+  Still open: a work's spelling of the pronouns — あてぃし, わたくしめ, ぼくちん
+  — which are a character's voice and not vocabulary. Blacklisting in triage is
+  what to do meanwhile.
 
 ### Fixing one
 
@@ -234,7 +237,8 @@ else.
    | --- | --- |
    | one string joins wrongly (思いで, ものとする) | `NEVER_JOIN` in `tokenize.rs` — one reviewed judgement per string, and it cannot cost anything not named |
    | a standard dictionary is licensing nonsense in bulk | `jp-dict set-role <id> reference` backs it out entirely; nothing else changes |
-   | a name is being counted as vocabulary | blacklist in triage — the tokenizer cannot tell (see the name filter above) |
+   | a name is being counted as vocabulary | `jp-script names <work> add <name>` — the cast list is asked before Sudachi's tag and is remembered per term |
+   | an ordinary word is being dropped as a name | `NOT_A_NAME` in `tokenize.rs`, once `ordinary_headword`'s mixed-script rule has been ruled out |
    | a word should be kept whole | mine it: the mined deck is the tokenizer's second wordhood source, so tomorrow's lines keep it |
    | anything structural | a rule in `join_run` or `identity_ladder`, with the golden fixture read line by line |
 
@@ -301,8 +305,10 @@ already does, which is why the length cap was the right thing to widen instead.
   spelling exactly one master headword, and they are て + いく → テイク,
   ない + ん → ナイン, は + ない → 派内, いる + か → 海豚. Five tokens of gain
   against three thousand ways to be wrong.
-- **皆守 → 皆 + 守**, 191 lines. Sudachi has no entry for the surname, and 皆 is
-  tagged an ordinary noun so the name filter does not catch it.
+- **皆守 → 皆 + 守**, 191 lines — and now fixable rather than known: it is the
+  case `work_names` exists for, and 魔法少女ノ魔女裁判's cast has simply not been
+  imported. `jp-script names <work>` then `POST /api/vocab/rebuild` re-derives
+  what was counted.
 - **擦る is する.** Sudachi gives the 五段 verb both the dictionary form and the
   normalised form する, identical to the irregular. Only the conjugation class
   separates them, and using it means narrowing the kana exemption in

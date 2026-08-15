@@ -41,6 +41,12 @@ What it does not reach is the same defect on a term with no okurigana: 予定調
 悪魔, 王子, 城, 金, 鏡 are all mis-tagged the same way and are indistinguishable
 from a name by any signal available here.
 
+**Those six and 眸 are now named, in `NOT_A_NAME`** — one reviewed judgement per
+string, the same shape as `NEVER_JOIN`, since nothing structural separates them
+from 橘 or 葵. 36 occurrences over the corpus stop being dropped. A work that
+really does have a character called 悪魔 says so in its cast list, and the cast
+list is asked first.
+
 ## 満足げ, 悲しげ, 不安げ, 悔しげ — never joined
 
 Left as `満足` + `げ`, because no segmentation dictionary lists the compound as
@@ -538,3 +544,263 @@ all filter that flag, so nothing downstream ever saw them. **Any new analysis
 must filter it too**: before it did, a uniform token draw came back 32% rubble
 and the name audit's three largest entries (キー ×2220, 泉 ×892, タン ×231) were
 all of it.
+
+## Names — 2026-08-15, one 30-minute session audited token by token
+
+290 lines, 4,860 characters, 3,661 tokens, re-run through `/api/tokenize` —
+`highlight::analyze`, the same call the feed makes. Widened to the two days of
+白昼夢の青写真 read so far (1,321 lines, 16,949 tokens) where a count needed the
+larger sample.
+
+Name handling is not one defect but four, and they share a cause: **`proper_noun`
+is Sudachi's per-occurrence POS subclass** (`to_token`, `tokenize.rs:1668`), so
+the verdict is a property of the sentence, not of the term.
+
+**All four are fixed by `work_names`, which was imported and never read.** The
+table had been filled from VNDB and the tokenizer was never told about it, so
+the note under `jp-script names` — "the tokenizer reads these on its next build"
+— was a promise nothing kept. It reads them now, in three places: the gate keeps
+a cast name whole, `join_names` puts back together one Sudachi split, and
+`split_names` takes apart one Sudachi glued to a particle. What is below is the
+account of each defect as it was found.
+
+**ウィル — the same name both ways in the same session.** 16 occurrences
+`excluded: "name"`, 11 counted as vocabulary. The traces differ only in what
+Sudachi tagged: in 「――大丈夫ですよ、ウィル」 the join steps read *Blocked from
+merging: contains a proper noun*; in 「えっ！　ウィルも立つの！？」 the same
+surface produces *No match: parts form no listed headword*. Nothing downstream
+can tell the two apart, because nothing downstream remembers the first verdict.
+The ledger row exists with `encounter_count 21` and paints `seen` on every
+occurrence Sudachi happened to call a common noun.
+
+**ロブ — never a name at all.** 13 occurrences, all counted;
+`encounter_count 74`, `freq_rank 44139` — Jiten ranks the tennis stroke. Two
+lines below エド, which is excluded every time.
+
+**世凪 — split, then both halves counted.** 世/よ ×22 and 凪/なぎ ×21, neither
+name-tagged. The largest single leak in the window, and invisible as a name
+because the split happens first.
+
+**テンブリッジ ×9, ハーミア ×4 — dropped as `non-word`.** No dictionary lists
+them, so they never reach the name gate. No span, which is the right screen
+behaviour by accident; the classification is still absent.
+
+**眸 ×4 — a false name.** 「二つの眸は閉じられている」, 「真っ赤な眸が…」 — the
+common noun, used as one, excluded as a name and so never counted and never
+tappable. `ordinary_headword`'s mixed-script rule cannot reach it: 眸 carries no
+okurigana, exactly the gap that entry already names.
+
+**タンバレイン → タンバ + レイン.** Both halves name-excluded, so nothing leaks;
+the title 『タンバレイン大王』 just has no whole form to look up.
+
+The fix these point at is stickiness: a name is a fact about a term, decided
+once and remembered, not re-derived from each sentence. Something the ledger
+could hold — `vocabulary.status = 'name'` was removed for the stated reason that
+names never reach the ledger, which is exactly what is not true here.
+
+**The cast list is that stickiness, and it comes from outside rather than from
+the corpus**, which is better: a name is knowable before the work is read.
+ウィル, ロブ, テンブリッジ, ハーミア, タンバレイン, ハチマル, リープ and パピー
+are not in VNDB's cast — it lists ウィリアム・シェイクスピア and not the ウィル
+everyone calls him — so `jp-script names <work> add` was written for them, under
+its own source so a refetch cannot drop them. Full names are also split on ・ for
+the tokenizer, since the script says シェイクスピア far more often than the whole.
+
+**眸 is fixed the other way**, by `NOT_A_NAME`; see the 断腸の思い entry.
+
+## Six non-name defects from the same session
+
+- **うるせー → 煩い/わずらい.** 「うるせーな！」 — the colloquial うるさい is
+  identified as the noun 煩い. 22 encounters on that row. **Still open, and one
+  fix was tried and backed out**: preferring whichever listed reading shares an
+  onset with the kana surface picks うるさい here, and over the corpus it also
+  turns コイツ into 此奴/こやつ, きわまり into 極まり/きまり, まじか into 間近 and
+  いーっぱい into 一杯 — a reading is too weak a signal to arbitrate a spelling
+  on. What the family actually needs is the colloquial ending itself
+  (〜あい → 〜えー: すげー, やべー, あぶねー, おもしれー), which is a kana
+  transformation and not a similarity score. Only 煩い is wrong today, because it
+  is the only one of them whose master spelling has two readings.
+- **深かっ → 深い/ぶかい.** 「深かったようにも思える」 — the bound compound
+  reading (奥深い) on a bare 深い, beside 浅かっ → 浅い/あさい in the same
+  sentence, which is right. **FIXED**, and it was not one word: Sudachi reads a
+  *standalone* 深い as ブカイ, so the ladder's re-derivation rung asked the same
+  wrong oracle twice and every 深い, 深く and 深かっ in the corpus was off the
+  master scale. A new rung under it takes the master's own reading when the two
+  differ by nothing but the first mora's voicing — 箱/ばこ → はこ is the same
+  defect, 36 occurrences, and 就く/づく → つく a third. Fenced to the voicing
+  alone: 所為 is せい in the text and しょい in the master, and rewriting *that*
+  asserts a different word.
+- **一日 → 一日/ついたち.** 「一日手伝うだけじゃあ」 — いちにち. The
+  `preferred_readings` table has no entry that reaches this.
+- **いやがおうにも → いや/否 + が + お + うに + も.** 否が応にも, kana-spelt.
+  Produces two junk tokens; うに is now a ledger row.
+- **この家 ×48 → この家/このや.** Not in this list when it was written, and the
+  same shape: 此の家 is a master headword read このや, so the join builds it out
+  of この + 家 every time the text says "this house". **FIXED** — `NEVER_JOIN`.
+- **牛乳粥 → 牛 + 乳粥.** Sudachi Mode C's own boundary. 牛 counted, 乳粥
+  dropped `non-word`; 牛乳 in the next clause of the same line is right.
+- **空の下に出る → あの + 空 + の + 下に出る/したにでる.** A join built the
+  idiom out of 下 + に + 出る where the text has none. **FIXED** — `NEVER_JOIN`.
+  All six sightings in the script are 廊下に出た, 真下に出た, 空の下に出る; the
+  idiom that exists is 下手に出る and Sudachi hands that over whole.
+
+Suffix splits in the same window that are working as designed and are listed
+only so a later pass does not re-report them: 脚本+家, 完成+形, 密会+所,
+旧教+徒, 大+受け, 海軍+大臣.
+
+## 宣戦布告 — Mode C had it whole and the gate broke it — FIXED
+
+```
+gate  宣戦布告  kept:false  "Not in a dictionary that decides segmentation"
+split 宣戦布告  mode:B      ["宣戦","布告"]
+```
+
+Sudachi's Mode C returns 宣戦布告 as one morpheme. Only Jitendex lists it, and
+its role is `reference`, so the gate rejects the whole form and falls back to
+the Mode B split — two ledger rows (宣戦 rank 47,197, 布告 rank 34,041) where
+the text has one everyday word.
+
+Same cause as 砂粒 and 蠱毒, but the failure mode is the opposite way round and
+worth separating: those never had a whole form to keep. Here the segmentation
+arrived **correct** and the gate destroyed it. A rule that trusts Mode C when it
+is *more* aggressive than the fallback would fix this class without touching
+the join paths.
+
+**Fixed by the research note below, measured before it was built.** A Mode C
+morpheme the gate rejects is kept anyway when the reader-facing list ranks it
+above *every* part the Mode B split would produce. Over 32,353 lines it fires
+three times — 宣戦布告, 無味無臭 and 掘りごたつ — and all three are one word. The
+conservative form of the threshold was the right one: strictly commoner than
+both halves.
+
+## かたや — read as 方/かた
+
+「かたやおれは、専業になって初めての作品だ」 → `かた` + `や`. The conjunction
+かたや is not listed, so the ladder takes the two-mora kana run as the master
+headword 方/かた on an exact spelling-and-reading match. `two_mora_coincidence`
+is the rule that should catch this and does not, because the match is by
+*reading* to a real headword rather than a coincidental one.
+
+Cost is not the ledger row — it is that the popup opens on 方 and the reader has
+to work out that the word was never there.
+
+## 塵 — read ごみ where the sense is ちり
+
+「微かな塵が混ざっているのがわかった」 → 塵/ごみ. Sudachi returns the reading
+ゴミ, the master lists 塵/ごみ, and the identity ladder stops at *Exact match:
+master dictionary lists both spelling and reading* with a single candidate. No
+alternative is ever weighed.
+
+The frequency tables would not have saved it — BCCWJ and Jiten both rank 塵/ごみ
+far above 塵/ちり (2,661 vs 87,036 in Jiten), because the corpus writes ごみ in
+kanji and modern fiction writes it ゴミ. Sankoku lists ちり first and twice.
+
+**The consequence is ordering in the popup, not loss.** `define::definitions`
+filters senses to the reading the tokenizer chose whenever the dictionary lists
+it, so the first thing drawn is ごみ; the other two readings are still reachable
+through the expansion chips, and the reader took them. What the wrong pick costs
+is the first guess, on a spelling where Sankoku, 明鏡 and Jitendex all list three
+readings and Sankoku's own order puts ちり first.
+
+Worth considering: when a spelling has several listed readings and the choice
+came from Sudachi alone rather than from a preference or a rank, lead with the
+master's order instead of Sudachi's pick.
+
+### Research note — rank the whole form against its parts before splitting
+
+Suggested while auditing 宣戦布告, and general to the class.
+
+The gate currently asks one question: *is the whole form listed by a dictionary
+that decides segmentation?* If not, it splits. It never asks whether the split is
+an improvement.
+
+A second test that costs one lookup each: **keep Mode C's whole form when it is
+commoner than its parts.** 宣戦布告 ranks 11,761 in Jiten; 宣戦 is 47,197 and
+布告 34,041. A compound that outranks both halves is a word the reader meets as
+one thing, whatever the segmentation dictionaries happen to list.
+
+Two things to settle before trying it:
+
+- It needs Jiten to rank the whole form, and Jiten ranks 430k terms against the
+  master's 82k, so this admits compounds the master has no entry for. That is a
+  wordhood decision made by a frequency list, which is a role change in all but
+  name — the same objection that keeps Jitendex out of segmentation.
+- The threshold is not obvious. Strictly commoner than both parts is the
+  conservative form; commoner than the *rarer* part would be far more permissive
+  and probably wrong.
+
+Worth measuring against the corpus before it is worth building: how many joins
+the rule would make, and how many of them are wrong.
+
+---
+
+## The name batch — 2026-08-15, and what it moved
+
+Eight fixes in one pass, measured against the 32,353 lines already read and
+against 白昼夢の青写真's whole script. **474 lines of the read corpus changed,
+and every change was reviewed** by diffing `examples/tokens.rs` before and
+after — twice, once with the cast switched off (`TOKENS_NAMES=off`) so the
+identity rules could be judged on their own.
+
+### The cast list, finally read
+
+`work_names` existed, was filled from VNDB, and nothing consulted it.
+`SudachiTokenizer::with_names` is the whole of the fix, applied in four places:
+
+- **the gate** keeps a cast name whole, so the C→B→A pass cannot take it apart;
+- **`join_names`** puts back together what Sudachi already split — 世 + 凪,
+  タンバ + レイン, ウィリアム + ・ + シェイクスピア;
+- **`split_names`** takes apart what Sudachi glued to a name, fenced to a whole
+  form no dictionary lists whose remainder is grammar (凛と comes apart, ウィルス
+  and 出雲大社 do not);
+- **`to_token`** tags it, and spells it as the text spelt it, so すもも stays
+  すもも rather than becoming the fruit 李.
+
+Against the script, where the cast actually lives: **92 terms disappeared
+entirely (3,644 occurrences) and 42 shrank (5,230 more)** — 凪/なぎ from 2,385 to
+6, 世/よ from 2,412 to 42, 凛 1,442 → 0, 李/すもも 682 → 0, ロブ 118 → 0,
+凛と 72 → 0, 鯱 70 → 0. Against the read corpus it is 388 lines and nothing but
+names.
+
+Three things the list needed before it could be trusted:
+
+- **A frequency veto.** VNDB lists 母 as a character of this work, and the work
+  writes it to mean a mother constantly. `NAME_VETO_RANK` is 5,000 on the
+  reader-facing list; 母 is 872nd and nothing else in the cast is inside 9,000.
+- **The halves of a full name.** VNDB gives ウィリアム・シェイクスピア and the
+  script says シェイクスピア, so `work_names::all` splits on ・ for the
+  tokenizer. One character is never a part — ピーチ・ザ・ビッチ would otherwise
+  teach it that ザ is somebody.
+- **Names VNDB does not have at all.** `jp-script names <work> add` writes them
+  under their own source, so a refetch cannot drop them: ウィル, ロブ,
+  テンブリッジ, ハーミア, タンバレイン, ハチマル, リープ, パピー.
+
+### The other six
+
+| defect | fix | corpus |
+| --- | --- | --- |
+| ordinary words dropped as names (眸, 王子, 城, 金, 鏡, 悪魔, 予定調和) | `NOT_A_NAME` | 36 occurrences, +74 more in the script |
+| 深い read ぶかい, 箱 read ばこ | a ladder rung under the re-derivation: the master's own reading when the two differ only by the first mora's voicing | 44 |
+| この家 read このや | `NEVER_JOIN` | 3, and 48 in the script |
+| 下に出る built out of 下 + に + 出る | `NEVER_JOIN` | 0 read, 6 in the script |
+| 宣戦布告 split by the gate | a Mode C form commoner than all its parts is kept | 3 |
+| うるせー read わずらい | **tried and backed out** — see that entry | — |
+
+### What was refused, and why it is worth recording
+
+**Arbitrating a spelling by how much its reading looks like the surface.** It
+fixes うるせー → 煩い/うるさい and breaks four other things in the same corpus:
+コイツ → 此奴/こやつ, きわまり → 極まり/きまり, まじか → 間近, いーっぱい → 一杯.
+A reading is the weakest signal there is; a similarity score over it is weaker
+still.
+
+**Taking the master's single reading whenever Sudachi's is unlisted.** The first
+form of the 深い fix, and it rewrote 所為/せい to しょい and 出入/でいり to
+しゅつにゅう — spellings the master merely reads some other way, which are
+different words rather than one word's compound form. Voicing is a mechanical
+relation and is the only one that licenses the swap.
+
+**Keying a kana line on the master's kanji spelling.** 玉蜀黍 for とうもろこし,
+鼾 for いびき, 御祝儀 for ご祝儀 — the tail defect measured earlier in this file.
+Refusing the fold would move those words off the master scale, which is a
+decision about the denominator and not a parse fix. It stays open deliberately.

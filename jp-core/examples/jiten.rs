@@ -82,7 +82,16 @@ async fn main() {
         .unwrap();
     let conjugatable: HashSet<String> = dictionaries::master_conjugatable(pool).await.unwrap();
 
-    let tk = jp_core::golden::tokenizer(dict_path, &master, &[], ranks, HashMap::new(), prefs, conjugatable);
+    let tk = jp_core::golden::tokenizer(
+        dict_path,
+        &jp_core::golden::Inputs {
+            master: master.clone(),
+            ranks,
+            preferences: prefs,
+            conjugatable,
+            ..Default::default()
+        },
+    );
     let cfg = sudachi::config::Config::new(None, None, Some(dict_path.to_path_buf())).unwrap();
     let dict = sudachi::dic::dictionary::JapaneseDictionary::from_cfg(&cfg).unwrap();
     let raw = sudachi::analysis::stateless_tokenizer::StatelessTokenizer::new(&dict);
