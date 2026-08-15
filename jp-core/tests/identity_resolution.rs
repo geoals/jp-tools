@@ -62,6 +62,9 @@ fn reader_ranks() -> HashMap<String, i64> {
         // the whole reason the cast has a frequency veto on it.
         ("母", 872),
         ("凛", 9368),
+        // A character called ココ, and ここ is a word every page uses — the
+        // pair the veto would fire on if the fold ran before the name gate.
+        ("ここ", 76),
         ("ロブ", 44139),
         ("出雲", 40106),
         // Jiten's own numbers: the compound is a word the reader meets whole,
@@ -556,6 +559,44 @@ fn a_katakana_word_is_not_folded_onto_its_hiragana_homophone() {
         let tokens = tokens_of(&tk, text);
         assert_eq!(identity_of(&tokens, surface), pair(term, reading), "{text}");
     }
+}
+
+/// The other half of that: where the master lists **only** the hiragana, the
+/// katakana is not a spelling of anything and the line means the word. ウチ and
+/// コイツ each opened a ledger row of their own beside うち and こいつ.
+///
+/// A katakana headword in its own right is untouched, because the fold is last
+/// and can only win where nothing the text wrote is listed.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn katakana_the_master_does_not_list_folds_onto_the_hiragana_it_does() {
+    let (tk, _) = setup();
+    for (text, surface, term, reading) in [
+        ("ウチが必要だ", "ウチ", "うち", "うち"),
+        ("コイツは誰だ", "コイツ", "こいつ", "こいつ"),
+        ("スマホを見た", "スマホ", "スマホ", "すまほ"),
+    ] {
+        let tokens = tokens_of(&tk, text);
+        assert_eq!(identity_of(&tokens, surface), pair(term, reading), "{text}");
+    }
+}
+
+/// The fold has to ask the cast list itself, not leave the name to the gate
+/// downstream. That gate vetoes a cast name common enough to be an ordinary
+/// word and it asks the *identity*, so folding first made the veto fire on the
+/// fold: ココ became ここ, stopped being a name, and handed a character's 421
+/// sightings to the pronoun.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_katakana_cast_name_is_never_folded_onto_the_word_it_spells() {
+    let tk = with_cast(&["ココ"]);
+    let tokens = tokens_of(&tk, "ココは黙って頷いた");
+
+    assert_eq!(identity_of(&tokens, "ココ"), pair("ココ", "ここ"));
+    assert!(
+        tokens.iter().any(|t| t.surface == "ココ" && t.proper_noun),
+        "{tokens:?}"
+    );
 }
 
 /// A bound kanji is a different word that shares the spelling, and it is read

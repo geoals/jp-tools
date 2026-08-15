@@ -1508,6 +1508,43 @@ impl SudachiTokenizer {
         if uninflected {
             candidates.push((surface.clone(), m.reading_form().to_string()));
         }
+        // **The other alphabet, where only one of the two is a word.** A line
+        // writing ウチ or コイツ means うち and こいつ; the master lists those as
+        // kana headwords and lists no katakana spelling of either, so the token
+        // keys on itself and opens a second ledger row for a word already on the
+        // scale. ウチ alone is 107 encounters.
+        //
+        // **Last, so it can only win where nothing the text wrote is listed.**
+        // スマホ, ルーム and シャワー are katakana headwords in their own right
+        // and match above this; ザル and マジ match at the alphabet rung. The
+        // fold is the claim that the katakana is not a spelling of anything.
+        //
+        // Asked of the lemma, and only where the fold is *itself* a headword —
+        // not where it merely reads like one. ハエ folded to はえ finds nothing,
+        // which is right: 蠅 is the word and its katakana is how it is written.
+        //
+        // **Never on a name**, and the cast list has to be asked here rather
+        // than left to the name gate downstream. That gate vetoes a cast name
+        // common enough to be an ordinary word, and it asks the *identity* — so
+        // folding ココ to ここ first made the veto fire on the fold and handed a
+        // character's 421 sightings to the pronoun. Sudachi's tag covers the
+        // cast nobody listed: ナオ is なお and マコト is まこと, and neither of
+        // those is the word the line meant.
+        let name = self.names.contains(m.dictionary_form())
+            || self.names.contains(&surface)
+            || m.part_of_speech().get(1).map(String::as_str) == Some("固有名詞");
+        let katakana_fold = (!mora_of_kana
+            && !name
+            && crate::text::kana::is_all_katakana(m.dictionary_form())
+            && !self.lexicon.contains(m.dictionary_form()))
+        .then(|| crate::text::kana::to_hiragana(m.dictionary_form()));
+        // Its own reading, not the lemma's: SudachiDict stores an empty
+        // `reading_form` for a katakana entry — the surface is already the
+        // reading — and イイ came out with no reading at all. A hiragana
+        // headword reads as itself.
+        if let Some(folded) = &katakana_fold {
+            candidates.push((folded.clone(), folded.clone()));
+        }
         // A form is a form *of* something. When the surface is inflected, every
         // candidate has to be an entry that conjugates — 許せ, おいた and 汝 are
         // all listed words, and none of them is what 許せない, やっておいた or
@@ -1550,6 +1587,8 @@ impl SudachiTokenizer {
             let overruled = self.preferred_reading(term, reading, &surface, m.part_of_speech());
             let rule = if overruled.is_some() {
                 "Obsolete reading replaced with the standard modern one"
+            } else if Some(term) == katakana_fold.as_ref() {
+                "Written in katakana: the master lists only the hiragana spelling"
             } else {
                 "Exact match: master dictionary lists both spelling and reading"
             };
