@@ -406,14 +406,27 @@
     text-align: right;
     color: #b9b9b9;
   }
-  #settings-panel select {
+  /* Chips, not a <select>: the dropdown is a native popup window, and a layer
+     surface has none to open it in — the list simply never appeared. */
+  #set-font {
     grid-column: 2 / -1;
-    padding: 0.2rem 0.3rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+  #set-font button {
+    padding: 0.2rem 0.55rem;
     border: none;
     border-radius: 6px;
     background: rgba(255, 255, 255, 0.14);
-    color: #e6e6e6;
+    color: #b9b9b9;
     font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  #set-font button.on {
+    background: rgba(154, 140, 255, 0.55);
+    color: #fff;
   }
   #settings-reset {
     grid-column: 1 / -1;
@@ -481,16 +494,17 @@
     <label for="set-backdrop">Backdrop</label>
     <input id="set-backdrop" type="range" min="0" max="1" step="0.02" />
     <output id="out-backdrop"></output>
-    <label for="set-font">Font</label>
-    <select id="set-font">
-      <option value="">As launched</option>
-      <option value="DNP Shuei Mincho Pr6">DNP Shuei Mincho Pr6</option>
-      <option value="DNP Shuei Mincho Pr6B">DNP Shuei Mincho Pr6B</option>
-      <option value="HG明朝B">HG明朝B</option>
-      <option value="kaikoku PM">kaikoku PM</option>
-      <option value="Noto Serif CJK JP">Noto Serif CJK JP</option>
-      <option value="Noto Sans CJK JP">Noto Sans CJK JP</option>
-    </select>
+    <span>Font</span>
+    <div id="set-font">
+      <button value="">As launched</button>
+      <button value="DNP Shuei Mincho Pr6">秀英明朝</button>
+      <button value="DNP Shuei Mincho Pr6B">秀英明朝 B</button>
+      <button value="HGSMinchoB">HGS明朝B</button>
+      <button value="HG明朝B">HG明朝</button>
+      <button value="kaikoku PM">kaikoku</button>
+      <button value="Noto Serif CJK JP">Noto Serif</button>
+      <button value="Noto Sans CJK JP">Noto Sans</button>
+    </div>
     <button id="settings-reset">Reset</button>
   </div>
   <div id="explain-panel" hidden></div>

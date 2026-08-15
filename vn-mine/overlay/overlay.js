@@ -606,7 +606,7 @@ const typeInputs = {
 };
 
 function applyType() {
-  fontInputEl.value = type.font;
+  for (const btn of fontBtnEls) btn.classList.toggle("on", btn.value === type.font);
   root.setProperty("--line-font", `"${type.font || font || "Noto Sans CJK JP"}", sans-serif`);
   for (const [key, value] of Object.entries(type)) {
     const asVar = TYPE_VARS[key];
@@ -620,11 +620,13 @@ function applyType() {
   report();
 }
 
-const fontInputEl = document.getElementById("set-font");
-fontInputEl.addEventListener("change", () => {
-  type = { ...type, font: fontInputEl.value };
-  applyType();
-});
+const fontBtnEls = [...document.querySelectorAll("#set-font button")];
+for (const btn of fontBtnEls) {
+  btn.addEventListener("click", () => {
+    type = { ...type, font: btn.value };
+    applyType();
+  });
+}
 
 for (const [key, [input]] of Object.entries(typeInputs)) {
   input.addEventListener("input", () => {
