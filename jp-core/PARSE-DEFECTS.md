@@ -3,13 +3,18 @@
 Words noticed misparsed while reading, worked through in batches. One entry per
 word: what the pipeline does with it today, and the cause where it is known.
 
-**12 open**, each re-checked against the live pipeline on 2026-08-15. Three
+**19 open**, each checked against the live pipeline on 2026-08-15. Three
 further questions are about the vocabulary denominator rather than the parse and
 are kept apart from them; what has been fixed is one line each at the bottom.
 
 **Start at *Next*.** It ranks what is left, says what has already been measured
 so it is not measured twice, and names the one change that is waiting on a
 decision rather than on work.
+
+The seven newest entries came from auditing the pipeline two ways in one pass —
+every join it made, grouped by what was built, and twenty random lines read as
+sentences. Both are worth repeating; see *Where the value is not* for why the
+earlier draws missed the largest class in the list.
 
 Check one with `#tokenize`, or:
 
@@ -52,39 +57,137 @@ lever that reaches them otherwise.
 ## Then, in value order
 
 The two that were 1 and 2 here are done — the katakana fold and the colloquial
-adjective ending, both under *Fixed*. What is left is thin, which is the point
-of the section below it.
+adjective ending, both under *Fixed*.
 
-1. **The three denominator questions**, which are decisions rather than code.
+1. **The grammar points built out of the words that spell them** — ところで,
+   そこで, すると, and ものの behind them. **~161 wrong tokens over three
+   strings**, which is an order of magnitude more than anything else left, and
+   すると damages the verb it takes the と from. The rule that fits two of the
+   three is *clause-initial*, not a `NEVER_JOIN` entry; see that section.
+   `examples/joined.rs` lists every join the corpus made, and is how the next
+   one is found.
+2. **The three denominator questions**, which are decisions rather than code.
    They change the headline number the whole system reports, and until one is
    made that number has an unstated policy inside it.
-2. **The が swallowed into an unlisted mimetic** (the ふよふよ entry). The rule
+3. **The が swallowed into an unlisted mimetic** (the ふよふよ entry). The rule
    is clear — が, を and へ essentially never begin a Japanese word — but it
    fires twice over the read corpus today, which is not enough evidence.
    Revisit when more of 白昼夢の青写真 has been read; its script holds 10
    sightings of ふよふよ alone.
-3. **うっさい**, the last of the うるさい family. It drops the る rather than
+4. **うっさい**, the last of the うるさい family. It drops the る rather than
    holding the vowel, so the kana arithmetic that fixed うるせー/うるせえ/うるせぇ
    cannot reach it and the master lists only うるさい. 3 encounters.
-4. **Everything else in the open list, at one or two encounters each.** 一日,
+5. **Everything else in the open list, at one or two encounters each.** 一日,
    塵, 砂粒, 何時, かたや, いやがおうにも, きわまり, お花摘み, 満足げ — the
    corpus dump has 1–4 of each. They are worth doing as a batch, on a day when
    the tools are already loaded, and not one at a time.
 
 ## Where the value is *not*
 
-**The parser is at diminishing returns and this is measured, not felt.** The
-name batch moved ~9,000 fabricated occurrences and the noise rule 338; *every*
-remaining open defect is worth tens — 牛乳粥 was 47, the spelling class ~60,
-the うるさい family 17, かたや and いやがおうにも 1 each. The last two uniform draws put it
-at 59 of 60 right by token and 51 of 60 clean by type, and **segmentation and
-identity errors did not appear in either**. Two things outside this file are
-worth more than the next parse defect: the lookup-tax study (4,138 lookups over
-26 days, never analysed) and the denominator decision above.
+**Identity defects are at diminishing returns; joins are not, and that
+distinction was missed for a while.** The name batch moved ~9,000 fabricated
+occurrences and the noise rule 338, and every remaining *identity* defect is
+worth ones and tens — 牛乳粥 was 47, the spelling class ~60, the うるさい family
+17, かたや and いやがおうにも 1 each. Two uniform draws put the pipeline at 59 of
+60 right by token and 51 of 60 clean by type.
+
+**Those draws are why the join class went unseen, and the reason is worth
+keeping.** Judging a token against its line asks "is this word right", and a
+wrongly-built ところで *is* a word — it is the wrong one for that sentence, and
+it reads as fine unless the line is read as a sentence rather than as a bag of
+tokens. Sampling the joins themselves, grouped by what was built and shown with
+the lines they were built on, found ~161 wrong tokens in one pass.
+`examples/joined.rs` is that pass.
+
+The lookup-tax study (4,138 lookups over 26 days, never analysed) and the
+denominator decision are still worth more than the tail of this list.
 
 ---
 
 # Open
+
+## ところで, そこで, すると — a grammar point built out of the plain words that spell it
+
+The master is a learner's dictionary, so it lists the grammar points; the join
+sees the parts and builds one every time, whether or not the sentence used it.
+`NEVER_JOIN` is the list of the ones judged so far. These are the next three,
+found by `examples/joined.rs` over every line read and judged against the lines
+each fired on.
+
+| built | times | wrong | what the lines actually say |
+| --- | --- | --- | --- |
+| ところで | 68 | ~59 | 「離れたところで」, 「登り切ったところで」 — a point, not "by the way". 59 of the 68 are mid-clause, and mid-clause 〜ところで is always the plain one |
+| そこで | 55 | ~48 | 「そこで俺は」, 「なんでそこで隠れる」 — *there*. The conjunction is clause-initial and so is the locative, so only reading them separates these |
+| すると | 113 | ~54 | 「油断すると」, 「発言すると問題なんだよ」 — the verb and the conditional. 54 are mid-clause |
+
+**すると is the worst of the three, because it damages a second token.**
+それは merely miscounts それ; 油断すると comes out 油断 + すると, so the verb
+油断する is not in the line at all.
+
+**A flat `NEVER_JOIN` entry is the wrong shape for two of them.** It would take
+the 9 real ところで and 59 real すると with it. What separates the two readings
+in both cases is whether the run *starts a clause* — the conjunction always
+does, the plain reading is mid-sentence — and that is knowable at the join, from
+whether the preceding token is punctuation or the run opens the line. そこで is
+the one that needs the list, since both readings are clause-initial.
+
+Measured but not built: the clause-initial rule is a change to `recompose`'s
+fences rather than an entry in a list, and it wants its own before/after over
+the corpus.
+
+## ものの — the concessive, built on every ordinary noun + の
+
+26 built, and about a third are wrong: 「巨大なものの前で」, 「すべてのものの
+存在」, 「10年モノの連中」 are a noun and a particle, while 「抵抗しているものの」
+and 「言ったものの」 are the concessive and are right.
+
+Not the same fix as the three above — both readings sit mid-clause. What
+separates them is what comes *before*: the concessive follows a verb or an
+adjective, the plain もの follows a noun or な. Note the parts are `モノ + の`,
+so the katakana fold feeds it.
+
+## くそう — read 臭い/くさい
+
+「くそう、やはりダメか」 is the interjection. Sudachi normalises it onto 臭い and
+the pair lists, so the ladder stops at *Exact match*. Same family as うるせー and
+not reachable by the same arithmetic: くそう is くそ plus a drawn-out う, not a
+contracted adjective ending.
+
+## 天球儀 → 天球 + 儀, 何度 → 何 + 度
+
+Two compounds no segmentation authority holds whole, split into parts that are
+each listed. 何度 is the one to look at first: read-stats' CLAUDE.md names it as
+a word 明鏡 lists, so the gate should be keeping it.
+
+## ２８日 — read によう + か
+
+`２８/28/によう` + `日/日/か`. The digits are read as a word and the counter
+takes its bound reading, so a date comes out as two tokens neither of which is
+a number. Numbers are already off the vocabulary scale, so the cost is the
+popup and the trace rather than a ledger row.
+
+## 傍 → 側, and the spelling class swapping one kanji for another
+
+「牢屋敷のすぐ傍に」 keys on 側. This is the spelling class below, but worth
+naming separately: the usual case puts kanji on a line that wrote kana, which
+is at least the same word spelt fuller. This replaces a kanji the reader saw
+with a different one.
+
+## で and に read as the copula だ
+
+「あの村で」, 「形で」, 「不意に」 — the case particle filed under だ. Three
+sightings in a random draw of 20 lines, which makes it the most frequent single
+error in the pipeline by rate.
+
+**Most of it is not an error**, and that is why it is one entry rather than a
+batch. 綺麗に, 見事に, マジで, 必死で are na-adjectives whose adverbial *is* the
+copula's form, and 〜ので (247 of the 1,194 で cases) is the copula too. The
+wrong ones are で after a plain noun — こと, 物, 話, 犯人, 瞳, 一人.
+
+It is also Sudachi's analysis rather than the ladder's: the normalised form
+arrives as だ and every candidate agrees. And it costs nothing in the ledger,
+since だ is grammar judged long ago. The cost is the popup opening on the copula
+when the reader taps a particle.
 
 ## ロボットがふよふよと — the particle is swallowed into an unlisted mimetic
 
