@@ -45,7 +45,8 @@ strip grows with the type; `VN_OVERLAY_HEIGHT` still wins if it is set.
     JP_TOOLS_ANKI_URL   AnkiConnect       (default http://localhost:8765)
     VN_OVERLAY_HEIGHT   strip height, px  (default 300, 525 with --mobile)
     VN_OVERLAY_BG       backdrop alpha    (default 0.82)
-    VN_OVERLAY_FONT     font for the line (default Noto Sans CJK JP)
+    VN_OVERLAY_FONT     font for the line (vn-overlay.sh sets DNP Shuei Mincho
+                        Pr6; unset falls back to the page's Noto Sans CJK JP)
 """
 
 import argparse

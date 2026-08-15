@@ -196,7 +196,9 @@ on every change.
   hidden, which is the only thing that makes the two agree: the VN's line
   breaks are inserted when it renders, so they are not in the hooked text and
   cannot be reproduced.
-- `VN_OVERLAY_FONT` (default `Noto Sans CJK JP`) — the font for the line only.
+- `VN_OVERLAY_FONT` (default `DNP Shuei Mincho Pr6`, set by `vn-overlay.sh`;
+  unset it falls back to the page's `Noto Sans CJK JP`) — the font for the line
+  only.
   Any family name `fc-list :lang=ja family` prints. The popup keeps the default:
   a dictionary and the text being tried are hard to judge in the same face.
 
