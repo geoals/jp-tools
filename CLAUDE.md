@@ -274,6 +274,14 @@ non-obvious why, no comment.
 A short doc comment on a module or a public type is fine — what it is for, how
 it fits. Not a tour of its contents.
 
+**A comment states what is true, not how the code got here.** Never write that
+something used to be different, why it changed, or what a measurement said —
+no counts, percentages, timings or sample sizes from a one-off check. That
+prose is stale the moment the data moves, and nobody reading the code can tell
+whether it still holds. History belongs in the commit message, where it is
+dated and cannot rot. If a line only makes sense as an argument for a change
+that has already been made, delete it.
+
 All prose here — comments, doc comments, README, this file — is plain simple
 English, as short as it can be. One pass to say the thing, then stop.
 

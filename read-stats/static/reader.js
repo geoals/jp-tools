@@ -29,14 +29,6 @@ const MARKED_ONLY_KEY = "reader-marked-only";
  *  makes the marks readable. Anything unrecognised is ignored rather than
  *  drawn — that is version skew, not a word. */
 const PAINTED = ["seen", "new", "unknown"];
-/** The statuses an underline is added to when the word is common: everything
- *  the reader has not got yet.
- *
- *  `seen` was left out while it was the bulk of an unjudged ledger. It is no
- *  longer: over 250 hooked lines it is 0.4% of tokens against 62% `known`, and
- *  a common word still sitting unjudged is exactly the gap worth seeing. The
- *  rank thresholds are what keep the underline rare — the whole underlined set
- *  is about one word every eight lines. */
 const UNDERLINED = ["new", "seen", "unknown"];
 /** Where the common-word underline sits and how thick it is. Drawn inside the
  *  mark's rectangle, which sits behind the text, so it reads as an underline
