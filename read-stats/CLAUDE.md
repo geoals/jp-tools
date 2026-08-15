@@ -237,15 +237,26 @@ else.
    diff <(cut -f2 before.tsv) <(cut -f2 after.tsv) | head -50
    ```
 
+   **Build the "before" from `HEAD` in a `git worktree`**, not from an earlier
+   dump. These tools read the live `knowledge.db`, which grows while you work,
+   and they have drifted from production before — `tokens.rs` went a year
+   without the reader ranks, so what it printed was the pipeline with the
+   short-kana guard switched off. Three env toggles exist so one rule can be
+   diffed against itself with everything else held still: `TOKENS_NAMES=off`,
+   `AUDIT_CAST=off`, `AUDIT_GUARD=off`.
+
    **A rule change is judged on that diff, not on the case that prompted it.**
    Every rule here trades one mistake for another, and the trade is only
    visible over the corpus: と + し → とする looked like an improvement in
-   isolation and swallowed the quotative particle on eight lines.
+   isolation and swallowed the quotative particle on eight lines. Two rules
+   this week were built, measured, and taken back out again on the strength of
+   it — see *What was refused* in `jp-core/PARSE-DEFECTS.md`.
 3. **Reach for the narrowest knob that fits.**
 
    | the error | the knob |
    | --- | --- |
    | one string joins wrongly (思いで, ものとする) | `NEVER_JOIN` in `tokenize.rs` — one reviewed judgement per string, and it cannot cost anything not named |
+   | Sudachi's boundary runs through a word it lacks (なん + てひどい) | `CUT_BEFORE_AND_AFTER` — the line is handed over in pieces, and only where the analysis shows the boundary came out wrong |
    | a standard dictionary is licensing nonsense in bulk | `jp-dict set-role <id> reference` backs it out entirely; nothing else changes |
    | a name is being counted as vocabulary | `jp-script names <work> add <name>` — the cast list is asked before Sudachi's tag and is remembered per term |
    | an ordinary word is being dropped as a name | `NOT_A_NAME` in `tokenize.rs`, once `ordinary_headword`'s mixed-script rule has been ruled out |

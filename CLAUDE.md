@@ -173,8 +173,11 @@ tools read. Owned by one of them it becomes an ordering dependency between tools
 that are otherwise independent — yt-mine held it, so a dictionary added for the
 VN overlay stayed invisible until yt-mine happened to boot. The services call
 `Dictionary::load_cached` and open what is already there; `jp-core`'s `jp-dict`
-binary (`sync`, `import`, `list`, `set-role`) is the only thing that reads a zip,
-and `start-all.sh` runs `jp-dict sync` before starting them.
+binary (`sync`, `import`, `list`, `set-role`, `remove`) is the only thing that
+reads a zip, and `start-all.sh` runs `jp-dict sync` before starting them.
+`remove` is there because nothing cascades: the three payload tables key on
+`dictionary_id`, so dropping the `dictionaries` row alone would leave the
+entries behind — invisible to `list`, and still answering the wordhood gate.
 
 `source_path` is the cache key, so a moved zip is *repointed* rather than
 re-imported — re-importing costs a 400k-row pass and leaves a duplicate row.

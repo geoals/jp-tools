@@ -3,10 +3,13 @@
 Words noticed misparsed while reading, worked through in batches. One entry per
 word: what the pipeline does with it today, and the cause where it is known.
 
-**13 open**, listed below and each re-checked against the live pipeline on
-2026-08-15. Three further questions are about the vocabulary denominator rather
-than the parse and are kept apart from them; what has been fixed is one line
-each at the bottom.
+**13 open**, each re-checked against the live pipeline on 2026-08-15. Three
+further questions are about the vocabulary denominator rather than the parse and
+are kept apart from them; what has been fixed is one line each at the bottom.
+
+**Start at *Next*.** It ranks what is left, says what has already been measured
+so it is not measured twice, and names the one change that is waiting on a
+decision rather than on work.
 
 Check one with `#tokenize`, or:
 
@@ -14,6 +17,73 @@ Check one with `#tokenize`, or:
 curl -s localhost:3200/api/tokenize -H 'content-type: application/json' \
   -d '{"text":"…"}'
 ```
+
+---
+
+# Next
+
+Ranked, with what has already been measured so it is not measured twice. The
+procedure for any of them is read-stats' CLAUDE.md under *Fixing one*; the
+addition worth knowing is that a clean before/after needs a **baseline built
+from `HEAD` in a `git worktree`**, because several of these tools take their
+inputs from the live `knowledge.db` and it moves under you. Three env toggles
+exist so a rule can be diffed against itself: `TOKENS_NAMES=off`,
+`AUDIT_CAST=off`, `AUDIT_GUARD=off`.
+
+## Waiting on a decision, not on work
+
+**One mora of kana is never a word of its own, whatever a dictionary says.**
+The identity ladder already carries this argument (`mora_of_kana`,
+`headword_for_reading`) and the wordhood gate does not. Measured over the
+ledger: **46 rows and 1,378 encounters** would go — ちゅ, ぢ, ひ ×358, う ×213,
+く ×153, あ ×140, ふ, ぎ, ちょ — against **37 rows and 149,058 encounters that
+must survive**, which are the particles (を は が に) and the affixes
+(さ お ご め). Fencing on those two parts of speech is what separates them, so
+`is_noise` would need the token's POS, which it does not take today.
+
+Not built for two reasons, both worth a deliberate answer rather than a default:
+it **overrules a dictionary**, which no other rule here does; and to stay
+coherent it would have to drive the reader's paint as well as the ledger, or
+ひ and あ would sit tinted `new` on every line forever instead of quietly
+`known`. It is the only thing standing between the reader and a clean triage
+queue — ちゅ ×207 and ぢ ×52 head 白昼夢の青写真's, and blacklisting is the only
+lever that reaches them otherwise.
+
+## Then, in value order
+
+1. **うるせー → 煩い/わずらい**, and its family. Needs the colloquial adjective
+   ending as kana arithmetic (〜あい → 〜えー: すげー, やべー, あぶねー,
+   おもしれー), which is a small mapping table over the gojūon rows. ~25
+   encounters, and 煩い is the only one wrong today because it is the only one
+   whose master spelling carries two readings. **A similarity score over
+   readings was tried and backed out** — see that entry.
+2. **The katakana fold**, and it is newly unblocked. read-stats' CLAUDE.md
+   records it as measured and rejected because "424 of their 549 encounters are
+   ココ, a character in the VN" — ココ is in `work_names` now, so that objection
+   is gone. What is left is **25 rows / 178 encounters** whose hiragana form the
+   master lists while the katakana is listed by nothing: ウチ→うち ×107,
+   アレ→あれ ×17, コイツ→こいつ ×13, ソレ, ソッチ, ソコ, ミライ, シケイ. Note
+   the fold must not touch a loanword — スマホ, ルーム, シャワー are katakana
+   rows too and are simply words.
+3. **The が swallowed into an unlisted mimetic** (the ふよふよ entry). The rule
+   is clear — が, を and へ essentially never begin a Japanese word — but it
+   fires about four times over the read corpus today, which is not enough
+   evidence. Revisit when more of 白昼夢の青写真 has been read; its script holds
+   10 sightings of ふよふよ alone.
+4. **The three denominator questions**, which are decisions rather than code.
+   They change the headline number the whole system reports, and until one is
+   made that number has an unstated policy inside it.
+
+## Where the value is *not*
+
+**The parser is at diminishing returns and this is measured, not felt.** The
+name batch moved ~9,000 fabricated occurrences and the noise rule 338; *every*
+remaining open defect is worth tens — 牛乳粥 was 47, the spelling class ~60,
+うるせー 22, かたや and いやがおうにも 1 each. The last two uniform draws put it
+at 59 of 60 right by token and 51 of 60 clean by type, and **segmentation and
+identity errors did not appear in either**. Two things outside this file are
+worth more than the next parse defect: the lookup-tax study (4,138 lookups over
+26 days, never analysed) and the denominator decision above.
 
 ---
 
@@ -27,8 +97,9 @@ a nonsense 副詞 and shreds the mimetic. Two false rows come out of it: がふ 
 adverb, and よ resolved to the adjective よい.
 
 **No dictionary lists ふよふよ at all** — not Sankoku, not 明鏡, not Jitendex,
-and not either onomatopoeia dictionary installed to look for it — so even a
-perfect segmentation leaves it a `non-word`. What is lost is the が, and the two
+and not either of the two onomatopoeia dictionaries installed to look for it
+(擬音語・擬態語辞典 and surasura, both removed again once they had answered) — so
+even a perfect segmentation leaves it a `non-word`. What is lost is the が, and the two
 assertions.
 
 **And no dictionary will.** Mimetics are a productive system rather than a
@@ -40,8 +111,8 @@ half of them are カカカカ, イイイイ, どどどど and ぐぐぐぐ — s
 keyboard mashing. The tail of this class is not recoverable by wordhood at all,
 which is why the defect here is the swallowed が and not the missing entry.
 
-Same family as the three above, and the named list cannot take it: mimetics are
-coined freely and no list will hold them. The rule that would is one keyed on
+Same family as the boundary defects under *Fixed*, and `CUT_BEFORE_AND_AFTER`
+cannot take it: mimetics are coined freely and no named list will hold them. The rule that would is one keyed on
 the *particle* rather than on the word — が, を and へ essentially never begin a
 Japanese word, so an unlisted token that starts at a token boundary and begins
 with one of them has swallowed it. Measured over the read corpus that fires
