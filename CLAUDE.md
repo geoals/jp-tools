@@ -251,6 +251,14 @@ threshold means roughly the same thing under either.
   ```js
   const age = `snapshot ${mins} min ago`; // then: <span>${age}</span>
   ```
+- **When asked to query the Anki db, act like this.** Query only when told.
+  AnkiConnect is JSON-RPC on `http://127.0.0.1:8765` (`POST`, `version` 6).
+  Mined cards are deck `Japanese`, note type `Japanese sentences`; field names
+  live in `jp_mine_core::config::AnkiConfig`. To get the most recent mined
+  cards: `findNotes` on the deck, `notesInfo`, sort `noteId` descending (a
+  millisecond timestamp; higher = newer). `VocabKanji` = headword,
+  `CompactDef` = gloss, `Frequency` = jpdb rank. Report the facts as asked;
+  don't editorialize.
 
 ## Comments and docs
 
