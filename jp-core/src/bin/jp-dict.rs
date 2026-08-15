@@ -30,6 +30,8 @@ usage:
   jp-dict list                    list cached dictionaries and their roles
   jp-dict reimport <id>           re-parse a cached zip in place, keeping the
                                   id and the role (use after a parser fix)
+  jp-dict remove <id>             forget a cached dictionary and its entries
+                                  (the zip on disk is left alone)
   jp-dict set-role <id> <role>    role is master, standard, name or reference
                                   (standard: decides segmentation beside the
                                   master, never spelling or the word count)
@@ -120,6 +122,34 @@ async fn run() -> Result<(), String> {
                 .map_err(|e| format!("cannot re-import {}: {e}", target.title))?;
             println!("{}  {count} entries", target.title);
             Ok(())
+        }
+        "remove" => {
+            let [id] = rest else {
+                return Err(format!("remove needs an id\n\n{USAGE}"));
+            };
+            let id: i64 = id.parse().map_err(|_| format!("not an id: {id}"))?;
+            let cached = db::list_dictionaries(pool)
+                .await
+                .map_err(|e| format!("cannot read the dictionary list: {e}"))?;
+            let target = cached
+                .iter()
+                .find(|d| d.id == id)
+                .ok_or_else(|| format!("no cached dictionary with id {id}"))?;
+            if target.role == Role::Master {
+                return Err(format!(
+                    "{} is the master dictionary — set another one master first",
+                    target.title
+                ));
+            }
+            let rows = db::remove_dictionary(pool, id)
+                .await
+                .map_err(|e| format!("cannot remove {}: {e}", target.title))?;
+            println!("{}  {rows} entries forgotten", target.title);
+            println!();
+            println!("`jp-dict sync` re-imports it if the zip is still in the");
+            println!("dictionaries directory. Re-derive the ledger afterwards:");
+            println!("which dictionaries hold a term is cached on its row.");
+            list(pool).await
         }
         "set-role" => {
             let [id, role] = rest else {

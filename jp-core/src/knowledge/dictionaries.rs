@@ -793,6 +793,38 @@ pub struct Dictionary {
     pub role: Role,
 }
 
+/// Drop a cached dictionary and everything it holds.
+///
+/// The three payload tables key on `dictionary_id` and nothing cascades, so a
+/// row deleted from `dictionaries` alone would leave its entries behind —
+/// invisible to `list`, still answering the wordhood gate. All four go in one
+/// transaction.
+///
+/// Callers refresh `vocabulary`'s dictionary flags afterwards: which
+/// dictionaries hold a term is cached on the row, and dropping one makes that
+/// cache wrong until it is recomputed.
+pub async fn remove_dictionary(pool: &SqlitePool, id: i64) -> Result<u64, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let mut removed = 0;
+    for table in [
+        "dictionary_entries",
+        "dictionary_pitch",
+        "dictionary_frequency",
+    ] {
+        removed += sqlx::query(&format!("DELETE FROM {table} WHERE dictionary_id = ?"))
+            .bind(id)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+    }
+    sqlx::query("DELETE FROM dictionaries WHERE id = ?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(removed)
+}
+
 pub async fn list_dictionaries(pool: &SqlitePool) -> Result<Vec<Dictionary>, sqlx::Error> {
     let rows = sqlx::query("SELECT id, title, source_path, role FROM dictionaries ORDER BY id")
         .fetch_all(pool)
