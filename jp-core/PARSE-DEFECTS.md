@@ -27,9 +27,18 @@ a nonsense 副詞 and shreds the mimetic. Two false rows come out of it: がふ 
 adverb, and よ resolved to the adjective よい.
 
 **No dictionary lists ふよふよ at all** — not Sankoku, not 明鏡, not Jitendex,
-and not 擬音語・擬態語辞典, which was installed to check — so even a perfect
-segmentation leaves it a `non-word`. What is lost is the が, and the two
+and not either onomatopoeia dictionary installed to look for it — so even a
+perfect segmentation leaves it a `non-word`. What is lost is the が, and the two
 assertions.
+
+**And no dictionary will.** Mimetics are a productive system rather than a
+closed list: 擬音語・擬態語辞典 has 1,967 headwords and surasura 1,422, and they
+overlap on 939 — two independent attempts at the same space agree on 38% of it.
+Admitting them by *shape* instead was measured and is no better: the ABAB
+reduplication template admits 9 corpus terms nothing lists (21 encounters), and
+half of them are カカカカ, イイイイ, どどどど and ぐぐぐぐ — screams and
+keyboard mashing. The tail of this class is not recoverable by wordhood at all,
+which is why the defect here is the swallowed が and not the missing entry.
 
 Same family as the three above, and the named list cannot take it: mimetics are
 coined freely and no list will hold them. The rule that would is one keyed on
