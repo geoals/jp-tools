@@ -56,6 +56,18 @@ class CleanLine(unittest.TestCase):
         self.assertEqual(wl.clean_line("\\cdあれは\\n夢だった。"), "あれは\n夢だった。")
         self.assertEqual(wl.clean_line("\\cd「誓えるわよね？」\\@"), "「誓えるわよね？」")
 
+    def test_colour_codes_stripped_line_kept(self):
+        # Real capture: a grey narration line, colour set twice ahead of it.
+        raw = (
+            "\\cd\\cd0xff898989;\\c0xff898989;自分の知識の中にあるアンドロイドの情報と、"
+            "\\nそれほどズレのない回答だった。"
+        )
+        self.assertEqual(
+            wl.clean_line(raw),
+            "自分の知識の中にあるアンドロイドの情報と、\nそれほどズレのない回答だった。",
+        )
+        self.assertEqual(wl.clean_line("\\cd0xff898989;\\cd渇いた音が鳴った。"), "渇いた音が鳴った。")
+
     def test_bracket_furigana_becomes_ruby(self):
         raw = "その[眸/ひとみ]が、おれを見つめている。"
         text, ruby = wl.split_ruby(wl.clean_line(raw))

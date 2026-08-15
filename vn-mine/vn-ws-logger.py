@@ -296,6 +296,12 @@ def strip_speaker(text):
 # must not be silently swallowed.
 SCRIPT_ESCAPE = re.compile(r"\\(n|cd|@)")
 
+# Text colour, which the same hook writes as \c0xRRGGBB; and \cd0xRRGGBB; — a
+# narration line arrives coloured grey and every one of them was dropped by the
+# backslash rule. Stripped before SCRIPT_ESCAPE, or \cd matches the head of
+# \cd0xff898989; and leaves a literal 0xff898989; in the line.
+COLOR_ESCAPE = re.compile(r"\\cd?0x[0-9a-fA-F]+;")
+
 # Furigana as the same hook writes it: [眸/ひとみ]. Rewritten into the engine
 # ruby markup so split_ruby pairs the reading with its text like every other
 # shape, instead of the brackets reaching Sudachi and the character count.
@@ -318,6 +324,20 @@ CONTINUATION = re.compile(r"\A\s*\\n")
 
 def continues_previous(raw):
     return bool(CONTINUATION.match(raw)) and "\\cd" not in raw
+
+
+# Dropping a capture for an unknown backslash command is fail-closed and was
+# silent: a colour code cost real narration lines twice before anyone noticed.
+# Once per command per run — a choice menu re-hooks on every cursor move.
+UNKNOWN_COMMAND = re.compile(r"\\[A-Za-z@]+")
+_SEEN_COMMANDS = set()
+
+
+def note_unknown_command(text):
+    for command in UNKNOWN_COMMAND.findall(text):
+        if command not in _SEEN_COMMANDS:
+            _SEEN_COMMANDS.add(command)
+            log(f"unknown script command {command} — those captures are dropped")
 
 
 def clean_line(raw):
@@ -348,12 +368,15 @@ def clean_line(raw):
         text = _SPEAKER.sub("", text).strip()
     else:
         text = raw
-    text = BRACKET_RUBY.sub(r"<ruby=\2>\1</ruby>", SCRIPT_ESCAPE.sub(_escape, text))
+    text = BRACKET_RUBY.sub(
+        r"<ruby=\2>\1</ruby>", SCRIPT_ESCAPE.sub(_escape, COLOR_ESCAPE.sub("", text))
+    )
     # Textractor hands us already-decoded text, so a backslash never occurs in
     # real dialogue. It does occur in Dohna Dohna's widget-registry dumps, which
     # reach here marker-less (Button\dText2Button\dルートパーツ…) and would
     # otherwise slip through on their stray katakana. One rule catches them all.
     if "\\" in text:
+        note_unknown_command(text)
         return None
     if len(text) > MAX_READING_CHARS or not JP.search(text):
         return None
