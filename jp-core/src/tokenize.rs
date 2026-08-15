@@ -1038,6 +1038,20 @@ impl SudachiTokenizer {
             return refused(trace, parts(), expression.clone(), blocked.into());
         };
 
+        // **A word only where it opens a clause.** See [`CLAUSE_INITIAL_ONLY`]:
+        // 「離れたところで」 is a place and 「ところで、」 is the conjunction, and
+        // nothing about the run itself tells them apart.
+        let clause_initial = opens_a_clause(before);
+        let positional = CLAUSE_INITIAL_ONLY.contains(&term.as_str());
+        if positional && !clause_initial {
+            return refused(
+                trace,
+                parts(),
+                term,
+                "Mid-clause: this expression is only a word where it opens one".into(),
+            );
+        }
+
         // **A sounded join may not overwrite a kanji the text wrote.**
         //
         // The reading path exists for the half of a compound written in kana —
@@ -1075,8 +1089,14 @@ impl SudachiTokenizer {
         //
         // Spelled, not sounded: the reading path keeps the floor at every
         // length, because that is the one that invents 自前 out of じ + まえ.
+        //
+        // A [`CLAUSE_INITIAL_ONLY`] string is exempt, and that exemption is the
+        // whole reason でも and だが were never built: they are two kana, so the
+        // floor refused them everywhere. Position is the evidence the floor
+        // otherwise lacks — こと + し finds 今年 by accident wherever it stands,
+        // while a clause opening on で + も is でも.
         let unambiguous = spelled && term.chars().all(crate::text::kanji::is_kanji);
-        if term.chars().count() < 3 && !unambiguous {
+        if term.chars().count() < 3 && !unambiguous && !positional {
             return refused(
                 trace,
                 parts(),
@@ -1799,7 +1819,10 @@ impl SudachiTokenizer {
 /// So each entry is one reviewed judgement about one string, and refusing a
 /// named string cannot cost anything that is not named. Everything else the
 /// join builds — ところが, まずは, 実は, 本当に, ために, すぐに, 同時に,
-/// ちなみに, ところで, 医務室 — is the word the sentence used.
+/// ちなみに, 医務室 — is the word the sentence used.
+///
+/// [`CLAUSE_INITIAL_ONLY`] is the other half of this: a string that is a word
+/// in one position and two words in another.
 const NEVER_JOIN: [&str; 18] = [
     "この家", // この + 家: 「この家じゃ、狭すぎる」 — this house, read
     // このいえ. The join reads it このや, which is a different word
@@ -1859,6 +1882,43 @@ const NEVER_JOIN: [&str; 18] = [
 /// The cut adds and removes nothing, so every surface is still an in-order
 /// substring of the caller's line and [`crate::highlight`]'s offsets still
 /// recover.
+/// Expressions that are a word where they open a clause and two words anywhere
+/// else. Both halves of one defect, and the position is the whole of the fix.
+///
+/// The join had these exactly backwards. ところで and すると were built
+/// everywhere, so 「離れたところで」 became "by the way" and 「油断すると」 lost
+/// the verb 油断する; でも and だが were built nowhere at all, refused by the
+/// length floor, so 654 sentences opening on でも had no でも in them.
+///
+/// **A list rather than a rule, measured twice.** Refusing every mid-clause
+/// expression takes 本当に, ために and すぐに with it. Admitting every
+/// clause-initial two-kana master headword fires 1,975 times over 76 strings —
+/// 何が, 何を, では, だと and して among them — because a clause opening on a
+/// pronoun and a particle is just a sentence starting. Only the strings named
+/// here move, and each is one reviewed judgement.
+///
+/// そこで is deliberately absent. Its two readings are *both* clause-initial —
+/// 「そこで俺は」 is "there" and 「そこで、」 is "thereupon" — so position
+/// separates nothing and only reading the line does.
+const CLAUSE_INITIAL_ONLY: [&str; 5] = [
+    "でも", // で + も: 「でも、そんなの当たり前だ」 against 「読んでも」,
+    // 「一人でも」. 654 clause-initial, 693 not.
+    "だが",     // だ + が: 「だが俺は言う」 against 「良い考えだが」. 119 / 88.
+    "ところで", // ところ + で: 「ところで、話は変わるが」 against
+    // 「離れたところで」, 「登り切ったところで」. 9 / 59 — the one
+    // where the plain reading is the common one.
+    "すると", // する + と: 「すると……、」 against 「油断すると大変だ」, where
+    // the join also swallows the verb. 59 / 54.
+    "それで", // それ + で: 「それで、とも兄さんは？」 against 「それで矢を操れば」
+              // — with that. 116 / 20.
+];
+
+/// Does this run open a clause? The token before it carries no character that
+/// counts as text — 、 。 「 … ― and whitespace — or there is no token before it.
+fn opens_a_clause(before: Option<&Token>) -> bool {
+    before.is_none_or(|t| !t.surface.chars().any(crate::text::chars::is_counted))
+}
+
 const CUT_BEFORE_AND_AFTER: [&str; 3] = [
     "なんて", // なん + てひどい, and 手酷い is listed
     "また",   // ま + たいち + から

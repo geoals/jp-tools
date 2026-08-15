@@ -3,7 +3,7 @@
 Words noticed misparsed while reading, worked through in batches. One entry per
 word: what the pipeline does with it today, and the cause where it is known.
 
-**21 open**, each checked against the live pipeline on 2026-08-15. Three
+**20 open**, each checked against the live pipeline on 2026-08-15. Three
 further questions are about the vocabulary denominator rather than the parse and
 are kept apart from them; what has been fixed is one line each at the bottom.
 
@@ -11,8 +11,8 @@ are kept apart from them; what has been fixed is one line each at the bottom.
 so it is not measured twice, and names the one change that is waiting on a
 decision rather than on work.
 
-The nine newest entries came from auditing the pipeline two ways — every join
-it made, grouped by what was built, and 160 uniform lines read as *sentences*
+The newest entries came from auditing the pipeline two ways — every join it
+made, grouped by what was built, and 160 uniform lines read as *sentences*
 rather than as tokens. Both are worth repeating; see *Where the value is not*
 for why the earlier draws missed the largest class in the list.
 
@@ -56,27 +56,18 @@ lever that reaches them otherwise.
 
 ## Then, in value order
 
-The two that were 1 and 2 here are done — the katakana fold and the colloquial
-adjective ending, both under *Fixed*.
+Done since this section was last written: the katakana fold, the colloquial
+adjective ending, and the join's clause-initial list — all under *Fixed*.
 
-1. **The join's fences, both directions at once, on one signal.** They are the
-   same defect seen from two sides and the same test settles both — whether the
-   run starts a clause.
-   - **It fires mid-clause where the sentence had the plain words**: ところで,
-     すると, それで, 中には, ちゃんと, 手を入れる. ~161 tokens, and すると
-     destroys the verb it takes the と from.
-   - **It is refused clause-initially where the sentence had the conjunction**,
-     because a run must open on a content word: でも **654**, だが **119**.
-     ~773 tokens, never built once over the whole corpus.
-
-   Build the clause-initial signal first and measure both against it.
-   `examples/joined.rs` lists every join the corpus made; the refusals are found
-   by looking for adjacent pairs that spell a listed word and never joined.
-2. **The kanji swap** — 兄妹 keyed on 兄弟, 傍 on 側, 超え on 越える, なれる on
+1. **The kanji swap** — 兄妹 keyed on 兄弟, 傍 on 側, 超え on 越える, なれる on
    慣れる, すま on 住む, 行って on 行く where the line meant 行う. Ten in 160
    lines, each a wrong word rather than a spelling choice, and the popup opens
    on it. No single rule covers them; two lemmas sharing a surface is the
    commonest shape.
+2. **The rest of the join list**, now that `CLAUSE_INITIAL_ONLY` has taken the
+   bulk of it: そこで (~48, needs a judgement, not a measurement), 中には,
+   ちゃんと, 手を入れる, ものの, and the three fences under とはいえ — of which
+   たまえ is a silent hole in `segments` rather than a rule.
 3. **The three denominator questions**, which are decisions rather than code.
    They change the headline number the whole system reports, and until one is
    made that number has an unstated policy inside it.
@@ -122,66 +113,34 @@ denominator decision are still worth more than the tail of this list.
 
 # Open
 
-## ところで, そこで, すると — a grammar point built out of the plain words that spell it
+## そこで — the conjunction and the place, and position cannot tell them apart
 
-The master is a learner's dictionary, so it lists the grammar points; the join
-sees the parts and builds one every time, whether or not the sentence used it.
-`NEVER_JOIN` is the list of the ones judged so far. These are the next three,
-found by `examples/joined.rs` over every line read and judged against the lines
-each fired on.
+55 built, ~48 of them the plain locative: 「そしてそこで俺は」, 「なんでそこで
+隠れるんだよ」, 「俺と羽咲はそこで別れた」. Left open when ところで, すると and
+それで were fixed, because the fix does not reach it — **both** readings open a
+clause, so 「そこで、強く輝く星々」 and 「そこで――オレの力が必要になる」 sit in
+the same position and only reading the line separates them.
 
-| built | times | wrong | what the lines actually say |
-| --- | --- | --- | --- |
-| ところで | 68 | ~59 | 「離れたところで」, 「登り切ったところで」 — a point, not "by the way". 59 of the 68 are mid-clause, and mid-clause 〜ところで is always the plain one |
-| そこで | 55 | ~48 | 「そこで俺は」, 「なんでそこで隠れる」 — *there*. The conjunction is clause-initial and so is the locative, so only reading them separates these |
-| すると | 113 | ~54 | 「油断すると」, 「発言すると問題なんだよ」 — the verb and the conditional. 54 are mid-clause |
+A flat `NEVER_JOIN` entry would take the ~7 real conjunctions with it. That is a
+better trade than the current one and is still a judgement to make rather than a
+measurement to take.
 
-**すると is the worst of the three, because it damages a second token.**
-それは merely miscounts それ; 油断すると comes out 油断 + すると, so the verb
-油断する is not in the line at all.
+## とはいえ, 確かに, たまえ — a listed expression the join still will not build
 
-**A flat `NEVER_JOIN` entry is the wrong shape for two of them.** It would take
-the 9 real ところで and 59 real すると with it. What separates the two readings
-in both cases is whether the run *starts a clause* — the conjunction always
-does, the plain reading is mid-sentence — and that is knowable at the join, from
-whether the preceding token is punctuation or the run opens the line. そこで is
-the one that needs the list, since both readings are clause-initial.
+What is left of the under-firing side after the clause-initial list, and it is
+three different fences rather than one. The trace names each:
 
-Measured but not built: the clause-initial rule is a change to `recompose`'s
-fences rather than an entry in a list, and it wants its own before/after over
-the corpus.
+| left as parts | times | refused by |
+| --- | --- | --- |
+| と + は + いえ | — | the conjugated-tail path needs a content-word head, and と is a particle |
+| 確か + に | 16 | `Invalid expression: contains a bound stem` — に is the copula's 連用形 |
+| た + まえ | 19 | never offered: 小学館's たまえ has no reading, so `with_standard` skips it |
+| お + 経 | 3 | the length floor — お経 is two characters and only one is kanji |
 
-## でも, だが, とはいえ — a listed conjunction the join may not build
-
-The same fence, from the other side, and it is the larger number. `recompose`
-requires a run to **open on a content word**, so a conjunction made of function
-words can never be built however many dictionaries list it. Not one of these was
-built once over 33,949 lines:
-
-| left as parts | adjacent pairs | of those, clause-initial | listed by |
-| --- | --- | --- | --- |
-| で + も | 1,347 | **654** | master, 明鏡, 小学館, Jitendex |
-| だ + が | 207 | **119** | master, 明鏡, 小学館, Jitendex |
-| た + まえ | 19 | 0 (always 待ちたまえ) | 小学館 |
-| 確か + に | 16 | 8 | master, Jitendex |
-| お + 経 | 3 | — | master, Jitendex |
-
-**Only the clause-initial ones are the conjunction.** 「読んでも」, 「一人でも」
-and 「それでも」 are で + も and must stay apart, which is why the count that
-matters is 654 and not 1,347 — and which is exactly the test the over-firing
-side needs. One signal, two directions:
-
-- ところで, すると, それで are built mid-clause where the sentence had the plain
-  words, ~161 times;
-- でも and だが are refused clause-initially where the sentence had the
-  conjunction, ~773 times.
-
-**The ledger damage runs the other way from the count.** で, も, だ and が are
-grammar judged long ago, so 773 splits cost nothing there and only cost the
-reader a word to tap; a wrongly-built すると writes a row *and* destroys 油断する.
-
-お + 経 is the お花摘み entry's fence, met again. たまえ is worth noting on its
-own: 「待ちたまえ」 comes out 待ち + た + まえ, and まえ is keyed on 前.
+たまえ is the one worth doing first, because it is not a judgement call: a
+standard-dictionary entry with an empty reading is dropped from `segments`
+entirely, and that is a silent hole in the segmentation authority rather than a
+rule. 「待ちたまえ」 comes out 待ち + た + まえ, and まえ is keyed on 前.
 
 ## The kanji swap — a spelling the line did not write, and not the same word
 
@@ -801,6 +760,15 @@ One line each; the argument that settled it is in the code, next to the rule.
   over the corpus, all one word.
 - **36 counted as a word, 寝よう cut to 寝, 頂 broken out of 絶頂** — the three
   ordinary parse errors from the random-sample audit, all gone by 2026-08-15.
+- **ところで, すると, それで built everywhere; でも and だが built nowhere** —
+  one defect from two sides, and position is the whole of the fix.
+  `CLAUSE_INITIAL_ONLY` names five strings that are a word where they open a
+  clause and two words anywhere else. 1,807 token changes over 963 lines: でも
+  built 713 times and だが 121 where the sentence opened on them, ところで
+  refused 65 times, すると 56 and それで 19 where it did not. Both general rules
+  were measured and rejected first — refusing every mid-clause expression takes
+  本当に and ために, and admitting every clause-initial two-kana master headword
+  fires 1,975 times over 76 strings including 何が, では and して.
 - **ウチ, アレ, コイツ keyed on themselves** — the master lists only the
   hiragana, so a katakana line opened a second row beside うち, あれ and こいつ.
   The fold is the last candidate on the identity ladder, so it can only win

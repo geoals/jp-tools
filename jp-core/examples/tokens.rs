@@ -153,6 +153,6 @@ async fn run() {
         // the reading can each be a newline too. The tokenizer still sees the
         // line whole.
         let row = format!("{text}\t{}", out.join(" "));
-        println!("{}", row.replace('\n', "⏎").replace('\r', "⏎"));
+        println!("{}", row.replace(['\n', '\r'], "⏎"));
     }
 }

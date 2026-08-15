@@ -517,6 +517,72 @@ fn a_listed_expression_on_the_never_join_list_stays_apart() {
     );
 }
 
+/// ところで and すると are the conjunction where they open a clause and the
+/// plain words anywhere else: 「離れたところで」 is a place, and 「油断すると」
+/// is the verb and the conditional, where building the expression also swallows
+/// the する.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn an_expression_that_is_only_a_word_at_a_clause_start_is_refused_mid_clause() {
+    let (tk, _) = setup();
+
+    for (text, phrase) in [
+        ("離れたところで待っていた", "ところで"),
+        ("油断すると大変だ", "すると"),
+        ("それはそれで合理的な考えだ", "それで"),
+    ] {
+        let tokens = tokens_of(&tk, text);
+        assert!(
+            !tokens.iter().any(|t| t.surface == phrase),
+            "{phrase} must not rejoin mid-clause in {text}: {:?}",
+            identities(&tokens)
+        );
+    }
+
+    // And is still built where the sentence opens on it.
+    for (text, phrase) in [
+        ("ところで、話は変わるが", "ところで"),
+        ("すると、扉が開いた", "すると"),
+    ] {
+        let tokens = tokens_of(&tk, text);
+        assert!(
+            tokens.iter().any(|t| t.surface == phrase),
+            "{phrase} must rejoin at a clause start in {text}: {:?}",
+            identities(&tokens)
+        );
+    }
+}
+
+/// The same list read the other way. でも and だが are two kana, so the join's
+/// length floor refused them everywhere and 654 sentences opening on でも had no
+/// でも in them — while 「読んでも」 and 「一人でも」 are で + も and must stay
+/// apart, which is the floor doing its job.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_two_kana_conjunction_is_built_where_it_opens_a_clause() {
+    let (tk, _) = setup();
+
+    for (text, phrase) in [("でも、それは違う", "でも"), ("だが俺は言う", "だが")]
+    {
+        let tokens = tokens_of(&tk, text);
+        assert!(
+            tokens.iter().any(|t| t.surface == phrase),
+            "{phrase} must rejoin at a clause start in {text}: {:?}",
+            identities(&tokens)
+        );
+    }
+
+    for (text, phrase) in [("本を読んでも分からない", "でも"), ("良い考えだが", "だが")]
+    {
+        let tokens = tokens_of(&tk, text);
+        assert!(
+            !tokens.iter().any(|t| t.surface == phrase),
+            "{phrase} must not rejoin mid-clause in {text}: {:?}",
+            identities(&tokens)
+        );
+    }
+}
+
 /// 信じ is Sudachi's 信じる normalised, but read off its dictionary form 信ずる,
 /// so the pair offered is (信じる, しんずる) — which the master does not list.
 /// The ladder used to fall through to 信ずる, a spelling the text never used.
