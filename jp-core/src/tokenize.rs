@@ -31,6 +31,7 @@ use sudachi::dic::word_id::WordId;
 use sudachi::prelude::Morpheme;
 
 pub mod trace;
+use crate::text::kana::morae;
 use trace::{Step, Trace, Verdict};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1836,15 +1837,6 @@ fn unvoices_to(voiced: &str, plain: &str) -> bool {
 /// One beat of speech: a kana, optionally followed by a small ゃゅょ.
 fn is_one_mora(reading: &str) -> bool {
     morae(reading) == 1
-}
-
-/// Beats of speech. A small ゃゅょ rides on the kana before it; everything else,
-/// っ and ん included, is its own beat.
-fn morae(reading: &str) -> usize {
-    reading
-        .chars()
-        .filter(|c| !matches!(c, 'ゃ' | 'ゅ' | 'ょ' | 'ャ' | 'ュ' | 'ョ' | 'ゎ' | 'ヮ'))
-        .count()
 }
 
 /// Would keying the token on this spelling put a kanji on the page the text did

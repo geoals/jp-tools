@@ -96,7 +96,7 @@ pub enum BuildError {
     Sudachi(String),
 }
 
-/// The tokenizer as jp-tools configures it, plus the two dictionary sets its
+/// The tokenizer as jp-tools configures it, plus the dictionary sets its
 /// callers need beside it.
 ///
 /// **The nine inputs are one list and every caller takes all of them.** A
@@ -114,6 +114,10 @@ pub struct Pipeline {
     pub tokenizer: SudachiTokenizer,
     pub lexicon: HashSet<String>,
     pub master: MasterWords,
+    /// The lenient gate — every dictionary, not just the master. Here rather
+    /// than only in [`Highlighter`] because ingest asks it too: a term the
+    /// reader gives no span must not become a ledger row either.
+    pub wordhood: Wordhood,
 }
 
 /// Fetch the nine inputs from `knowledge.db` and build the tokenizer.
@@ -138,6 +142,9 @@ pub async fn pipeline(
         .into_iter()
         .collect();
 
+    let (listed, listed_readings) = crate::knowledge::dictionaries::wordhood_entries(pool).await?;
+    let wordhood = Wordhood::new(listed, listed_readings);
+
     let dict_path = dict_path.as_ref().to_path_buf();
     tokio::task::spawn_blocking(move || {
         let tokenizer = SudachiTokenizer::new(&dict_path, vocab)
@@ -155,6 +162,7 @@ pub async fn pipeline(
             tokenizer,
             lexicon,
             master,
+            wordhood,
         })
     })
     .await
@@ -245,7 +253,57 @@ impl Wordhood {
         self.terms.contains(&term.headword)
             || (term.reading.is_empty() && self.readings.contains(&term.headword))
     }
+
+    /// Whether the ledger should refuse this term a row at all.
+    ///
+    /// The reader already gives it no span — nothing lists it, so
+    /// [`contains`](Self::contains) says so — but it still becomes a row, and
+    /// then the head of every triage queue: ちゅ, ぎい, ぐっ, ぎっ, ちゅぷ,
+    /// くちゅ, ズチュ, グチョ are sex-scene sound effects and hook shrapnel, and
+    /// nothing downstream can tell them from a word nobody has judged yet.
+    ///
+    /// Three morae is where the population turns. Below it, a kana string no
+    /// dictionary has is almost always noise; at four and five it is the work's
+    /// own vocabulary — ダイイング, トレデキム, ジンザイ, ハルウリ, ヒトカリ are
+    /// what one VN is *about*, and no dictionary will ever list them.
+    ///
+    /// **The alphabet is asked both ways before the string is condemned.** ウチ
+    /// is うち, コイツ is こいつ, ソレ is それ; a katakana spelling is a decision
+    /// about how to write a word, not evidence that there is no word. That
+    /// stay does not extend to **one mora**, which is the rule the identity
+    /// ladder already carries: Japanese has a word for every single kana, so
+    /// the match is found every time and is evidence none of them.
+    ///
+    /// Over the corpus: 126 terms and 338 encounters refused, and every term
+    /// the fold rescues is a real word.
+    pub fn is_noise(&self, term: &Term) -> bool {
+        // No dictionaries loaded means the question cannot be asked, and
+        // everything short and kana would answer yes. The same convention as
+        // the tokenizer's empty frequency list: an absent authority refuses,
+        // it does not condemn.
+        if self.terms.is_empty() && self.readings.is_empty() {
+            return false;
+        }
+        if !crate::text::kana::is_all_kana(&term.headword) || self.contains(term) {
+            return false;
+        }
+        match crate::text::kana::morae(&term.headword) {
+            1 => true,
+            m if (2..=NOISE_MAX_MORAE).contains(&m) => !self.spelt_the_other_way(&term.headword),
+            _ => false,
+        }
+    }
+
+    /// Does a dictionary have this string in the other kana alphabet?
+    fn spelt_the_other_way(&self, headword: &str) -> bool {
+        let folded = crate::text::kana::to_hiragana(headword);
+        folded != headword && (self.terms.contains(&folded) || self.readings.contains(&folded))
+    }
 }
+
+/// How much of a word a kana string has to spell before the ledger will hold a
+/// row for it that no dictionary backs — see [`Wordhood::is_noise`].
+const NOISE_MAX_MORAE: usize = 3;
 
 /// The Sudachi pipeline plus the dictionary sets it needs, built once and
 /// shared by every streaming reader — the dictionary load costs far more than
@@ -274,7 +332,6 @@ impl Highlighter {
         dict_path: impl AsRef<std::path::Path>,
     ) -> Result<Highlighter, BuildError> {
         let p = pipeline(k, dict_path).await?;
-        let (terms, readings) = crate::knowledge::dictionaries::wordhood_entries(k.pool()).await?;
         let headwords: Vec<String> = p.lexicon.iter().cloned().collect();
         let ranks = match crate::knowledge::dictionaries::by_title(
             k.pool(),
@@ -289,7 +346,7 @@ impl Highlighter {
         };
         Ok(Highlighter::new(
             std::sync::Arc::new(p.tokenizer),
-            Wordhood::new(terms, readings),
+            p.wordhood,
             p.master,
             ranks,
         ))
@@ -846,6 +903,59 @@ mod tests {
         // A kanji headword gets no such fallback: its own spelling must be
         // listed, or every homophone would be a word.
         assert!(!wordhood().contains(&Term::new("無和", "むわむわ")));
+    }
+
+    /// The sex-scene sound effects and hook shrapnel that head every triage
+    /// queue: ぎい, ぐっ, ちゅぷ, ズチュ. 126 terms and 338 encounters of it.
+    #[test]
+    fn a_short_kana_string_no_dictionary_has_is_not_a_word() {
+        let w = wordhood();
+        assert!(w.is_noise(&Term::new("ぎい", "ぎい")));
+        assert!(w.is_noise(&Term::new("ちゅぷ", "ちゅぷ")));
+        assert!(w.is_noise(&Term::new("ズチュ", "ズチュ")));
+        // A dictionary having it settles the question, whatever its length.
+        assert!(!w.is_noise(&Term::new("むわむわ", "むわむわ")));
+        assert!(!w.is_noise(&Term::new("景気づけ", "けいきづけ")));
+    }
+
+    /// Four morae is where the population turns: ダイイング, トレデキム,
+    /// ジンザイ, ハルウリ, ヒトカリ are what one VN is *about*, and no
+    /// dictionary will ever list them.
+    #[test]
+    fn a_longer_coinage_is_left_alone() {
+        assert!(!wordhood().is_noise(&Term::new("ダイイング", "ダイイング")));
+        assert!(!wordhood().is_noise(&Term::new("ヒトカリ", "ヒトカリ")));
+    }
+
+    /// A katakana spelling is a decision about how to write a word, not
+    /// evidence that there is no word — so the alphabet is asked both ways.
+    #[test]
+    fn the_other_alphabet_is_asked_before_the_string_is_condemned() {
+        let w = Wordhood::new(
+            ["うち".to_string()].into_iter().collect(),
+            ["こいつ".to_string()].into_iter().collect(),
+        );
+        assert!(!w.is_noise(&Term::new("ウチ", "ウチ")));
+        assert!(!w.is_noise(&Term::new("コイツ", "コイツ")));
+        assert!(w.is_noise(&Term::new("ズチュ", "ズチュ")));
+    }
+
+    /// **Except at one mora**, which is the rule the identity ladder already
+    /// carries: Japanese has a word for every single kana, so 血/ち rescues the
+    /// チ of a hook shred every time and is evidence none of them.
+    #[test]
+    fn one_mora_is_never_rescued_by_the_fold() {
+        let w = Wordhood::new(HashSet::new(), ["ち".to_string()].into_iter().collect());
+        assert!(w.is_noise(&Term::new("チ", "チ")));
+        // Listed as itself, it is a word — が and は reach the ledger this way.
+        let listed = Wordhood::new(["を".to_string()].into_iter().collect(), HashSet::new());
+        assert!(!listed.is_noise(&Term::new("を", "を")));
+    }
+
+    /// No dictionaries loaded means the question cannot be asked.
+    #[test]
+    fn an_empty_wordhood_condemns_nothing() {
+        assert!(!Wordhood::default().is_noise(&Term::new("ぎい", "ぎい")));
     }
 
     #[test]

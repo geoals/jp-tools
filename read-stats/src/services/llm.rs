@@ -26,14 +26,15 @@ FINAL line.\n\n\
 Open with a short, natural English rendering of the line. Then add one or two \
 brief notes on nuance, grammar, or a reference a plain translation would miss; \
 if a focus word is given, centre these on it (its meaning and role here).\n\n\
+Every word you name — the focus word, and any kanji word the notes single out \
+— gets its reading in parentheses after it.\n\n\
 When a focus word is given, finish with a line starting 'Tags:' that rates the \
 focus word on the two axes below, then a few words of qualification. Write it as \
 'Tags: FAMILIARITY · FLAVOR[ · FLAVOR2]' followed by the qualification.\n\n\
 {FAMILIARITY_RUBRIC}\n\n\
 {FLAVOR_RUBRIC}\n\n\
-Whenever you give the reading of a word, write it in hiragana, never in romaji \
-— and make sure it is the reading the word actually takes here (e.g. 金目のもの \
-is かねめのもの, not きんめ). Be very concise: no filler, no preamble, each block \
+A reading is always hiragana, never romaji, and is the reading the word takes \
+here (金目のもの is かねめのもの, not きんめ). Be very concise: no filler, no preamble, each block \
 just a line or two. You may use light Markdown — a bold label, or a short \
 bullet list with one-line bullets — but nothing heavier."
     )
@@ -84,7 +85,7 @@ fn request_body(user: String, stream: bool) -> Value {
     // "very concise" runs well under it, and hitting it truncates mid-sentence.
     serde_json::json!({
         "model": MODEL,
-        "max_tokens": 336,
+        "max_tokens": 400,
         "thinking": { "type": "disabled" },
         "output_config": { "effort": "medium" },
         "stream": stream,

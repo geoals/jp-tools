@@ -203,15 +203,36 @@ that makes いう and 言う one row. The mechanical test for the whole category
 in the random-sample audit below: *neither the headword nor its reading occurs
 in the line the token came from*.
 
-## Short kana that is not a word at all
+## Short kana that is not a word at all — HALF FIXED
 
-ちゅ ×207, ぢ ×52, ちゅる ×29 — onomatopoeia from sex scenes, entering the ledger
-as terms. `vocabulary` holds 341 distinct short all-kana non-master terms still
-`new`, across 3,443 encounters.
+**The half no dictionary backs is fixed.** A kana term of at most three morae
+that no dictionary lists — asked in both alphabets — is refused a ledger row
+entirely (`Wordhood::is_noise`). 130 rows and 338 encounters of sound effect and
+hook shrapnel: ぎい, ぐっ, ぎっ, ちゅぷ, くちゅ, ちゅる, ががが, ズチュ, グチョ.
 
-This is what is left after segmentation and identity were fixed: not a parse
-error but a wordhood one. It wants a rule, not an entry each, and the bucket is
-where the next pass belongs — see "Where the parser stands" below.
+Three morae is where the population turns. Below it a kana string nothing lists
+is almost always noise; at four and five it is the work's own vocabulary —
+ダイイング, トレデキム, ジンザイ, ハルウリ, ヒトカリ are what one VN is *about*
+and no dictionary will ever list them. **The alphabet is asked both ways before
+the string is condemned**, which is what keeps ウチ (107), コイツ, ガッコ, ソレ,
+ソッチ, ミライ and シケイ: a katakana spelling is a decision about how to write a
+word, not evidence that there is no word.
+
+**What is left is the loud half, and it is loud because a dictionary lists it.**
+ちゅ ×207 is in 明鏡, ぢ ×52 in Jitendex — both are one mora and both head the
+work's triage queue. The rule above cannot reach them by construction, and the
+lever that can is one the ledger already has: blacklisting, which drops a term
+out of `top_unknown` for good.
+
+The rule that *would* reach them is the identity ladder's own argument at the
+wordhood gate: **one mora of kana is never a word of its own**, whatever the
+dictionaries say, because Japanese has a word for every single kana and the
+match is found every time. Measured over the ledger: 46 rows and 1,378
+encounters — ちゅ, ぢ, ひ ×358, う ×213, く ×153, あ ×140 — against 37 rows and
+149,058 encounters that must survive it, which are the particles (を, は, が, に)
+and the affixes (さ, お, ご, め). Fencing on those two parts of speech is what
+separates them. Not built: it overrules a dictionary, and it changes what the
+reader paints as well as what the ledger holds.
 
 ---
 

@@ -56,9 +56,28 @@ pub fn is_all_hiragana(s: &str) -> bool {
     is_all_kana(s) && !s.chars().any(|c| matches!(c, 'ァ'..='ヶ'))
 }
 
+/// Beats of speech. A small ゃゅょ rides on the kana before it; everything else,
+/// っ and ん included, is its own beat.
+///
+/// The unit several rules are stated in — how much of a word a kana surface
+/// actually spells — so it lives here rather than beside any one of them.
+pub fn morae(reading: &str) -> usize {
+    reading
+        .chars()
+        .filter(|c| !matches!(c, 'ゃ' | 'ゅ' | 'ょ' | 'ャ' | 'ュ' | 'ョ' | 'ゎ' | 'ヮ'))
+        .count()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn beats_of_speech() {
+        assert_eq!(morae("きょう"), 2);
+        assert_eq!(morae("がっこう"), 4);
+        assert_eq!(morae("ん"), 1);
+    }
 
     #[test]
     fn katakana_becomes_hiragana() {

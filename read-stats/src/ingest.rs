@@ -22,6 +22,7 @@
 
 use std::collections::HashMap;
 
+use jp_core::highlight::Wordhood;
 use jp_core::knowledge::term_surfaces::SurfaceEncounter;
 use jp_core::knowledge::vocabulary::{Encounter, Term};
 use jp_core::knowledge::work_terms::WorkEncounter;
@@ -84,6 +85,10 @@ struct Harvest {
     /// ([`jp_core::tokenize::counts_as_word`]). Held here because all three
     /// sinks take the same tokens and must agree about which are words.
     master: MasterWords,
+    /// Every dictionary, for the other half: a short kana string none of them
+    /// has is tokenizer noise and gets no row at all
+    /// ([`Wordhood::is_noise`](jp_core::highlight::Wordhood::is_noise)).
+    wordhood: Wordhood,
     /// `(lemma, day) → count`
     days: HashMap<(String, String), i64>,
     /// `term → (pos, count, first_ts, last_ts)`
@@ -99,9 +104,10 @@ struct Harvest {
 }
 
 impl Harvest {
-    fn new(master: MasterWords) -> Harvest {
+    fn new(master: MasterWords, wordhood: Wordhood) -> Harvest {
         Harvest {
             master,
+            wordhood,
             days: HashMap::new(),
             terms: HashMap::new(),
             proper: HashMap::new(),
@@ -134,16 +140,23 @@ impl Harvest {
         if !counts_as_word(&t, &self.master) {
             return;
         }
+        let term = Term::new(t.base_form, &t.reading);
+        // **Before `word_days`, not after it.** A name stays in that sink
+        // because it asks what text you were exposed to and a name is a word of
+        // a kind; ズチュ is not a word of any kind, and counting it inflates
+        // every coverage figure derived from there.
+        if self.wordhood.is_noise(&term) {
+            return;
+        }
         if sinks.days {
             *self
                 .days
-                .entry((t.base_form.clone(), date.to_string()))
+                .entry((term.headword.clone(), date.to_string()))
                 .or_default() += 1;
         }
         if !sinks.terms && !sinks.works && !sinks.surfaces {
             return;
         }
-        let term = Term::new(t.base_form, &t.reading);
         let seen = self.proper.entry(term.clone()).or_default();
         seen.0 += i64::from(t.proper_noun);
         seen.1 += 1;
@@ -333,7 +346,7 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
     // Dictionary load + tokenization are CPU-bound; keep them off the runtime.
     let harvest = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
         let tokenizer = p.tokenizer;
-        let mut harvest = Harvest::new(p.master);
+        let mut harvest = Harvest::new(p.master, p.wordhood);
         for line in &lines {
             let date = stats::date_key(line.ts, rollover, tz).to_string();
             let sinks = Sinks {
@@ -414,7 +427,7 @@ pub async fn ingest_new_sessions(state: &AppState) -> Result<IngestOutcome, AppE
     let n_sessions = sessions.len();
     let harvest = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
         let tokenizer = p.tokenizer;
-        let mut harvest = Harvest::new(p.master);
+        let mut harvest = Harvest::new(p.master, p.wordhood);
         for s in &sessions {
             let date = stats::date_key(s.start_ts, rollover, tz).to_string();
             // Articles collapse under one synthetic work here exactly as they
@@ -561,7 +574,7 @@ pub async fn profile_script(
     let work = work.to_string();
     let encounters = tokio::task::spawn_blocking(move || {
         let tokenizer = p.tokenizer;
-        let mut harvest = Harvest::new(p.master);
+        let mut harvest = Harvest::new(p.master, p.wordhood);
         let sinks = Sinks {
             days: false,
             terms: false,
@@ -629,11 +642,30 @@ mod tests {
     }
 
     fn harvest(tokens: Vec<Token>) -> Harvest {
-        let mut h = Harvest::new(test_master());
+        harvest_with(Wordhood::default(), tokens)
+    }
+
+    fn harvest_with(wordhood: Wordhood, tokens: Vec<Token>) -> Harvest {
+        let mut h = Harvest::new(test_master(), wordhood);
         for t in tokens {
             h.add(t, "2026-07-27", 0.0, all_sinks());
         }
         h
+    }
+
+    /// Tokenizer noise reaches no sink at all — not even `word_days`, which a
+    /// name does reach. ズチュ is not a word of any kind, and counting it
+    /// inflates every coverage figure derived from there.
+    #[test]
+    fn short_kana_no_dictionary_has_reaches_no_sink() {
+        let listed = Wordhood::new(
+            ["達".to_string()].into_iter().collect(),
+            ["たち".to_string()].into_iter().collect(),
+        );
+        let h = harvest_with(listed, vec![tok("ズチュ", "ズチュ", false); 12]);
+        assert!(h.encounters().is_empty());
+        assert!(h.work_encounters().is_empty());
+        assert!(h.day_rows().is_empty(), "not exposure to a word either");
     }
 
     #[test]
@@ -720,7 +752,7 @@ mod tests {
 
     #[test]
     fn unlabeled_text_reaches_every_sink_but_the_per_work_one() {
-        let mut h = Harvest::new(test_master());
+        let mut h = Harvest::new(test_master(), Wordhood::default());
         h.add(
             tok("猫", "ねこ", false),
             "2026-07-27",
