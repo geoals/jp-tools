@@ -29,7 +29,6 @@ const MARKED_ONLY_KEY = "reader-marked-only";
  *  makes the marks readable. Anything unrecognised is ignored rather than
  *  drawn — that is version skew, not a word. */
 const PAINTED = ["seen", "new", "unknown"];
-const UNDERLINED = ["new", "seen", "unknown"];
 /** Where the common-word underline sits and how thick it is. Drawn inside the
  *  mark's rectangle, which sits behind the text, so it reads as an underline
  *  under the glyphs rather than a second bar. */
@@ -884,15 +883,15 @@ function hasMark(line) {
   return (line.tokens || []).some((t) => PAINTED.includes(t.status));
 }
 
-/** Whether a word is one worth stopping on: not known, and common enough in
- *  either corpus that not knowing it is a real gap. A word neither list ranks
- *  is never common — the underline says "you should have this one", and an
- *  unranked word is the case where that cannot be claimed.
+/** Whether a word is common enough that not knowing it is a real gap. Asked
+ *  only of words that get a mark at all, so being unknown is already settled.
  *
- *  The two lists are asked separately rather than reconciled: they disagree
- *  about what fiction and what prose use, and passing either is enough. */
+ *  A word neither list ranks is never common — the underline says "you should
+ *  have this one", and an unranked word is the case where that cannot be
+ *  claimed. The two lists are asked separately rather than reconciled: they
+ *  disagree about what fiction and what prose use, and passing either is
+ *  enough. */
 function isCommonGap(token, commonRanks) {
-  if (!UNDERLINED.includes(token.status)) return false;
   return (
     underRank(token.freq_rank, commonRanks.freq) ||
     underRank(token.bccwj_rank, commonRanks.bccwj)
