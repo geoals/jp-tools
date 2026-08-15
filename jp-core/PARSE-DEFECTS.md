@@ -113,6 +113,23 @@ denominator decision are still worth more than the tail of this list.
 
 # Open
 
+## チョロい → チョロ + いん, and the katakana i-adjective SudachiDict does not list
+
+「どこがチョロいんだわたしの！　ビッチ！」 comes out チョロ (副詞) + いん, and
+いん takes the identity 忌む/イム. The ん of んだ is inside the second token, so
+this is the boundary family — recomposition cannot reach it.
+
+The cause is one missing SudachiDict entry, not a rule. ヤバい, エロい and ダサい
+are all listed in katakana and all come out whole with ん + だ after them;
+ちょろい in hiragana comes out whole too. Only the katakana チョロい is absent,
+and チョロ alone is listed as an adverb, so the split wins. The master lists
+ちょろい, so the identity would resolve through the katakana fold once the
+boundary is right.
+
+Four occurrences in the corpus, two of them チョロい. `CUT_BEFORE_AND_AFTER` is
+the lever; whether one string at four sightings earns a list entry is the open
+question.
+
 ## そこで — the conjunction and the place, and position cannot tell them apart
 
 55 built, ~48 of them the plain locative: 「そしてそこで俺は」, 「なんでそこで

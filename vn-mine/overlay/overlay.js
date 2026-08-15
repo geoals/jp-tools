@@ -224,7 +224,7 @@ function draw(incoming) {
       const common =
         (underRank(span.freq_rank, commonRanks.freq) ||
           underRank(span.bccwj_rank, commonRanks.bccwj)) &&
-        (span.status === "new" || span.status === "unknown");
+        span.status !== "known";
       word.className = ["w", span.status === "known" ? "" : span.status, common ? "common" : ""]
         .filter(Boolean)
         .join(" ");
@@ -580,6 +580,8 @@ const TYPE_DEFAULTS = {
   leading: 1.68,
   tracking: 0.015,
   backdrop: Number(params.get("bg") ?? 0.82),
+  // Empty means the launcher's `?font=`, left where overlay.js put it above.
+  font: "",
 };
 const TYPE_VARS = {
   scale: (v) => ["--line-scale", `${v}`],
@@ -604,6 +606,8 @@ const typeInputs = {
 };
 
 function applyType() {
+  fontInputEl.value = type.font;
+  root.setProperty("--line-font", `"${type.font || font || "Noto Sans CJK JP"}", sans-serif`);
   for (const [key, value] of Object.entries(type)) {
     const asVar = TYPE_VARS[key];
     if (!asVar) continue;
@@ -615,6 +619,12 @@ function applyType() {
   localStorage.setItem(TYPE, JSON.stringify(type));
   report();
 }
+
+const fontInputEl = document.getElementById("set-font");
+fontInputEl.addEventListener("change", () => {
+  type = { ...type, font: fontInputEl.value };
+  applyType();
+});
 
 for (const [key, [input]] of Object.entries(typeInputs)) {
   input.addEventListener("input", () => {

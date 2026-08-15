@@ -406,6 +406,15 @@
     text-align: right;
     color: #b9b9b9;
   }
+  #settings-panel select {
+    grid-column: 2 / -1;
+    padding: 0.2rem 0.3rem;
+    border: none;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.14);
+    color: #e6e6e6;
+    font: inherit;
+  }
   #settings-reset {
     grid-column: 1 / -1;
     justify-self: end;
@@ -472,6 +481,16 @@
     <label for="set-backdrop">Backdrop</label>
     <input id="set-backdrop" type="range" min="0" max="1" step="0.02" />
     <output id="out-backdrop"></output>
+    <label for="set-font">Font</label>
+    <select id="set-font">
+      <option value="">As launched</option>
+      <option value="DNP Shuei Mincho Pr6">DNP Shuei Mincho Pr6</option>
+      <option value="DNP Shuei Mincho Pr6B">DNP Shuei Mincho Pr6B</option>
+      <option value="HG明朝B">HG明朝B</option>
+      <option value="kaikoku PM">kaikoku PM</option>
+      <option value="Noto Serif CJK JP">Noto Serif CJK JP</option>
+      <option value="Noto Sans CJK JP">Noto Sans CJK JP</option>
+    </select>
     <button id="settings-reset">Reset</button>
   </div>
   <div id="explain-panel" hidden></div>

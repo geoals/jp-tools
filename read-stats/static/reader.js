@@ -29,10 +29,11 @@ const MARKED_ONLY_KEY = "reader-marked-only";
  *  makes the marks readable. Anything unrecognised is ignored rather than
  *  drawn — that is version skew, not a word. */
 const PAINTED = ["seen", "new", "unknown"];
-/** The statuses an underline is added to when the word is common: the two that
- *  say the reader has not got it yet. `seen` is left out — never judged and met
- *  before is most of a line, and underlining it would underline the page. */
-const UNDERLINED = ["new", "unknown"];
+/** The statuses an underline is added to when the word is common: everything
+ *  the reader has not got yet. `seen` is in — met before and never judged is
+ *  most of a line, but the rank thresholds are what keep the underline rare,
+ *  and a common word sitting unjudged is exactly the gap worth seeing. */
+const UNDERLINED = ["new", "seen", "unknown"];
 /** Where the common-word underline sits and how thick it is. Drawn inside the
  *  mark's rectangle, which sits behind the text, so it reads as an underline
  *  under the glyphs rather than a second bar. */

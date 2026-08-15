@@ -254,6 +254,12 @@ impl Wordhood {
         Wordhood { terms, readings }
     }
 
+    /// Whether any dictionary lists this spelling, asked of a bare string —
+    /// the frequency lists carry no reading to build a [`Term`] from.
+    fn lists(&self, headword: &str) -> bool {
+        self.terms.contains(headword) || self.readings.contains(headword)
+    }
+
     fn contains(&self, term: &Term) -> bool {
         self.terms.contains(&term.headword)
             || (term.reading.is_empty() && self.readings.contains(&term.headword))
@@ -326,9 +332,9 @@ pub struct Highlighter {
     /// rather than queried per line: the reader would otherwise pay a
     /// `dictionary_frequency` lookup per word on the path that draws a line as
     /// it is being read.
-    ranks: HashMap<(String, String), i64>,
-    /// BCCWJ ranks for the same headwords, held for the same reason.
-    bccwj_ranks: HashMap<(String, String), i64>,
+    ranks: HashMap<String, i64>,
+    /// BCCWJ ranks for the same words, held for the same reason.
+    bccwj_ranks: HashMap<String, i64>,
 }
 
 impl Highlighter {
@@ -339,14 +345,13 @@ impl Highlighter {
         dict_path: impl AsRef<std::path::Path>,
     ) -> Result<Highlighter, BuildError> {
         let p = pipeline(k, dict_path).await?;
-        let headwords: Vec<String> = p.lexicon.iter().cloned().collect();
-        let ranks = ranks_from(
+        let ranks = reader_ranks_for(
             k,
             crate::knowledge::dictionaries::READER_FREQUENCY,
-            &headwords,
+            &p.wordhood,
         )
         .await?;
-        let bccwj_ranks = ranks_from(k, "BCCWJ", &headwords).await?;
+        let bccwj_ranks = reader_ranks_for(k, "BCCWJ", &p.wordhood).await?;
         Ok(Highlighter::new(
             std::sync::Arc::new(p.tokenizer),
             p.wordhood,
@@ -369,8 +374,8 @@ impl Highlighter {
         tokenizer: std::sync::Arc<SudachiTokenizer>,
         wordhood: Wordhood,
         master: MasterWords,
-        ranks: HashMap<(String, String), i64>,
-        bccwj_ranks: HashMap<(String, String), i64>,
+        ranks: HashMap<String, i64>,
+        bccwj_ranks: HashMap<String, i64>,
     ) -> Highlighter {
         Highlighter {
             tokenizer,
@@ -381,18 +386,17 @@ impl Highlighter {
         }
     }
 
-    /// How common the word is. A kana headword stores no reading, so its own
-    /// spelling is the reading to match; a list row that carries no reading —
-    /// which is how jiten files a kana headword — answers for every reading of
-    /// the spelling.
+    /// How common the word is — the *same number the popup prints* for it, so
+    /// an underline and the rank the reader reads when they open the word
+    /// cannot disagree. See [`reader_ranks_for`].
     fn rank(&self, term: &Term) -> Option<i64> {
-        lookup_rank(&self.ranks, term)
+        self.ranks.get(&term.headword).copied()
     }
 
     /// The same word's rank in BCCWJ, which the reader tests beside the
     /// reader-facing one — see [`Span::bccwj_rank`].
     fn bccwj_rank(&self, term: &Term) -> Option<i64> {
-        lookup_rank(&self.bccwj_ranks, term)
+        self.bccwj_ranks.get(&term.headword).copied()
     }
 
     /// The ledger key a spelling from outside the tokenizer stands for — an
@@ -716,26 +720,42 @@ pub async fn analyze(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Analyzed
         .collect()
 }
 
-fn lookup_rank(ranks: &HashMap<(String, String), i64>, term: &Term) -> Option<i64> {
-    let key = (term.headword.clone(), term.display_reading().to_string());
-    ranks
-        .get(&key)
-        .or_else(|| ranks.get(&(term.headword.clone(), String::new())))
-        .copied()
-}
-
-/// Ranks per `(headword, reading)` from one frequency dictionary, empty when it
-/// is not loaded.
-async fn ranks_from(
+/// The rank per spelling the reader sees, from one frequency list. Empty when
+/// that list is not loaded.
+///
+/// **Keyed by spelling alone, best rank wins** — the same question
+/// `lookup_frequency` puts for the popup. Keying on `(spelling, reading)`
+/// instead made the underline and the popup disagree about the same word: the
+/// popup printed BCCWJ's 4,259 for 近付ける while the span carried nothing.
+///
+/// **Every listed word, not the master's headwords alone.** Sankoku has 近付く
+/// and 近付き but not 近付ける, so restricting to its lexicon left every word
+/// only the lenient wordhood gate admits unrankable — and therefore impossible
+/// to underline, whatever the thresholds say.
+///
+/// The wordhood filter runs here rather than in the query: `EXISTS` against
+/// `dictionary_entries` makes SQLite scan it, and this holds a read on the
+/// database every other writer is waiting behind.
+async fn reader_ranks_for(
     k: &Knowledge,
     title: &str,
-    headwords: &[String],
-) -> Result<HashMap<(String, String), i64>, sqlx::Error> {
+    wordhood: &Wordhood,
+) -> Result<HashMap<String, i64>, sqlx::Error> {
     use crate::knowledge::dictionaries as d;
-    match d::by_title(k.pool(), title).await? {
-        Some(dict) => d::frequency_ranks(k.pool(), dict.id, headwords).await,
-        None => Ok(HashMap::new()),
-    }
+    let Some(dict) = d::by_title(k.pool(), title).await? else {
+        return Ok(HashMap::new());
+    };
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT term, MIN(frequency) FROM dictionary_frequency
+         WHERE dictionary_id = ? GROUP BY term",
+    )
+    .bind(dict.id)
+    .fetch_all(k.pool())
+    .await?;
+    Ok(rows
+        .into_iter()
+        .filter(|(term, _)| wordhood.lists(term))
+        .collect())
 }
 
 /// One ledger row's tier, or why the word gets no mark at all.
