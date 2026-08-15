@@ -26,9 +26,10 @@ the cheapest path over 「ロボットがふよふよと」 takes the subject pa
 a nonsense 副詞 and shreds the mimetic. Two false rows come out of it: がふ as an
 adverb, and よ resolved to the adjective よい.
 
-**No dictionary lists ふよふよ at all** — not Sankoku, not 明鏡, not Jitendex —
-so even a perfect segmentation leaves it a `non-word`. What is lost is the が,
-and the two assertions.
+**No dictionary lists ふよふよ at all** — not Sankoku, not 明鏡, not Jitendex,
+and not 擬音語・擬態語辞典, which was installed to check — so even a perfect
+segmentation leaves it a `non-word`. What is lost is the が, and the two
+assertions.
 
 Same family as the three above, and the named list cannot take it: mimetics are
 coined freely and no list will hold them. The rule that would is one keyed on
@@ -193,6 +194,14 @@ in the line the token came from*.
 that no dictionary lists — asked in both alphabets — is refused a ledger row
 entirely (`Wordhood::is_noise`). 130 rows and 338 encounters of sound effect and
 hook shrapnel: ぎい, ぐっ, ぎっ, ちゅぷ, くちゅ, ちゅる, ががが, ズチュ, グチョ.
+
+**The rule keys on the dictionaries, so it sharpens as they are added.**
+Installing 擬音語・擬態語辞典 (講談社, 1,967 headwords, 804 of them in nothing
+else already here) took 15 terms straight back out of the noise bucket — きっ,
+にっ, がばり, ぷん, きゅっ, ぼっ, くっ, ぷい, ざらり, そっ, ばっ, ぐっ, ぎっ,
+だっ, のっ are mimetics with entries, and the rule was over-broad on them for
+exactly as long as nothing listed them. ぎい, ちゅぷ, ズチュ and ががが stayed
+refused.
 
 Three morae is where the population turns. Below it a kana string nothing lists
 is almost always noise; at four and five it is the work's own vocabulary —
