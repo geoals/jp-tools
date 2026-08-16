@@ -69,8 +69,8 @@ curl -s localhost:3200/api/tokenize -H 'content-type: application/json' \
 
 The trace is the fastest way to find *why* a token came out wrong — it names the
 rung or the fence, and guessing at that has been wrong twice (でも was refused by
-the length floor, not the content-word fence; たまえ by nothing in the tokenizer
-at all).
+the length floor, not the content-word fence; たまえ by the lattice rather than
+by any rule, and its recorded cause was wrong twice over).
 
 **The two audits worth repeating**, and the reason to repeat both:
 
@@ -183,10 +183,32 @@ Do not build these; each cost a pass to disprove.
     morae an interjection is a word too — おはよう is お早う and おかえり お帰り.
 - **A rule about と before a quoting verb.** さらりと言った and ぴしゃりと言った
   are joins ending in と before 言う and the と belongs to the adverb.
-- **`with_standard`'s empty-reading skip as a hole.** It drops 14,064 kana
-  headwords, but they are the reading-index rows those Yomitan builds carry, and
-  `dictionaries::standard_entries` filters `reading != ''` in SQL first — so
-  admitting all of them changes **zero** tokens.
+- **Admitting the standard dictionaries' empty-reading headwords.** A Yomitan
+  build stores no reading for a headword that is already kana, and the SQL in
+  `dictionaries::standard_entries` filters those rows out — so 25,677 kana
+  headwords never reach the segmentation authority at all, とはいえ and たまえ
+  among them.
+
+  **The first measurement of this was run wrong** and is corrected here: it
+  removed the skip in `with_standard`, which sits *downstream* of the SQL
+  filter, so it changed zero tokens and the hole was recorded as dead code. It
+  is not. Removing the filter itself and letting a kana headword read as its own
+  spelling moves **1,997 tokens over 1,926 lines**, and the half that matters is
+  grammar made into words: それを 201, ないん 126, あると 76, いるか 66,
+  わけない 56, ことになる 42, ことができる, ことがある, ことはない, ないし,
+  ところを. Those are the phrase entries 明鏡 and 小学館 carry, and admitting
+  them is the disaster the expression path's fences exist for. The real words it
+  would recover — おじさん 113, そんなに 81, なんとか 63, ぽつりと, いくつか,
+  くせに — do not pay for that.
+
+  **And it does not even reach とはいえ**, which needs the function-word fence
+  moved as well; see the entry below.
+- **Letting a standard dictionary license an expression that opens on a function
+  word.** The other half of とはいえ. Dropping `opens_on_a_word` from
+  `expression_admitted` moves 80 tokens and 明鏡's から目 fires 13 times,
+  destroying 目を離す, 目を逸らす, 目を背ける and 目を瞑る; から口 and 類がない
+  come with it. とはいえ does not appear at all, because it needs the empty-reading
+  filter gone too — so the two changes are only bad together.
 - **Arbitrating a spelling by how much its reading resembles the surface**, and
   **taking the master's single reading whenever Sudachi's is unlisted** — see
   *What was refused* under the name batch.
@@ -378,10 +400,20 @@ assertion.
 | left as parts | times | refused by |
 | --- | --- | --- |
 | 満足 + げ (悲しげ, 不安げ, 悔しげ, 苦しげ, 憂いげ) | 68 | no segmentation dictionary lists the compound; the joined 得意げ and 意味ありげ work |
-| と + は + いえ | — | nothing lists とはいえ in `segments`, and the run opens on a particle so no path offers it |
+| と + は + いえ | 25 | two fences at once, and both were measured — see below |
 | お + 経 | 3 | the length floor — お経 is two characters and only one is kanji |
 | きわまり + ない | 3 | `reading_join_admitted` wants an all-`動詞` run or a kanji in the head, and an all-kana きわまり is neither |
 | お + 花摘み, お + 伺いを立て | 2 | both join paths require the run to *begin* on a content word, so a leading 接頭辞 is never admitted |
+
+**とはいえ needs two fences moved and neither may move.** 明鏡 and 小学館 both
+list it, and it still never reaches `segments`: their entry carries no reading,
+and `standard_entries` filters `reading != ''` in SQL. Put it back and the run
+is still refused, because it opens on a particle and a standard dictionary may
+not license that. Each change was measured on its own and both are under *What
+has been tried and measured wrong* — 1,997 tokens of grammar for the first, から目
+destroying 目を離す for the second. What is left is a named list of strings the
+segmentation authority should hold that no dictionary supplies a reading for,
+for one string at 25 sightings.
 
 **げ and お are productive, so no dictionary lookup will ever finish them.** お
 attaches to any 動作名詞 (お伺い, お願い, お答え) — the join needs to try the run
@@ -757,8 +789,8 @@ reader meets.
 whether there is a fix at all:
 
 - **A segmentation authority lists it** — でも and だが are fixed
-  (`CLAUSE_INITIAL_ONLY`); とはいえ, なんでも, 確かに, お経 and たまえ are still
-  refused, each by a different fence. See *とはいえ, 確かに, たまえ*.
+  (`CLAUSE_INITIAL_ONLY`), and so are 確かに and たまえ; とはいえ, なんでも and
+  お経 are still refused, each by a different fence. See group 3.
 - **Only Jitendex lists it** — 抵抗感, 死ね, 氷漬け, 許容量, 白濁液. `reference`
   role, so it decides nothing about segmentation, and that is the design rather
   than a defect.
