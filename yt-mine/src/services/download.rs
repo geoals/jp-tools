@@ -98,7 +98,11 @@ pub struct YtDlpDownloader;
 
 /// Runs yt-dlp and returns its `--print` lines.
 async fn run_yt_dlp(args: &[&str]) -> Result<Vec<String>, DownloadError> {
+    // Without a signed-in session YouTube answers the media URLs with 403: the
+    // clients yt-dlp can reach anonymously either need a PO token or are served
+    // images only. Firefox's cookies are the session.
     let output = tokio::process::Command::new("yt-dlp")
+        .args(["--cookies-from-browser", "firefox"])
         .args(args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
