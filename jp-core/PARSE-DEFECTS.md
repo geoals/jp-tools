@@ -1,13 +1,15 @@
 # Parse defects
 
-Words noticed misparsed while reading, worked through in batches. One entry per
-word: what the pipeline does with it today, and the cause where it is known.
+Words noticed misparsed while reading, worked through in batches. **Grouped by
+what the pipeline does wrong, not by the word that found it** — a word is a
+sighting, and a sighting is only worth keeping because a fix is judged against
+it.
 
-**22 open**, each checked against the live pipeline on 2026-08-16. Three
-further questions are about the vocabulary denominator rather than the parse and
-are kept apart from them; a fourth — whether the reader's lookup surface should
-be the ledger's key at all — has its own section. What has been fixed is one
-line each at the bottom.
+**Five mechanisms open**, all checked against the live pipeline on 2026-08-16
+and ordered by what a fix is worth. Three further questions are about the
+vocabulary denominator rather than the parse and are kept apart from them; a
+fourth — whether the reader's lookup surface should be the ledger's key at all —
+has its own section. What has been fixed is one line each at the bottom.
 
 **The standard this list is worked to: as many whole lines as possible where
 every token is the right headword — and where the pipeline is unsure, no match
@@ -100,49 +102,39 @@ exist so a rule can be diffed against itself: `TOKENS_NAMES=off`,
 
 ## Waiting on a decision, not on work
 
-**One mora of kana is never a word of its own, whatever a dictionary says.**
-The identity ladder already carries this argument (`mora_of_kana`,
-`headword_for_reading`) and the wordhood gate does not. Measured over the
-ledger: **46 rows and 1,378 encounters** would go — ちゅ, ぢ, ひ ×358, う ×213,
-く ×153, あ ×140, ふ, ぎ, ちょ — against **37 rows and 149,058 encounters that
-must survive**, which are the particles (を は が に) and the affixes
-(さ お ご め). Fencing on those two parts of speech is what separates them, so
-`is_noise` would need the token's POS, which it does not take today.
-
-Not built for two reasons, both worth a deliberate answer rather than a default:
-it **overrules a dictionary**, which no other rule here does; and to stay
-coherent it would have to drive the reader's paint as well as the ledger, or
-ひ and あ would sit tinted `new` on every line forever instead of quietly
-`known`. It is the only thing standing between the reader and a clean triage
-queue — ちゅ ×207 and ぢ ×52 head 白昼夢の青写真's, and blacklisting is the only
-lever that reaches them otherwise.
+**One mora of kana is never a word of its own, whatever a dictionary says.** The
+one change in this file that needs an answer rather than a pass: it would take
+46 ledger rows and 1,378 encounters, it **overrules a dictionary** where no
+other rule here does, and it has to drive the reader's paint as well as the
+ledger to stay coherent. The argument and the numbers are under *Open*, group 1.
 
 ## Then, in value order
 
 Done since this section was last written, all under *Fixed*: the katakana fold,
 the colloquial adjective ending, the join's clause-initial list, `drops_kanji`,
 ないと before a quoting verb, そこで / 中には / ときに / 手を入れる, the inflected
-half of the kanji swap, and ちゃんと / ものの.
+half of the kanji swap, ちゃんと / ものの, and そういう over そういえば.
 
 **The join list is finished.** ないか (415) and ないで (178) were measured with
 the last two and are **right**: 「じゃないか」 is the negative question and
 「言わないでください」 the negative te-form, which is what those entries are. Do
 not re-measure them.
 
-1. **The three denominator questions**, which are decisions rather than code.
-   They change the headline number the whole system reports, and until one is
-   made that number has an unstated policy inside it. **The kanji swap's residue
-   is now one of them** — see its entry: 158 tokens are a spelling Sankoku has
-   no headword for at all, and the choice is the swap or falling off the scale.
-2. **The が swallowed into an unlisted mimetic** (the ふよふよ entry). The rule
-   is clear — が, を and へ essentially never begin a Japanese word — but it
-   fires twice over the read corpus today, which is not enough evidence.
-   Revisit when more of 白昼夢の青写真 has been read; its script holds 10
-   sightings of ふよふよ alone.
-3. **Everything else in the open list, at one or two encounters each.** チョロい,
-   一日, 塵, 砂粒, 何時, かたや, いやがおうにも, きわまり, お花摘み, 満足げ,
-   天球儀, ２８日, くそう — the corpus dump has 1–4 of each. Worth doing as one
-   batch on a day when the tools are already rebuilt, not one at a time.
+The five open groups are already in value order, so *Open* is the queue. What is
+worth saying here is what separates them:
+
+1. **Group 1 is the whole game** — ~1,400 encounters against ~370 for the other
+   four combined, and every one of them a false ledger row rather than a missed
+   word. Three quarters of it needs no decision; the one-mora rule does.
+2. **Group 2 is a decision, not code**, and the same one the denominator section
+   asks. Until it is made, the headline vocabulary number has an unstated policy
+   inside it.
+3. **Groups 3 and 5 cost a lookup, not an assertion** — a word left in pieces is
+   findable, a word keyed on the wrong headword is not. That is why 110 tokens
+   of refused joins rank under 220 tokens of orthography.
+4. **Group 4 has the most sightings and the least weight**: eight of them, thirty
+   tokens, one structural cause. Worth doing as one batch on a day when the tools
+   are already rebuilt, not one at a time.
 
 ## What has been tried and measured wrong
 
@@ -223,304 +215,18 @@ The denominator decision is still worth more than the tail of this list.
 
 # Open
 
-## チョロい → チョロ + いん, and the katakana i-adjective SudachiDict does not list
-
-「どこがチョロいんだわたしの！　ビッチ！」 comes out チョロ (副詞) + いん, and
-いん takes the identity 忌む/イム. The ん of んだ is inside the second token, so
-this is the boundary family — recomposition cannot reach it.
-
-The cause is one missing SudachiDict entry, not a rule. ヤバい, エロい and ダサい
-are all listed in katakana and all come out whole with ん + だ after them;
-ちょろい in hiragana comes out whole too. Only the katakana チョロい is absent,
-and チョロ alone is listed as an adverb, so the split wins. The master lists
-ちょろい, so the identity would resolve through the katakana fold once the
-boundary is right.
-
-**Only when the sentence inflects it.** 「だいぶチョロい気がします」 comes out
-whole; 「全然チョロく」 and 「どこがチョロいんだ」 come apart, because the plain
-form matches チョロ + い and any other ending sends the lattice through the
-listed adverb. Four splits over the corpus, one of them the いん.
-
-`CUT_BEFORE_AND_AFTER` is the lever; whether one string at four sightings earns
-a list entry is the open question. **What settles it is that the class is
-measured and small** — see *Boundaries that fall inside a word*.
-
-## とはいえ, 確かに, たまえ — a listed expression the join still will not build
-
-**たまえ is not the cheap hole it looked like.** `with_standard` skips an entry
-whose reading is empty, and that is 14,064 kana headwords across 明鏡 and
-小学館 — but almost all of them are the reading-index rows those builds carry
-(あいすくりーむ, あいえっち, あい), not orthographic headwords. Admitting the
-lot was measured: **zero tokens change over the corpus**, because
-`dictionaries::standard_entries` filters `reading != ''` in SQL before the
-tokenizer ever sees them. The skip in `with_standard` is dead code on the
-production path, and たまえ is missing for a reason further upstream.
-
-What is left of the under-firing side after the clause-initial list, and it is
-three different fences rather than one. The trace names each:
-
-| left as parts | times | refused by |
-| --- | --- | --- |
-| と + は + いえ | — | the conjugated-tail path needs a content-word head, and と is a particle |
-| 確か + に | 16 | `Invalid expression: contains a bound stem` — に is the copula's 連用形 |
-| た + まえ | 19 | never offered: 小学館's たまえ has no reading, so `with_standard` skips it |
-| お + 経 | 3 | the length floor — お経 is two characters and only one is kanji |
-
-たまえ is the one worth doing first, because it is not a judgement call: a
-standard-dictionary entry with an empty reading is dropped from `segments`
-entirely, and that is a silent hole in the segmentation authority rather than a
-rule. 「待ちたまえ」 comes out 待ち + た + まえ, and まえ is keyed on 前.
-
-## The kanji swap — the spelling the master does not have
-
-**Both halves of the swap itself are fixed.** A surface that is a master
-headword keeps its own spelling (`drops_kanji`); a surface that is a stem takes
-the master's other spelling of the same reading — 上手く → 上手い, 抑え → 抑える,
-遭っ → 遭う, 穢さ → 穢す, 登れ → 登る, 視 → 視る. 429 tokens.
-
-What is left is **158 tokens over 76 spellings the master has no headword for at
-all**, so there is nothing to offer in place of the swap: 蒼く, 碧い, 昏い, 視える,
-還す, 喪っ, 忌々し, 廻天, 兄妹, 箱舟, 棄損, 誤魔化し. Sankoku does not list 蒼い
-or 視える under any reading.
-
-That makes the residue a **denominator question rather than a parse one**, and
-the same one the spelling class below asks from the other direction: keeping the
-surface takes the word off the master scale, and the swap keeps it on under a
-kanji the reader did not see.
-
-Two more that no kanji rule reaches, both from the 160-line sample: なれる keyed
-on 慣れる where the line meant なる, and 行って on 行く where it meant 行う. Two
-lemmas share a surface, no kanji is dropped, and nothing weighs them. The
-sentence draw adds a third: いい keyed on 言う where the line meant 良い —
-「それでいい、わかったよ」, 「いい、から」 — 9 of the corpus's 19 いい→言う
-tokens, the rest being といいます and 言いがたい, which are right.
-
-## くそう — read 臭い/くさい
-
-「くそう、やはりダメか」 is the interjection. Sudachi normalises it onto 臭い and
-the pair lists, so the ladder stops at *Exact match*. Same family as うるせー and
-not reachable by the same arithmetic: くそう is くそ plus a drawn-out う, not a
-contracted adjective ending.
-
-## 天球儀 → 天球 + 儀
-
-A compound no segmentation authority holds whole, split into two parts that are
-each listed. One sighting.
-
-何度 was the other half of this entry and is fixed: 104 whole over the corpus,
-none split, kept by the gate on 明鏡's listing.
-
-## ２８日 — read によう + か
-
-`２８/28/によう` + `日/日/か`. The digits are read as a word and the counter
-takes its bound reading, so a date comes out as two tokens neither of which is
-a number. Numbers are already off the vocabulary scale, so the cost is the
-popup and the trace rather than a ledger row.
-
-## で and に read as the copula だ
-
-「あの村で」, 「形で」, 「不意に」 — the case particle filed under だ. Three
-sightings in a random draw of 20 lines, which makes it the most frequent single
-error in the pipeline by rate.
-
-**Most of it is not an error**, and that is why it is one entry rather than a
-batch. 綺麗に, 見事に, マジで, 必死で are na-adjectives whose adverbial *is* the
-copula's form, and 〜ので (247 of the 1,194 で cases) is the copula too. The
-wrong ones are で after a plain noun — こと, 物, 話, 犯人, 瞳, 一人.
-
-It is also Sudachi's analysis rather than the ladder's: the normalised form
-arrives as だ and every candidate agrees. And it costs nothing in the ledger,
-since だ is grammar judged long ago. The cost is the popup opening on the copula
-when the reader taps a particle.
-
-## ロボットがふよふよと — the particle is swallowed into an unlisted mimetic
-
-`ロボット` + **`がふ`** + `よ` + `ふ` + `よ` + `と`. Sudachi has no ふよふよ, so
-the cheapest path over 「ロボットがふよふよと」 takes the subject particle が into
-a nonsense 副詞 and shreds the mimetic. Two false rows come out of it: がふ as an
-adverb, and よ resolved to the adjective よい.
-
-**No dictionary lists ふよふよ at all** — not Sankoku, not 明鏡, not Jitendex,
-and not either of the two onomatopoeia dictionaries installed to look for it
-(擬音語・擬態語辞典 and surasura, both removed again once they had answered) — so
-even a perfect segmentation leaves it a `non-word`. What is lost is the が, and the two
-assertions.
-
-**And no dictionary will.** Mimetics are a productive system rather than a
-closed list: 擬音語・擬態語辞典 has 1,967 headwords and surasura 1,422, and they
-overlap on 939 — two independent attempts at the same space agree on 38% of it.
-Admitting them by *shape* instead was measured and is no better: the ABAB
-reduplication template admits 9 corpus terms nothing lists (21 encounters), and
-half of them are カカカカ, イイイイ, どどどど and ぐぐぐぐ — screams and
-keyboard mashing. The tail of this class is not recoverable by wordhood at all,
-which is why the defect here is the swallowed が and not the missing entry.
-
-Same family as the boundary defects under *Fixed*, and `CUT_BEFORE_AND_AFTER`
-cannot take it: mimetics are coined freely and no named list will hold them. The rule that would is one keyed on
-the *particle* rather than on the word — が, を and へ essentially never begin a
-Japanese word, so an unlisted token that starts at a token boundary and begins
-with one of them has swallowed it. Measured over the read corpus that fires
-about four times (ががががが, a scream), which is too little evidence to build
-on; 10 sightings of ふよふよ in one script is the case for revisiting it.
-
-## 何時 — the clock reading なんじ is never produced, and the まで/でも forms vanish
-
-Three spellings of one word, and the pipeline gets the literal one wrong every
-way it can:
-
-| line | what comes out |
-| --- | --- |
-| 「……何時なの」 | 何時 / **なんどき**, `名詞` |
-| 学校は何時までかかるだろうか。 | 何時まで / **いつまで**, `助詞` — no 何時 token at all |
-| いつ何時でも | いつ → 何時/いつ, then 何時でも / いつでも, `助詞` |
-
-Both lines mean なんじ and no path produces it. なんどき is a real reading but
-belongs to いつ何時, which is the one context here that *doesn't* get it. And the
-join returns a compound of noun + particle tagged `助詞`, with a reading asserted
-over the whole thing — a category error rather than a close call.
-
-Low volume: 217 of this work's 218 何時 rows are kana いつ normalized onto the
-master's spelling, which is the rule working. The damage is confined to the
-literal spelling.
-
-One thing to note when it is fixed, because it looks like a second defect and is
-not: 何時/なんどき paints `known`, borrowed from the known 何時/いつ row by the
-judged-under-another-reading rule. That rule is right; it was applied to a key
-that should never have been built.
-
-## 一日 — read ついたち where the line means いちにち
-
-`preferred_readings` derives no entry that reaches this: 一日 has four master
-readings and ついたち is among the *acceptable* ones, so the correction never
-fires. It is right for a date and wrong for 「一日手伝うだけ」, and nothing in
-the token says which.
-
-## 塵 — read ごみ where the sense is ちり
-
-Sudachi returns ゴミ, the master lists 塵/ごみ, and the ladder stops at *Exact
-match* with a single candidate. No alternative is ever weighed.
-
-The frequency tables would not have saved it — BCCWJ and Jiten both rank 塵/ごみ
-far above 塵/ちり (2,661 vs 87,036 in Jiten), because the corpus writes ごみ in
-kanji and modern fiction writes it ゴミ. Sankoku lists ちり first and twice.
-
-**The consequence is ordering in the popup, not loss.** `define::definitions`
-filters senses to the reading the tokenizer chose, so the first thing drawn is
-ごみ; the other readings are still reachable through the expansion chips. Worth
-considering: when a spelling has several listed readings and the choice came
-from Sudachi alone rather than from a preference or a rank, lead with the
-master's order.
-
-## かたや — read as 方/かた
-
-`かた` + `や`. The conjunction かたや is not listed, so the ladder takes the
-two-mora kana run as the master headword 方/かた on an exact spelling-and-reading
-match. The short-kana guard is the rule that should catch this and does not,
-because the match is to a real common headword rather than a coincidental rare
-one.
-
-Cost is not the ledger row — it is that the popup opens on 方 and the reader has
-to work out that the word was never there.
-
-## いやがおうにも — 否が応にも, spelt in kana
-
-`いや`/否 + `が` + `お` + `うに` + `も`. Produces two junk tokens; うに is a
-ledger row. Same shape as なんて and また: a set phrase the rewrite pass should
-handle before Sudachi sees it.
-
-## 豪華きわまりない — the kana half of a word no dictionary spells in kana
-
-`豪華` + `きわまり` + `ない`. Two defects stacked, and the second is the reason
-the reader sees anything at all.
-
-1. **The join never fires.** The word is 極まりない, which every installed
-   dictionary lists, Sankoku included — but only under that spelling, so the
-   spelling path finds nothing for きわまり+ない. The reading path would find it
-   (`by_reading["きわまりない"]` is one headword), and it is not admitted:
-   `reading_join_admitted` wants either an all-`動詞` run or a kanji somewhere
-   in the head, and an all-kana `きわまり` is neither.
-2. **The popup then says `Not in any dictionary`.** The wordhood gate passes on
-   the *resolved* spelling — `In master dictionary: 極まり` — while the identity
-   ladder refuses that pair, because Sankoku's 極まり reads きまり and only
-   Jitendex lists 極まり/きわまり. So the headword is kept as written, and
-   `define` looks up the literal string きわまり, which is no dictionary's
-   headword.
-
-The gate and `define` asking different questions is the general shape: a gate
-match on a kanji spelling guarantees nothing about the popup, whenever the
-ladder falls through to the kana surface. Fixing (1) removes this instance; the
-mismatch itself is wider.
-
-## お花摘み, お伺いを立てて — the polite prefix is left outside
-
-`お` + `花摘み`, and `お` + `伺いを立て` + `て`. The join finds the rest and
-conjugates it right, but only from the second token onward: `お` + X is tried
-first, finds nothing, and the honorific stays a separate 接頭辞 token.
-
-Both join paths require the run to *begin* on a content word (`spellable`'s head
-check, and `opens_on_a_word`). A trailing 接尾辞 is admitted; a leading 接頭辞 is
-not, so a prefix-initial compound Sudachi does not already hold whole can never
-be rejoined.
-
-The cause is general — お is productive on any 動作名詞 (お伺い, お願い, お答え)
-and no dictionary will list every combination — so the join needs to try the run
-*without* a leading honorific and re-attach it, rather than looking up お+X. It
-rarely bites: お見舞い, お節介, お手上げ, ご機嫌斜め, 大慌て, 真っ最中, ど真ん中
-all arrive whole from Sudachi.
-
-## 満足げ, 悲しげ, 不安げ, 悔しげ — never joined
-
-Left as `満足` + `げ`, because no segmentation dictionary lists the compound as a
-headword. The joined ones (得意げ, 意味ありげ) work — `3523cad` made a suffix
-compound take the class its suffix derives.
-
-Open question: whether げ should be a productive suffix *rule* rather than a
-dictionary lookup. Same shape as 感 below.
-
-## 砂粒 — held whole, read さりゅう where the line means すなつぶ
-
-The `non-word` half is gone — a standard dictionary decides wordhood now, so
-砂粒 is clickable and defined. What is left is the reading: Sudachi says さりゅう
-and Jitendex says すなつぶ, and only the master may name an identity, so nothing
-overrules it. The general form is a reading only a `reference` dictionary knows.
-
-## 集る — read たかる where the line means あつまる
-
-「旧教徒の集る場所でもある」 means the believers *gather*. Every segmentation
-authority lists 集る only as たかる (swarm, mob) and 集まる only as あつまる, so
-Sudachi reads the surface たかる and the ladder stops at *Exact match*.
-Jitendex is the only dictionary that lists the 集る/あつまる pair, and only the
-master may name an identity, so nothing overrules たかる. Same family as 砂粒:
-a reading only a `reference` dictionary knows. One sighting so far.
-
-## あてぃし — a character-voice pronoun Sudachi shreds, and a fragment lands on a real headword
-
-「あー、あてぃし？」「あーあてぃしだよー？」 — the childish first-person pronoun
-あてぃし (a drawn-out あたし), a character's voice. The docs already list these
-pronoun spellings as not vocabulary — but the truth is worse than an off-scale
-spelling. Sudachi's Mode C shreds あてぃし, and recompose cannot rescue it
-because no listed headword combines the parts. Which real word the shred lands
-on depends on the line:
-
-| line | what comes out | the false row |
-| --- | --- | --- |
-| あー、あてぃし？ | あて/当て + ぃ + し/する | 当て (a real noun) |
-| あてぃしは俯瞰することができた | あて/当てる + ぃ + し | 当てる (the verb) |
-| あーあてぃしだよー？ | あーあ + て + ぃ + しだ | しだ, gated by the master's 羊歯 (the fern) |
-
-Both rows are words the reader never meant. The shredding is the defect, and it
-is one the blacklist lever the docs name for the pronoun spellings cannot reach
-— 当て and 羊歯 are not character-voice spellings, they are real master
-headwords asserted falsely. Same family: あん (a contracted あなた, 「んで、あんさぁ」)
-lands on 案.
-
-## Short kana that is not a word resolves onto a real headword before the noise gate sees it
-
-The noise rule refuses a short kana term nothing lists — but it asks the
-dictionaries about the *resolved* form, and Sudachi's normalisation has already
-turned the fragment into a listed reading by then. A mimetic, a stammer, or a
-contracted-phrase fragment whose kana spells a real headword's reading becomes
-a false ledger row for that word:
+**Five mechanisms, not twenty-two words.** Each section is one thing the
+pipeline does wrong; the words under it are the sightings that found it, kept
+because a fix is judged against them. Ordered by what a fix is worth, which is
+encounters weighted by whether the cost is a false ledger row or a missed one.
+
+## 1. Wordhood judges Sudachi's normalisation, not what the reader saw
+
+**~1,400 encounters, all of them false assertions.** `Wordhood::is_noise`
+refuses a short kana term nothing lists — but it asks the dictionaries about the
+**resolved** form, and normalisation has already turned the fragment into a
+listed word by then. A stammer, a mimetic, or a shred of a contracted phrase
+becomes a ledger row for a word nobody read.
 
 | line | what comes out | the false row |
 | --- | --- | --- |
@@ -532,69 +238,223 @@ a false ledger row for that word:
 | みし、みし、みし、と | みし | みせる |
 | ざけんなぶっ殺すぞ | ざけ + んな | さけ |
 | きいぃ！ / はわ、わわわ | きい / はわ | 聞く / 這う |
-| そんなら… / どど、どならないで… | そん / どど | 村 / 度々 |
 | 魔女……どもめ……！ | もめ (of どもめ) | 揉める |
-| あてぃしまだ推しに… | しまだ (of あてぃし+まだ) | 島田, a cast name |
 | あんま時間もねーしな | あんま (of あんまり) | 按摩 (massage) |
+| かたや〜、かたや〜 | かた + や | 方/かた |
 
-Two fences that look like they should catch the family both miss: the noise
-gate sees the resolved form, and the two-mora rank guard does not reach びくん
-(three morae), nor 微醺 (rank 9,695), nor 村/そん (rank 1,117). The あてぃし
-shred is the same family seen through a character-voice pronoun; these are the
-ordinary words it lands on. ~25 tokens over the read corpus.
+**あてぃし is the same mechanism seen through a character's voice.** Sudachi's
+Mode C shreds the childish pronoun (a drawn-out あたし) and recompose cannot
+rescue it, because no listed headword combines the parts — so which real word
+the shred lands on depends on the line: あて/当て + ぃ + し in 「あー、あてぃし？」,
+あて/当てる in 「あてぃしは俯瞰することができた」, and しだ gated by the master's
+羊歯 in 「あーあてぃしだよー？」. あん out of 「んで、あんさぁ」 lands on 案.
+Blacklisting the pronoun spellings cannot reach these: 当て and 羊歯 are real
+master headwords, asserted falsely.
 
-## The spelling class — a kanji identity for a line written in kana
+**Two fences that look like they should catch the family both miss.** The noise
+gate sees the resolved form; and the two-mora rank guard does not reach びくん
+(three morae), nor 微醺 (rank 9,695), nor 村/そん (rank 1,117). かたや fails it
+for the third reason — the match is to a real *common* headword rather than a
+coincidental rare one.
 
-とうもろこし keyed as 玉蜀黍, いびき as 鼾, ご祝儀 as 御祝儀, のしあがる as
-伸し上がる, 一人暮らし as 独り暮らし. The pair *is* listed, so the exact-match
-rung fires and the "would add kanji the text did not use" guard — which sits at
-the bottom of the ladder — is never reached.
+### What is already fixed, and why the rule sharpens on its own
 
-**Deliberately left open.** Refusing the fold would take these words off the
-master scale, since いびき is not a Sankoku headword and 鼾 is; that is a
-decision about the denominator, not a parse fix, and it is the same mechanism
-that makes いう and 言う one row. The mechanical test for the whole category is
-in the random-sample audit below: *neither the headword nor its reading occurs
-in the line the token came from*.
+A kana term of at most three morae that **no dictionary lists** — asked in both
+alphabets — is refused a ledger row entirely. 130 rows and 338 encounters of
+sound effect and hook shrapnel: ぎい, ぐっ, ぎっ, ちゅぷ, くちゅ, ちゅる, ががが,
+ズチュ, グチョ.
 
-## Short kana that is not a word at all — HALF FIXED
+**It keys on the dictionaries, so it sharpens as they are added.** Installing
+擬音語・擬態語辞典 (講談社, 1,967 headwords, 804 in nothing else here) took 15
+terms straight back out of the noise bucket — きっ, にっ, がばり, ぷん, きゅっ,
+ぼっ, くっ, ぷい, ざらり, そっ, ばっ, ぐっ, ぎっ, だっ, のっ are mimetics with
+entries, and the rule was over-broad on them for exactly as long as nothing
+listed them. ぎい, ちゅぷ, ズチュ and ががが stayed refused.
 
-**The half no dictionary backs is fixed.** A kana term of at most three morae
-that no dictionary lists — asked in both alphabets — is refused a ledger row
-entirely (`Wordhood::is_noise`). 130 rows and 338 encounters of sound effect and
-hook shrapnel: ぎい, ぐっ, ぎっ, ちゅぷ, くちゅ, ちゅる, ががが, ズチュ, グチョ.
-
-**The rule keys on the dictionaries, so it sharpens as they are added.**
-Installing 擬音語・擬態語辞典 (講談社, 1,967 headwords, 804 of them in nothing
-else already here) took 15 terms straight back out of the noise bucket — きっ,
-にっ, がばり, ぷん, きゅっ, ぼっ, くっ, ぷい, ざらり, そっ, ばっ, ぐっ, ぎっ,
-だっ, のっ are mimetics with entries, and the rule was over-broad on them for
-exactly as long as nothing listed them. ぎい, ちゅぷ, ズチュ and ががが stayed
-refused.
-
-Three morae is where the population turns. Below it a kana string nothing lists
-is almost always noise; at four and five it is the work's own vocabulary —
+**Three morae is where the population turns.** Below it a kana string nothing
+lists is almost always noise; at four and five it is the work's own vocabulary —
 ダイイング, トレデキム, ジンザイ, ハルウリ, ヒトカリ are what one VN is *about*
 and no dictionary will ever list them. **The alphabet is asked both ways before
 the string is condemned**, which is what keeps ウチ (107), コイツ, ガッコ, ソレ,
 ソッチ, ミライ and シケイ: a katakana spelling is a decision about how to write a
 word, not evidence that there is no word.
 
-**What is left is the loud half, and it is loud because a dictionary lists it.**
-ちゅ ×207 is in 明鏡, ぢ ×52 in Jitendex — both are one mora and both head the
-work's triage queue. The rule above cannot reach them by construction, and the
-lever that can is one the ledger already has: blacklisting, which drops a term
-out of `top_unknown` for good.
+### Waiting on a decision: one mora of kana is never a word
 
-The rule that *would* reach them is the identity ladder's own argument at the
-wordhood gate: **one mora of kana is never a word of its own**, whatever the
-dictionaries say, because Japanese has a word for every single kana and the
-match is found every time. Measured over the ledger: 46 rows and 1,378
-encounters — ちゅ, ぢ, ひ ×358, う ×213, く ×153, あ ×140 — against 37 rows and
-149,058 encounters that must survive it, which are the particles (を, は, が, に)
-and the affixes (さ, お, ご, め). Fencing on those two parts of speech is what
-separates them. Not built: it overrules a dictionary, and it changes what the
-reader paints as well as what the ledger holds.
+The loud half of the bucket is loud **because a dictionary lists it** — ちゅ ×207
+is in 明鏡, ぢ ×52 in Jitendex, both one mora, both heading the work's triage
+queue. The rule above cannot reach them by construction.
+
+The rule that would is the identity ladder's own argument (`mora_of_kana`,
+`headword_for_reading`) moved to the wordhood gate: **one mora of kana is never a
+word of its own**, whatever the dictionaries say, because Japanese has a word for
+every single kana and the match is found every time. Measured over the ledger:
+**46 rows and 1,378 encounters** would go — ちゅ, ぢ, ひ ×358, う ×213, く ×153,
+あ ×140, ふ, ぎ, ちょ — against **37 rows and 149,058 encounters that must
+survive**, which are the particles (を は が に) and the affixes (さ お ご め).
+Fencing on those two parts of speech is what separates them, so `is_noise` would
+need the token's POS, which it does not take today.
+
+Not built for two reasons, both worth a deliberate answer rather than a default:
+it **overrules a dictionary**, which no other rule here does; and to stay
+coherent it would have to drive the reader's paint as well as the ledger, or ひ
+and あ would sit tinted `new` on every line forever instead of quietly `known`.
+Blacklisting is the only lever that reaches them otherwise.
+
+## 2. The denominator: a kanji identity for a kana line, and a kana line with no kanji identity
+
+**~220 tokens, and a decision rather than a bug** — the same one asked from two
+directions. See *Not parse defects — questions about the denominator*.
+
+**The fold fires** — とうもろこし keyed 玉蜀黍, いびき 鼾, ご祝儀 御祝儀,
+のしあがる 伸し上がる, 一人暮らし 独り暮らし (~60). The pair *is* listed, so the
+exact-match rung fires and the "would add kanji the text did not use" guard —
+which sits at the bottom of the ladder — is never reached. Refusing it would take
+these words off the master scale, since いびき is not a Sankoku headword and 鼾
+is. It is the same mechanism that makes いう and 言う one row.
+
+**The fold has nothing to land on** — 158 tokens over 76 spellings the master has
+no headword for at all: 蒼く, 碧い, 昏い, 視える, 還す, 喪っ, 忌々し, 廻天, 兄妹,
+箱舟, 棄損, 誤魔化し. Sankoku does not list 蒼い or 視える under any reading, so
+there is nothing to offer in place of the swap. Keeping the surface takes the
+word off the scale; the swap keeps it on under a kanji the reader did not see.
+The rest of that class is fixed — see the two swap entries under *Fixed*.
+
+The mechanical test for the whole category is pure code: *neither the headword
+nor its reading occurs in the line the token came from*.
+
+## 3. A listed expression the join will not build
+
+**~110 tokens, and four different fences** — which is why one group and four
+fixes. The cost is a **missing word**, a lookup rather than a false assertion.
+
+| left as parts | times | refused by |
+| --- | --- | --- |
+| 満足 + げ (悲しげ, 不安げ, 悔しげ, 苦しげ, 憂いげ) | 68 | no segmentation dictionary lists the compound; the joined 得意げ and 意味ありげ work |
+| 確か + に | 16 | `Invalid expression: contains a bound stem` — に is the copula's 連用形 |
+| た + まえ | 19 | never offered; see below |
+| と + は + いえ | — | the conjugated-tail path needs a content-word head, and と is a particle |
+| お + 経 | 3 | the length floor — お経 is two characters and only one is kanji |
+| きわまり + ない | 3 | `reading_join_admitted` wants an all-`動詞` run or a kanji in the head, and an all-kana きわまり is neither |
+| お + 花摘み, お + 伺いを立て | 2 | both join paths require the run to *begin* on a content word, so a leading 接頭辞 is never admitted |
+
+**たまえ is not the cheap hole it looked like.** `with_standard` skips an entry
+whose reading is empty, and that is 14,064 kana headwords across 明鏡 and 小学館
+— but almost all are the reading-index rows those builds carry (あいすくりーむ,
+あいえっち, あい), not orthographic headwords. Admitting the lot was measured:
+**zero tokens change**, because `dictionaries::standard_entries` filters
+`reading != ''` in SQL before the tokenizer sees them. The skip is dead code on
+the production path, and 「待ちたまえ」 → 待ち + た + まえ, with まえ keyed on 前,
+is missing for a reason still unfound.
+
+**げ and お are productive, so no dictionary lookup will ever finish them.** お
+attaches to any 動作名詞 (お伺い, お願い, お答え) — the join needs to try the run
+*without* a leading honorific and re-attach it. げ is the same question from the
+segmentation side that 連帯感 is from the denominator side.
+
+**きわまり drags a second defect behind it**, and it is wider than the join. The
+wordhood gate passes on the *resolved* spelling — `In master dictionary: 極まり` —
+while the identity ladder refuses that pair, because Sankoku's 極まり reads きまり
+and only Jitendex lists 極まり/きわまり. So the headword stays as written and
+`define` looks up the literal string きわまり, which is no dictionary's headword:
+the popup says `Not in any dictionary`.
+
+**くぼみ is that second defect with no join in it.** Sankoku lists 窪む and 窪 but
+not the noun 窪み, so the ladder falls to *would add kanji the text did not use*
+and the headword stays くぼみ — the right parse, and the gate passes it as `In a
+standard dictionary: 窪み`. `define` then looks up `term = 'くぼみ'` exactly and
+finds nothing, while 明鏡, 小学館 and Jitendex all hold the word as
+`term=窪み/凹み, reading=くぼみ`. **A term bank keys on the kanji spelling even
+where the dictionary itself writes the word in kana**: 小学館's entry prints its
+headword as 「くぼみ」 — that is the `data-headword` span, with 窪み and 凹み filed
+under 参考表記 — and it is still indexed as 窪み. There is no kana row to find and
+no dictionary can be added that would supply one. The fix is in `define` rather
+than the parse: on an all-kana term with no term match, retry on `reading`, which
+`idx_dictionary_entries_reading` already indexes — handed the tokenizer's
+candidate list (`窪み / くぼみ`) rather than the raw kana, since a bare reading
+pulls 公園, 講演 and 後援 at once.
+
+## 4. Reading choice, where the spelling is right and the master lists several
+
+**~30 tokens over eight sightings, and one structural cause.** The exact-match
+rung takes Sudachi's pair whenever the master lists it, and nothing weighs the
+alternatives; `preferred_readings` only covers readings the language has moved
+off, so a live-but-wrong reading is never reached.
+
+| line | read as | should be | times |
+| --- | --- | --- | --- |
+| 一日手伝うだけ | ついたち (and いちじつ) | いちにち | 15 |
+| 旧教徒の集る場所 | たかる | あつまる | 8 |
+| 今月の２８日までに | ２８/によう + 日/か | a date | 4 |
+| 砂と塵が舞う | ごみ | ちり | 3 |
+| 砂粒のように小さく | さりゅう | すなつぶ | 1 |
+| ……何時なの | なんどき | なんじ | 1 |
+| くそう、やはりダメか | 臭い/くさい | the interjection | 1 |
+
+**Three of them are a reading only a `reference` dictionary knows.** Jitendex has
+砂粒/すなつぶ and 集る/あつまる; only the master may name an identity, so nothing
+overrules Sudachi. 何時 is worse than a close call — 何時まで joins into a
+`助詞`-tagged compound read いつまで with no 何時 token at all, a category error;
+the damage is confined to the literal spelling, since 217 of 218 何時 rows are
+kana いつ normalised onto it, which is the rule working.
+
+**Frequency would not have saved 塵**: BCCWJ and Jiten both rank 塵/ごみ far above
+塵/ちり (2,661 vs 87,036 in Jiten), because the corpus writes ごみ in kanji and
+modern fiction writes it ゴミ. Sankoku lists ちり first and twice. Worth
+considering for the whole group: **when a spelling has several listed readings
+and the choice came from Sudachi alone rather than from a preference or a rank,
+lead with the master's order.** For 塵 the consequence is only ordering in the
+popup — `define::definitions` filters senses to the reading the tokenizer chose.
+
+**で and に read as the copula だ** belongs here by mechanism and nowhere else by
+size: 4,336 tokens (で 1,257, に 3,079). **Most of it is not an error** — 綺麗に,
+見事に, マジで, 必死で are na-adjectives whose adverbial *is* the copula's form,
+and 〜ので (259 of the で cases) is the copula too. The wrong ones are で after a
+plain noun — こと (55), 物 (49), 話, 犯人, 瞳. It is Sudachi's analysis rather
+than the ladder's, and it costs nothing in the ledger since だ is grammar judged
+long ago; the cost is the popup opening on the copula when a particle is tapped.
+
+## 5. A boundary inside a word, or a word nothing lists
+
+**~8 tokens, and the only class no downstream rule can reach** — recomposition
+merges *whole* tokens, so a cut that falls inside a word is permanent.
+`CUT_BEFORE_AND_AFTER` is a named list for that reason. **Measured and small**:
+see *Boundaries that fall inside a word*, which found 4 real cases over 503,430
+adjacent pairs.
+
+- **チョロい** (4) — one missing SudachiDict entry, not a rule. ヤバい, エロい and
+  ダサい are all listed in katakana and come out whole; ちょろい in hiragana does
+  too. Only the katakana チョロい is absent, and チョロ alone is listed as an
+  adverb, so the split wins — but **only when the sentence inflects it**:
+  「だいぶチョロい気がします」 is whole, 「全然チョロく」 and 「どこがチョロいんだ」
+  come apart, the latter putting the ん of んだ inside 忌む/イム.
+- **ロボットがふよふよと** (2) — `ロボット` + **`がふ`** + `よ` + `ふ` + `よ` +
+  `と`. The subject particle is swallowed into a nonsense 副詞 and the mimetic
+  shredded, giving two false rows: がふ as an adverb and よ as the adjective よい.
+  **No dictionary lists ふよふよ and none will** — mimetics are a productive
+  system: 擬音語・擬態語辞典 has 1,967 headwords, surasura 1,422, and they overlap
+  on 939, two independent attempts agreeing on 38% of the space. Admitting them
+  by *shape* was measured and is no better — the ABAB template admits 9 corpus
+  terms nothing lists (21 encounters), half of them カカカカ, イイイイ, どどどど,
+  ぐぐぐぐ, screams and keyboard mashing. So the defect is the swallowed が, not
+  the missing entry. **The rule that would fix it keys on the particle**: が, を
+  and へ essentially never begin a Japanese word, so an unlisted token starting
+  at a boundary and beginning with one has swallowed it. Fires about four times
+  over the read corpus (ががががが, a scream), too little evidence to build on;
+  10 sightings of ふよふよ in one script is the case for revisiting.
+- **いやがおうにも** (1) — 否が応にも spelt in kana comes out `いや`/否 + `が` +
+  `お` + `うに` + `も`, and うに becomes a ledger row. Same shape as なんて and
+  また: a set phrase the rewrite pass should handle before Sudachi sees it.
+- **天球儀** (1) — a compound no segmentation authority holds whole, split into
+  two parts that are each listed.
+
+## Two the kanji rules cannot reach at all
+
+Not a mechanism of their own — two lemmas share a surface, no kanji is dropped,
+and nothing weighs them. Kept here because they look like the swap and are not:
+なれる keyed on 慣れる where the line meant なる, 行って on 行く where it meant
+行う, and いい on 言う where it meant 良い — 9 of the corpus's 19 いい→言う tokens,
+the rest being といいます and 言いがたい, which are right.
 
 ---
 
