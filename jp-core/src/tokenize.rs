@@ -1082,6 +1082,28 @@ impl SudachiTokenizer {
                 "Followed by a quoting verb: the と is the quotative".into(),
             );
         }
+        // **And a run the next word makes a genitive of.** 「巨大なものの前で」 is
+        // もの and の, not the concessive ものの, and the の is what 前 hangs off.
+        if NEVER_BEFORE_A_NOUN.contains(&term.as_str()) && after.is_some_and(|t| is_nominal(&t.pos))
+        {
+            return refused(
+                trace,
+                parts(),
+                term,
+                "Followed by a noun: the の is the genitive".into(),
+            );
+        }
+        // **And a run whose first part the previous word makes an honorific of.**
+        // 「ヒロちゃんと友だちになりたい」 is a name, its ちゃん and the comitative
+        // と — not the adverb ちゃんと.
+        if NEVER_AFTER_A_NAME.contains(&term.as_str()) && before.is_some_and(|t| t.proper_noun) {
+            return refused(
+                trace,
+                parts(),
+                term,
+                "Preceded by a name: the ちゃん is the honorific".into(),
+            );
+        }
         let clause_initial = opens_a_clause(before);
         let positional = CLAUSE_INITIAL_ONLY.contains(&term.as_str());
         if positional && !clause_initial {
@@ -2039,6 +2061,23 @@ const CLAUSE_INITIAL_ONLY: [&str; 5] = [
 /// are the same shape and there the と belongs to the adverb.
 const NEVER_BEFORE_QUOTING: [&str; 1] = ["ないと"];
 
+/// Expressions whose last の is the genitive whenever a nominal follows.
+///
+/// ものの is the concessive after a verb — 「抵抗しているものの」, 「言ったものの」
+/// — and もの + の before a noun: 「巨大なものの前で」, 「書かれたもののようで」,
+/// 「人間だったものの死体」. What comes *before* separates nothing, since た is
+/// on both sides of it; what follows does, because the genitive の needs a head
+/// noun and the concessive ends its clause. 9 of the 26 built are the genitive.
+const NEVER_BEFORE_A_NOUN: [&str; 1] = ["ものの"];
+
+/// Expressions whose first part is an honorific suffix whenever a name precedes.
+///
+/// ちゃんと is the adverb 「ちゃんと確認して」 and it is ちゃん + と after a
+/// character's name — 「ヒロちゃんと友だちになりたい」, 「羽咲ちゃんとか」. 76 of
+/// the 226 built are a cast member and the comitative と, and every one of them
+/// is a name the work's `work_names` holds.
+const NEVER_AFTER_A_NAME: [&str; 1] = ["ちゃんと"];
+
 /// The verbs a quotative と marks. Base forms, so every inflection is covered —
 /// and both spellings of the first, since Sankoku lists いう as its own kana
 /// headword and 「〜という」 resolves to whichever the line wrote.
@@ -2616,6 +2655,13 @@ pub fn is_content_word(pos: &str) -> bool {
         pos,
         "名詞" | "代名詞" | "動詞" | "形容詞" | "形状詞" | "副詞"
     )
+}
+
+/// What a genitive の can hang a head off. 形状詞 is in it because Sudachi files
+/// よう and 見事 there, and 「もののように」 and 「ものの見事に」 are the genitive
+/// as much as 「ものの前で」 is. See [`NEVER_BEFORE_A_NOUN`].
+fn is_nominal(pos: &str) -> bool {
+    matches!(pos, "名詞" | "代名詞" | "形状詞")
 }
 
 /// The master dictionary, asked the only question the affix rule needs: does it

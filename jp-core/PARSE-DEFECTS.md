@@ -3,7 +3,7 @@
 Words noticed misparsed while reading, worked through in batches. One entry per
 word: what the pipeline does with it today, and the cause where it is known.
 
-**20 open**, each checked against the live pipeline on 2026-08-16. Three
+**19 open**, each checked against the live pipeline on 2026-08-16. Three
 further questions are about the vocabulary denominator rather than the parse and
 are kept apart from them; a fourth — whether the reader's lookup surface should
 be the ledger's key at all — has its own section. What has been fixed is one
@@ -121,32 +121,28 @@ lever that reaches them otherwise.
 
 Done since this section was last written, all under *Fixed*: the katakana fold,
 the colloquial adjective ending, the join's clause-initial list, `drops_kanji`,
-ないと before a quoting verb, そこで / 中には / ときに / 手を入れる, and the
-inflected half of the kanji swap.
+ないと before a quoting verb, そこで / 中には / ときに / 手を入れる, the inflected
+half of the kanji swap, and ちゃんと / ものの.
 
-1. **ちゃんと and ものの**, the last two joins, and both need the token *before*
-   the run rather than the one after. ちゃんと is right ~150 times and wrong
-   after a name (「羽咲ちゃんとか」); ものの is the concessive after a verb and
-   もの + の after a noun (~9 of 26). `NEVER_BEFORE_QUOTING` is the shape to
-   copy — `join_run` already receives both neighbours.
+**The join list is finished.** ないか (415) and ないで (178) were measured with
+the last two and are **right**: 「じゃないか」 is the negative question and
+「言わないでください」 the negative te-form, which is what those entries are. Do
+not re-measure them.
 
-   ないか (415) and ないで (178) were measured with them and are **right**:
-   「じゃないか」 is the negative question and 「言わないでください」 the negative
-   te-form, which is what those entries are. Do not re-measure them.
-2. **The three denominator questions**, which are decisions rather than code.
+1. **The three denominator questions**, which are decisions rather than code.
    They change the headline number the whole system reports, and until one is
    made that number has an unstated policy inside it. **The kanji swap's residue
    is now one of them** — see its entry: 158 tokens are a spelling Sankoku has
    no headword for at all, and the choice is the swap or falling off the scale.
-3. **The が swallowed into an unlisted mimetic** (the ふよふよ entry). The rule
+2. **The が swallowed into an unlisted mimetic** (the ふよふよ entry). The rule
    is clear — が, を and へ essentially never begin a Japanese word — but it
    fires twice over the read corpus today, which is not enough evidence.
    Revisit when more of 白昼夢の青写真 has been read; its script holds 10
    sightings of ふよふよ alone.
-4. **うっさい**, the last of the うるさい family. It drops the る rather than
+3. **うっさい**, the last of the うるさい family. It drops the る rather than
    holding the vowel, so the kana arithmetic that fixed うるせー/うるせえ/うるせぇ
    cannot reach it and the master lists only うるさい. 3 encounters.
-5. **Everything else in the open list, at one or two encounters each.** チョロい,
+4. **Everything else in the open list, at one or two encounters each.** チョロい,
    一日, 塵, 砂粒, 何時, かたや, いやがおうにも, きわまり, お花摘み, 満足げ,
    天球儀, 何度, ２８日, くそう — the corpus dump has 1–4 of each. Worth doing as
    one batch on a day when the tools are already rebuilt, not one at a time.
@@ -185,6 +181,7 @@ for comparing the next one against:
 | the noise rule | 338 |
 | the katakana fold | 187 |
 | ないと before a quoting verb | 120 |
+| ちゃんと after a name, ものの before a noun | 85 |
 | 中には, ときに, 手を入れる | 84 |
 | そこで | 57 |
 | the うるさい family | 17 |
@@ -276,17 +273,6 @@ kanji the reader did not see.
 Two more that no kanji rule reaches, both from the 160-line sample: なれる keyed
 on 慣れる where the line meant なる, and 行って on 行く where it meant 行う. Two
 lemmas share a surface, no kanji is dropped, and nothing weighs them.
-
-## ものの — the concessive, built on every ordinary noun + の
-
-26 built, and about a third are wrong: 「巨大なものの前で」, 「すべてのものの
-存在」, 「10年モノの連中」 are a noun and a particle, while 「抵抗しているものの」
-and 「言ったものの」 are the concessive and are right.
-
-Not the same fix as the three above — both readings sit mid-clause. What
-separates them is what comes *before*: the concessive follows a verb or an
-adjective, the plain もの follows a noun or な. Note the parts are `モノ + の`,
-so the katakana fold feeds it.
 
 ## くそう — read 臭い/くさい
 
@@ -906,6 +892,14 @@ One line each; the argument that settled it is in the code, next to the rule.
   they fired on. 中には had been cited as the reason the join admits three-part
   runs at all, and that reading of it had never been checked against a line:
   the expression meaning "some among them" occurs nowhere in the corpus.
+- **ものの built over もの + の 9 times of 26, ちゃんと over a name's ちゃん 76
+  times of 174** — 「巨大なものの前で」, 「書かれたもののようで」, 「ヒロちゃんと
+  友だちになりたい」. Both are decided by a neighbour, and neither by the one the
+  list had guessed: what precedes ものの is た on both readings, and what follows
+  it is a noun for the genitive and a clause for the concessive
+  (`NEVER_BEFORE_A_NOUN`); ちゃん is the honorific exactly where a cast name
+  precedes it (`NEVER_AFTER_A_NAME`). 85 tokens over 82 lines, every ちゃんと one
+  of them a character being addressed by name.
 - **ないと built over a quotative と 120 times of 379** — 「出ないと思う」,
   「信じられないという」. `NEVER_BEFORE_QUOTING`, checked against the token
   *after* the run, which `join_run` now receives. Named rather than a rule about

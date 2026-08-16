@@ -588,6 +588,54 @@ fn an_expression_is_refused_where_the_next_word_quotes_it() {
     );
 }
 
+/// 「巨大なものの前で」 is もの and a genitive の with 前 hanging off it, not the
+/// concessive ものの. What comes before separates nothing — た is on both sides
+/// of it — and what follows does.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn an_expression_is_refused_where_the_next_word_hangs_off_its_genitive() {
+    let tk = with_cast(&[]);
+
+    for text in ["巨大なものの前でもがく", "最近書かれたもののようだ"] {
+        let tokens = tokens_of(&tk, text);
+        assert!(
+            !tokens.iter().any(|t| t.surface == "ものの"),
+            "ものの must not rejoin before a noun in {text}: {:?}",
+            identities(&tokens)
+        );
+    }
+
+    let tokens = tokens_of(&tk, "口では抵抗しているものの、暴れない");
+    assert!(
+        tokens.iter().any(|t| t.surface == "ものの"),
+        "{:?}",
+        identities(&tokens)
+    );
+}
+
+/// 「ヒロちゃんと友だちになりたい」 is a name, its honorific ちゃん and the
+/// comitative と — not the adverb ちゃんと. A third of everything the join built
+/// was a cast member greeted by name.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn an_expression_is_refused_where_a_name_makes_its_first_part_an_honorific() {
+    let tk = with_cast(&["ヒロ"]);
+
+    let tokens = tokens_of(&tk, "ヒロちゃんと友だちになりたい");
+    assert!(
+        !tokens.iter().any(|t| t.surface == "ちゃんと"),
+        "ちゃんと must not rejoin after a name: {:?}",
+        identities(&tokens)
+    );
+
+    let tokens = tokens_of(&tk, "ちゃんと確認してから来る");
+    assert!(
+        tokens.iter().any(|t| t.surface == "ちゃんと"),
+        "{:?}",
+        identities(&tokens)
+    );
+}
+
 /// The same list read the other way. でも and だが are two kana, so the join's
 /// length floor refused them everywhere and 654 sentences opening on でも had no
 /// でも in them — while 「読んでも」 and 「一人でも」 are で + も and must stay
