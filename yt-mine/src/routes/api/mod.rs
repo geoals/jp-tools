@@ -15,6 +15,7 @@ use jp_mine_core::lookup::{bold_target_in_sentence, target_surface};
 use crate::app::AppState;
 use crate::db;
 use crate::error::AppError;
+use crate::models::Job;
 use crate::routes::mining::{build_sentence_views, format_seconds};
 use crate::services::export::ExportSentence;
 use crate::services::media::media_filenames;
@@ -482,6 +483,7 @@ pub async fn export_sentences(
         .await?
         .ok_or(AppError::NotFound)?;
 
+    let clip_audio = clip_source(&job).cloned();
     let source = job.video_title.unwrap_or_else(|| job.youtube_url.clone());
 
     let mut export_sentences = Vec::with_capacity(sentences.len());
@@ -510,7 +512,7 @@ pub async fn export_sentences(
         }
 
         let mut audio_result = None;
-        if let Some(audio_path) = &job.audio_path {
+        if let Some(audio_path) = &clip_audio {
             match state
                 .media_extractor
                 .extract_audio_clip(
@@ -653,8 +655,8 @@ pub async fn sentence_audio(
     if sentence.job_id != job.id {
         return Err(AppError::NotFound);
     }
-    let audio_path = job
-        .audio_path
+    let audio_path = clip_source(&job)
+        .cloned()
         .ok_or(AppError::BadRequest("no audio available".into()))?;
 
     let (_, audio_filename) = media_filenames(job.id, sentence_id);
@@ -685,6 +687,13 @@ pub async fn sentence_audio(
 }
 
 // --- Helpers ---
+
+/// The file a card's audio clip is cut from: what yt-dlp downloaded, since
+/// `audio_path` is the 16kHz mono conversion whisper takes as input. Jobs from
+/// before the source was kept fall back to it.
+fn clip_source(job: &Job) -> Option<&String> {
+    job.source_audio_path.as_ref().or(job.audio_path.as_ref())
+}
 
 /// How common the word is in fiction — the rank the reader's own tools use.
 async fn reader_rank(pool: &sqlx::SqlitePool, term: &str) -> Option<i64> {

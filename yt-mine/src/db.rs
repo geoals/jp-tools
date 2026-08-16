@@ -46,6 +46,12 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> 
             .await?;
     }
 
+    if !has_column(&pool, "mining_jobs", "source_audio_path").await? {
+        sqlx::raw_sql(include_str!("../migrations/007_add_source_audio_path.sql"))
+            .execute(&pool)
+            .await?;
+    }
+
     Ok(pool)
 }
 
@@ -80,7 +86,7 @@ pub async fn create_job(
 
 pub async fn get_job(pool: &SqlitePool, id: i64) -> Result<Option<Job>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, youtube_url, video_id, video_title, audio_path, video_path, status, error_message, created_at, segments_found, video_duration FROM mining_jobs WHERE id = ?",
+        "SELECT id, youtube_url, video_id, video_title, audio_path, source_audio_path, video_path, status, error_message, created_at, segments_found, video_duration FROM mining_jobs WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -97,7 +103,7 @@ pub async fn get_latest_job_by_video_id(
     video_id: &str,
 ) -> Result<Option<Job>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, youtube_url, video_id, video_title, audio_path, video_path, status, error_message, created_at, segments_found, video_duration \
+        "SELECT id, youtube_url, video_id, video_title, audio_path, source_audio_path, video_path, status, error_message, created_at, segments_found, video_duration \
          FROM mining_jobs \
          WHERE video_id = ? \
          ORDER BY id DESC \
@@ -119,7 +125,7 @@ pub async fn get_job_by_video_id(
     video_id: &str,
 ) -> Result<Option<Job>, sqlx::Error> {
     let row = sqlx::query(
-        "SELECT id, youtube_url, video_id, video_title, audio_path, video_path, status, error_message, created_at, segments_found, video_duration \
+        "SELECT id, youtube_url, video_id, video_title, audio_path, source_audio_path, video_path, status, error_message, created_at, segments_found, video_duration \
          FROM mining_jobs \
          WHERE video_id = ? AND status != 'error' \
          ORDER BY id DESC \
@@ -140,6 +146,7 @@ fn job_from_row(r: sqlx::sqlite::SqliteRow) -> Job {
         video_id: r.get("video_id"),
         video_title: r.get("video_title"),
         audio_path: r.get("audio_path"),
+        source_audio_path: r.get("source_audio_path"),
         video_path: r.get("video_path"),
         status: JobStatus::parse(&status_str).unwrap_or(JobStatus::Error),
         error_message: r.get("error_message"),
@@ -168,13 +175,15 @@ pub async fn update_job_audio(
     pool: &SqlitePool,
     id: i64,
     audio_path: &str,
+    source_audio_path: &str,
     video_title: &str,
     video_duration: Option<f64>,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "UPDATE mining_jobs SET audio_path = ?, video_title = ?, video_duration = ? WHERE id = ?",
+        "UPDATE mining_jobs SET audio_path = ?, source_audio_path = ?, video_title = ?, video_duration = ? WHERE id = ?",
     )
     .bind(audio_path)
+    .bind(source_audio_path)
     .bind(video_title)
     .bind(video_duration)
     .bind(id)
@@ -558,12 +567,13 @@ mod tests {
         .await
         .unwrap();
 
-        update_job_audio(&pool, id, "/tmp/audio.wav", "Test Video", Some(120.5))
+        update_job_audio(&pool, id, "/tmp/audio.wav", "/tmp/audio.webm", "Test Video", Some(120.5))
             .await
             .unwrap();
         update_job_video(&pool, id, "/tmp/video.mp4").await.unwrap();
         let job = get_job(&pool, id).await.unwrap().unwrap();
         assert_eq!(job.audio_path.as_deref(), Some("/tmp/audio.wav"));
+        assert_eq!(job.source_audio_path.as_deref(), Some("/tmp/audio.webm"));
         assert_eq!(job.video_title.as_deref(), Some("Test Video"));
         assert_eq!(job.video_duration, Some(120.5));
     }

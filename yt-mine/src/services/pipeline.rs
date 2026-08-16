@@ -45,6 +45,7 @@ pub async fn process_job(
         &pool,
         job_id,
         &audio.audio_path,
+        &audio.source_audio_path,
         &audio.video_title,
         audio.video_duration,
     )
@@ -417,6 +418,7 @@ mod tests {
             Box::pin(async {
                 Ok(AudioDownload {
                     audio_path: "/tmp/audio.wav".into(),
+                    source_audio_path: "/tmp/audio.wav".into(),
                     video_title: "Test Video".into(),
                     video_duration: Some(60.0),
                 })
@@ -524,6 +526,7 @@ mod tests {
             Box::pin(async {
                 Ok(AudioDownload {
                     audio_path: "/tmp/audio.wav".into(),
+                    source_audio_path: "/tmp/audio.wav".into(),
                     video_title: "Test Video".into(),
                     video_duration: Some(60.0),
                 })

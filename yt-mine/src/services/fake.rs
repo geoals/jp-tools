@@ -41,6 +41,7 @@ impl MediaDownloader for FakeDownloader {
             write_placeholder(&audio_path).await?;
 
             Ok(AudioDownload {
+                source_audio_path: audio_path.clone(),
                 audio_path,
                 video_title: "[Dev] 日本語の勉強法".into(),
                 video_duration: Some(45.0),

@@ -95,6 +95,7 @@ async fn submit_job_creates_and_returns_video_id() {
         Box::pin(async {
             Ok(crate::services::download::AudioDownload {
                 audio_path: "/tmp/audio.wav".into(),
+                source_audio_path: "/tmp/audio.wav".into(),
                 video_title: "Test".into(),
                 video_duration: Some(60.0),
             })
@@ -373,7 +374,7 @@ async fn export_returns_count_and_ids() {
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
         .await
         .unwrap();
-    db::update_job_audio(&pool, job_id, "/tmp/audio.wav", "Test", Some(60.0))
+    db::update_job_audio(&pool, job_id, "/tmp/audio.wav", "/tmp/audio.webm", "Test", Some(60.0))
         .await
         .unwrap();
     db::update_job_video(&pool, job_id, "/tmp/video.mp4")
@@ -499,7 +500,7 @@ async fn sentence_audio_extracts_and_returns_mp3() {
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
         .await
         .unwrap();
-    db::update_job_audio(&pool, job_id, "/tmp/audio.wav", "Test", Some(60.0))
+    db::update_job_audio(&pool, job_id, "/tmp/audio.wav", "/tmp/audio.webm", "Test", Some(60.0))
         .await
         .unwrap();
     db::update_job_video(&pool, job_id, "/tmp/video.mp4")
@@ -551,7 +552,7 @@ async fn sentence_audio_serves_cached_clip() {
     db::update_job_status(&pool, job_id, &JobStatus::Done, None)
         .await
         .unwrap();
-    db::update_job_audio(&pool, job_id, "/tmp/audio.wav", "Test", Some(60.0))
+    db::update_job_audio(&pool, job_id, "/tmp/audio.wav", "/tmp/audio.webm", "Test", Some(60.0))
         .await
         .unwrap();
     db::update_job_video(&pool, job_id, "/tmp/video.mp4")

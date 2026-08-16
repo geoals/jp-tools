@@ -24,6 +24,9 @@ pub trait MediaDownloader: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct AudioDownload {
     pub audio_path: String,
+    /// What yt-dlp wrote, kept because the card's clip is cut from it: the
+    /// 16kHz mono `audio_path` is whisper's format, not something to listen to.
+    pub source_audio_path: String,
     pub video_title: String,
     pub video_duration: Option<f64>,
 }
@@ -210,6 +213,7 @@ impl MediaDownloader for YtDlpDownloader {
 
             Ok(AudioDownload {
                 audio_path,
+                source_audio_path: source_path,
                 video_title,
                 video_duration,
             })
