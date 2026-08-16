@@ -206,6 +206,7 @@ for comparing the next one against:
 | the noise rule | 338 |
 | the katakana fold | 187 |
 | a two-mora cry given a kanji word | 162 |
+| 確かに joined, たまえ cut | 66 |
 | ないと before a quoting verb | 120 |
 | ちゃんと after a name, ものの before a noun | 85 |
 | 中には, ときに, 手を入れる | 84 |
@@ -370,27 +371,17 @@ nor its reading occurs in the line the token came from*.
 
 ## 3. A listed expression the join will not build
 
-**~110 tokens, and four different fences** — which is why one group and four
-fixes. The cost is a **missing word**, a lookup rather than a false assertion.
+**~75 tokens, and a different fence each time** — which is why one group and
+several fixes. The cost is a **missing word**, a lookup rather than a false
+assertion.
 
 | left as parts | times | refused by |
 | --- | --- | --- |
 | 満足 + げ (悲しげ, 不安げ, 悔しげ, 苦しげ, 憂いげ) | 68 | no segmentation dictionary lists the compound; the joined 得意げ and 意味ありげ work |
-| 確か + に | 16 | `Invalid expression: contains a bound stem` — に is the copula's 連用形 |
-| た + まえ | 19 | never offered; see below |
-| と + は + いえ | — | the conjugated-tail path needs a content-word head, and と is a particle |
+| と + は + いえ | — | nothing lists とはいえ in `segments`, and the run opens on a particle so no path offers it |
 | お + 経 | 3 | the length floor — お経 is two characters and only one is kanji |
 | きわまり + ない | 3 | `reading_join_admitted` wants an all-`動詞` run or a kanji in the head, and an all-kana きわまり is neither |
 | お + 花摘み, お + 伺いを立て | 2 | both join paths require the run to *begin* on a content word, so a leading 接頭辞 is never admitted |
-
-**たまえ is not the cheap hole it looked like.** `with_standard` skips an entry
-whose reading is empty, and that is 14,064 kana headwords across 明鏡 and 小学館
-— but almost all are the reading-index rows those builds carry (あいすくりーむ,
-あいえっち, あい), not orthographic headwords. Admitting the lot was measured:
-**zero tokens change**, because `dictionaries::standard_entries` filters
-`reading != ''` in SQL before the tokenizer sees them. The skip is dead code on
-the production path, and 「待ちたまえ」 → 待ち + た + まえ, with まえ keyed on 前,
-is missing for a reason still unfound.
 
 **げ and お are productive, so no dictionary lookup will ever finish them.** お
 attaches to any 動作名詞 (お伺い, お願い, お答え) — the join needs to try the run
@@ -418,6 +409,14 @@ than the parse: on an all-kana term with no term match, retry on `reading`, whic
 `idx_dictionary_entries_reading` already indexes — handed the tokenizer's
 candidate list (`窪み / くぼみ`) rather than the raw kana, since a bare reading
 pulls 公園, 講演 and 後援 at once.
+
+**確かに and たまえ are out of this group**, both under *Fixed*, and both had a
+stated cause that was wrong. 確かに was refused for holding a bound stem while
+本当に joined, and the whole difference was Sudachi calling one に a case
+particle and the other the copula's 連用形. たまえ was blamed on
+`with_standard`'s empty-reading skip, which is dead code; the real cause is that
+Mode C keeps 待ちたまえ whole **only at the end of the input**, so it is a
+boundary defect and belongs to group 5's mechanism, not this one.
 
 ## 4. Reading choice, where the spelling is right and the master lists several
 
@@ -925,6 +924,22 @@ One line each; the argument that settled it is in the code, next to the rule.
   the spelling now, since a swap wins on the spelling alone one rung further
   down, and the answer is looked up under the swapped spelling's own reading as
   well as the token's. 9 tokens, and nothing else in the corpus moves.
+- **確かに refused while 本当に joined** — both are a word plus に and both
+  Sankoku headwords, and the whole difference was Sudachi's tagging: 本当's に is
+  a case particle, 確か's the copula's 連用形, so the no-inflected-part rule saw a
+  stem in one and not the other. A 形状詞 followed by that 連用形 is its
+  adverbial, not an inflection inside the run. 46 tokens — 確かに 16, 自然に 14,
+  新たに, 滅多に, みだりに, 伊達に, 僅かに — and the result still has to be a
+  listed headword, so 綺麗に and 見事に stay two words. ように is the shape the
+  rule exists for and every dictionary here lists it, so `NEVER_JOIN` is the
+  only thing that reaches it: 651 sightings, not one of them a word.
+- **たまえ cut into た + まえ, with まえ keyed on 前** — blamed on
+  `with_standard`'s empty-reading skip, which is dead code. The real cause is
+  the lattice: Mode C keeps 待ちたまえ whole **only at the end of the input**, and
+  「待ちたまえ！」 comes apart. Nothing downstream rejoins it either, since a run
+  opening on the auxiliary た is a function word a standard dictionary may not
+  license. `CUT_BEFORE_AND_AFTER`, 20 tokens, at the cost of one 待ち keyed on
+  the noun rather than 待つ.
 - **はは read 母, ひっ read 引っ** — a two-mora 感動詞 given a kanji headword by
   sound alone at the reading fallback. The rarity fence there cannot reach a
   word this common and is not meant to: it exists because とき is 時 and はず is

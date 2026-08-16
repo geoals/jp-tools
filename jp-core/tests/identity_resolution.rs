@@ -615,6 +615,41 @@ fn an_expression_is_refused_where_the_next_word_hangs_off_its_genitive() {
     );
 }
 
+/// 確かに and 本当に are both a noun-ish word plus に and both Sankoku headwords,
+/// and only 本当に joined: Sudachi calls its に a case particle and 確か's the
+/// copula's 連用形, so the no-inflected-part rule refused one and not the other.
+///
+/// ように is the shape that rule exists for, and every dictionary here lists it —
+/// so only `NEVER_JOIN` reaches it.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn the_adverbial_of_a_na_adjective_is_one_word_where_the_master_lists_it() {
+    let (tk, _) = setup();
+
+    let tokens = tokens_of(&tk, "確かにあそこは静かだ");
+    assert_eq!(identity_of(&tokens, "確かに"), pair("確かに", "たしかに"));
+
+    let tokens = tokens_of(&tk, "泣いているように見えた");
+    assert!(
+        !tokens.iter().any(|t| t.surface == "ように"),
+        "{:?}",
+        identities(&tokens)
+    );
+}
+
+/// Sudachi keeps 待ちたまえ whole only at the end of the input; anything after it
+/// and the lattice cuts た + まえ, with まえ keyed on 前. Nothing downstream
+/// rejoins it — a run opening on the auxiliary た is a function word, which a
+/// standard dictionary may not license — so the cut list is the only lever.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_boundary_inside_tamae_is_cut_before_sudachi_sees_it() {
+    let (tk, _) = setup();
+    let tokens = tokens_of(&tk, "待ちたまえ！");
+
+    assert_eq!(identity_of(&tokens, "たまえ"), pair("給う", "たまう"));
+}
+
 /// 「そういえばあそこで」 is "speaking of which" — Sankoku's own そう言えば — and
 /// not the conditional of そういう, which is what the conjugated-tail path builds
 /// out of そう + いえ. No path reaches そう言えば, so the join is refused and what

@@ -976,10 +976,25 @@ impl SudachiTokenizer {
                     .chars()
                     .any(|c| crate::text::kanji::is_kanji(c) && !surfaces.contains(c))
         };
+        // **The adverbial of a na-adjective is not an inflection inside the
+        // run.** 確かに is 確か and the copula's 連用形, and Sankoku lists it as a
+        // headword of its own — but the no-inflected-part rule sees に's
+        // dictionary form だ and refuses it as a stem. 本当に joins only because
+        // Sudachi happens to call *its* に a case particle instead, and nothing
+        // about the two expressions differs otherwise.
+        //
+        // Two tokens exactly, and the head a 形状詞, which is what keeps it off
+        // the shapes the rule exists for: そうな's そう is an adverb, and じゃない
+        // and しまった end in a full auxiliary rather than a copula. The result
+        // still has to be a listed headword, so 綺麗に and 見事に stay two words.
+        let adverbial_of_a_na_adjective = run.len() == 2
+            && run[0].pos == "形状詞"
+            && last.surface == "に"
+            && last.base_form == "だ";
         let expression_shaped = if conjugated_tail {
             head.iter().all(|t| !t.inflected)
         } else {
-            uninflected_run
+            uninflected_run || adverbial_of_a_na_adjective
         };
         // A **standard** dictionary may not license an expression that opens on
         // a function word. The master's own list is trusted there — だから,
@@ -2014,7 +2029,13 @@ impl SudachiTokenizer {
 ///
 /// [`CLAUSE_INITIAL_ONLY`] is the other half of this: a string that is a word
 /// in one position and two words in another.
-const NEVER_JOIN: [&str; 22] = [
+const NEVER_JOIN: [&str; 23] = [
+    "ように", // よう + に: 「泣いているように見えた」 — the grammar point, 651
+    // sightings and not one of them a word. Every dictionary here
+    // lists it, which is why only a list reaches it: Sudachi tags
+    // its よう 形状詞,助動詞語幹, an auxiliary's stem, and the
+    // adverbial exception below sees only the top-level 形状詞 that
+    // 確か and 滅多 also carry.
     "この家", // この + 家: 「この家じゃ、狭すぎる」 — this house, read
     // このいえ. The join reads it このや, which is a different word
     // and 48 sightings of it in one script.
@@ -2176,10 +2197,16 @@ fn opens_a_clause(before: Option<&Token>) -> bool {
     before.is_none_or(|t| !t.surface.chars().any(crate::text::chars::is_counted))
 }
 
-const CUT_BEFORE_AND_AFTER: [&str; 3] = [
+const CUT_BEFORE_AND_AFTER: [&str; 4] = [
     "なんて", // なん + てひどい, and 手酷い is listed
     "また",   // ま + たいち + から
     "牛乳",   // 牛 + 乳粥, where the next clause of the same line gets 牛乳 right
+    "たまえ", // た + まえ, and まえ is keyed on 前. 小学館 lists たまえ and the
+              // gate would hold it, but Mode C has already cut it: the lattice
+              // keeps 待ちたまえ whole only at the end of the input, and 「待ち
+              // たまえ！」 or 「来たまえと」 comes apart. Nothing downstream can
+              // rejoin it either — a run opening on the auxiliary た is a
+              // function word, which a standard dictionary may not license.
 ];
 
 /// The first [`CUT_BEFORE_AND_AFTER`] string a token boundary falls *inside* of.
