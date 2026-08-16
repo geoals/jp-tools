@@ -558,6 +558,32 @@ fn an_expression_that_is_only_a_word_at_a_clause_start_is_refused_mid_clause() {
     }
 }
 
+/// 「〜ないと思う」 is ない and a quotative と, not the ないと that means "must",
+/// and building the expression takes 思う's complement marker with it. 120 of
+/// the 379 ないと were this.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn an_expression_is_refused_where_the_next_word_quotes_it() {
+    let (tk, _) = setup();
+
+    for text in ["名前は出ないと思う", "信じられないという感じだ"] {
+        let tokens = tokens_of(&tk, text);
+        assert!(
+            !tokens.iter().any(|t| t.surface == "ないと"),
+            "ないと must not rejoin before a quoting verb in {text}: {:?}",
+            identities(&tokens)
+        );
+    }
+
+    // The construction it exists for is untouched.
+    let tokens = tokens_of(&tk, "早く逃げないといけない");
+    assert!(
+        tokens.iter().any(|t| t.surface == "ないと"),
+        "{:?}",
+        identities(&tokens)
+    );
+}
+
 /// The same list read the other way. でも and だが are two kana, so the join's
 /// length floor refused them everywhere and 654 sentences opening on でも had no
 /// でも in them — while 「読んでも」 and 「一人でも」 are で + も and must stay

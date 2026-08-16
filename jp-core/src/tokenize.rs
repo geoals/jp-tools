@@ -664,6 +664,7 @@ impl SudachiTokenizer {
                 self.join_run(
                     &tokens[i..i + n],
                     i.checked_sub(1).map(|p| &tokens[p]),
+                    tokens.get(i + n),
                     trace,
                 )
             });
@@ -824,7 +825,13 @@ impl SudachiTokenizer {
 
     /// One candidate run, joined or refused. See [`recompose`](Self::recompose)
     /// for the rules; this is only their transcription.
-    fn join_run(&self, run: &[Token], before: Option<&Token>, trace: &mut Trace) -> Option<Joined> {
+    fn join_run(
+        &self,
+        run: &[Token],
+        before: Option<&Token>,
+        after: Option<&Token>,
+        trace: &mut Trace,
+    ) -> Option<Joined> {
         let parts = || run.iter().map(|t| t.surface.clone()).collect::<Vec<_>>();
         if run.iter().any(|t| t.surface.is_empty() || t.proper_noun) {
             return no_signal(
@@ -1041,6 +1048,24 @@ impl SudachiTokenizer {
         // **A word only where it opens a clause.** See [`CLAUSE_INITIAL_ONLY`]:
         // 「離れたところで」 is a place and 「ところで、」 is the conjunction, and
         // nothing about the run itself tells them apart.
+        // **And a run that the next word turns back into its parts.** 「出ないと
+        // 思う」 is ない plus the quotative と, not the ないと that means "must",
+        // and building it also takes 思う's complement marker away. 120 of the
+        // 379 ないと are this.
+        //
+        // Named, because the shape does not generalise: さらりと and ぴしゃりと
+        // are joins ending in と before 言う too, and there the と belongs to the
+        // adverb. ちょっと, ちゃんと and ずっと are not joins at all.
+        if NEVER_BEFORE_QUOTING.contains(&term.as_str())
+            && after.is_some_and(|t| QUOTING_VERBS.contains(&t.base_form.as_str()))
+        {
+            return refused(
+                trace,
+                parts(),
+                term,
+                "Followed by a quoting verb: the と is the quotative".into(),
+            );
+        }
         let clause_initial = opens_a_clause(before);
         let positional = CLAUSE_INITIAL_ONLY.contains(&term.as_str());
         if positional && !clause_initial {
@@ -1943,6 +1968,22 @@ const CLAUSE_INITIAL_ONLY: [&str; 5] = [
     "それで", // それ + で: 「それで、とも兄さんは？」 against 「それで矢を操れば」
               // — with that. 116 / 20.
 ];
+
+/// Expressions whose last と is the quotative whenever a quoting verb follows.
+///
+/// One entry, and it earns it: ないと is built 379 times and 120 of them are
+/// 「〜ないと思う」 or 「〜ないという」, where the sentence has ない and a
+/// quotative と rather than the ないと that means "must". The join takes 思う's
+/// complement marker with it.
+///
+/// A list rather than a rule about と, because さらりと言った and ぴしゃりと言った
+/// are the same shape and there the と belongs to the adverb.
+const NEVER_BEFORE_QUOTING: [&str; 1] = ["ないと"];
+
+/// The verbs a quotative と marks. Base forms, so every inflection is covered —
+/// and both spellings of the first, since Sankoku lists いう as its own kana
+/// headword and 「〜という」 resolves to whichever the line wrote.
+const QUOTING_VERBS: [&str; 7] = ["言う", "いう", "思う", "思える", "考える", "聞く", "答える"];
 
 /// Does this run open a clause? The token before it carries no character that
 /// counts as text — 、 。 「 … ― and whitespace — or there is no token before it.

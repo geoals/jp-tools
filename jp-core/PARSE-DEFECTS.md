@@ -72,11 +72,12 @@ adjective ending, and the join's clause-initial list — all under *Fixed*.
    lines, each a wrong word rather than a spelling choice, and the popup opens
    on it. No single rule covers them; two lemmas sharing a surface is the
    commonest shape.
-2. **The rest of the join list**, now that `CLAUSE_INITIAL_ONLY` and そこで are
-   done: the ない family (ないか 415, ないと 379, ないで 178 — unmeasured, and
-   the largest counts left), then 中には, ちゃんと, 手を入れる, ものの, and the
-   three fences under とはいえ, of which たまえ is a silent hole in `segments`
-   rather than a rule.
+2. **The rest of the join list.** ないか (415) and ないで (178) are measured and
+   look **right**: 「じゃないか」 is the negative question and 「言わないで
+   ください」 the negative te-form, which is what those entries are. What is
+   left is 中には, ちゃんと, 手を入れる, ものの, and the three fences under
+   とはいえ — of which たまえ is a silent hole in `segments` rather than a rule
+   and should go first.
 3. **The three denominator questions**, which are decisions rather than code.
    They change the headline number the whole system reports, and until one is
    made that number has an unstated policy inside it.
@@ -805,6 +806,11 @@ One line each; the argument that settled it is in the code, next to the rule.
   over the corpus, all one word.
 - **36 counted as a word, 寝よう cut to 寝, 頂 broken out of 絶頂** — the three
   ordinary parse errors from the random-sample audit, all gone by 2026-08-15.
+- **ないと built over a quotative と 120 times of 379** — 「出ないと思う」,
+  「信じられないという」. `NEVER_BEFORE_QUOTING`, checked against the token
+  *after* the run, which `join_run` now receives. Named rather than a rule about
+  と: さらりと言った and ぴしゃりと言った are the same shape and there the と
+  belongs to the adverb. 「逃げないといけない」 is untouched.
 - **そこで built over a place 48 times of 55** — 「俺と羽咲はそこで別れた」.
   The one conjunction `CLAUSE_INITIAL_ONLY` cannot take, since both its readings
   open a clause. `NEVER_JOIN`, which loses ~7 real ones and leaves them そこ +
