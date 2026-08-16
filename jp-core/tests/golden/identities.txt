@@ -1,5 +1,5 @@
-# 250 lines, 3173 counted tokens, 979 distinct identities
-# 336 counted tokens (10.6%) are identities the master does not list
+# 254 lines, 3221 counted tokens, 997 distinct identities
+# 340 counted tokens (10.6%) are identities the master does not list
 # regenerate: cargo run --example golden -p jp-core --features test-support
 
 羽咲は…だ、大丈夫と思ます
@@ -751,4 +751,16 @@
 
 メルルの顔が初めて絶望でひきつった。
     メルル/めるる? の/の 顔/かお が/が 初めて/はじめて 絶望/ぜつぼう で/で ひく/ひく? つる/つる? た/た
+
+創作について朝まで語り合った妻とも、今は最低減の会話しかない。
+    創作/そうさく に/に つく/つく て/て 朝/あさ まで/まで 語る/かたる? 合う/あう た/た 妻/つま 共/とも 今/いま は/は 最/さい 低減/ていげん の/の 会話/かいわ しか/しか ない/ない
+
+最低限の処世術。
+    最低限/さいていげん の/の 処世術/しょせいじゅつ?
+
+やたら壊れて不気味だった記憶がある。
+    矢鱈/やたら 壊れる/こわれる? て/て 不気味/ぶきみ だ/だ た/た 記憶/きおく が/が ある/ある
+
+自身の意思とは無関係に、私は彼女の手をぱっと離してしまう。
+    自身/じしん の/の 意思/いし と/と は/は 無関係/むかんけい に/に 私/わたし は/は 彼女/かのじょ の/の 手/て を/を ぱっと/ぱっと 離す/はなす? て/て しまう/しまう
 

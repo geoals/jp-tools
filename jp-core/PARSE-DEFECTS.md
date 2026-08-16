@@ -523,6 +523,12 @@ adjacent pairs.
   また: a set phrase the rewrite pass should handle before Sudachi sees it.
 - **天球儀** (1) — a compound no segmentation authority holds whole, split into
   two parts that are each listed.
+- **最低減 (4, 白昼夢の青写真) — the script spells 最低限 with 減 for 限.**
+  Sudachi splits it 最 + 低減, both master words, and the reading さいていげん
+  names 最低限 alone — but a sounded join may not drop a kanji the text wrote,
+  and 限 is not on the page. Keying 最低限 would assert a spelling nobody read,
+  the same refusal that keeps 検死 off 検屍, so the split is the design.
+  最低限 elsewhere in the same script is whole.
 
 ## Two the kanji rules cannot reach at all
 
@@ -1047,3 +1053,9 @@ One line each; the argument that settled it is in the code, next to the rule.
   on their own, applied **only where the analysis shows the boundary actually
   came out wrong** — 14 lines over the corpus, against 59 when the cut was
   unconditional. See the entry below for why it is a list and not a rule.
+- **ご愁傷さま, 大アリ, 物足り+なかっ split off their 接頭辞** — Sudachi hands
+  these over in pieces (ご + 愁傷 + さま, 大 + アリ, 物 + 足り), and the reading
+  join refused a run whose head is a 接頭辞. `reading_join_admitted` takes one
+  now, behind the same fences as a 接尾辞: the combined reading names exactly
+  one headword, and the answer keeps every kanji the text wrote — which is why
+  最低減 still stays 最 + 低減 rather than becoming 最低限.

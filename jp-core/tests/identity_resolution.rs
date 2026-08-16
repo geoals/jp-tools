@@ -1277,3 +1277,71 @@ fn a_word_that_merely_contains_one_is_left_alone() {
         assert!(surfaces.contains(&want.to_string()), "{line}: {surfaces:?}");
     }
 }
+
+/// A 接頭辞 is the usual *first* half of the compound the reading join exists
+/// to rebuild, and its kanji is evidence like any other: the fence is the
+/// reading naming exactly one master headword, not the part-of-speech of the
+/// head. 大 + アリ sounds like 大あり, ご + 愁傷 + さま like 御愁傷様, and 物 +
+/// 足り (the stem of 物足りる) like 物足りる — Sudachi hands all three over in
+/// pieces and the master has the whole word.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_prefix_compound_joins_when_its_reading_names_one_headword() {
+    let (tk, _) = setup();
+    for (line, want, want_identity) in [
+        ("……大アリだ。", "大アリ", pair("大あり", "おおあり")),
+        ("犯人はご愁傷さま～♪", "ご愁傷さま", pair("御愁傷様", "ごしゅうしょうさま")),
+        ("物足りない", "物足り", pair("物足りる", "ものたりる")),
+    ] {
+        let tokens = tokens_of(&tk, line);
+        let t = tokens
+            .iter()
+            .find(|t| t.surface == want)
+            .unwrap_or_else(|| panic!("{line}: no token with surface {want}: {tokens:?}"));
+        assert_eq!(
+            (t.base_form.clone(), to_hiragana(&t.reading)),
+            want_identity,
+            "{line}"
+        );
+    }
+}
+
+/// A kana 接頭辞 alone is still not enough: お + 世話 sounds like お世話, but
+/// the admission is kanji-gated like the rest of the reading path, and without
+/// a kanji in the head every all-kana run is a guess — the same fence that
+/// keeps そう + する off 相する and こと + し off 今年.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_kana_prefix_alone_is_not_enough_to_join() {
+    let (tk, _) = setup();
+    let surfaces: Vec<String> = tokens_of(&tk, "お世話になります")
+        .into_iter()
+        .map(|t| t.surface)
+        .collect();
+    assert!(!surfaces.contains(&"お世話".to_string()), "{surfaces:?}");
+}
+
+/// The one thing a sounded join may not do is overwrite a kanji the text
+/// wrote. 最 + 低減 sounds like 最低限 and the master lists it, but the page
+/// spelt 減 and the reading さいていげん belongs to a word that does not keep
+/// it — so the run stays 最 + 低減 rather than asserting a spelling nobody
+/// read. (The script of 白昼夢の青写真 writes 最低限 this way in four lines.)
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_sounded_join_may_not_respell_a_kanji_the_text_wrote() {
+    let (tk, _) = setup();
+    // 最低限 in the master is what makes the join *offer* 最低減, so the
+    // refusal is what is being tested rather than an absent headword.
+    let surfaces: Vec<String> = tokens_of(&tk, "最低減")
+        .into_iter()
+        .map(|t| t.surface)
+        .collect();
+    assert_eq!(surfaces, ["最", "低減"], "{surfaces:?}");
+
+    let whole = tokens_of(&tk, "最低限");
+    assert_eq!(whole.len(), 1, "{whole:?}");
+    assert_eq!(
+        identities(&whole),
+        [pair("最低限", "さいていげん")]
+    );
+}

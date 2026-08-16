@@ -1,4 +1,4 @@
-//! The regression net: 250 real sentences, and the identities the ledger gets
+//! The regression net: 254 real sentences, and the identities the ledger gets
 //! from them.
 //!
 //! Every rule in the tokenizer trades one class of mistake for another, and the

@@ -1279,6 +1279,13 @@ impl SudachiTokenizer {
     ///   disasters that fenced this off (そう + する → 相する, こと + し → 今年)
     ///   are all-kana runs, which this does not admit. A 接尾辞 is allowed here
     ///   and nowhere else: it is the usual second half of such a compound.
+    ///   A 接頭辞 is the usual *first* half: 大 + アリ → 大あり, 物 + 足り →
+    ///   物足りる, both joined because the reading names one headword and the
+    ///   answer keeps every kanji the text wrote. The kanji-drop fence still
+    ///   holds the line: 最 + 低減 reads さいていげん, the master's 最低限, but
+    ///   限 is not on the page, so the run stays split. A kana prefix alone is
+    ///   refused too — お + 世話 stays two words, the admission being
+    ///   kanji-gated like the rest.
     fn reading_join_admitted(&self, run: &[Token], head: &[Token], content: bool) -> bool {
         let kana_heads = || {
             head.iter()
@@ -1287,8 +1294,13 @@ impl SudachiTokenizer {
         if content && run.iter().all(|t| t.pos == "動詞") && kana_heads() {
             return true;
         }
-        let joinable = |t: &Token| is_content_word(&t.pos) || t.pos == "接尾辞";
+        // A 接頭辞 may sit anywhere a 接尾辞 may, except the tail: a prefix
+        // attaches to what follows, so a run ending on one ends inside a word.
+        let joinable = |t: &Token| {
+            is_content_word(&t.pos) || t.pos == "接頭辞" || t.pos == "接尾辞"
+        };
         run.iter().all(joinable)
+            && run.last().is_some_and(|t| t.pos != "接頭辞")
             && head
                 .iter()
                 .any(|t| t.surface.chars().any(crate::text::kanji::is_kanji))
