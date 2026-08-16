@@ -69,6 +69,15 @@ HEARTBEAT_SECS = 2.0
 # only Japanese text marks a voiceline; ignore stray latin/punctuation hooks
 JP = re.compile(r"[぀-ヿ一-鿿]")
 
+# A line the script writes as nothing but punctuation — 「……」, 「──」, 「!?」 —
+# is a real line with a voiceline behind it, so it is kept even though JP finds
+# nothing in it. It counts zero characters (NOT_COUNTED is an allowlist), which
+# is what keeps it out of every rate. The set is closed on purpose: anything
+# else with no Japanese in it is a hook pointed at the wrong address.
+PUNCT_ONLY = re.compile(
+    r"^[\s。、，．・…‥！？!?～〜ー―‐–—─━〝〟“”\"'‘’「」『』（）()〈〉《》【】〔〕［］\[\]｛｝{}♪♡★☆※→←↑↓]+$"
+)
+
 # Character counting matches texthooker-ui's isNotJapaneseRegex (an allowlist,
 # so punctuation and brackets don't count) — otherwise read-stats reports a
 # chars/h noticeably above what the texthooker shows for the same reading.
@@ -346,7 +355,8 @@ def clean_line(raw):
     For Dohna Dohna's script-layer captures this keeps only the dialogue runs,
     strips the 【speaker】 tag, and drops skip-through captures (many lines fused
     into one). Other games carry no markers and pass through unchanged. Either
-    way a capture longer than a real line, or with no Japanese left, is dropped.
+    way a capture longer than a real line is dropped, as is one with no Japanese
+    left that is not punctuation alone (see PUNCT_ONLY).
 
     The repetition collapse runs first: at four copies of every character a normal
     line is over the length guard below and would be dropped as a skip-through.
@@ -378,8 +388,12 @@ def clean_line(raw):
     if "\\" in text:
         note_unknown_command(text)
         return None
-    if len(text) > MAX_READING_CHARS or not JP.search(text):
+    if len(text) > MAX_READING_CHARS:
         return None
+    if not JP.search(text):
+        bare = CONTROL.sub("", RICH_TAG.sub("", text)).strip()
+        if not bare or not PUNCT_ONLY.match(bare):
+            return None
     # Strip the markup codes, having declined to drop the line for them. They
     # are the VN's, not the reader's, and Sudachi analyses them as words —
     # \x05 and \x04 reached read-stats' vocabulary ledger as "e" and "d". No
