@@ -161,6 +161,26 @@ Do not build these; each cost a pass to disprove.
   or is a kana rendering of a kanji headword. There is nothing in between, so
   the path cannot be opened a crack — see `NEVER_BEFORE_A_CONDITIONAL` for what
   was done instead.
+- **Three ways of tightening the reading fallback**, all of which cost more than
+  they save. The rung hands a short kana surface a kanji headword by sound
+  alone, and the false rows it produces (そん → 村, びくん → 微醺) look like a
+  fence is missing. All three attempts hit the same wall: **the lever is the
+  spelling-class lever**, and the good half of this rung is the spelling class
+  working.
+
+  - *Refusing any kanji headword to a hiragana surface of three morae or less
+    at that rung, at any rank* — **1,488 tokens**, and the losses outnumber the
+    wins ten to one: いつ off 何時 (155), いつも off 何時も (152), やめ off 止める
+    (116), おじ off 伯父 (119), さっき off 先 (105), におい off 匂い.
+  - *Raising `SHORT_KANA_MORAE` from two to three*, so the existing rarity fence
+    reaches びくん — **130 tokens**, and it takes 鼬, 欅, 襖, 蕾, 盥, 蠍, 庇 and
+    胡散 off their spellings. The file already predicted this: three morae is
+    where the coincidence stops and the evidence starts, ほうき is 箒 at rank
+    22,217 and is right, and the guard stops at two for that reason.
+  - *Extending the interjection rule to 副詞 as well* — **250 tokens**, and 副詞
+    is the tag a real mimetic carries: it takes おずおず off 怖ず怖ず, ひんやり
+    off 冷んやり, まるっきり, つやつや, ふつふつ and ごうごう with it. Past two
+    morae an interjection is a word too — おはよう is お早う and おかえり お帰り.
 - **A rule about と before a quoting verb.** さらりと言った and ぴしゃりと言った
   are joins ending in と before 言う and the と belongs to the adverb.
 - **`with_standard`'s empty-reading skip as a hole.** It drops 14,064 kana
@@ -185,10 +205,11 @@ for comparing the next one against:
 | `drops_kanji` | 406 |
 | the noise rule | 338 |
 | the katakana fold | 187 |
+| a two-mora cry given a kanji word | 162 |
 | ないと before a quoting verb | 120 |
 | ちゃんと after a name, ものの before a noun | 85 |
-| そういう over そういえば | 70 |
 | 中には, ときに, 手を入れる | 84 |
+| そういう over そういえば | 70 |
 | そこで | 57 |
 | the うるさい family, うっさい with it | 20 |
 
@@ -256,6 +277,30 @@ gate sees the resolved form; and the two-mora rank guard does not reach びく�
 (three morae), nor 微醺 (rank 9,695), nor 村/そん (rank 1,117). かたや fails it
 for the third reason — the match is to a real *common* headword rather than a
 coincidental rare one.
+
+**The class is split by which rung built it, and only one half is reachable.**
+
+- **The reading fallback** — そん → 村, びくん → 微醺, きい → 聞く, どど → 度々.
+  Nothing the text wrote was listed, so all that was left was the sound.
+- **Sudachi's own normalisation, accepted at *Exact match*** — はわ → 這う,
+  もめ → 揉める, みし → みせる, くすん → くすむ, くるん → 包む. The surface is a
+  stem of a real verb and the pair lists, so the top rung fires and no fence
+  below it is ever reached. The line is a mimetic or a stammer, and nothing in
+  the token says so.
+- **A genuine homograph** — あんま (of あんまり) is 按摩, あらあら is 粗々, かた
+  (of かたや) is 方. The surface *is* the listed word; the sentence meant
+  something else. Not separable by any rule.
+
+**What was fixed is the part with a class signal on it**: a two-mora 感動詞 may
+not take a kanji headword at the reading fallback, whatever its rank — an
+interjection is never とき or はず, which is what the rarity fence exists to
+protect. 145 tokens of crying (はは → 母 47, ひっ → 引っ 70, ぐう → 隅, ひい → 一,
+あん → 案, くう → 九, おら → 俺) against one real word, くそ.
+
+**Three widenings were measured and rejected**, and they are why the rest of
+this group has no fix — see *What has been tried and measured wrong*. The short
+version: every lever that reaches the remaining cases is the spelling-class
+lever, and pulling it is the denominator decision rather than a parse fix.
 
 ### What is already fixed, and why the rule sharpens on its own
 
@@ -880,6 +925,14 @@ One line each; the argument that settled it is in the code, next to the rule.
   the spelling now, since a swap wins on the spelling alone one rung further
   down, and the answer is looked up under the swapped spelling's own reading as
   well as the token's. 9 tokens, and nothing else in the corpus moves.
+- **はは read 母, ひっ read 引っ** — a two-mora 感動詞 given a kanji headword by
+  sound alone at the reading fallback. The rarity fence there cannot reach a
+  word this common and is not meant to: it exists because とき is 時 and はず is
+  筈 at the same length, and an interjection is never one of those, so at two
+  morae its class decides on its own. 162 tokens over 8 spellings — はは 47,
+  ひっ 70, ぐう 隅, ひい 一, あん 案, くう 九, おら 俺 — against one real word,
+  くそ. Interjections only and two morae only; both wider forms were measured
+  and are under *What has been tried and measured wrong*.
 - **ものの built over もの + の 9 times of 26, ちゃんと over a name's ちゃん 76
   times of 174** — 「巨大なものの前で」, 「書かれたもののようで」, 「ヒロちゃんと
   友だちになりたい」. Both are decided by a neighbour, and neither by the one the

@@ -957,6 +957,19 @@ fn two_morae_of_kana_never_name_a_spelling_nobody_writes() {
     assert!(!bases.contains(&"弥"), "{bases:?}");
 }
 
+/// The rarity fence has one exception, and its own class carries it: an
+/// interjection is never とき or はず. はは is laughter and took 母 47 times,
+/// ひっ took the prefix 引っ 70 — both far too common for the rank to refuse.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_two_mora_cry_never_names_a_kanji_word() {
+    let (tk, _) = setup();
+    let tokens = tokens_of(&tk, "あははは、はは、おかしい");
+
+    let bases: Vec<&str> = tokens.iter().map(|t| t.base_form.as_str()).collect();
+    assert!(!bases.contains(&"母"), "{bases:?}");
+}
+
 /// And the rarity is half the rule, not decoration: とき, あと and はず are the
 /// same two morae, and 時, 後 and 筈 are simply what they are. A guard keyed on
 /// length alone would take the commonest words in the language off the scale.

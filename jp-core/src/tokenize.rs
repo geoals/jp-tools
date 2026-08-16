@@ -1901,10 +1901,30 @@ impl SudachiTokenizer {
             // arbitration rather than to its answer: dropping a rare headword
             // afterwards would only lose the match, where refusing it here lets
             // a commoner spelling with the same reading still win.
+            // **A two-mora cry is not a word, whatever it sounds like.** The
+            // class check above only reaches an inflected token, so an
+            // uninflected one may take any headword its reading names — and
+            // SudachiDict has already said what these are. はは is 感動詞,
+            // laughter, and it took 母 47 times; ひっ took the prefix 引っ 70
+            // times, ぐう 隅, ひい 一, あん 案, くう 九, おら 俺.
+            //
+            // The rarity fence above cannot reach them, and that is the point:
+            // it exists because とき is 時 and はず is 筈 at two morae. **An
+            // interjection is never one of those**, so at this length its class
+            // is enough on its own and the rank is not asked.
+            //
+            // **Interjections only, and only at two morae.** 副詞 is the tag a
+            // mimetic carries too, and there the kanji spellings are real —
+            // refusing them takes おずおず off 怖ず怖ず and ひんやり off 冷んやり.
+            // Past two morae an interjection is a word as well: おはよう is
+            // お早う and おかえり お帰り. What is left inside both fences is
+            // 145 tokens of crying and one real word, くそ.
+            let a_cry = m.part_of_speech().first().map(String::as_str) == Some("感動詞");
             if !is_one_mora(&spoken)
                 && let Some(term) = self.headword_for_reading(&spoken, |t| {
                     (uninflected || self.conjugatable_lemma(t))
                         && !self.short_kana_coincidence(t, &spoken, short_kana)
+                        && !(a_cry && short_kana && t.chars().any(crate::text::kanji::is_kanji))
                 })
             {
                 return (
