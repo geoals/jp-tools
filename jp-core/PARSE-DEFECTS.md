@@ -3,33 +3,88 @@
 Words noticed misparsed while reading, worked through in batches. One entry per
 word: what the pipeline does with it today, and the cause where it is known.
 
-**19 open**, each checked against the live pipeline on 2026-08-15. Three
+**20 open**, each checked against the live pipeline on 2026-08-16. Three
 further questions are about the vocabulary denominator rather than the parse and
-are kept apart from them; what has been fixed is one line each at the bottom.
+are kept apart from them; a fourth — whether the reader's lookup surface should
+be the ledger's key at all — has its own section. What has been fixed is one
+line each at the bottom.
 
 **The standard this list is worked to: as many whole lines as possible where
 every token is the right headword — and where the pipeline is unsure, no match
 beats a wrong one.** A token left as written costs a lookup; a token keyed on a
 word nobody read is a false assertion that spreads, into the ledger, the popup,
 the count and the triage queue. The `drops_kanji` rule, the two-mora guard, the
-ambiguous-reading refusal and the noise gate are all that principle; so is the
-reason そこで is still open rather than guessed at.
+ambiguous-reading refusal and the noise gate are all that principle. So are the
+trades taken on そこで, ときに and 手を入れる: each cost a handful of real
+matches — 7, 3 and 1 — to stop 48, 32 and 8 wrong ones, and what is left in
+their place is the plain words, which are still words.
 
-**Start at *Next*.** It ranks what is left, says what has already been measured
-so it is not measured twice, and names the one change that is waiting on a
-decision rather than on work.
+**Read *Picking this up cold* first if the tools are not already built**, then
+*Next*. Next ranks what is left, says what has already been measured so it is
+not measured twice, carries a *What has been tried and measured wrong* list, and
+names the one change waiting on a decision rather than on work.
 
-The newest entries came from auditing the pipeline two ways — every join it
-made, grouped by what was built, and 160 uniform lines read as *sentences*
-rather than as tokens. Both are worth repeating; see *Where the value is not*
-for why the earlier draws missed the largest class in the list.
+---
 
-Check one with `#tokenize`, or:
+# Picking this up cold
+
+Everything below is measured against the corpus rather than argued, so the first
+move is always to rebuild the working set. None of it lives in the repo.
+
+**1. Freeze the database.** These tools read the live `knowledge.db`, and it
+moves while the reader reads.
+
+```
+sqlite3 ~/.local/share/jp-tools/knowledge.db ".backup /tmp/snap.db"
+```
+
+**2. Dump the corpus, before and after.** One line per line read: the text, then
+`surface/headword/reading` per token, tab separated.
+
+```
+cargo run --release --example tokens -p jp-core -- /tmp/snap.db system_full.dic > /tmp/before.txt
+```
+
+A clean before/after needs the baseline built from **`HEAD` in a `git worktree`**,
+because a rebuild of the same tree gives the new behaviour on both sides:
+
+```
+git worktree add /tmp/base HEAD
+```
+
+Diff the two dumps by token, not by line — the useful summary is which
+`surface/headword` pairs disappeared and what replaced them, counted.
+
+**3. The three env toggles** switch one rule off so it can be diffed against
+itself: `TOKENS_NAMES=off`, `AUDIT_CAST=off`, `AUDIT_GUARD=off`.
+
+**4. One line, with the reasoning**, through `#tokenize` or:
 
 ```
 curl -s localhost:3200/api/tokenize -H 'content-type: application/json' \
   -d '{"text":"…"}'
 ```
+
+The trace is the fastest way to find *why* a token came out wrong — it names the
+rung or the fence, and guessing at that has been wrong twice (でも was refused by
+the length floor, not the content-word fence; たまえ by nothing in the tokenizer
+at all).
+
+**The two audits worth repeating**, and the reason to repeat both:
+
+- `cargo run --release --example joined -p jp-core -- /tmp/snap.db system_full.dic 3`
+  — every expression `recompose` actually built, grouped by result, marked `*`
+  where the run is a content word followed by nothing but grammar, with the
+  lines it was built on. This is what finds a join firing where it should not.
+- **Uniform lines read as sentences.** Draw ~150 lines from the dump, print the
+  line and its tokens, and judge each token against what the sentence meant.
+  This is what finds everything else; a token draw cannot, see *Where the value
+  is not*.
+
+**Not live.** The tokenizer changes below are committed but not running:
+`scripts/start-all.sh restart read-stats` picks them up and
+`POST /api/vocab/rebuild` re-derives the ledger under them. Neither is safe to
+do mid-session while a VN is being read.
 
 ---
 
@@ -64,21 +119,36 @@ lever that reaches them otherwise.
 
 ## Then, in value order
 
-Done since this section was last written: the katakana fold, the colloquial
-adjective ending, and the join's clause-initial list — all under *Fixed*.
+Done since this section was last written, all under *Fixed*: the katakana fold,
+the colloquial adjective ending, the join's clause-initial list, `drops_kanji`,
+ないと before a quoting verb, and そこで / 中には / ときに / 手を入れる.
 
-1. **The kanji swap** — 兄妹 keyed on 兄弟, 傍 on 側, 超え on 越える, なれる on
-   慣れる, すま on 住む, 行って on 行く where the line meant 行う. Ten in 160
-   lines, each a wrong word rather than a spelling choice, and the popup opens
-   on it. No single rule covers them; two lemmas sharing a surface is the
-   commonest shape.
-2. **The rest of the join list.** ないか (415) and ないで (178) are measured and
-   look **right**: 「じゃないか」 is the negative question and 「言わないで
-   ください」 the negative te-form, which is what those entries are. What is
-   left is ちゃんと and ものの, both of which need a rule about the token
-   *before* the run — ちゃんと is right 150 times and wrong after a name
-   (「羽咲ちゃんとか」), ものの is the concessive after a verb and もの + の
-   after a noun.
+1. **The kanji swap on an inflected surface — ~444 tokens, the largest thing
+   left.** The half where the surface is a master headword is fixed
+   (`drops_kanji`); this is the other half, where the surface is a *stem* and so
+   keeping it as written would assert a non-word. 上手く keyed on 旨い, 抑え on
+   押さえる, 遭っ on 会う, 穢さ on 汚す, 登れ on 上る.
+
+   **The answer is the dictionary form built from the surface's own kanji** —
+   上手い, 抑える, 遭う — which is a different question from the one the fixed
+   half answered. Sudachi will not supply it, since its lemma is the swapped
+   spelling; it has to be constructed from the surface and then checked against
+   the master. Start by listing the distinct (surface, headword) pairs where a
+   kanji is dropped and the surface is *not* a master headword, and see how many
+   of the constructed forms the master lists.
+
+   Two in that class no kanji rule reaches: なれる keyed on 慣れる where the line
+   meant なる, and 行って on 行く where it meant 行う. Two lemmas share a surface,
+   no kanji is dropped, and nothing weighs them.
+2. **ちゃんと and ものの**, the last two joins, and both need the token *before*
+   the run rather than the one after. ちゃんと is right ~150 times and wrong
+   after a name (「羽咲ちゃんとか」); ものの is the concessive after a verb and
+   もの + の after a noun (~9 of 26). `NEVER_BEFORE_QUOTING` is the shape to
+   copy — `join_run` already receives both neighbours.
+
+   ないか (415) and ないで (178) were measured with them and are **right**:
+   「じゃないか」 is the negative question and 「言わないでください」 the negative
+   te-form, which is what those entries are. Do not re-measure them.
 3. **The three denominator questions**, which are decisions rather than code.
    They change the headline number the whole system reports, and until one is
    made that number has an unstated policy inside it.
@@ -90,19 +160,51 @@ adjective ending, and the join's clause-initial list — all under *Fixed*.
 5. **うっさい**, the last of the うるさい family. It drops the る rather than
    holding the vowel, so the kana arithmetic that fixed うるせー/うるせえ/うるせぇ
    cannot reach it and the master lists only うるさい. 3 encounters.
-6. **Everything else in the open list, at one or two encounters each.** 一日,
-   塵, 砂粒, 何時, かたや, いやがおうにも, きわまり, お花摘み, 満足げ — the
-   corpus dump has 1–4 of each. They are worth doing as a batch, on a day when
-   the tools are already loaded, and not one at a time.
+6. **Everything else in the open list, at one or two encounters each.** チョロい,
+   一日, 塵, 砂粒, 何時, かたや, いやがおうにも, きわまり, お花摘み, 満足げ,
+   天球儀, 何度, ２８日, くそう — the corpus dump has 1–4 of each. Worth doing as
+   one batch on a day when the tools are already rebuilt, not one at a time.
+
+## What has been tried and measured wrong
+
+Do not build these; each cost a pass to disprove.
+
+- **A general clause-initial join rule.** Admitting every clause-initial two-kana
+  master headword fires 1,975 times over 76 strings — 何か, 何が, 何を, では,
+  だと, して — because a clause opening on a pronoun and a particle is just a
+  sentence starting. And refusing every mid-clause expression takes 本当に,
+  ために and すぐに. Both directions are named lists.
+- **A rule about と before a quoting verb.** さらりと言った and ぴしゃりと言った
+  are joins ending in と before 言う and the と belongs to the adverb.
+- **`with_standard`'s empty-reading skip as a hole.** It drops 14,064 kana
+  headwords, but they are the reading-index rows those Yomitan builds carry, and
+  `dictionaries::standard_entries` filters `reading != ''` in SQL first — so
+  admitting all of them changes **zero** tokens.
+- **Arbitrating a spelling by how much its reading resembles the surface**, and
+  **taking the master's single reading whenever Sudachi's is unlisted** — see
+  *What was refused* under the name batch.
 
 ## Where the value is *not*
 
-**Identity defects are at diminishing returns; joins are not, and that
-distinction was missed for a while.** The name batch moved ~9,000 fabricated
-occurrences and the noise rule 338, and every remaining *identity* defect is
-worth ones and tens — 牛乳粥 was 47, the spelling class ~60, the うるさい family
-17, かたや and いやがおうにも 1 each. Two uniform draws put the pipeline at 59 of
-60 right by token and 51 of 60 clean by type.
+**Identity defects were at diminishing returns and joins were not — and the
+join work has now been done, so that is changing again.** What each pass moved,
+for comparing the next one against:
+
+| pass | tokens |
+| --- | --- |
+| the name batch | ~9,000 |
+| `CLAUSE_INITIAL_ONLY` (でも, だが, ところで, すると, それで) | 1,807 |
+| `drops_kanji` | 406 |
+| the noise rule | 338 |
+| the katakana fold | 187 |
+| ないと before a quoting verb | 120 |
+| 中には, ときに, 手を入れる | 84 |
+| そこで | 57 |
+| the うるさい family | 17 |
+
+Every *identity* defect still open is worth ones and tens — 牛乳粥 was 47, the
+spelling class ~60, かたや and いやがおうにも 1 each — with one exception, the
+inflected kanji swap at ~444, which is why it heads the list.
 
 **Those draws are why the join class went unseen, and the reason is worth
 keeping.** Judging a token against its line asks "is this word right", and a
@@ -224,13 +326,6 @@ a word 明鏡 lists, so the gate should be keeping it.
 takes its bound reading, so a date comes out as two tokens neither of which is
 a number. Numbers are already off the vocabulary scale, so the cost is the
 popup and the trace rather than a ledger row.
-
-## 傍 → 側, and the spelling class swapping one kanji for another
-
-「牢屋敷のすぐ傍に」 keys on 側. This is the spelling class below, but worth
-naming separately: the usual case puts kanji on a line that wrote kana, which
-is at least the same word spelt fuller. This replaces a kanji the reader saw
-with a different one.
 
 ## で and に read as the copula だ
 
@@ -681,8 +776,9 @@ reader meets.
 **The splits divide on whether anything lists the whole**, and that decides
 whether there is a fix at all:
 
-- **A segmentation authority lists it** — でも, だが, とはいえ, なんでも, 確かに,
-  お経, たまえ. The join is refused by its own fence; see that entry.
+- **A segmentation authority lists it** — でも and だが are fixed
+  (`CLAUSE_INITIAL_ONLY`); とはいえ, なんでも, 確かに, お経 and たまえ are still
+  refused, each by a different fence. See *とはいえ, 確かに, たまえ*.
 - **Only Jitendex lists it** — 抵抗感, 死ね, 氷漬け, 許容量, 白濁液. `reference`
   role, so it decides nothing about segmentation, and that is the design rather
   than a defect.
