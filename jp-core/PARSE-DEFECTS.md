@@ -3,7 +3,7 @@
 Words noticed misparsed while reading, worked through in batches. One entry per
 word: what the pipeline does with it today, and the cause where it is known.
 
-**20 open**, each checked against the live pipeline on 2026-08-15. Three
+**19 open**, each checked against the live pipeline on 2026-08-15. Three
 further questions are about the vocabulary denominator rather than the parse and
 are kept apart from them; what has been fixed is one line each at the bottom.
 
@@ -72,10 +72,11 @@ adjective ending, and the join's clause-initial list — all under *Fixed*.
    lines, each a wrong word rather than a spelling choice, and the popup opens
    on it. No single rule covers them; two lemmas sharing a surface is the
    commonest shape.
-2. **The rest of the join list**, now that `CLAUSE_INITIAL_ONLY` has taken the
-   bulk of it: そこで (~48, needs a judgement, not a measurement), 中には,
-   ちゃんと, 手を入れる, ものの, and the three fences under とはいえ — of which
-   たまえ is a silent hole in `segments` rather than a rule.
+2. **The rest of the join list**, now that `CLAUSE_INITIAL_ONLY` and そこで are
+   done: the ない family (ないか 415, ないと 379, ないで 178 — unmeasured, and
+   the largest counts left), then 中には, ちゃんと, 手を入れる, ものの, and the
+   three fences under とはいえ, of which たまえ is a silent hole in `segments`
+   rather than a rule.
 3. **The three denominator questions**, which are decisions rather than code.
    They change the headline number the whole system reports, and until one is
    made that number has an unstated policy inside it.
@@ -137,18 +138,6 @@ boundary is right.
 Four occurrences in the corpus, two of them チョロい. `CUT_BEFORE_AND_AFTER` is
 the lever; whether one string at four sightings earns a list entry is the open
 question.
-
-## そこで — the conjunction and the place, and position cannot tell them apart
-
-55 built, ~48 of them the plain locative: 「そしてそこで俺は」, 「なんでそこで
-隠れるんだよ」, 「俺と羽咲はそこで別れた」. Left open when ところで, すると and
-それで were fixed, because the fix does not reach it — **both** readings open a
-clause, so 「そこで、強く輝く星々」 and 「そこで――オレの力が必要になる」 sit in
-the same position and only reading the line separates them.
-
-A flat `NEVER_JOIN` entry would take the ~7 real conjunctions with it. That is a
-better trade than the current one and is still a judgement to make rather than a
-measurement to take.
 
 ## とはいえ, 確かに, たまえ — a listed expression the join still will not build
 
@@ -816,6 +805,10 @@ One line each; the argument that settled it is in the code, next to the rule.
   over the corpus, all one word.
 - **36 counted as a word, 寝よう cut to 寝, 頂 broken out of 絶頂** — the three
   ordinary parse errors from the random-sample audit, all gone by 2026-08-15.
+- **そこで built over a place 48 times of 55** — 「俺と羽咲はそこで別れた」.
+  The one conjunction `CLAUSE_INITIAL_ONLY` cannot take, since both its readings
+  open a clause. `NEVER_JOIN`, which loses ~7 real ones and leaves them そこ +
+  で: two words the reader knows, against a conjunction asserted over a place.
 - **検死 keyed on 検屍, 上手く on 旨い, 綺麗 on 奇麗** — Sudachi's normalisation
   swapping one kanji for another, which changes *which word* is claimed rather
   than how fully it is spelt. A candidate may not drop a kanji the surface

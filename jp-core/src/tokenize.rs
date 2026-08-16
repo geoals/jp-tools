@@ -1847,7 +1847,7 @@ impl SudachiTokenizer {
 ///
 /// [`CLAUSE_INITIAL_ONLY`] is the other half of this: a string that is a word
 /// in one position and two words in another.
-const NEVER_JOIN: [&str; 18] = [
+const NEVER_JOIN: [&str; 19] = [
     "この家", // この + 家: 「この家じゃ、狭すぎる」 — this house, read
     // このいえ. The join reads it このや, which is a different word
     // and 48 sightings of it in one script.
@@ -1869,7 +1869,14 @@ const NEVER_JOIN: [&str; 18] = [
     "ここに",   // ここ + に: 「ここにいてほしい」
     "ものを",   // もの + を: 「そぐわないものを目にし」
     "今日は",   // 今日 + は — the greeting is こんにちは, and this is not it
-    "思いで",   // 思い + で: 「私がどんな思いで……」 — the noun and the
+    "そこで",   // そこ + で: 「そしてそこで俺は」, 「俺と羽咲はそこで別れた」 —
+    // *there*, 48 of the 55 sightings. The only one of the
+    // conjunctions [`CLAUSE_INITIAL_ONLY`] cannot take, because both
+    // its readings open a clause. Refusing it loses ~7 real ones and
+    // leaves them as そこ + で, which are two words the reader knows;
+    // keeping it asserts a conjunction 48 times over a place. No
+    // match beats a wrong match.
+    "思いで", // 思い + で: 「私がどんな思いで……」 — the noun and the
     // particle, not the kana spelling of 思い出.
     "見えるか", // 見える + か: 「大丈夫に見えるか？」 is a question, and both
     // sightings are one.

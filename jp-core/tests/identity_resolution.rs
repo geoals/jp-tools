@@ -498,8 +498,13 @@ fn an_inflected_kana_verb_reaches_its_kanji_lemma() {
 fn a_listed_expression_on_the_never_join_list_stays_apart() {
     let (tk, _) = setup();
 
-    for (text, phrase) in [("それは私の本だ", "それは"), ("ものを見た", "ものを")]
-    {
+    for (text, phrase) in [
+        ("それは私の本だ", "それは"),
+        ("ものを見た", "ものを"),
+        // Both readings open a clause, so position cannot arbitrate it and the
+        // list has to: 48 of its 55 sightings are the place.
+        ("そこでシェリーが声をあげた", "そこで"),
+    ] {
         let tokens = tokens_of(&tk, text);
         assert!(
             !tokens.iter().any(|t| t.surface == phrase),
