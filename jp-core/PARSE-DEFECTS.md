@@ -75,9 +75,10 @@ adjective ending, and the join's clause-initial list — all under *Fixed*.
 2. **The rest of the join list.** ないか (415) and ないで (178) are measured and
    look **right**: 「じゃないか」 is the negative question and 「言わないで
    ください」 the negative te-form, which is what those entries are. What is
-   left is 中には, ちゃんと, 手を入れる, ものの, and the three fences under
-   とはいえ — of which たまえ is a silent hole in `segments` rather than a rule
-   and should go first.
+   left is ちゃんと and ものの, both of which need a rule about the token
+   *before* the run — ちゃんと is right 150 times and wrong after a name
+   (「羽咲ちゃんとか」), ものの is the concessive after a verb and もの + の
+   after a noun.
 3. **The three denominator questions**, which are decisions rather than code.
    They change the headline number the whole system reports, and until one is
    made that number has an unstated policy inside it.
@@ -141,6 +142,15 @@ the lever; whether one string at four sightings earns a list entry is the open
 question.
 
 ## とはいえ, 確かに, たまえ — a listed expression the join still will not build
+
+**たまえ is not the cheap hole it looked like.** `with_standard` skips an entry
+whose reading is empty, and that is 14,064 kana headwords across 明鏡 and
+小学館 — but almost all of them are the reading-index rows those builds carry
+(あいすくりーむ, あいえっち, あい), not orthographic headwords. Admitting the
+lot was measured: **zero tokens change over the corpus**, because
+`dictionaries::standard_entries` filters `reading != ''` in SQL before the
+tokenizer ever sees them. The skip in `with_standard` is dead code on the
+production path, and たまえ is missing for a reason further upstream.
 
 What is left of the under-firing side after the clause-initial list, and it is
 three different fences rather than one. The trace names each:
@@ -813,6 +823,12 @@ One line each; the argument that settled it is in the code, next to the rule.
   over the corpus, all one word.
 - **36 counted as a word, 寝よう cut to 寝, 頂 broken out of 絶頂** — the three
   ordinary parse errors from the random-sample audit, all gone by 2026-08-15.
+- **中には over 40 lines that say "inside", ときに over 32 of 35, 手を入れる
+  over 8 of 9** — 「俺の袋の中には五円が入っていた」, 「小さいときに登れた」,
+  「ポケットに手を入れ」. `NEVER_JOIN`, all three checked against every line
+  they fired on. 中には had been cited as the reason the join admits three-part
+  runs at all, and that reading of it had never been checked against a line:
+  the expression meaning "some among them" occurs nowhere in the corpus.
 - **ないと built over a quotative と 120 times of 379** — 「出ないと思う」,
   「信じられないという」. `NEVER_BEFORE_QUOTING`, checked against the token
   *after* the run, which `join_run` now receives. Named rather than a rule about

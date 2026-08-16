@@ -1872,7 +1872,7 @@ impl SudachiTokenizer {
 ///
 /// [`CLAUSE_INITIAL_ONLY`] is the other half of this: a string that is a word
 /// in one position and two words in another.
-const NEVER_JOIN: [&str; 19] = [
+const NEVER_JOIN: [&str; 22] = [
     "この家", // この + 家: 「この家じゃ、狭すぎる」 — this house, read
     // このいえ. The join reads it このや, which is a different word
     // and 48 sightings of it in one script.
@@ -1894,7 +1894,18 @@ const NEVER_JOIN: [&str; 19] = [
     "ここに",   // ここ + に: 「ここにいてほしい」
     "ものを",   // もの + を: 「そぐわないものを目にし」
     "今日は",   // 今日 + は — the greeting is こんにちは, and this is not it
-    "そこで",   // そこ + で: 「そしてそこで俺は」, 「俺と羽咲はそこで別れた」 —
+    "中には",   // 中 + に + は: 「俺の袋の中には五円が入っていた」. All 40
+    // sightings are literally *inside* something; the expression
+    // meaning "some among them" appears nowhere. It was cited as
+    // the reason the join admits three-part runs at all, and that
+    // reading of it was never checked against a line.
+    "ときに", // とき + に: 「小さいときに登れた」, 「殺害のときにしか」 — 32 of
+    // 35. The conjunction is real (「恋はときに、人を盲目にする」)
+    // and sits mid-clause as often as not, so position cannot save
+    // it. Three losses against 32.
+    "手を入れる", // 手 + を + 入れる: 「ポケットに手を入れ」, 8 of 9. The idiom
+    // means to revise something, and only 「現場で手を入れて」 is it.
+    "そこで", // そこ + で: 「そしてそこで俺は」, 「俺と羽咲はそこで別れた」 —
     // *there*, 48 of the 55 sightings. The only one of the
     // conjunctions [`CLAUSE_INITIAL_ONLY`] cannot take, because both
     // its readings open a clause. Refusing it loses ~7 real ones and
