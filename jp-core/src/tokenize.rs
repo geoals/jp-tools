@@ -1112,6 +1112,20 @@ impl SudachiTokenizer {
                 "Followed by a noun: the の is the genitive".into(),
             );
         }
+        // **And a run the next word makes a different headword of.** そういえば
+        // is Sankoku's own entry, and the conditional it looks like is not what
+        // the sentence means — 「そういえばあそこで」 is "speaking of which", not
+        // "if one says so".
+        if NEVER_BEFORE_A_CONDITIONAL.contains(&term.as_str())
+            && after.is_some_and(|t| t.surface == "ば")
+        {
+            return refused(
+                trace,
+                parts(),
+                term,
+                "Followed by ば: the master lists the conditional as its own word".into(),
+            );
+        }
         // **And a run whose first part the previous word makes an honorific of.**
         // 「ヒロちゃんと友だちになりたい」 is a name, its ちゃん and the comitative
         // と — not the adverb ちゃんと.
@@ -2107,6 +2121,21 @@ const NEVER_BEFORE_QUOTING: [&str; 1] = ["ないと"];
 /// on both sides of it; what follows does, because the genitive の needs a head
 /// noun and the concessive ends its clause. 9 of the 26 built are the genitive.
 const NEVER_BEFORE_A_NOUN: [&str; 1] = ["ものの"];
+
+/// Expressions the master also lists in the conditional, so the join must not
+/// build the plain form over one.
+///
+/// そういう is built out of そう + いえ 70 times, every one of them the そういえば
+/// of 「そういえばあそこで、泣いてた」 — "speaking of which", which Sankoku carries
+/// as そう言えば in its own right. Grammatically the join is not wrong; the
+/// expression has simply stopped meaning what its parts do, and 70 encounters of
+/// そういう the reader never met is what it costs.
+///
+/// **Refused rather than rebuilt.** そういえば's ば is a particle and its いえ is
+/// inflected, so no path reaches そう言えば: widening the reading join to reach it
+/// was measured and is under *What has been tried and measured wrong*. What is
+/// left is そう + 言う + ば, and 言う is grammar the reader judged long ago.
+const NEVER_BEFORE_A_CONDITIONAL: [&str; 1] = ["そういう"];
 
 /// Expressions whose first part is an honorific suffix whenever a name precedes.
 ///

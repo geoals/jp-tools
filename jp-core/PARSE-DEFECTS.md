@@ -3,7 +3,7 @@
 Words noticed misparsed while reading, worked through in batches. One entry per
 word: what the pipeline does with it today, and the cause where it is known.
 
-**23 open**, each checked against the live pipeline on 2026-08-16. Three
+**22 open**, each checked against the live pipeline on 2026-08-16. Three
 further questions are about the vocabulary denominator rather than the parse and
 are kept apart from them; a fourth — whether the reader's lookup surface should
 be the ledger's key at all — has its own section. What has been fixed is one
@@ -153,6 +153,22 @@ Do not build these; each cost a pass to disprove.
   だと, して — because a clause opening on a pronoun and a particle is just a
   sentence starting. And refusing every mid-clause expression takes 本当に,
   ために and すぐに. Both directions are named lists.
+- **Widening the reading join to reach an all-kana expression.** そういえば,
+  どうしても, それにしても and ただでさえ are Sankoku headwords whose surfaces
+  spell nothing and whose parts include function words, so no path reaches them.
+  Admitting an all-kana run of five morae or more that opens on a content word
+  builds **927 changes over 886 lines**, and they divide three ways: ~300 real
+  expressions, ~150 grammar points called words (ついている, なっていない,
+  しまったら, どうしたら, ならなかっ), and the rest a wholesale orthography
+  decision the ledger has never made — わからない keyed on 分からない 177 times,
+  ありえない on あり得ない 45, すみません on 済みません 21.
+
+  Fencing the two off is what kills it: **requiring no inflected part and no
+  kanji the surfaces lack leaves exactly zero tokens**. Every expression this
+  path could reach either holds an inflection (どうし + て + も, もしか + して)
+  or is a kana rendering of a kanji headword. There is nothing in between, so
+  the path cannot be opened a crack — see `NEVER_BEFORE_A_CONDITIONAL` for what
+  was done instead.
 - **A rule about と before a quoting verb.** さらりと言った and ぴしゃりと言った
   are joins ending in と before 言う and the と belongs to the adverb.
 - **`with_standard`'s empty-reading skip as a hole.** It drops 14,064 kana
@@ -179,6 +195,7 @@ for comparing the next one against:
 | the katakana fold | 187 |
 | ないと before a quoting verb | 120 |
 | ちゃんと after a name, ものの before a noun | 85 |
+| そういう over そういえば | 70 |
 | 中には, ときに, 手を入れる | 84 |
 | そこで | 57 |
 | the うるさい family, うっさい with it | 20 |
@@ -525,15 +542,6 @@ gate sees the resolved form, and the two-mora rank guard does not reach びく�
 (three morae), nor 微醺 (rank 9,695), nor 村/そん (rank 1,117). The あてぃし
 shred is the same family seen through a character-voice pronoun; these are the
 ordinary words it lands on. ~25 tokens over the read corpus.
-
-## そういえば — built as そういう, 70 times
-
-The join answers the run そう + いえ (out of そういえば = そう言えば) with the
-listed そういう, because nothing lists the phrase そういえば itself — 吾輩's
-kana twin again, this time on a phrase the corpus says constantly. The reader
-means "speaking of which" and every one of the 70 encounters is keyed on
-そういう ("such"). Same family as わがはい: a phrase that is a listed kanji
-word's kana rendering, kept whole by nothing.
 
 ## The spelling class — a kanji identity for a line written in kana
 
@@ -1000,6 +1008,12 @@ One line each; the argument that settled it is in the code, next to the rule.
   tokens, and nothing else in the corpus moves.
 - **何度 split into 何 + 度** — 104 sightings, all whole now, kept by the gate on
   明鏡's listing. Fixed by the standard role rather than by a rule of its own.
+- **そういう built over そういえば 70 times** — 「そういえばあそこで、泣いてた」
+  is "speaking of which", which Sankoku carries as そう言えば in its own right,
+  not the conditional of そういう. `NEVER_BEFORE_A_CONDITIONAL`, checked against
+  the ば after the run. Refused rather than rebuilt: no path reaches そう言えば,
+  and widening the reading join to reach it was measured and is under *What has
+  been tried and measured wrong*. What is left is そう + 言う + ば.
 - **登れない read 上る where 登れば read 登る** — the swap's answer was fenced to
   a candidate whose *pair* the master lists, and Sudachi reads 登れ in 登れない
   off the potential 登れる, giving のぼれる, which is nobody's pair. The fence is

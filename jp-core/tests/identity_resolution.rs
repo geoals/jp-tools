@@ -615,6 +615,30 @@ fn an_expression_is_refused_where_the_next_word_hangs_off_its_genitive() {
     );
 }
 
+/// 「そういえばあそこで」 is "speaking of which" — Sankoku's own そう言えば — and
+/// not the conditional of そういう, which is what the conjugated-tail path builds
+/// out of そう + いえ. No path reaches そう言えば, so the join is refused and what
+/// is left is そう + 言う + ば.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn an_expression_is_refused_where_the_master_lists_its_conditional() {
+    let (tk, _) = setup();
+
+    let tokens = tokens_of(&tk, "そういえばあそこで泣いてた");
+    assert!(
+        !tokens.iter().any(|t| t.base_form == "そういう"),
+        "そういう must not be built over そういえば: {:?}",
+        identities(&tokens)
+    );
+
+    let tokens = tokens_of(&tk, "そういう事もある");
+    assert!(
+        tokens.iter().any(|t| t.base_form == "そういう"),
+        "{:?}",
+        identities(&tokens)
+    );
+}
+
 /// 「ヒロちゃんと友だちになりたい」 is a name, its honorific ちゃん and the
 /// comitative と — not the adverb ちゃんと. A third of everything the join built
 /// was a cast member greeted by name.
