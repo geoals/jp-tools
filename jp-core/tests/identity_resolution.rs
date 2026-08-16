@@ -132,6 +132,10 @@ fn conjugatable() -> HashSet<String> {
         "臭い",
         "危ない",
         "面白い",
+        "旨い",
+        "上手い",
+        "会う",
+        "遭う",
     ]
     .into_iter()
     .map(str::to_string)
@@ -620,7 +624,8 @@ fn a_two_kana_conjunction_is_built_where_it_opens_a_clause() {
 /// the ledger would key on. The reader saw one of them.
 ///
 /// Free, because the surface is on the master scale as written — which is also
-/// the fence. An inflected stem is not a word, so it is left to the swap.
+/// the fence. An inflected stem is not a word, so it is answered by the rung
+/// below instead.
 #[test]
 #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
 fn a_normalisation_may_not_drop_a_kanji_the_text_wrote() {
@@ -636,6 +641,23 @@ fn a_normalisation_may_not_drop_a_kanji_the_text_wrote() {
             pair(surface, reading),
             "{text}"
         );
+    }
+}
+
+/// The other half of that class: an inflected surface, where refusing the swap
+/// would leave a stem rather than a word. 上手く is not a word and 上手い is;
+/// 遭っ is not and 遭う is. Both are the master's own spellings of the reading
+/// Sudachi gave the token, and only the kanji on the page separates them.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn an_inflected_stem_keeps_its_kanji_through_the_masters_other_spelling() {
+    let (tk, _) = setup();
+    for (text, surface, term, reading) in [
+        ("上手くいくわけがない", "上手く", "上手い", "うまい"),
+        ("辛い目に遭った", "遭っ", "遭う", "あう"),
+    ] {
+        let tokens = tokens_of(&tk, text);
+        assert_eq!(identity_of(&tokens, surface), pair(term, reading), "{text}");
     }
 }
 

@@ -406,6 +406,22 @@ impl SudachiTokenizer {
             && self.vanishingly_rare(term)
     }
 
+    /// The master's spelling of this reading that keeps every kanji the surface
+    /// wrote, where the reading names exactly one.
+    ///
+    /// The answer to a normalisation that swapped a kanji, for the half of that
+    /// class where the surface is a stem and so cannot be kept as written. See
+    /// the rung in [`identity_ladder`](Self::identity_ladder).
+    fn spelt_with_the_surfaces_kanji(&self, surface: &str, reading: &str) -> Option<String> {
+        let mut kept = self
+            .by_reading
+            .get(&crate::text::kana::to_hiragana(reading))?
+            .iter()
+            .filter(|term| !drops_kanji(term, surface));
+        let one = kept.next()?;
+        kept.next().is_none().then(|| one.clone())
+    }
+
     /// Teach it which master headwords are conjugatable lemmas, so an inflected
     /// token cannot be filed under an entry that does not conjugate.
     ///
@@ -1616,6 +1632,38 @@ impl SudachiTokenizer {
         if let Some(folded) = &katakana_fold {
             candidates.push((folded.clone(), folded.clone()));
         }
+        // **The master's other spelling of the same reading, where a candidate
+        // drops a kanji the text wrote.** `drops_kanji` at the foot of this list
+        // can only *refuse* a swap, so it is fenced to a surface that is a
+        // headword as written — and the other half of the class is a surface
+        // that is a stem, where refusing would leave a non-word. 上手く is not a
+        // word and 上手い is; 抑え is not and 抑える is. Both are the master's own
+        // spellings, both read the way Sudachi read the token, and only the
+        // kanji on the page separates them.
+        //
+        // Offered rather than substituted, and immediately before the candidate
+        // it answers, so every guard below still gets to refuse it and today's
+        // swap stays the fallback.
+        //
+        // **Only where the reading names one such spelling.** あかり is also 灯
+        // and 灯火, and a line that wrote 灯り said neither.
+        //
+        // **And only in answer to a candidate the master lists**, or it stops
+        // being a repair and becomes a rung of its own, ahead of the surface:
+        // あばら家 is nobody's master headword and neither is its reading, so
+        // the token keeps the reader's spelling — until 荒ら家 is offered for a
+        // swap that was never going to win.
+        let mut answered = Vec::with_capacity(candidates.len());
+        for (term, reading) in candidates {
+            if drops_kanji(&term, &surface)
+                && self.lists(&term, &reading)
+                && let Some(kept) = self.spelt_with_the_surfaces_kanji(&surface, &reading)
+            {
+                answered.push((kept, reading.clone()));
+            }
+            answered.push((term, reading));
+        }
+        candidates = answered;
         // A form is a form *of* something. When the surface is inflected, every
         // candidate has to be an entry that conjugates — 許せ, おいた and 汝 are
         // all listed words, and none of them is what 許せない, やっておいた or
@@ -1664,9 +1712,9 @@ impl SudachiTokenizer {
         // **Only where the surface is a master headword as written**, which is
         // what makes the refusal free: 綺麗, 偽装, 眼, 恐い, 傍, 想い and 充分 are
         // all listed, so the token keeps the reader's spelling *and* stays on
-        // the scale. 529 of the 973 tokens that drop a kanji are that shape. The
-        // rest are inflected stems — 舐め, 穢さ, 登れ — where the surface is not a
-        // word, and keeping it would assert something worse than the swap did.
+        // the scale. The rest are stems — 舐め, 穢さ, 登れ — where the surface is
+        // not a word and refusing would leave nothing; those are answered above,
+        // by the master's other spelling of the same reading.
         //
         // Not a claim about which of the two spellings is the better word. 奇麗
         // and 綺麗 are one word, 旨い and 上手い are not, and nothing structural

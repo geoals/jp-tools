@@ -121,26 +121,10 @@ lever that reaches them otherwise.
 
 Done since this section was last written, all under *Fixed*: the katakana fold,
 the colloquial adjective ending, the join's clause-initial list, `drops_kanji`,
-ないと before a quoting verb, and そこで / 中には / ときに / 手を入れる.
+ないと before a quoting verb, そこで / 中には / ときに / 手を入れる, and the
+inflected half of the kanji swap.
 
-1. **The kanji swap on an inflected surface — ~444 tokens, the largest thing
-   left.** The half where the surface is a master headword is fixed
-   (`drops_kanji`); this is the other half, where the surface is a *stem* and so
-   keeping it as written would assert a non-word. 上手く keyed on 旨い, 抑え on
-   押さえる, 遭っ on 会う, 穢さ on 汚す, 登れ on 上る.
-
-   **The answer is the dictionary form built from the surface's own kanji** —
-   上手い, 抑える, 遭う — which is a different question from the one the fixed
-   half answered. Sudachi will not supply it, since its lemma is the swapped
-   spelling; it has to be constructed from the surface and then checked against
-   the master. Start by listing the distinct (surface, headword) pairs where a
-   kanji is dropped and the surface is *not* a master headword, and see how many
-   of the constructed forms the master lists.
-
-   Two in that class no kanji rule reaches: なれる keyed on 慣れる where the line
-   meant なる, and 行って on 行く where it meant 行う. Two lemmas share a surface,
-   no kanji is dropped, and nothing weighs them.
-2. **ちゃんと and ものの**, the last two joins, and both need the token *before*
+1. **ちゃんと and ものの**, the last two joins, and both need the token *before*
    the run rather than the one after. ちゃんと is right ~150 times and wrong
    after a name (「羽咲ちゃんとか」); ものの is the concessive after a verb and
    もの + の after a noun (~9 of 26). `NEVER_BEFORE_QUOTING` is the shape to
@@ -149,18 +133,20 @@ the colloquial adjective ending, the join's clause-initial list, `drops_kanji`,
    ないか (415) and ないで (178) were measured with them and are **right**:
    「じゃないか」 is the negative question and 「言わないでください」 the negative
    te-form, which is what those entries are. Do not re-measure them.
-3. **The three denominator questions**, which are decisions rather than code.
+2. **The three denominator questions**, which are decisions rather than code.
    They change the headline number the whole system reports, and until one is
-   made that number has an unstated policy inside it.
-4. **The が swallowed into an unlisted mimetic** (the ふよふよ entry). The rule
+   made that number has an unstated policy inside it. **The kanji swap's residue
+   is now one of them** — see its entry: 158 tokens are a spelling Sankoku has
+   no headword for at all, and the choice is the swap or falling off the scale.
+3. **The が swallowed into an unlisted mimetic** (the ふよふよ entry). The rule
    is clear — が, を and へ essentially never begin a Japanese word — but it
    fires twice over the read corpus today, which is not enough evidence.
    Revisit when more of 白昼夢の青写真 has been read; its script holds 10
    sightings of ふよふよ alone.
-5. **うっさい**, the last of the うるさい family. It drops the る rather than
+4. **うっさい**, the last of the うるさい family. It drops the る rather than
    holding the vowel, so the kana arithmetic that fixed うるせー/うるせえ/うるせぇ
    cannot reach it and the master lists only うるさい. 3 encounters.
-6. **Everything else in the open list, at one or two encounters each.** チョロい,
+5. **Everything else in the open list, at one or two encounters each.** チョロい,
    一日, 塵, 砂粒, 何時, かたや, いやがおうにも, きわまり, お花摘み, 満足げ,
    天球儀, 何度, ２８日, くそう — the corpus dump has 1–4 of each. Worth doing as
    one batch on a day when the tools are already rebuilt, not one at a time.
@@ -194,6 +180,7 @@ for comparing the next one against:
 | --- | --- |
 | the name batch | ~9,000 |
 | `CLAUSE_INITIAL_ONLY` (でも, だが, ところで, すると, それで) | 1,807 |
+| the master's other spelling, for a stem | 429 |
 | `drops_kanji` | 406 |
 | the noise rule | 338 |
 | the katakana fold | 187 |
@@ -203,8 +190,8 @@ for comparing the next one against:
 | the うるさい family | 17 |
 
 Every *identity* defect still open is worth ones and tens — 牛乳粥 was 47, the
-spelling class ~60, かたや and いやがおうにも 1 each — with one exception, the
-inflected kanji swap at ~444, which is why it heads the list.
+spelling class ~60, かたや and いやがおうにも 1 each. The inflected kanji swap
+was the last one worth hundreds.
 
 **Those draws are why the join class went unseen, and the reason is worth
 keeping.** Judging a token against its line asks "is this word right", and a
@@ -269,32 +256,26 @@ standard-dictionary entry with an empty reading is dropped from `segments`
 entirely, and that is a silent hole in the segmentation authority rather than a
 rule. 「待ちたまえ」 comes out 待ち + た + まえ, and まえ is keyed on 前.
 
-## The kanji swap on an inflected surface
+## The kanji swap — the spelling the master does not have
 
-Half the class is fixed — a normalisation may no longer drop a kanji the text
-wrote where the surface is a master headword as written. What is left is the
-other half: an **inflected** surface, where the surface is a stem rather than a
-word, so keeping it as written would assert something worse than the swap does.
+**Both halves of the swap itself are fixed.** A surface that is a master
+headword keeps its own spelling (`drops_kanji`); a surface that is a stem takes
+the master's other spelling of the same reading — 上手く → 上手い, 抑え → 抑える,
+遭っ → 遭う, 穢さ → 穢す, 登れ → 登る, 視 → 視る. 429 tokens.
 
-| line | keyed on | should be |
-| --- | --- | --- |
-| 上手くいくわけがない | 旨い | 上手い |
-| 抑えきれない迸り | 押さえる | 抑える |
-| 辛い目に遭った | 会う | 遭う |
-| 穢されていく | 汚す | 穢す |
-| より硬く張っていく | 固い | 硬い |
-| 塀を登る | 上る | 登る |
-| 囚われた人 | 捕らわれる | 捕らわれる is a different word |
+What is left is **158 tokens over 76 spellings the master has no headword for at
+all**, so there is nothing to offer in place of the swap: 蒼く, 碧い, 昏い, 視える,
+還す, 喪っ, 忌々し, 廻天, 兄妹, 箱舟, 棄損, 誤魔化し. Sankoku does not list 蒼い
+or 視える under any reading.
 
-444 tokens over ~220 pairs. The answer is not the surface but the **dictionary
-form built from the surface's own kanji** — 上手い, 抑える, 遭う — which is a
-different question from the one the fixed half answered, and needs asking of
-each stem rather than looked up.
+That makes the residue a **denominator question rather than a parse one**, and
+the same one the spelling class below asks from the other direction: keeping the
+surface takes the word off the master scale, and the swap keeps it on under a
+kanji the reader did not see.
 
-Two more that the kanji rule cannot reach at all, both from the 160-line sample:
-なれる keyed on 慣れる where the line meant なる, and 行って on 行く where it
-meant 行う. Two lemmas share a surface, no kanji is dropped, and nothing weighs
-them.
+Two more that no kanji rule reaches, both from the 160-line sample: なれる keyed
+on 慣れる where the line meant なる, and 行って on 行く where it meant 行う. Two
+lemmas share a surface, no kanji is dropped, and nothing weighs them.
 
 ## ものの — the concessive, built on every ordinary noun + の
 
@@ -942,6 +923,17 @@ One line each; the argument that settled it is in the code, next to the rule.
   spellings, every one now keyed on itself. The mirror of the fallback's "would
   add kanji the text did not use", moved above *Exact match* because these land
   on pairs the master lists.
+- **上手く keyed on 旨い, 抑え on 押さえる, 遭っ on 会う, 視 on 見る** — the
+  inflected half of the swap, where the surface is a stem and so cannot be kept
+  as written. The master's other spelling of the same reading answers it, and
+  over the corpus the reading names exactly one such spelling every time but
+  once (あかり is 灯 and 灯火 as well, and 灯り is neither). Offered only against
+  a candidate the master lists, or it becomes a rung of its own ahead of the
+  surface and rewrites あばら家 into 荒ら家. 429 tokens over 154 spellings.
+  It costs five lines their join: 気を遣った and 手を挙げた were built out of
+  気を使う and 手を上げる, and 気を遣う is Jitendex's alone, so the run no longer
+  spells anything the segmentation authority lists and comes apart into 気 + を +
+  遣う — three right tokens instead of one expression under a kanji nobody wrote.
 - **ところで, すると, それで built everywhere; でも and だが built nowhere** —
   one defect from two sides, and position is the whole of the fix.
   `CLAUSE_INITIAL_ONLY` names five strings that are a word where they open a
