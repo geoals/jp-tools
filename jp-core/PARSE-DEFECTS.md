@@ -3,7 +3,7 @@
 Words noticed misparsed while reading, worked through in batches. One entry per
 word: what the pipeline does with it today, and the cause where it is known.
 
-**21 open**, each checked against the live pipeline on 2026-08-16. Three
+**23 open**, each checked against the live pipeline on 2026-08-16. Three
 further questions are about the vocabulary denominator rather than the parse and
 are kept apart from them; a fourth — whether the reader's lookup surface should
 be the ledger's key at all — has its own section. What has been fixed is one
@@ -200,8 +200,7 @@ built on (`examples/joined.rs`). And reading 160 uniform lines as sentences,
 which put the rate at ~70 of 2,499 tokens and turned up six classes the join
 sweep could not see.
 
-The lookup-tax study (4,138 lookups over 26 days, never analysed) and the
-denominator decision are still worth more than the tail of this list.
+The denominator decision is still worth more than the tail of this list.
 
 ---
 
@@ -274,7 +273,10 @@ kanji the reader did not see.
 
 Two more that no kanji rule reaches, both from the 160-line sample: なれる keyed
 on 慣れる where the line meant なる, and 行って on 行く where it meant 行う. Two
-lemmas share a surface, no kanji is dropped, and nothing weighs them.
+lemmas share a surface, no kanji is dropped, and nothing weighs them. The
+sentence draw adds a third: いい keyed on 言う where the line meant 良い —
+「それでいい、わかったよ」, 「いい、から」 — 9 of the corpus's 19 いい→言う
+tokens, the rest being といいます and 言いがたい, which are right.
 
 ## くそう — read 臭い/くさい
 
@@ -474,20 +476,64 @@ Jitendex is the only dictionary that lists the 集る/あつまる pair, and onl
 master may name an identity, so nothing overrules たかる. Same family as 砂粒:
 a reading only a `reference` dictionary knows. One sighting so far.
 
-## あてぃし — a character-voice pronoun Sudachi shreds, and a fragment lands on 羊歯
+## あてぃし — a character-voice pronoun Sudachi shreds, and a fragment lands on a real headword
 
-「あーあてぃしだよー？」 is the childish first-person pronoun あてぃし (a drawn-out
-あたし), a character's voice. The docs already list these pronoun spellings as
-not vocabulary — but the truth is worse than an off-scale spelling. Sudachi's
-Mode C segments あてぃし as あーあ + て + ぃ + しだ, and recompose cannot rescue
-it because no listed headword combines those parts.
+「あー、あてぃし？」「あーあてぃしだよー？」 — the childish first-person pronoun
+あてぃし (a drawn-out あたし), a character's voice. The docs already list these
+pronoun spellings as not vocabulary — but the truth is worse than an off-scale
+spelling. Sudachi's Mode C shreds あてぃし, and recompose cannot rescue it
+because no listed headword combines the parts. Which real word the shred lands
+on depends on the line:
 
-The fragment that costs is しだ: the master lists 羊歯 read しだ (the fern), so
-the gate admits it and しだ becomes a ledger row keyed on a word the reader never
-meant. て is normalised onto って, あーあ is a real interjection. The shredding
-is the defect, and it is one the blacklist lever the docs name for the pronoun
-spellings cannot reach — しだ is not a character-voice spelling, it is a real
-master headword asserted falsely.
+| line | what comes out | the false row |
+| --- | --- | --- |
+| あー、あてぃし？ | あて/当て + ぃ + し/する | 当て (a real noun) |
+| あてぃしは俯瞰することができた | あて/当てる + ぃ + し | 当てる (the verb) |
+| あーあてぃしだよー？ | あーあ + て + ぃ + しだ | しだ, gated by the master's 羊歯 (the fern) |
+
+Both rows are words the reader never meant. The shredding is the defect, and it
+is one the blacklist lever the docs name for the pronoun spellings cannot reach
+— 当て and 羊歯 are not character-voice spellings, they are real master
+headwords asserted falsely. Same family: あん (a contracted あなた, 「んで、あんさぁ」)
+lands on 案.
+
+## Short kana that is not a word resolves onto a real headword before the noise gate sees it
+
+The noise rule refuses a short kana term nothing lists — but it asks the
+dictionaries about the *resolved* form, and Sudachi's normalisation has already
+turned the fragment into a listed reading by then. A mimetic, a stammer, or a
+contracted-phrase fragment whose kana spells a real headword's reading becomes
+a false ledger row for that word:
+
+| line | what comes out | the false row |
+| --- | --- | --- |
+| そんならあてぃしも… | そん + な + ら | 村/そん (rank 1,117) |
+| あらあら……私？ | あらあら | 粗々 |
+| くるんと、ノアは… | くるん + と | 包む/くるむ |
+| びくん！ | びくん | 微醺/びくん (rank 9,695) |
+| くすん……。 | くすん | くすむ |
+| みし、みし、みし、と | みし | みせる |
+| ざけんなぶっ殺すぞ | ざけ + んな | さけ |
+| きいぃ！ / はわ、わわわ | きい / はわ | 聞く / 這う |
+| そんなら… / どど、どならないで… | そん / どど | 村 / 度々 |
+| 魔女……どもめ……！ | もめ (of どもめ) | 揉める |
+| あてぃしまだ推しに… | しまだ (of あてぃし+まだ) | 島田, a cast name |
+| あんま時間もねーしな | あんま (of あんまり) | 按摩 (massage) |
+
+Two fences that look like they should catch the family both miss: the noise
+gate sees the resolved form, and the two-mora rank guard does not reach びくん
+(three morae), nor 微醺 (rank 9,695), nor 村/そん (rank 1,117). The あてぃし
+shred is the same family seen through a character-voice pronoun; these are the
+ordinary words it lands on. ~25 tokens over the read corpus.
+
+## そういえば — built as そういう, 70 times
+
+The join answers the run そう + いえ (out of そういえば = そう言えば) with the
+listed そういう, because nothing lists the phrase そういえば itself — 吾輩's
+kana twin again, this time on a phrase the corpus says constantly. The reader
+means "speaking of which" and every one of the 70 encounters is keyed on
+そういう ("such"). Same family as わがはい: a phrase that is a listed kanji
+word's kana rendering, kept whole by nothing.
 
 ## The spelling class — a kanji identity for a line written in kana
 
@@ -954,6 +1000,12 @@ One line each; the argument that settled it is in the code, next to the rule.
   tokens, and nothing else in the corpus moves.
 - **何度 split into 何 + 度** — 104 sightings, all whole now, kept by the gate on
   明鏡's listing. Fixed by the standard role rather than by a rule of its own.
+- **登れない read 上る where 登れば read 登る** — the swap's answer was fenced to
+  a candidate whose *pair* the master lists, and Sudachi reads 登れ in 登れない
+  off the potential 登れる, giving のぼれる, which is nobody's pair. The fence is
+  the spelling now, since a swap wins on the spelling alone one rung further
+  down, and the answer is looked up under the swapped spelling's own reading as
+  well as the token's. 9 tokens, and nothing else in the corpus moves.
 - **ものの built over もの + の 9 times of 26, ちゃんと over a name's ちゃん 76
   times of 174** — 「巨大なものの前で」, 「書かれたもののようで」, 「ヒロちゃんと
   友だちになりたい」. Both are decided by a neighbour, and neither by the one the

@@ -406,20 +406,39 @@ impl SudachiTokenizer {
             && self.vanishingly_rare(term)
     }
 
-    /// The master's spelling of this reading that keeps every kanji the surface
-    /// wrote, where the reading names exactly one.
+    /// The master's spelling of this word that keeps every kanji the surface
+    /// wrote, where exactly one spelling does.
     ///
     /// The answer to a normalisation that swapped a kanji, for the half of that
     /// class where the surface is a stem and so cannot be kept as written. See
     /// the rung in [`identity_ladder`](Self::identity_ladder).
-    fn spelt_with_the_surfaces_kanji(&self, surface: &str, reading: &str) -> Option<String> {
-        let mut kept = self
-            .by_reading
-            .get(&crate::text::kana::to_hiragana(reading))?
-            .iter()
-            .filter(|term| !drops_kanji(term, surface));
-        let one = kept.next()?;
-        kept.next().is_none().then(|| one.clone())
+    ///
+    /// **Asked of the candidate's own readings as well as the token's**, because
+    /// the token's is often a form's rather than a word's: Sudachi reads 登れ in
+    /// 登れない off the potential 登れる, giving のぼれる, which is nobody's
+    /// headword — while the swapped spelling 上る reads のぼる and that names 登る.
+    /// Uniqueness is over all of them together, so a candidate reachable two ways
+    /// still has to be the only one.
+    fn spelt_with_the_surfaces_kanji(
+        &self,
+        surface: &str,
+        term: &str,
+        reading: &str,
+    ) -> Option<String> {
+        let readings = std::iter::once(crate::text::kana::to_hiragana(reading))
+            .chain(self.readings_of.get(term).into_iter().flatten().cloned());
+        let mut kept: Vec<&String> = Vec::new();
+        for reading in readings {
+            for spelling in self.by_reading.get(&reading).into_iter().flatten() {
+                if !drops_kanji(spelling, surface) && !kept.contains(&spelling) {
+                    kept.push(spelling);
+                }
+            }
+        }
+        match kept.as_slice() {
+            [one] => Some((*one).clone()),
+            _ => None,
+        }
     }
 
     /// Teach it which master headwords are conjugatable lemmas, so an inflected
@@ -1683,19 +1702,22 @@ impl SudachiTokenizer {
         // it answers, so every guard below still gets to refuse it and today's
         // swap stays the fallback.
         //
-        // **Only where the reading names one such spelling.** あかり is also 灯
-        // and 灯火, and a line that wrote 灯り said neither.
+        // **Only where one spelling keeps them.** あかり is also 灯 and 灯火, and
+        // a line that wrote 灯り said neither.
         //
-        // **And only in answer to a candidate the master lists**, or it stops
+        // **And only in answer to a spelling the master lists**, or it stops
         // being a repair and becomes a rung of its own, ahead of the surface:
-        // あばら家 is nobody's master headword and neither is its reading, so
-        // the token keeps the reader's spelling — until 荒ら家 is offered for a
-        // swap that was never going to win.
+        // あばら屋 is nobody's master headword, so the token keeps the reader's
+        // あばら家 — until 荒ら家 is offered for a swap that was never going to
+        // win. The spelling rather than the pair, because a swap wins on the
+        // spelling alone one rung further down: Sudachi reads 登れ in 登れない as
+        // the potential のぼれる, which no master pair carries, and 上る still
+        // took the token through the re-derivation.
         let mut answered = Vec::with_capacity(candidates.len());
         for (term, reading) in candidates {
             if drops_kanji(&term, &surface)
-                && self.lists(&term, &reading)
-                && let Some(kept) = self.spelt_with_the_surfaces_kanji(&surface, &reading)
+                && self.lexicon.contains(&term)
+                && let Some(kept) = self.spelt_with_the_surfaces_kanji(&surface, &term, &reading)
             {
                 answered.push((kept, reading.clone()));
             }

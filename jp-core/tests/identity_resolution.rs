@@ -136,6 +136,8 @@ fn conjugatable() -> HashSet<String> {
         "上手い",
         "会う",
         "遭う",
+        "上る",
+        "登る",
     ]
     .into_iter()
     .map(str::to_string)
@@ -703,6 +705,10 @@ fn an_inflected_stem_keeps_its_kanji_through_the_masters_other_spelling() {
     for (text, surface, term, reading) in [
         ("上手くいくわけがない", "上手く", "上手い", "うまい"),
         ("辛い目に遭った", "遭っ", "遭う", "あう"),
+        // Read off the potential 登れる, so the pair is (上る, のぼれる) and no
+        // master reading is のぼれる — the swapped spelling's own reading has to
+        // be asked instead.
+        ("高い塀は登れないと思う", "登れ", "登る", "のぼる"),
     ] {
         let tokens = tokens_of(&tk, text);
         assert_eq!(identity_of(&tokens, surface), pair(term, reading), "{text}");
