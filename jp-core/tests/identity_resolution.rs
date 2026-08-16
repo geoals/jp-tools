@@ -583,6 +583,31 @@ fn a_two_kana_conjunction_is_built_where_it_opens_a_clause() {
     }
 }
 
+/// A normalisation that swaps one kanji for another has changed which word is
+/// being claimed, and where the text's own spelling is a headword too there is
+/// nothing to weigh: 検死 is what the page said and 検屍 is a different string
+/// the ledger would key on. The reader saw one of them.
+///
+/// Free, because the surface is on the master scale as written — which is also
+/// the fence. An inflected stem is not a word, so it is left to the swap.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_normalisation_may_not_drop_a_kanji_the_text_wrote() {
+    let (tk, _) = setup();
+    for (text, surface, reading) in [
+        ("綺麗に整頓されている", "綺麗", "きれい"),
+        ("偽装工作だ", "偽装", "ぎそう"),
+        ("詳しい検死ができたら", "検死", "けんし"),
+    ] {
+        let tokens = tokens_of(&tk, text);
+        assert_eq!(
+            identity_of(&tokens, surface),
+            pair(surface, reading),
+            "{text}"
+        );
+    }
+}
+
 /// 信じ is Sudachi's 信じる normalised, but read off its dictionary form 信ずる,
 /// so the pair offered is (信じる, しんずる) — which the master does not list.
 /// The ladder used to fall through to 信ずる, a spelling the text never used.

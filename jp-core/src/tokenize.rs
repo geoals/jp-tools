@@ -1625,6 +1625,30 @@ impl SudachiTokenizer {
             candidates
                 .retain(|(term, reading)| !self.short_kana_coincidence(term, reading, short_kana));
         }
+        // **A kanji the text wrote may not be dropped for a different one, where
+        // the text's own spelling is a headword too.**
+        //
+        // The mirror of the fallback's "normalising it would add kanji the text
+        // did not use", and it has to sit up here rather than beside it: that
+        // rung is reached only when nothing listed, and these normalisations
+        // land on pairs the master *does* list, so *Exact match* took them
+        // first. 上手くいく came out 旨い, 抑え 押さえる, 遭った 会う, and 検死
+        // 検屍 — the last being the spelling defect the ledger's resolved-key
+        // columns were built for.
+        //
+        // **Only where the surface is a master headword as written**, which is
+        // what makes the refusal free: 綺麗, 偽装, 眼, 恐い, 傍, 想い and 充分 are
+        // all listed, so the token keeps the reader's spelling *and* stays on
+        // the scale. 529 of the 973 tokens that drop a kanji are that shape. The
+        // rest are inflected stems — 舐め, 穢さ, 登れ — where the surface is not a
+        // word, and keeping it would assert something worse than the swap did.
+        //
+        // Not a claim about which of the two spellings is the better word. 奇麗
+        // and 綺麗 are one word, 旨い and 上手い are not, and nothing structural
+        // separates them. The only thing asserted is which one the reader saw.
+        if uninflected && self.lexicon.contains(&surface) {
+            candidates.retain(|(term, _)| !drops_kanji(term, &surface));
+        }
 
         if let Some((term, reading)) = candidates
             .iter()
@@ -2104,6 +2128,19 @@ fn adds_kanji(term: &str, surface: &str) -> bool {
     term.chars().any(|c| {
         crate::text::kanji::is_kanji(c) && !surface.contains(c) && !spells_out_a_digit(c, surface)
     })
+}
+
+/// Would keying the token on this spelling take a kanji *off* the page the text
+/// wrote?
+///
+/// The other direction of [`adds_kanji`], and the sharper of the two: a
+/// normalisation that swaps one kanji for another has changed which word is
+/// being claimed, where adding kanji to kana only changes how fully it is spelt.
+/// 上手くいく → 旨い, 抑え → 押さえる, 遭う → 会う, 検死 → 検屍.
+fn drops_kanji(term: &str, surface: &str) -> bool {
+    surface
+        .chars()
+        .any(|c| crate::text::kanji::is_kanji(c) && !term.contains(c))
 }
 
 /// Is this kanji a numeral standing in for a digit the surface wrote in figures?

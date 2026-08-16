@@ -128,6 +128,12 @@ and a ledger row cannot disagree):
 - **One word, one row, spelt the way the master dictionary spells it.** Terms
   key on Sudachi's _normalized_ form. Where Sudachi and Sankoku disagree,
   Sankoku wins (`written_form`).
+  **Except where the reader's own spelling is a Sankoku headword too** — then it
+  wins, because there is nothing left to decide: 綺麗 and 奇麗 are both listed,
+  the page said one of them, and normalising 検死 to 検屍 or 上手く to 旨い
+  asserts a word nobody read. 406 tokens over 116 spellings. The rule only
+  reaches a surface that is a headword as written, so it never costs the scale;
+  an inflected stem (舐め, 穢さ) is not a word and is still normalised.
 - **The kana alphabet is part of the spelling.** Sudachi folds ザル onto ざる
   and マジ onto まじ, and Sankoku lists each as two words — the colander and the
   slang against the classical negative. A katakana surface Sankoku lists and

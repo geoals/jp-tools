@@ -7,6 +7,14 @@ word: what the pipeline does with it today, and the cause where it is known.
 further questions are about the vocabulary denominator rather than the parse and
 are kept apart from them; what has been fixed is one line each at the bottom.
 
+**The standard this list is worked to: as many whole lines as possible where
+every token is the right headword — and where the pipeline is unsure, no match
+beats a wrong one.** A token left as written costs a lookup; a token keyed on a
+word nobody read is a false assertion that spreads, into the ledger, the popup,
+the count and the triage queue. The `drops_kanji` rule, the two-mora guard, the
+ambiguous-reading refusal and the noise gate are all that principle; so is the
+reason そこで is still open rather than guessed at.
+
 **Start at *Next*.** It ranks what is left, says what has already been measured
 so it is not measured twice, and names the one change that is waiting on a
 decision rather than on work.
@@ -159,29 +167,32 @@ standard-dictionary entry with an empty reading is dropped from `segments`
 entirely, and that is a silent hole in the segmentation authority rather than a
 rule. 「待ちたまえ」 comes out 待ち + た + まえ, and まえ is keyed on 前.
 
-## The kanji swap — a spelling the line did not write, and not the same word
+## The kanji swap on an inflected surface
 
-Distinct from the spelling class below, which puts a word's kanji on a line that
-wrote it in kana. This replaces a kanji the reader saw with a **different**
-one, or picks the wrong one of two homophones:
+Half the class is fixed — a normalisation may no longer drop a kanji the text
+wrote where the surface is a master headword as written. What is left is the
+other half: an **inflected** surface, where the surface is a stem rather than a
+word, so keeping it as written would assert something worse than the swap does.
 
 | line | keyed on | should be |
 | --- | --- | --- |
-| 双子の**兄妹**である | 兄弟 | 兄妹 |
-| すぐ**傍**に | 側 | 傍 |
-| 許容量を**超え**た | 越える | 超える |
-| 【**眼**】が宝石になる | 目 | 眼 |
-| **綺麗**な状態 | 奇麗 | 綺麗 |
-| **なれる**と思います | 慣れる | なる |
-| **すま**ない | 住む | 済まない |
-| 誰が**行っ**ている | 行く | 行う |
-| 手書きの**チラシ** | 散らし | チラシ |
-| 【**なれ**はて】 | 汝 | 成れの果て |
+| 上手くいくわけがない | 旨い | 上手い |
+| 抑えきれない迸り | 押さえる | 抑える |
+| 辛い目に遭った | 会う | 遭う |
+| 穢されていく | 汚す | 穢す |
+| より硬く張っていく | 固い | 硬い |
+| 塀を登る | 上る | 登る |
+| 囚われた人 | 捕らわれる | 捕らわれる is a different word |
 
-Ten in 160 lines, and each is a wrong assertion rather than an orthography
-choice: the popup opens on another word. 行って between 行く and 行う, and なれる
-between なる and 慣れる, are the general shape — two lemmas share a surface and
-nothing weighs them.
+444 tokens over ~220 pairs. The answer is not the surface but the **dictionary
+form built from the surface's own kanji** — 上手い, 抑える, 遭う — which is a
+different question from the one the fixed half answered, and needs asking of
+each stem rather than looked up.
+
+Two more that the kanji rule cannot reach at all, both from the 160-line sample:
+なれる keyed on 慣れる where the line meant なる, and 行って on 行く where it
+meant 行う. Two lemmas share a surface, no kanji is dropped, and nothing weighs
+them.
 
 ## ものの — the concessive, built on every ordinary noun + の
 
@@ -440,6 +451,34 @@ encounters — ちゅ, ぢ, ひ ×358, う ×213, く ×153, あ ×140 — again
 and the affixes (さ, お, ご, め). Fencing on those two parts of speech is what
 separates them. Not built: it overrules a dictionary, and it changes what the
 reader paints as well as what the ledger holds.
+
+---
+
+# Not a parse defect — one surface for looking up, another for counting
+
+**Noted, not designed.** The reader and the ledger are asked different
+questions, and the tokenizer currently answers both with one output.
+
+When reading, anything the eye stops on should be lookupable — a substring, a
+guess, a run the parser refused to commit to. Nothing is asserted by a lookup,
+so the cost of offering a wrong candidate is a glance. That argues for the
+JL/Nazeka/Yomitan behaviour: deinflect at the cursor, offer every candidate the
+dictionaries have, rank them, let the reader pick.
+
+When ingesting, every token becomes a row, a count and a triage position. There
+the cost of a wrong answer is a false assertion that outlives the session, which
+is why the rules above refuse rather than guess.
+
+Today the reader's spans come from the same tokens the ledger keys on, so a
+refusal to commit is also a refusal to *offer* — 「ふよふよ」 has no span, and a
+token kept as written can be tapped but only for the string the parser chose.
+Splitting the two would let the parser get stricter without the reader losing
+reach, which is the direction every rule in this file pushes.
+
+The pieces are already separate in the schema: `highlight` produces offsets,
+`define` answers a lookup, and `Wordhood` is a distinct set from the master. The
+work would be giving the overlay a lookup path that does not go through the
+ledger's key at all.
 
 ---
 
@@ -777,6 +816,14 @@ One line each; the argument that settled it is in the code, next to the rule.
   over the corpus, all one word.
 - **36 counted as a word, 寝よう cut to 寝, 頂 broken out of 絶頂** — the three
   ordinary parse errors from the random-sample audit, all gone by 2026-08-15.
+- **検死 keyed on 検屍, 上手く on 旨い, 綺麗 on 奇麗** — Sudachi's normalisation
+  swapping one kanji for another, which changes *which word* is claimed rather
+  than how fully it is spelt. A candidate may not drop a kanji the surface
+  wrote, where the surface is a master headword as written — so the refusal
+  costs nothing and the reader keeps their own spelling. 406 tokens over 116
+  spellings, every one now keyed on itself. The mirror of the fallback's "would
+  add kanji the text did not use", moved above *Exact match* because these land
+  on pairs the master lists.
 - **ところで, すると, それで built everywhere; でも and だが built nowhere** —
   one defect from two sides, and position is the whole of the fix.
   `CLAUSE_INITIAL_ONLY` names five strings that are a word where they open a
