@@ -1583,6 +1583,22 @@ impl SudachiTokenizer {
             for reading in uncontracted(&spoken) {
                 candidates.push((m.normalized_form().to_string(), reading));
             }
+            // **The other contraction: a mora swallowed rather than held.**
+            // うっさい is うるさい with る replaced by っ, and Sudachi already
+            // normalises it onto 煩い — so the spelling is right and only the
+            // reading is the noun's わずらい.
+            //
+            // Read off the master's own readings for that spelling rather than
+            // generated, because nothing in the surface says which mora the っ
+            // stands for. `uncontracted` can generate its two because え records
+            // that the lost vowel was あ or お.
+            if let Some(readings) = self.readings_of.get(m.normalized_form()) {
+                for reading in readings {
+                    if swallows_a_mora(&spoken, reading) {
+                        candidates.push((m.normalized_form().to_string(), reading.clone()));
+                    }
+                }
+            }
         }
         candidates.push(sudachi());
         // The normalised spelling with *its own* reading, where the lemma's is
@@ -2257,6 +2273,31 @@ fn uncontracted(surface: &str) -> Vec<String> {
         .filter_map(|row| row.chars().nth(i))
         .map(|c| format!("{stem}{c}い"))
         .collect()
+}
+
+/// Is this surface the reading with one mora swallowed into a small っ?
+///
+/// うっさい against うるさい, ばっかり against ばかり. The っ stands where the
+/// mora was, so the two agree everywhere else — which is the whole test, and
+/// what keeps it off わずらい.
+fn swallows_a_mora(surface: &str, reading: &str) -> bool {
+    let surface: Vec<char> = surface.chars().collect();
+    let reading: Vec<char> = crate::text::kana::to_hiragana(reading).chars().collect();
+    if surface.len() != reading.len() {
+        return false;
+    }
+    let mut swallowed = None;
+    for (i, (s, r)) in surface.iter().zip(&reading).enumerate() {
+        if s != r {
+            if swallowed.is_some() {
+                return false;
+            }
+            swallowed = Some(i);
+        }
+    }
+    // Never the first mora: a word does not open on っ, so a surface that
+    // differs there differs in its onset rather than in how it was said.
+    swallowed.is_some_and(|i| i > 0 && surface[i] == 'っ' && reading[i] != 'っ')
 }
 
 /// One beat of speech: a kana, optionally followed by a small ゃゅょ.

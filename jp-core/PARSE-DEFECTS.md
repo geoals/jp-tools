@@ -139,13 +139,10 @@ not re-measure them.
    fires twice over the read corpus today, which is not enough evidence.
    Revisit when more of 白昼夢の青写真 has been read; its script holds 10
    sightings of ふよふよ alone.
-3. **うっさい**, the last of the うるさい family. It drops the る rather than
-   holding the vowel, so the kana arithmetic that fixed うるせー/うるせえ/うるせぇ
-   cannot reach it and the master lists only うるさい. 3 encounters.
-4. **Everything else in the open list, at one or two encounters each.** チョロい,
+3. **Everything else in the open list, at one or two encounters each.** チョロい,
    一日, 塵, 砂粒, 何時, かたや, いやがおうにも, きわまり, お花摘み, 満足げ,
-   天球儀, 何度, ２８日, くそう — the corpus dump has 1–4 of each. Worth doing as
-   one batch on a day when the tools are already rebuilt, not one at a time.
+   天球儀, ２８日, くそう — the corpus dump has 1–4 of each. Worth doing as one
+   batch on a day when the tools are already rebuilt, not one at a time.
 
 ## What has been tried and measured wrong
 
@@ -184,7 +181,7 @@ for comparing the next one against:
 | ちゃんと after a name, ものの before a noun | 85 |
 | 中には, ときに, 手を入れる | 84 |
 | そこで | 57 |
-| the うるさい family | 17 |
+| the うるさい family, うっさい with it | 20 |
 
 Every *identity* defect still open is worth ones and tens — 牛乳粥 was 47, the
 spelling class ~60, かたや and いやがおうにも 1 each. The inflected kanji swap
@@ -281,11 +278,13 @@ the pair lists, so the ladder stops at *Exact match*. Same family as うるせ�
 not reachable by the same arithmetic: くそう is くそ plus a drawn-out う, not a
 contracted adjective ending.
 
-## 天球儀 → 天球 + 儀, 何度 → 何 + 度
+## 天球儀 → 天球 + 儀
 
-Two compounds no segmentation authority holds whole, split into parts that are
-each listed. 何度 is the one to look at first: read-stats' CLAUDE.md names it as
-a word 明鏡 lists, so the gate should be keeping it.
+A compound no segmentation authority holds whole, split into two parts that are
+each listed. One sighting.
+
+何度 was the other half of this entry and is fixed: 104 whole over the corpus,
+none split, kept by the gate on 明鏡's listing.
 
 ## ２８日 — read によう + か
 
@@ -892,6 +891,13 @@ One line each; the argument that settled it is in the code, next to the rule.
   they fired on. 中には had been cited as the reason the join admits three-part
   runs at all, and that reading of it had never been checked against a line:
   the expression meaning "some among them" occurs nowhere in the corpus.
+- **うっさい read 煩い/わずらい** — the same word as うるせー said the other way,
+  and no ending to un-contract: うっさい swallows うるさい's る into a small っ.
+  The reading is read off the master's own list for the spelling Sudachi already
+  chose, since nothing in the surface says which mora the っ stands for. 3
+  tokens, and nothing else in the corpus moves.
+- **何度 split into 何 + 度** — 104 sightings, all whole now, kept by the gate on
+  明鏡's listing. Fixed by the standard role rather than by a rule of its own.
 - **ものの built over もの + の 9 times of 26, ちゃんと over a name's ちゃん 76
   times of 174** — 「巨大なものの前で」, 「書かれたもののようで」, 「ヒロちゃんと
   友だちになりたい」. Both are decided by a neighbour, and neither by the one the

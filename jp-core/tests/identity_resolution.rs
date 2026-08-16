@@ -804,6 +804,18 @@ fn a_colloquial_adjective_ending_names_the_reading_it_contracts_from() {
     }
 }
 
+/// The same word said the other way: うっさい swallows うるさい's る into a small
+/// っ rather than holding the vowel, so no ending can be un-contracted and the
+/// reading has to be read off the master's own list for that spelling.
+#[test]
+#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+fn a_mora_swallowed_into_a_sokuon_names_the_reading_it_came_from() {
+    let (tk, _) = setup();
+    let tokens = tokens_of(&tk, "うっさいな、黙れ");
+
+    assert_eq!(identity_of(&tokens, "うっさい"), pair("煩い", "うるさい"));
+}
+
 /// The fold has to ask the cast list itself, not leave the name to the gate
 /// downstream. That gate vetoes a cast name common enough to be an ordinary
 /// word and it asks the *identity*, so folding first made the veto fire on the
