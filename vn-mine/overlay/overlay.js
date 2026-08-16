@@ -578,7 +578,7 @@ const TYPE = "vn-overlay-type";
 const TYPE_DEFAULTS = {
   scale: 1,
   leading: 1.68,
-  tracking: 0.015,
+  tracking: 0,
   backdrop: Number(params.get("bg") ?? 0.82),
   // Empty means the launcher's `?font=`, left where overlay.js put it above.
   font: "",
