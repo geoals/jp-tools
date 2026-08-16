@@ -8,9 +8,10 @@
 //! cargo run --release --example tokens -p jp-core -- <knowledge.db> <sudachi.dic> [dictionary title...]
 //! ```
 //!
-//! Extra dictionary titles widen the lexicon the tokenizer segments by, which
-//! is the master alone in production. That is the "should 明鏡 decide wordhood
-//! too" question, asked as a diff.
+//! The `standard` role's dictionaries are loaded the way production loads them,
+//! by role. Extra titles named on the command line widen the segmentation
+//! authority on top of that, which is how a dictionary that is not in the role
+//! yet gets asked "what would this decide?" as a diff.
 //!
 //! One line per line read: the text, then the identities, tab separated.
 
@@ -41,7 +42,13 @@ async fn run() {
     let conjugatable = dictionaries::master_conjugatable(pool).await.unwrap();
     // The segmentation authority, added as what it is: these decide wordhood
     // beside the master and nothing else.
-    let mut standard: Vec<(String, String)> = Vec::new();
+    //
+    // **By role first.** Taking it from the command line alone meant every dump
+    // ran without 明鏡 and 小学館 — a pipeline two dictionaries short of the one
+    // the reader is using, so a rule diffed against itself was right while the
+    // absolute picture was not production's.
+    let mut standard: Vec<(String, String)> = dictionaries::standard_entries(pool).await.unwrap();
+    eprintln!("standard role: {} entries", standard.len());
     for title in &a[3..] {
         let d = dictionaries::by_title(pool, title)
             .await

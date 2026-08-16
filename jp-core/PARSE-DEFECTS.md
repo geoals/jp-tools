@@ -640,7 +640,14 @@ all of it.
 
 Uniform draw over the 33,949 lines read, **judged as sentences rather than as
 tokens**: the line first, then every token checked against what the sentence
-meant. 2,499 tokens. This is the draw that found the join class, and the reason
+meant. 2,499 tokens.
+
+Drawn from a `examples/tokens.rs` dump that was two dictionaries short of
+production — it took the `standard` role from the command line rather than by
+role, so 明鏡 and 小学館 were absent. Re-checked afterwards against a correct
+dump: **147 of the 160 lines are identical**, and all 13 that differ are fixes
+made since, plus 気を付ける joining as the standard dictionaries intend. The
+classes and the rate below stand. This is the draw that found the join class, and the reason
 it found it is the method — see *Where the value is not*.
 
 | class | tokens | fixable how |
