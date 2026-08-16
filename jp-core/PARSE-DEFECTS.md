@@ -3,7 +3,7 @@
 Words noticed misparsed while reading, worked through in batches. One entry per
 word: what the pipeline does with it today, and the cause where it is known.
 
-**19 open**, each checked against the live pipeline on 2026-08-16. Three
+**21 open**, each checked against the live pipeline on 2026-08-16. Three
 further questions are about the vocabulary denominator rather than the parse and
 are kept apart from them; a fourth — whether the reader's lookup surface should
 be the ledger's key at all — has its own section. What has been fixed is one
@@ -220,9 +220,14 @@ and チョロ alone is listed as an adverb, so the split wins. The master lists
 ちょろい, so the identity would resolve through the katakana fold once the
 boundary is right.
 
-Four occurrences in the corpus, two of them チョロい. `CUT_BEFORE_AND_AFTER` is
-the lever; whether one string at four sightings earns a list entry is the open
-question.
+**Only when the sentence inflects it.** 「だいぶチョロい気がします」 comes out
+whole; 「全然チョロく」 and 「どこがチョロいんだ」 come apart, because the plain
+form matches チョロ + い and any other ending sends the lattice through the
+listed adverb. Four splits over the corpus, one of them the いん.
+
+`CUT_BEFORE_AND_AFTER` is the lever; whether one string at four sightings earns
+a list entry is the open question. **What settles it is that the class is
+measured and small** — see *Boundaries that fall inside a word*.
 
 ## とはいえ, 確かに, たまえ — a listed expression the join still will not build
 
@@ -460,6 +465,30 @@ The `non-word` half is gone — a standard dictionary decides wordhood now, so
 and Jitendex says すなつぶ, and only the master may name an identity, so nothing
 overrules it. The general form is a reading only a `reference` dictionary knows.
 
+## 集る — read たかる where the line means あつまる
+
+「旧教徒の集る場所でもある」 means the believers *gather*. Every segmentation
+authority lists 集る only as たかる (swarm, mob) and 集まる only as あつまる, so
+Sudachi reads the surface たかる and the ladder stops at *Exact match*.
+Jitendex is the only dictionary that lists the 集る/あつまる pair, and only the
+master may name an identity, so nothing overrules たかる. Same family as 砂粒:
+a reading only a `reference` dictionary knows. One sighting so far.
+
+## あてぃし — a character-voice pronoun Sudachi shreds, and a fragment lands on 羊歯
+
+「あーあてぃしだよー？」 is the childish first-person pronoun あてぃし (a drawn-out
+あたし), a character's voice. The docs already list these pronoun spellings as
+not vocabulary — but the truth is worse than an off-scale spelling. Sudachi's
+Mode C segments あてぃし as あーあ + て + ぃ + しだ, and recompose cannot rescue
+it because no listed headword combines those parts.
+
+The fragment that costs is しだ: the master lists 羊歯 read しだ (the fern), so
+the gate admits it and しだ becomes a ledger row keyed on a word the reader never
+meant. て is normalised onto って, あーあ is a real interjection. The shredding
+is the defect, and it is one the blacklist lever the docs name for the pronoun
+spellings cannot reach — しだ is not a character-voice spelling, it is a real
+master headword asserted falsely.
+
 ## The spelling class — a kanji identity for a line written in kana
 
 とうもろこし keyed as 玉蜀黍, いびき as 鼾, ご祝儀 as 御祝儀, のしあがる as
@@ -572,6 +601,33 @@ reading unambiguously, not on the spelling.
 What was measured, when, and what it said — kept because a later change is
 judged against these numbers. **They are not open items**: where a record names
 a defect, its current state is in the two lists above.
+
+## Boundaries that fall inside a word — 2026-08-16, and the class is small
+
+チョロい is not one word but the one defect class no rule downstream can reach:
+recomposition merges whole tokens, so a cut that falls *inside* a word is
+permanent. That is why `CUT_BEFORE_AND_AFTER` is a named list. The obvious worry
+is that a named list is hiding an unmeasured mass, so it was measured.
+
+Over every adjacent token pair in the corpus — **503,430 of them** — take the
+pair `A | B` and ask whether `A` plus some prefix of `B` is a word the
+segmentation authority lists while `A` itself is not, in either alphabet. That
+is the shape of a cut that came too early, and it is pure code with no judgement
+in it.
+
+**14 pairs, and 4 are real**: チョロ | いん, 虫眼 | 鏡越し, ぼっ | ちゃま,
+針葉 | 樹林. The rest are laughter and moans the noise gate already refuses
+(えへ | へへへ, ひえ | ええ, ちゅ | うう). A second pass shaped for 牛乳粥 —
+`A` listed, `B` not, and both halves of a different cut listed — adds
+言わ | んかっ and 知ら | んかっ, the dialect 〜んかった, and nothing else.
+
+**What the probe cannot see, and it is the bigger half.** A cut inside a word
+*no dictionary lists* is invisible to a dictionary oracle — 念動力, メインルーム,
+ダイイング, トレデキム are the work's own vocabulary and nothing will ever list
+them. Only reading lines as sentences finds those, and that audit put the whole
+"split: nothing lists the whole" class at ~10 of 2,499 tokens. So: the part a
+rule could fix is a handful, and the part that is left is not a boundary problem
+but a wordhood one.
 
 ## The top of 白昼夢の青写真's script queue — audit of 50, four causes
 
