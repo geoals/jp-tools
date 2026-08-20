@@ -161,7 +161,7 @@ header {
   }
 }
 header h1 {
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 600;
   margin: 0;
 }
@@ -206,7 +206,7 @@ header h1 {
   margin-bottom: 14px;
 }
 .card h2 {
-  font-size: 13px;
+  font-size: 18px;
   font-weight: 500;
   color: var(--text-secondary);
   margin: 0 0 10px;
