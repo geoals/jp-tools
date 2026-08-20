@@ -42,7 +42,7 @@ MAX_LEN="${VN_MAX_LEN:-10}"
 # is the next line's.
 MIN_LEN="${VN_MIN_LEN:-0.6}"
 MIN_PEAK_DB="${VN_MIN_PEAK_DB:--25}"
-ANKI_CONNECT_URL="http://localhost:8765"
+ANKI_CONNECT_URL="http://127.0.0.1:8765"
 WHISPER_URL="${VN_WHISPER_URL:-http://localhost:8100}"
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 VAD_PYTHON="$HOME/.local/share/vn-mine/venv/bin/python"

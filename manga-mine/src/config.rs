@@ -44,7 +44,7 @@ impl Config {
             listen_addr: env::var("JP_TOOLS_MANGA_LISTEN_ADDR")
                 .unwrap_or_else(|_| "0.0.0.0:3100".into()),
             anki_url: env::var("JP_TOOLS_ANKI_URL")
-                .unwrap_or_else(|_| "http://localhost:8765".into()),
+                .unwrap_or_else(|_| "http://127.0.0.1:8765".into()),
             media_dir: env::var("JP_TOOLS_MEDIA_DIR").unwrap_or_else(|_| "media".into()),
             knowledge_db_path: env::var("JP_TOOLS_KNOWLEDGE_DB_PATH").unwrap_or_else(|_| {
                 let home = env::var("HOME").expect("HOME not set");

@@ -42,7 +42,7 @@ driving the PC's mouse from the phone leaves no side buttons for them. The
 strip grows with the type; `VN_OVERLAY_HEIGHT` still wins if it is set.
 
     VN_OVERLAY_URL      page to show      (default overlay.html, over read-stats)
-    JP_TOOLS_ANKI_URL   AnkiConnect       (default http://localhost:8765)
+    JP_TOOLS_ANKI_URL   AnkiConnect       (default http://127.0.0.1:8765)
     VN_OVERLAY_HEIGHT   strip height, px  (default 300, 525 with --mobile)
     VN_OVERLAY_BG       backdrop alpha    (default 0.82)
     VN_OVERLAY_FONT     font for the line (vn-overlay.sh sets DNP Shuei Mincho
@@ -74,7 +74,7 @@ from PySide6.QtWebEngineCore import QWebEngineScript
 from PySide6.QtWebEngineQuick import QtWebEngineQuick
 
 DEFAULT_URL = "http://localhost:3200/overlay/overlay.html"
-ANKI_URL = os.environ.get("JP_TOOLS_ANKI_URL", "http://localhost:8765")
+ANKI_URL = os.environ.get("JP_TOOLS_ANKI_URL", "http://127.0.0.1:8765")
 # Where the page's localStorage lives between runs — see Overlay.qml's profile.
 STORAGE = (
     Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "vn-mine/overlay"

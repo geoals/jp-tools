@@ -77,6 +77,9 @@ impl AudioSource {
     /// The media filename to store this recording under, keyed on the word it
     /// is a recording *of* — one file per `(term, reading, source)` however
     /// many cards ask for it, and never a collision between two readings.
+    ///
+    /// The source is taken from the URL path rather than from `name`, which is
+    /// a display string carrying the accent notation ("NHK16 アヤマ＼チ [3]").
     pub fn media_filename(&self, term: &str, reading: &str) -> String {
         let ext = self
             .url
@@ -84,12 +87,21 @@ impl AudioSource {
             .next()
             .filter(|e| e.len() <= 4 && e.chars().all(|c| c.is_ascii_alphanumeric()))
             .unwrap_or("mp3");
-        let source: String = self
-            .name
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-            .collect();
-        format!("jp-tools_{term}_{reading}_{source}.{ext}")
+        format!("jp-tools_{term}_{reading}_{}.{ext}", self.source_id())
+    }
+
+    /// The add-on serves every file under `/<source>/…`, which is the stable
+    /// id of the dictionary the recording came from.
+    fn source_id(&self) -> &str {
+        let after_scheme = match self.url.split_once("://") {
+            Some((_, rest)) => rest,
+            None => self.url.as_str(),
+        };
+        after_scheme
+            .split('/')
+            .nth(1)
+            .filter(|segment| !segment.is_empty())
+            .unwrap_or("local")
     }
 }
 
@@ -157,13 +169,10 @@ mod tests {
     #[test]
     fn filename_keeps_the_reading_apart() {
         let s = AudioSource {
-            name: "NHK 16".into(),
+            name: "NHK16 アヤマ＼チ [3]".into(),
             url: "http://127.0.0.1:5050/nhk16/audio/x.aac".into(),
         };
-        assert_eq!(
-            s.media_filename("空", "そら"),
-            "jp-tools_空_そら_NHK_16.aac"
-        );
+        assert_eq!(s.media_filename("空", "そら"), "jp-tools_空_そら_nhk16.aac");
         assert_ne!(
             s.media_filename("空", "そら"),
             s.media_filename("空", "から")
@@ -173,8 +182,8 @@ mod tests {
     #[test]
     fn filename_falls_back_when_the_url_has_no_extension() {
         let s = AudioSource {
-            name: "forvo".into(),
-            url: "http://127.0.0.1:5050/forvo/get?id=12".into(),
+            name: "Forvo (akitomo)".into(),
+            url: "http://127.0.0.1:5050/forvo/akitomo/犬".into(),
         };
         assert!(s.media_filename("犬", "いぬ").ends_with(".mp3"));
     }

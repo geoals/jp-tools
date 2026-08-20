@@ -10,6 +10,10 @@ pub struct Config {
     /// Cached cover images, next to the DB by default.
     pub covers_dir: PathBuf,
     /// Fallback AnkiConnect URL (the dashboard client's IP is probed first).
+    ///
+    /// Numeric, not `localhost`: AnkiConnect binds IPv4 loopback only, and
+    /// `localhost` resolves to `::1` first here, so every request failed to
+    /// connect while curl's own IPv4 fallback made Anki look reachable.
     pub anki_url: String,
     /// Deck holding mined cards and the field carrying the dictionary form.
     pub anki_deck: String,
@@ -60,7 +64,7 @@ impl Config {
             listen_addr,
             covers_dir,
             anki_url: std::env::var("JP_TOOLS_ANKI_URL")
-                .unwrap_or_else(|_| "http://localhost:8765".to_string()),
+                .unwrap_or_else(|_| "http://127.0.0.1:8765".to_string()),
             anki_deck: std::env::var("JP_TOOLS_ANKI_DECK")
                 .unwrap_or_else(|_| "Japanese".to_string()),
             anki_vocab_field: std::env::var("JP_TOOLS_ANKI_FIELD_VOCAB")

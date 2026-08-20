@@ -136,9 +136,16 @@ pub async fn store_vocab_audio(
     )
     .await;
     match stored {
-        Ok(_) => {
-            debug!(term, source = %recording.source, "vocabulary audio attached");
-            format!("[sound:{}]", recording.filename)
+        // The name Anki answers with, not the one it was sent: Anki normalizes
+        // what it stores, and a card pointing at the name we asked for plays
+        // nothing.
+        Ok(Value::String(stored_name)) => {
+            debug!(term, source = %recording.source, stored_name, "vocabulary audio attached");
+            format!("[sound:{stored_name}]")
+        }
+        Ok(other) => {
+            warn!(term, %other, "storeMediaFile returned no filename");
+            String::new()
         }
         Err(e) => {
             warn!(term, error = %e, "storing vocabulary audio failed");
