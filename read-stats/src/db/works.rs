@@ -9,7 +9,7 @@
 use jp_core::knowledge::Knowledge;
 use sqlx::Row;
 
-pub const WORK_STATUSES: &[&str] = &["reading", "queued", "finished", "dropped"];
+pub const WORK_STATUSES: &[&str] = &["reading", "planned", "finished", "dropped"];
 
 #[derive(Debug, serde::Serialize)]
 pub struct Work {

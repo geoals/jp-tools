@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS works (
     title       TEXT NOT NULL UNIQUE,
     total_chars INTEGER,
     cover_path  TEXT,                  -- filename under <db dir>/covers/
-    status      TEXT NOT NULL DEFAULT 'reading',  -- reading | queued | finished | dropped
+    status      TEXT NOT NULL DEFAULT 'reading',  -- reading | planned | finished | dropped
     queue_pos   INTEGER,
     vn_window   TEXT                   -- substring of this VN's window title
 );

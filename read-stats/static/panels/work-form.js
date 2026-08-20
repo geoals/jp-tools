@@ -7,7 +7,7 @@ import { html } from "htm/preact";
 import { useState } from "preact/hooks";
 import { api } from "../api.js";
 
-const WORK_STATUSES = ["reading", "queued", "finished", "dropped"];
+const WORK_STATUSES = ["reading", "planned", "finished", "dropped"];
 
 /** Set settings.current_work. Shared by the card's picker and the Library rows. */
 

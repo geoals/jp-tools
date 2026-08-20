@@ -3,10 +3,10 @@
 //! Works join by exact title (see [`crate::db::works`]), so this endpoint is a
 //! left join done in memory: aggregate the line stream by title, then attach
 //! whatever metadata row shares that title. Titles with metadata but no lines
-//! yet (a queued VN) still get a row, or the queue would be invisible until
+//! yet (a planned VN) still get a row, or the queue would be invisible until
 //! reading starts.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
@@ -23,6 +23,25 @@ use jp_core::knowledge::{work_scripts, work_terms};
 /// How many words each per-work list carries. Short enough to read in one
 /// pass — a list of two hundred unknown words is a wall, not a plan.
 const MINED_LEN: usize = 24;
+
+/// What a work is, for the library filter. Derivable rather than stored: the
+/// texthooker only ever stamps VNs, so a title with a line stream is a VN;
+/// everything else entered the library by hand, where the log form says what
+/// it was. The synthetic Articles work is its own kind, because it is a
+/// bucket, not a thing being read through.
+fn work_kind(title: &str, has_lines: bool, manual_sources: &[String]) -> &'static str {
+    if title == stats::ARTICLES_WORK {
+        "articles"
+    } else if has_lines
+        || manual_sources
+            .iter()
+            .all(|s| matches!(s.as_str(), "vn" | "article"))
+    {
+        "vn"
+    } else {
+        "book"
+    }
+}
 
 fn meta_json(m: &db::Work) -> Value {
     json!({
@@ -55,6 +74,31 @@ pub async fn works(State(state): State<AppState>) -> Result<Json<Value>, AppErro
         entry.last_ts = entry.last_ts.max(s.start_ts + secs);
     }
 
+    // What each title is, for the library's kind filter: the set of titles
+    // the texthooker stamped (so they are VNs) and the sources of the manual
+    // sessions each title aggregated (books were logged by hand).
+    let line_titles: HashSet<String> = h
+        .work_lines()
+        .iter()
+        .filter_map(|l| l.work.clone())
+        .collect();
+    let mut manual_sources: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for s in &h.manual {
+        if let Some(key) = stats::work_key(&s.source, s.work.as_deref()) {
+            manual_sources
+                .entry(key)
+                .or_default()
+                .push(s.source.clone());
+        }
+    }
+    let kind_of = |title: &str| {
+        work_kind(
+            title,
+            line_titles.contains(title),
+            manual_sources.get(title).map(Vec::as_slice).unwrap_or(&[]),
+        )
+    };
+
     // Metadata joins by exact title; leftovers (queued works with no lines
     // yet) still get a row so they show up before reading starts.
     let mut meta_by_title: BTreeMap<String, db::Work> = db::fetch_works_meta(&state.knowledge)
@@ -69,6 +113,7 @@ pub async fn works(State(state): State<AppState>) -> Result<Json<Value>, AppErro
             let meta = work.as_ref().and_then(|t| meta_by_title.remove(t));
             json!({
                 "work": work,
+                "kind": work.as_deref().map(&kind_of),
                 "chars": a.chars,
                 "active_secs": a.active_secs,
                 "first_read": h.date_of(a.first_ts).to_string(),
@@ -80,6 +125,7 @@ pub async fn works(State(state): State<AppState>) -> Result<Json<Value>, AppErro
     for (title, m) in meta_by_title {
         list.push(json!({
             "work": title,
+            "kind": kind_of(&title),
             "chars": 0,
             "active_secs": 0.0,
             "first_read": null,

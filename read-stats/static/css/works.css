@@ -100,8 +100,8 @@ button.ghost:hover {
   background: rgba(127, 127, 127, 0.07);
 }
 .work-card .cover {
-  width: 64px;
-  height: 92px;
+  width: 96px;
+  height: 128px;
   object-fit: cover;
   border-radius: 4px;
   border: 1px solid var(--border);
@@ -148,8 +148,10 @@ button.ghost:hover {
   cursor: pointer;
 }
 .cover-tile .cover {
-  width: 56px;
-  height: 80px;
+  /* One cover size for the whole shelf: a card's cover and a tile's cover
+     are the same book. */
+  width: 96px;
+  height: 128px;
   object-fit: cover;
   border-radius: 4px;
   border: 1px solid var(--border);
@@ -159,10 +161,28 @@ button.ghost:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 4px;
-  font-size: 10px;
+  padding: 6px;
+  font-size: 12px;
   color: var(--muted);
   overflow: hidden;
+}
+/* The Articles bucket's own cover: a sheet of text, drawn rather than
+   fetched, because there is no art to fetch for it. */
+.cover-articles {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: var(--page);
+  color: var(--muted);
+}
+.cover-articles svg {
+  width: 34px;
+  height: 34px;
+}
+.cover-articles span {
+  font-size: 11px;
 }
 
 /* One work's page */

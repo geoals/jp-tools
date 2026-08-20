@@ -43,6 +43,8 @@ const MIGRATION_WORK_SCRIPTS: &str =
     include_str!("../../migrations/knowledge/012_work_scripts.sql");
 const MIGRATION_WORK_NAMES: &str = include_str!("../../migrations/knowledge/013_work_names.sql");
 const MIGRATION_BOOKS: &str = include_str!("../../migrations/knowledge/014_books.sql");
+const MIGRATION_WORKS_PLANNED: &str =
+    include_str!("../../migrations/knowledge/015_works_planned.sql");
 
 /// A connection pool for `knowledge.db`.
 ///
@@ -118,6 +120,7 @@ impl Knowledge {
             MIGRATION_WORK_SCRIPTS,
             MIGRATION_WORK_NAMES,
             MIGRATION_BOOKS,
+            MIGRATION_WORKS_PLANNED,
             MIGRATION_TERM_SURFACES,
             MIGRATION_STRIP_CONTROL,
         ] {

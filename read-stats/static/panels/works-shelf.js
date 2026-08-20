@@ -1,38 +1,63 @@
-// The shelf: what is being read, and what has been finished.
+// The shelf: what is being read, what is planned, and what the reading turned
+// into.
 //
 // Cards rather than table rows, because a work is a thing with a cover and six
 // numbers and a row can only carry the numbers. Clicking one opens its own
 // page (`work-detail.js`) — everything per-work lives there, which is what
 // keeps this level to "what is on the shelf and how far in am I".
 //
-// A work with no reading behind it is a cover in the queued row, not a card:
+// A work with no reading behind it is a cover in the planned row, not a card:
 // every number on a card is zero until it has been read, and the queue is
-// about which cover comes next.
+// about which cover comes next. Every cover is the same size everywhere — the
+// shelves are one row of books, not a tier list.
+//
+// The kind filter is over what a work is (`/api/works` derives it): all, or
+// one of the two things a shelf holds — VNs, and everything read off paper.
 
 import { html } from "htm/preact";
 import { useState } from "preact/hooks";
 import { ProgressBar } from "../charts.js";
 import { fmtChars, fmtDateStr, fmtHours } from "../lib/format.js";
 import { workSpeedPerHour } from "../lib/pace.js";
+import { SegmentedControl } from "../components/controls.js";
 import { WorkMetaForm } from "../panels/work-form.js";
 
-/** Reading is anything not explicitly finished or dropped — a work with lines
- *  and no metadata row at all is being read, not filed away. */
-function isFinished(w) {
-  return w.meta?.status === "finished" || w.meta?.status === "dropped";
+const ARTICLES = "Articles";
+
+const KIND_FILTERS = [
+  { value: "all", label: "all" },
+  { value: "vn", label: "visual novels" },
+  { value: "book", label: "books" },
+];
+
+/** A work is finished once its status says so — reading is anything else,
+ *  including a work with no metadata row at all (it is being read, not filed
+ *  away). Dropped is its own shelf, not a footnote on finished. */
+function statusOf(w) {
+  return w.meta?.status ?? "reading";
 }
 
 export function WorksShelf({ works, settings, onSaved, onOpen }) {
   const [adding, setAdding] = useState(false);
+  const [kind, setKind] = useState("all");
 
-  const named = works.filter((w) => w.work);
+  const visible = works.filter(
+    (w) => kind === "all" || w.kind === kind,
+  );
+  const named = visible.filter((w) => w.work);
   const read = named.filter((w) => w.chars > 0);
-  const current = read.filter((w) => !isFinished(w));
-  const done = read.filter(isFinished);
+  const current = read.filter(
+    (w) => statusOf(w) !== "finished" && statusOf(w) !== "dropped",
+  );
+  const finished = read.filter((w) => statusOf(w) === "finished");
+  const dropped = read.filter((w) => statusOf(w) === "dropped");
   // Unset queue_pos sorts last, so an ordered queue stays ordered and the rest
   // follows by title rather than by insertion order.
-  const queued = named
-    .filter((w) => w.chars === 0 && !isFinished(w))
+  const planned = named
+    .filter(
+      (w) =>
+        w.chars === 0 && statusOf(w) !== "finished" && statusOf(w) !== "dropped",
+    )
     .sort(
       (a, b) =>
         (a.meta?.queue_pos ?? Infinity) - (b.meta?.queue_pos ?? Infinity) ||
@@ -43,9 +68,17 @@ export function WorksShelf({ works, settings, onSaved, onOpen }) {
     <div class="card">
       <div class="card-head">
         <h2>Library</h2>
-        <button class="ghost" onClick=${() => setAdding((v) => !v)}>
-          ${adding ? "close" : "add work"}
-        </button>
+        <div class="card-controls">
+          <${SegmentedControl}
+            label="What to show"
+            value=${kind}
+            onChange=${setKind}
+            options=${KIND_FILTERS}
+          />
+          <button class="ghost" onClick=${() => setAdding((v) => !v)}>
+            ${adding ? "close" : "add work"}
+          </button>
+        </div>
       </div>
       ${
         adding &&
@@ -59,7 +92,7 @@ export function WorksShelf({ works, settings, onSaved, onOpen }) {
         />`
       }
       ${
-        named.length === 0
+        works.length === 0
           ? html`<div class="meta-hint">
               Nothing read yet — start reading and the tracker will stamp lines
               with a title.
@@ -77,14 +110,20 @@ export function WorksShelf({ works, settings, onSaved, onOpen }) {
                 )}
               </div>
               <${CoverShelf}
-                label="queued"
-                works=${queued}
-                caption=${queuedCaption}
+                label="planned"
+                works=${planned}
+                caption=${plannedCaption}
                 onOpen=${onOpen}
               />
               <${CoverShelf}
                 label="finished"
-                works=${done}
+                works=${finished}
+                caption=${readCaption}
+                onOpen=${onOpen}
+              />
+              <${CoverShelf}
+                label="dropped"
+                works=${dropped}
                 caption=${readCaption}
                 onOpen=${onOpen}
               />
@@ -120,11 +159,7 @@ function WorkCard({ work: w, isCurrent, onOpen }) {
       onClick=${() => onOpen(w.work)}
       onKeyDown=${(e) => e.key === "Enter" && onOpen(w.work)}
     >
-      ${
-        w.meta?.cover
-          ? html`<img class="cover" src=${w.meta.cover} alt="" />`
-          : html`<div class="cover cover-blank"></div>`
-      }
+      <${WorkCover} work=${w} />
       <div class="work-card-body">
         <div class="work-card-title">
           ${w.work}
@@ -145,6 +180,37 @@ function WorkCard({ work: w, isCurrent, onOpen }) {
   `;
 }
 
+/** A work's cover, or the placeholder for a work that has none. Articles gets
+ *  its own: it is a bucket, not a book, and a blank tile would say nothing
+ *  about what the row holds. */
+function WorkCover({ work: w, label }) {
+  if (w.meta?.cover) {
+    return html`<img class="cover" src=${w.meta.cover} alt="" />`;
+  }
+  if (w.work === ARTICLES) {
+    return html`<div class="cover cover-articles" role="img" aria-label="Articles">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <path d="M14 2v6h6" />
+        <path d="M8 13h8M8 17h8M8 9h2" />
+      </svg>
+      <span>Articles</span>
+    </div>`;
+  }
+  if (label) {
+    return html`<span class="cover cover-blank">${label}</span>`;
+  }
+  return html`<div class="cover cover-blank"></div>`;
+}
+
 /** What was read, and the dates it was read between. */
 function readCaption(w) {
   const when = [fmtDateStr(w.first_read), fmtDateStr(w.last_read)]
@@ -153,8 +219,8 @@ function readCaption(w) {
   return `${w.work} · ${fmtChars(w.chars)} chars${when ? ` · ${when}` : ""}`;
 }
 
-/** How long it is, which is the only number a queued work has. */
-function queuedCaption(w) {
+/** How long it is, which is the only number a planned work has. */
+function plannedCaption(w) {
   const total = w.meta?.total_chars;
   return total ? `${w.work} · ${fmtChars(total)} chars` : w.work;
 }
@@ -176,15 +242,7 @@ function CoverShelf({ label, works, caption, onOpen }) {
               title=${title}
               onClick=${() => onOpen(w.work)}
             >
-              ${
-                w.meta?.cover
-                  ? html`<img
-                      class="cover"
-                      src=${w.meta.cover}
-                      alt=${w.work}
-                    />`
-                  : html`<span class="cover cover-blank">${w.work}</span>`
-              }
+              <${WorkCover} work=${w} label=${w.work} />
             </button>
           `;
         })}

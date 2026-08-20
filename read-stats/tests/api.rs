@@ -505,14 +505,14 @@ async fn the_day_timeline_and_the_day_total_agree_on_active_time() {
 }
 
 #[tokio::test]
-async fn works_lists_read_titles_and_queued_ones_alike() {
+async fn works_lists_read_titles_and_planned_ones_alike() {
     let app = TestApp::new().await;
     three_lines(&app, today_start() + 3600.0, Some("読んでる")).await;
     let (status, _) = app
         .send(
             "POST",
             "/api/works",
-            json!({ "title": "積んでる", "status": "queued", "queue_pos": 1 }),
+            json!({ "title": "積んでる", "status": "planned", "queue_pos": 1 }),
         )
         .await;
     assert_eq!(status, 200);
@@ -528,10 +528,48 @@ async fn works_lists_read_titles_and_queued_ones_alike() {
             .clone()
     };
     assert_eq!(by_title("読んでる")["chars"], 60);
-    let queued = by_title("積んでる");
-    assert_eq!(queued["chars"], 0, "queued but never read");
-    assert_eq!(queued["meta"]["status"], "queued");
-    assert!(queued["last_read"].is_null());
+    let planned = by_title("積んでる");
+    assert_eq!(planned["chars"], 0, "planned but never read");
+    assert_eq!(planned["meta"]["status"], "planned");
+    assert!(planned["last_read"].is_null());
+    // The kind filter feeds on this: a title the texthooker stamped is a VN,
+    // and so is one merely queued.
+    assert_eq!(by_title("読んでる")["kind"], "vn");
+    assert_eq!(planned["kind"], "vn");
+}
+
+#[tokio::test]
+async fn works_derive_kind_from_what_wrote_them() {
+    let app = TestApp::new().await;
+    let base = today_start() + 3600.0;
+    three_lines(&app, base, Some("VN")).await;
+    // A book has no line stream — it enters by the log form, which says so.
+    app.send(
+        "POST",
+        "/api/sessions",
+        json!({ "start_ts": base - 86400.0, "minutes": 30, "chars": 5000, "work": "本" }),
+    )
+    .await;
+    // An article collapses into the synthetic Articles work.
+    app.send(
+        "POST",
+        "/api/sessions",
+        json!({ "start_ts": base - 2.0 * 86400.0, "minutes": 10, "chars": 2000, "source": "article", "url": "https://example.com/x" }),
+    )
+    .await;
+
+    let works = app.get("/api/works").await;
+    let by_title = |t: &str| {
+        works
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|w| w["work"] == t)
+            .unwrap_or_else(|| panic!("{t} missing from /api/works"))
+    };
+    assert_eq!(by_title("VN")["kind"], "vn");
+    assert_eq!(by_title("本")["kind"], "book");
+    assert_eq!(by_title("Articles")["kind"], "articles");
 }
 
 #[tokio::test]
@@ -645,14 +683,16 @@ async fn work_detail_needs_a_work_that_exists() {
 #[tokio::test]
 async fn work_status_must_be_one_of_the_known_values() {
     let app = TestApp::new().await;
-    let (status, _) = app
-        .send(
-            "POST",
-            "/api/works",
-            json!({ "title": "X", "status": "halfway" }),
-        )
-        .await;
-    assert_eq!(status, 400);
+    for bad in ["halfway", "queued"] {
+        let (status, _) = app
+            .send(
+                "POST",
+                "/api/works",
+                json!({ "title": "X", "status": bad }),
+            )
+            .await;
+        assert_eq!(status, 400, "{bad} is not a status");
+    }
 }
 
 #[tokio::test]
