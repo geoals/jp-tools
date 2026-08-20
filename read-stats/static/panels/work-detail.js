@@ -11,7 +11,7 @@
 
 import { html } from "htm/preact";
 import { useEffect, useState } from "preact/hooks";
-import { DailyBarChart, ProgressBar } from "../charts.js";
+import { DailyBarChart, ProgressBar, SpeedTrendChart } from "../charts.js";
 import { api } from "../api.js";
 import { fmtChars, fmtDateStr, fmtHours, fmtMins } from "../lib/format.js";
 import { WorkMetaForm, setCurrentWork } from "../panels/work-form.js";
@@ -208,6 +208,11 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
             />`
           : html`<p class="chart-empty">No reading days recorded.</p>`
       }
+    </div>
+
+    <div class="card">
+      <h2>Speed, day by day</h2>
+      <${SpeedTrendChart} days=${detail.days} />
     </div>
 
     <${VocabCard}

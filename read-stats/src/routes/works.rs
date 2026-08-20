@@ -143,15 +143,43 @@ pub async fn work_detail(
     // page charts the work's own reading days, not a calendar window, so a
     // work read in four sittings has four bars and no empty month around them.
     let mut days: BTreeMap<chrono::NaiveDate, (i64, f64)> = BTreeMap::new();
+    // The same days over measured reading only, which is what a per-day speed
+    // may divide by: an untimed session's duration came from the pace.
+    let mut measured_days: BTreeMap<chrono::NaiveDate, (i64, f64)> = BTreeMap::new();
     for s in &sessions {
         let d = days.entry(h.date_of(s.start_ts)).or_default();
         d.0 += s.chars;
         d.1 += s.active_secs;
+        let m = measured_days.entry(h.date_of(s.start_ts)).or_default();
+        m.0 += s.chars;
+        m.1 += s.active_secs;
     }
     for s in &manual {
         let d = days.entry(h.date_of(s.start_ts)).or_default();
         d.0 += s.chars;
         d.1 += h.duration_of(s).0;
+        if s.end_ts.is_some() {
+            let m = measured_days.entry(h.date_of(s.start_ts)).or_default();
+            m.0 += s.chars;
+            m.1 += h.duration_of(s).0;
+        }
+    }
+
+    // Speed with the lookups taken out: characters whose own gap held no
+    // lookup, over the time those gaps cost. Both sides drop together — see
+    // [`stats::Bucket::clean_chars`]. The bucket width is arbitrary here since
+    // this only ever re-aggregates to whole days.
+    let mut clean_days: BTreeMap<chrono::NaiveDate, (i64, f64)> = BTreeMap::new();
+    for b in stats::bucket_lines(
+        &lines,
+        &h.lookups,
+        &h.presence(),
+        h.settings.session_gap_secs,
+        60.0,
+    ) {
+        let d = clean_days.entry(h.date_of(b.t)).or_default();
+        d.0 += b.clean_chars;
+        d.1 += b.active_secs - b.lookup_secs;
     }
 
     let chars: i64 = days.values().map(|d| d.0).sum();
@@ -269,6 +297,14 @@ pub async fn work_detail(
                 "chars": chars,
                 "active_secs": secs,
                 "cards": cards_per_day.get(date).copied().unwrap_or(0),
+                "clean": clean_days.get(date).map(|(c, secs)| json!({
+                    "chars": c,
+                    "active_secs": secs,
+                })),
+                "measured": measured_days.get(date).map(|(c, secs)| json!({
+                    "chars": c,
+                    "active_secs": secs,
+                })),
             }))
             .collect::<Vec<_>>(),
         "sittings": sittings,

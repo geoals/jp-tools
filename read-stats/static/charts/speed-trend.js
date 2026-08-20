@@ -9,7 +9,13 @@ import { Tooltip, W, shortDate, truncWork, workChanges } from "./svg.js";
 
 const SPEED_STEPS = [500, 1000, 2000, 2500, 5000, 10000];
 
-/** Chars/hour trend over days with ≥10 min read. days: [{date, active_secs, chars, work}] */
+/** Chars/hour trend over days with ≥10 min read.
+ *  days: [{date, active_secs, chars, work, measured, clean}]
+ *
+ *  `clean` — characters read across gaps holding no lookup, over what those
+ *  gaps cost — draws the same measure under the other condition: the pace
+ *  without the lookup tax. Only the work detail sends it; the whole-history
+ *  chart draws the measured line alone. */
 
 export function SpeedTrendChart({ days }) {
   const [hover, setHover] = useState(null);
@@ -31,14 +37,26 @@ export function SpeedTrendChart({ days }) {
     }))
     .filter((d) => d.speed !== null && d.speed > 0);
 
+  const rawPoints = days
+    .map((d, i) => ({
+      ...d,
+      i,
+      speed:
+        (d.clean?.active_secs ?? 0) >= 600 && d.clean.chars > 0
+          ? d.clean.chars / (d.clean.active_secs / 3600)
+          : null,
+    }))
+    .filter((d) => d.speed !== null);
+
   if (points.length < 2) {
     return html`<p class="chart-empty">
       Needs a few days with 10+ minutes read to draw a trend.
     </p>`;
   }
 
-  const rawMax = Math.max(...points.map((p) => p.speed));
-  const rawMin = Math.min(...points.map((p) => p.speed));
+  const all = points.concat(rawPoints);
+  const rawMax = Math.max(...all.map((p) => p.speed));
+  const rawMin = Math.min(...all.map((p) => p.speed));
   // Pad the data range, then take the finest step that still keeps the axis to
   // about five gridlines. A fixed 5k step collapsed to two lines whenever the
   // spread was narrow — which is most of the time, since speed varies by
@@ -58,6 +76,9 @@ export function SpeedTrendChart({ days }) {
   const ticks = [];
   for (let t = yMin; t <= yMax; t += yStep) ticks.push(t);
   const path = points
+    .map((p, k) => `${k === 0 ? "M" : "L"}${x(p.i)},${y(p.speed)}`)
+    .join(" ");
+  const rawPath = rawPoints
     .map((p, k) => `${k === 0 ? "M" : "L"}${x(p.i)},${y(p.speed)}`)
     .join(" ");
   const last = points[points.length - 1];
@@ -113,6 +134,13 @@ export function SpeedTrendChart({ days }) {
             </text>
           `,
         )}
+        ${
+          rawPoints.length > 1 &&
+          html`<path
+            d=${rawPath}
+            class="trend-line trend-line-speed trend-line-raw"
+          />`
+        }
         <path d=${path} class="trend-line trend-line-speed" />
         ${
           hover !== null &&
@@ -164,8 +192,26 @@ export function SpeedTrendChart({ days }) {
             <strong>${points[hover].date}</strong><br />
             ${Math.round(points[hover].speed).toLocaleString("en")} chars/h ·
             ${Math.round(points[hover].active_secs / 60)} min
+            ${
+              rawPoints.find((p) => p.i === points[hover].i) &&
+              html`<br />${Math.round(
+                rawPoints.find((p) => p.i === points[hover].i).speed,
+              ).toLocaleString("en")}${" chars/h without lookups"}`
+            }
           <//>
         `
+      }
+      ${
+        rawPoints.length > 1 &&
+        html`<div class="chart-legend">
+          <span class="legend-item legend-static">
+            <span class="legend-swatch legend-line"></span>as read
+          </span>
+          <span class="legend-item legend-static">
+            <span class="legend-swatch legend-line legend-line-dashed"></span
+            >lookups removed
+          </span>
+        </div>`
       }
     </div>
   `;
