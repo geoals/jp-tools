@@ -685,11 +685,7 @@ async fn work_status_must_be_one_of_the_known_values() {
     let app = TestApp::new().await;
     for bad in ["halfway", "queued"] {
         let (status, _) = app
-            .send(
-                "POST",
-                "/api/works",
-                json!({ "title": "X", "status": bad }),
-            )
+            .send("POST", "/api/works", json!({ "title": "X", "status": bad }))
             .await;
         assert_eq!(status, 400, "{bad} is not a status");
     }

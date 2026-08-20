@@ -567,9 +567,16 @@ mod tests {
         .await
         .unwrap();
 
-        update_job_audio(&pool, id, "/tmp/audio.wav", "/tmp/audio.webm", "Test Video", Some(120.5))
-            .await
-            .unwrap();
+        update_job_audio(
+            &pool,
+            id,
+            "/tmp/audio.wav",
+            "/tmp/audio.webm",
+            "Test Video",
+            Some(120.5),
+        )
+        .await
+        .unwrap();
         update_job_video(&pool, id, "/tmp/video.mp4").await.unwrap();
         let job = get_job(&pool, id).await.unwrap().unwrap();
         assert_eq!(job.audio_path.as_deref(), Some("/tmp/audio.wav"));
