@@ -16,6 +16,7 @@ import { api } from "../api.js";
 import { fmtChars, fmtDateStr, fmtHours, fmtMins } from "../lib/format.js";
 import { WorkMetaForm, setCurrentWork } from "../panels/work-form.js";
 import { WorkTriage } from "../panels/work-triage.js";
+import { AddPaperBook, PaperLog } from "../panels/paper.js";
 
 const SITTINGS_SHOWN = 20;
 
@@ -30,6 +31,11 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [triaging, setTriaging] = useState(false);
+  // The `books` row for this work, when the epub has been attached: what the
+  // paper position is and the log that moves it. Fetched separately from the
+  // detail — `list_books` is one small call and it is the only source of the
+  // paper half of the page.
+  const [paper, setPaper] = useState(null);
 
   const isCurrent = settings?.current_work === work;
   // "Read this next" points the logger at a title: every line it captures from
@@ -59,6 +65,18 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
       .catch((e) => setError(e.message));
   };
   useEffect(load, [work]);
+
+  const loadPaper = () => {
+    api("/api/books")
+      .then((r) => setPaper(r.books.find((b) => b.work === work) ?? null))
+      .catch(() => {});
+  };
+  // The previous work's row must not flash under this one: WorkDetail stays
+  // mounted across a direct hash change, and detail handles this in `load`.
+  useEffect(() => {
+    setPaper(null);
+    loadPaper();
+  }, [work]);
 
   // The shelf row for this work, which is what `WorkMetaForm` edits by id.
   const row = works.find((w) => w.work === work) ?? null;
@@ -197,6 +215,16 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
       }
     </div>
 
+    <${PaperCard}
+      work=${work}
+      book=${paper}
+      canTrack=${row?.kind === "book"}
+      onChanged=${() => {
+        load();
+        loadPaper();
+      }}
+    />
+
     <div class="card">
       <h2>How it was read</h2>
       ${
@@ -221,6 +249,61 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
       onTriage=${() => setTriaging(true)}
     />
     <${SittingsCard} sittings=${detail.sittings} />
+  `;
+}
+
+/** Reading on paper, tracked against the epub: where the bookmark is, and the
+ *  anchor log that moves it. A book with no epub yet offers to attach one; a
+ *  work that is not a book gets no card at all. */
+function PaperCard({ work, book, canTrack, onChanged }) {
+  const [adding, setAdding] = useState(false);
+
+  if (!book && !canTrack) return null;
+
+  if (!book) {
+    return html`
+      <div class="card">
+        <div class="card-head">
+          <h2>On paper</h2>
+        </div>
+        ${
+          adding
+            ? html`<${AddPaperBook}
+                work=${work}
+                onDone=${onChanged}
+              />`
+            : html`<div class="meta-hint">
+                Read on paper — attach the epub and every sitting is counted
+                exactly.
+              </div>
+              <div class="actions">
+                <button class="ghost" onClick=${() => setAdding(true)}>
+                  attach an epub
+                </button>
+              </div>`
+        }
+      </div>
+    `;
+  }
+
+  const pct = Math.max(0, Math.min(1, book.progress ?? 0));
+  const cpp = book.chars_per_page;
+  const read = Math.max(0, book.body_chars * pct);
+  const page =
+    cpp && book.first_page !== null
+      ? `p. ${Math.round(book.first_page + read / cpp)} of ${book.last_page}`
+      : `${Math.round(read).toLocaleString("en")} of ${book.body_chars.toLocaleString("en")} chars`;
+
+  return html`
+    <div class="card">
+      <div class="card-head">
+        <h2>On paper</h2>
+        <div class="card-controls">${(pct * 100).toFixed(1)}%</div>
+      </div>
+      <${ProgressBar} pct=${pct} label=${`Progress through ${work}`} />
+      <div class="progress-caption"><span>${page}</span></div>
+      <${PaperLog} book=${book} onLogged=${onChanged} />
+    </div>
   `;
 }
 

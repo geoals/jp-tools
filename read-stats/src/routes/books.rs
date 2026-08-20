@@ -1,4 +1,8 @@
-//! `#books` — logging a book read on paper against its epub.
+//! Paper books — logging a book read on paper against its epub.
+//!
+//! The library owns the work; this module owns the epub underneath it. The
+//! shelf adds a book (`upload`, `setup`); the book's own page logs sittings
+//! against it (`preview`, `log`).
 //!
 //! Four calls, in the order they are made: **upload** the epub, **setup** to
 //! say where the story starts and what pages the paper copy runs between,

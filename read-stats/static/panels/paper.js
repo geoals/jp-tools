@@ -1,9 +1,11 @@
-// Logging a book read on paper, against the epub of the same book.
+// Reading a book on paper, tracked against the epub of the same book.
 //
-// The whole interaction is: pick the book, type the last thing you read, look
-// at what came back, save it. Everything else on the page is there to make
-// that check possible — the found text with its surroundings, the character
-// count, the page estimate.
+// Two pieces, one flow. **PaperLog** is the sitting: type the last thing you
+// read, look at what came back, save it. **AddPaperBook** is the setup: upload
+// the epub, then say where the story starts and what pages the paper copy runs
+// between. Both live on the library side of the app — a paper book is a work
+// like any other, so its page is where the log sits and the shelf is where a
+// book is added.
 //
 // **Preview and log are two calls and the offset travels between them.** The
 // anchor search can land in the wrong place, and what gets saved has to be the
@@ -28,112 +30,9 @@ function todayLocal() {
 
 const fmt = (n) => Math.round(n).toLocaleString("en");
 
-export function BooksView({ onSaved }) {
-  const [books, setBooks] = useState(null);
-  const [open, setOpen] = useState(null);
-  const [error, setError] = useState(null);
+/** The anchor log for one book: type where you stopped, confirm the find. */
 
-  async function load() {
-    try {
-      const r = await api("/api/books");
-      setBooks(r.books);
-      setError(null);
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  if (error) return html`<p class="chart-empty">Failed to load: ${error}</p>`;
-  if (!books) return html`<p class="chart-empty">Loading…</p>`;
-
-  const active = books.filter(
-    (b) => b.status !== "finished" && b.status !== "dropped",
-  );
-  const done = books.filter(
-    (b) => b.status === "finished" || b.status === "dropped",
-  );
-  const current = books.find((b) => b.work === open) ?? null;
-
-  return html`
-    <div class="card">
-      <h2>Books on paper</h2>
-      ${
-        active.length === 0 &&
-        html`<p class="chart-empty">
-          No book set up yet. Add an epub of what you are reading below.
-        </p>`
-      }
-      <div class="book-list">
-        ${active.map(
-          (b) =>
-            html`<${BookRow}
-              key=${b.work}
-              book=${b}
-              open=${b.work === open}
-              onToggle=${() => setOpen(b.work === open ? null : b.work)}
-            />`,
-        )}
-      </div>
-      ${
-        current &&
-        html`<${LogSitting}
-          book=${current}
-          onLogged=${() => {
-            load();
-            onSaved?.();
-          }}
-        />`
-      }
-      ${
-        done.length > 0 &&
-        html`<details class="book-done">
-          <summary>${`${done.length} finished`}</summary>
-          <div class="book-list">
-            ${done.map((b) => html`<${BookRow} key=${b.work} book=${b} />`)}
-          </div>
-        </details>`
-      }
-    </div>
-    <${AddBook} onAdded=${load} />
-  `;
-}
-
-/** One book: how far through it is, and the pages that came to. */
-
-function BookRow({ book, open, onToggle }) {
-  const pct = Math.max(0, Math.min(1, book.progress ?? 0));
-  const cpp = book.chars_per_page;
-  const read = Math.max(0, book.body_chars * pct);
-  const page =
-    cpp && book.first_page !== null
-      ? `p. ${fmt(book.first_page + read / cpp)} of ${book.last_page}`
-      : `${fmt(read)} of ${fmt(book.body_chars)} chars`;
-  const pctLabel = `${(pct * 100).toFixed(1)}%`;
-
-  return html`
-    <button
-      type="button"
-      class=${`book-row${open ? " book-row-open" : ""}`}
-      onClick=${onToggle}
-      disabled=${!onToggle}
-    >
-      <span class="book-title">${book.work}</span>
-      <span class="book-meter"
-        ><span class="book-meter-fill" style=${`width:${pct * 100}%`}></span
-      ></span>
-      <span class="book-pos">${page}</span>
-      <span class="book-pct">${pctLabel}</span>
-    </button>
-  `;
-}
-
-/** The log form and its confirmation. */
-
-function LogSitting({ book, onLogged }) {
+export function PaperLog({ book, onLogged }) {
   const [anchor, setAnchor] = useState("");
   const [minutes, setMinutes] = useState("");
   const [date, setDate] = useState(todayLocal());
@@ -333,11 +232,15 @@ function LogSitting({ book, onLogged }) {
   `;
 }
 
-/** Adding a book: upload the epub, then say where the story starts. */
+/** Adding a book: upload the epub, then say where the story starts.
+ *
+ *  With a `work` given, the epub attaches to that existing work (its page's
+ *  "track on paper" path) and the title is not asked for; without one, the
+ *  upload creates the work, title and all, which is the shelf's path. */
 
-function AddBook({ onAdded }) {
+export function AddPaperBook({ work, onAdded, onDone }) {
   const [file, setFile] = useState(null);
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(work ?? "");
   const [added, setAdded] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -349,8 +252,9 @@ function AddBook({ onAdded }) {
     setMsg(null);
     try {
       const bytes = await file.arrayBuffer();
+      const name = (work ?? title).trim();
       const r = await fetch(
-        `/api/books/upload?title=${encodeURIComponent(title.trim())}`,
+        `/api/books/upload?title=${encodeURIComponent(name)}`,
         { method: "POST", body: bytes },
       );
       if (!r.ok) throw new Error(await r.text());
@@ -388,7 +292,8 @@ function AddBook({ onAdded }) {
       setAdded(null);
       setFile(null);
       setTitle("");
-      onAdded();
+      onAdded?.();
+      onDone?.();
     } catch (err) {
       setMsg({ ok: false, text: err.message });
     } finally {
@@ -397,9 +302,8 @@ function AddBook({ onAdded }) {
   }
 
   return html`
-    <div class="card">
-      <details class="log" open=${added !== null}>
-        <summary>Add a book</summary>
+    <details class="log" open=${added !== null}>
+      <summary>Add a book</summary>
         ${
           added === null
             ? html`
@@ -418,18 +322,21 @@ function AddBook({ onAdded }) {
                       }}
                     />
                   </div>
-                  <div class="log-wide">
-                    <label
-                      >title * — exactly how it should be named
-                      everywhere</label
-                    >
-                    <input
-                      type="text"
-                      required
-                      value=${title}
-                      onInput=${(e) => setTitle(e.currentTarget.value)}
-                    />
-                  </div>
+                  ${
+                    !work &&
+                    html`<div class="log-wide">
+                      <label
+                        >title * — exactly how it should be named
+                        everywhere</label
+                      >
+                      <input
+                        type="text"
+                        required
+                        value=${title}
+                        onInput=${(e) => setTitle(e.currentTarget.value)}
+                      />
+                    </div>`
+                  }
                   <div class="actions">
                     <button type="submit" disabled=${busy || !file}>
                       ${busy ? "reading…" : "upload"}
@@ -471,7 +378,6 @@ function AddBook({ onAdded }) {
             ${msg.text}
           </p>`
         }
-      </details>
-    </div>
+    </details>
   `;
 }

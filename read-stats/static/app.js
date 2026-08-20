@@ -25,7 +25,6 @@ import { TokenizeView } from "./panels/tokenize.js";
 import { CurrentReading } from "./panels/current-reading.js";
 import { DayCard } from "./panels/day.js";
 import { LibraryView } from "./panels/library.js";
-import { BooksView } from "./panels/books.js";
 import { SettingsView } from "./panels/settings.js";
 import { KanjiView } from "./panels/kanji.js";
 import { VocabView } from "./panels/vocab.js";
@@ -40,7 +39,6 @@ const TABS = [
   { id: "today", label: "Today" },
   { id: "trends", label: "Trends" },
   { id: "library", label: "Library" },
-  { id: "books", label: "Books" },
   { id: "kanji", label: "Kanji" },
   { id: "vocab", label: "Vocab" },
 ];
@@ -122,11 +120,16 @@ function App({ view, sub }) {
     }
   }
 
-  // Reached from ⚙, not from a tab, but rendered in the shell like any panel.
+  // The tabs choose what renders, never what is fetched. `#books` was
+  // absorbed into `#library` — a saved link must not land on Today.
   const isSettings = view === "settings";
   const isTokenize = view === "tokenize";
   const offTab = isSettings || isTokenize;
-  const tab = TABS.some((t) => t.id === view) ? view : "today";
+  const tab = TABS.some((t) => t.id === view)
+    ? view
+    : view === "books"
+      ? "library"
+      : "today";
 
   // The periodic sweep's trigger is "after a day of reading", which is a thing
   // you notice here and not on the vocab tab. One line, only when there is a
@@ -220,10 +223,8 @@ function App({ view, sub }) {
                     settings=${settings}
                     onJudged=${load}
                   />`
-                : tab === "books"
-                  ? html`<${BooksView} onSaved=${load} />`
-                  : tab === "library"
-                    ? html`<${LibraryView}
+                : tab === "library"
+                  ? html`<${LibraryView}
                         works=${works}
                         settings=${settings}
                         anki=${anki}

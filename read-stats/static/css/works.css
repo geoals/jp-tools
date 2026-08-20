@@ -75,6 +75,17 @@ button.ghost:hover {
   padding-top: 18px;
   flex-wrap: wrap;
 }
+/* The add chooser: two ghost buttons under a hint. */
+.add-chooser {
+  margin-bottom: 16px;
+}
+.add-chooser .meta-hint {
+  margin-bottom: 8px;
+}
+.add-chooser-buttons {
+  display: flex;
+  gap: 8px;
+}
 /* The shelf: one card per work being read. Auto-fill rather than a fixed
    column count, so the same markup is a single column on a phone beside the
    VN and a row of four on the desktop. */
