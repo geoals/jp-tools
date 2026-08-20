@@ -285,6 +285,20 @@ that has already been made, delete it.
 All prose here — comments, doc comments, README, this file — is plain simple
 English, as short as it can be. One pass to say the thing, then stop.
 
+## Answering me
+
+**This project is vibecoded.** I do not read the code, so do not explain it. No
+walkthrough of what a function now does, no restating the diff in prose, no
+justifying an approach unless I asked or a decision is actually mine to make.
+
+**Keep the answer short enough to read without scrolling back.** Status, what
+changed in one line, what to do next. Cut the preamble, the recap and the
+closing summary. A long table — a wordlist, a set of measurements — is fine when
+that is what I asked for; the prose around it still is not.
+
+Write more only when I explicitly ask for detail, or when something is broken
+and the cause is the point.
+
 ## Tone and language
 
 - **Write plain, direct English.** Clear, high-signal, actionable phrasing over

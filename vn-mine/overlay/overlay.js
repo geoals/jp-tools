@@ -405,7 +405,10 @@ function apply() {
 
 lineEl.addEventListener("pointerdown", (e) => {
   if (e.button !== 0 || e.target.closest(".w")) return;
-  drag = { id: e.pointerId, x: e.clientX - offset.x, y: e.clientY - offset.y, moved: false };
+  // Grab from wherever the box currently sits, which aligned to the game is
+  // the fraction scaled up — not the free-floating offset, which is then zero.
+  const at = offsetPx();
+  drag = { id: e.pointerId, x: e.clientX - at.x, y: e.clientY - at.y, moved: false };
   lineEl.setPointerCapture(e.pointerId);
 });
 
