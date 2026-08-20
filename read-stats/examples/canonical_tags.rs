@@ -21,6 +21,10 @@
 //! re-tagged cards parse and are skipped on the next run — so a run stopped by a
 //! usage limit is picked up simply by running it again.
 //!
+//! `--retag-all` is the exception: a re-judged card parses, so nothing tells the
+//! next run it is done. The pass walks the collection in note-id order and
+//! `--skip N` resumes it — after `--limit 550`, continue with `--skip 550`.
+//!
 //! Kept in the tree because a prompt change can reintroduce the class, and the
 //! report is how you find out.
 
@@ -65,6 +69,14 @@ async fn main() {
         .nth(1)
         .and_then(|n| n.parse::<usize>().ok())
         .unwrap_or(usize::MAX);
+    // --retag-all re-judges cards that already parse, so nothing marks them
+    // done: --skip N is the resume point, and the pass is note-id ordered to
+    // make it mean the same thing on the next run.
+    let skip = std::env::args()
+        .skip_while(|a| a != "--skip")
+        .nth(1)
+        .and_then(|n| n.parse::<usize>().ok())
+        .unwrap_or(0);
     // How many cards share one CLI call. The system prompt is ~1,300 tokens and
     // is resent per call, so a batch of 20 pays it once for 20 cards.
     let batch_size = std::env::args()
@@ -83,14 +95,19 @@ async fn main() {
 
     let ids = call(&http, "findNotes", json!({ "query": "CompactDef:_*" })).await;
     let notes = call(&http, "notesInfo", json!({ "notes": ids })).await;
-    let notes = notes.as_array().expect("notesInfo returned no array");
+    let mut notes = notes
+        .as_array()
+        .expect("notesInfo returned no array")
+        .clone();
+    notes.sort_by_key(|n| n["noteId"].as_i64().unwrap_or_default());
 
     let (mut ok, mut repaired, mut rejected, mut failed) = (0, 0, 0, 0);
     // (note_id, vocab, target, sentence) for every card to be re-judged. Built
     // in full first so the expensive half is one predictable pass with a known
     // total, instead of an LLM call interleaved with the walk.
     let mut todo: Vec<(i64, String, String, String)> = Vec::new();
-    for note in notes {
+    let mut candidates = 0usize;
+    for note in &notes {
         let field = |name: &str| note["fields"][name]["value"].as_str().unwrap_or_default();
         let note_id = note["noteId"].as_i64().expect("note without an id");
         let vocab = anki::clean_field(field("VocabKanji"));
@@ -137,6 +154,10 @@ async fn main() {
         rejected += 1;
         println!("REJECT {vocab} — {why}: {tags}");
         if !retag || todo.len() >= limit {
+            continue;
+        }
+        candidates += 1;
+        if candidates <= skip {
             continue;
         }
 

@@ -5,11 +5,11 @@ what the pipeline does wrong, not by the word that found it** — a word is a
 sighting, and a sighting is only worth keeping because a fix is judged against
 it.
 
-**Five mechanisms open**, all checked against the live pipeline on 2026-08-16
-and ordered by what a fix is worth. Three further questions are about the
-vocabulary denominator rather than the parse and are kept apart from them; a
-fourth — whether the reader's lookup surface should be the ledger's key at all —
-has its own section. What has been fixed is one line each at the bottom.
+**Six mechanisms open**, five checked against the live pipeline on 2026-08-16
+and the sixth on 2026-08-19, ordered by what a fix is worth. Three further
+questions are about the vocabulary denominator rather than the parse and are
+kept apart from them; a fourth — whether the reader's lookup surface should be
+the ledger's key at all — has its own section. What has been fixed is one line each at the bottom.
 
 **The standard this list is worked to: as many whole lines as possible where
 every token is the right headword — and where the pipeline is unsure, no match
@@ -120,7 +120,7 @@ the last two and are **right**: 「じゃないか」 is the negative question a
 「言わないでください」 the negative te-form, which is what those entries are. Do
 not re-measure them.
 
-The five open groups are already in value order, so *Open* is the queue. What is
+The open groups are already in value order, so *Open* is the queue. What is
 worth saying here is what separates them:
 
 1. **Group 1 is the whole game** — ~1,400 encounters against ~370 for the other
@@ -538,6 +538,40 @@ and nothing weighs them. Kept here because they look like the swap and are not:
 行う, and いい on 言う where it meant 良い — 9 of the corpus's 19 いい→言う tokens,
 the rest being といいます and 言いがたい, which are right.
 
+## 6. The word with no popup: what the non-word gate refuses
+
+**23 terms, 45 encounters, over the whole read corpus.** A token nothing lists
+gets no span, so the reader cannot tap it and the popup never opens — the one
+defect class that is visible while reading rather than only in the ledger. A
+sweep of all 41,408 undiscarded lines found 601 such terms; 93 contain kanji,
+and these are the ones that are real words arriving at the gate in a form no
+dictionary carries. The rest are transparent compounds (33), the work's own
+coinages (11) and hook garbage (9), all of which are correctly refused.
+
+Four causes, and they are the causes already named above, seen from the gate's
+side rather than the ledger's:
+
+- **A compound split, and the fragment is not a word** (5): 虫眼 + 鏡越し for
+  虫眼鏡越し, 独我 for 独我論, 已然 for 已然形, 輸管 for 精輸管, 送音 for the
+  script's own 挿送音. Group 5's mechanism; the fragment costs a lookup on a word
+  the popup would otherwise define.
+- **Causative -す taken as the lemma** (5): 書かす, 読ます, 開かす, 張らす,
+  手伝わす. The surfaces are 書かさ, 読まさ, 開かさ, 張らし, 手伝わさ — ordinary
+  causatives of 書く, 読む, 開く, 張る, 手伝う, keyed on a 五段 lemma the master
+  does not hold. One rule reaches all five.
+- **Potential and bare stems left as the headword** (8): やり直せる, 使いこなせる;
+  探し, 正し, 撫で, 悼み, 振り返り, 起き上がり. The word is right and the form is
+  not, so the ledger keys a row nobody would look up.
+- **Orthography the master spells otherwise** (4): 隣り町 for 隣町, ウワサ話 for
+  噂話, 毒付く for 毒突く, 貶する for 貶す. Group 1's mechanism, reaching the gate
+  instead of the count.
+
+**The 17 dictionary gaps found in the same sweep are not parse defects.** 殺し合い
+(13), 居た堪れる (8), 先走り (5), 羽ばたき (5), 吐精, 心置き, 投げ矢, 滅び, 自罰,
+血しぶき, 車通り, すり替え, 尿量, 幾筋, 祝い金, 赤丸, 遼々 — 51 encounters where
+the parse is right and no loaded dictionary holds the term. Nothing in the
+pipeline can fix those; a dictionary can.
+
 ---
 
 # Not a parse defect — one surface for looking up, another for counting
@@ -597,6 +631,23 @@ reading unambiguously, not on the spelling.
 What was measured, when, and what it said — kept because a later change is
 judged against these numbers. **They are not open items**: where a record names
 a defect, its current state is in the two lists above.
+
+## Every word the reader cannot open — 2026-08-19
+
+`jp_core::highlight::analyze` over all 41,408 undiscarded lines, counting tokens
+excluded as `non-word` — the same call the feed and `#tokenize` make, so this is
+what the reader actually sees.
+
+844 lines (2.0%) carry at least one unopenable word; 1,191 of 627,012 tokens
+(0.2%), 601 distinct terms, no blacklisted term anywhere. 93 of the 601 contain
+kanji and were read one by one against the line they appeared in: 23 parse
+defects (group 6), 17 dictionary gaps, 33 transparent compounds — mostly the
+suffixes …側, …内, …越し, …まみれ, …状, …刻み — 11 coinages, and 9 that are not
+text. Seven of those nine (呻呻, 慄慄, 戦々, 掻掻, 攣攣, 痒痒, 痙痙) come from a
+single hook-garbled line where every character is quadrupled.
+
+The 508 kana-only terms were not read individually: the noise gate already holds
+that population, and its head is mimetics and sex-scene sound effects.
 
 ## Boundaries that fall inside a word — 2026-08-16, and the class is small
 
@@ -1059,3 +1110,24 @@ One line each; the argument that settled it is in the code, next to the rule.
   now, behind the same fences as a 接尾辞: the combined reading names exactly
   one headword, and the answer keeps every kanji the text wrote — which is why
   最低減 still stays 最 + 低減 rather than becoming 最低限.
+- **蛙 read かわず** — Sudachi hands back カワズ, and the identity ladder takes
+  it at *Exact match*, since the master lists 蛙/かわず as a real entry. The one
+  rung that overrules Sudachi on a reading is the preference map, and it
+  declines: Jitendex scores かえる 200 and かわず 97, so the gap of 103 is under
+  `POPULARITY_TIER`'s 150 and かわず lands in `acceptable`. With every reading
+  acceptable the term never enters the map at all. The tier cannot simply be
+  lowered — 街/まち and 身体/からだ score the same 99 against a 200 and are
+  plainly the living readings. Frequency would settle it (BCCWJ 7,998 against
+  15,356, Jiten 16,777 against 99,390), but rank is only a tie-break *among*
+  acceptable readings and never shrinks the set.
+- **仁王立ち → 仁王 + 立ち** — SudachiDict tags 仁王 `固有名詞`, being the temple
+  guardians, and `join_run` refuses any run holding a proper noun before it
+  looks at the spelling. The parts spell 仁王立ち exactly and all four
+  dictionaries list it, so the strong signal was there and never asked.
+  `names_someone`'s escapes all miss: no cast list has it, `NOT_A_NAME` does
+  not, and `ordinary_headword` wants okurigana — 仁王 is bare kanji, structurally
+  the same as 橘 or 葵. `NOT_A_NAME` would take it, but the class is wider than
+  the term: 仁王 alone really is the statues, and what is wrong is only that a
+  name-tagged morpheme cannot sit inside a word. The rule to weigh is letting an
+  exact master-headword spelling overrule the name tag, which reaches the whole
+  corpus.
