@@ -1290,7 +1290,11 @@ fn a_prefix_compound_joins_when_its_reading_names_one_headword() {
     let (tk, _) = setup();
     for (line, want, want_identity) in [
         ("……大アリだ。", "大アリ", pair("大あり", "おおあり")),
-        ("犯人はご愁傷さま～♪", "ご愁傷さま", pair("御愁傷様", "ごしゅうしょうさま")),
+        (
+            "犯人はご愁傷さま～♪",
+            "ご愁傷さま",
+            pair("御愁傷様", "ごしゅうしょうさま"),
+        ),
         ("物足りない", "物足り", pair("物足りる", "ものたりる")),
     ] {
         let tokens = tokens_of(&tk, line);
@@ -1340,8 +1344,5 @@ fn a_sounded_join_may_not_respell_a_kanji_the_text_wrote() {
 
     let whole = tokens_of(&tk, "最低限");
     assert_eq!(whole.len(), 1, "{whole:?}");
-    assert_eq!(
-        identities(&whole),
-        [pair("最低限", "さいていげん")]
-    );
+    assert_eq!(identities(&whole), [pair("最低限", "さいていげん")]);
 }

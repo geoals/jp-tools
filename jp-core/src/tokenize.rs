@@ -1296,9 +1296,8 @@ impl SudachiTokenizer {
         }
         // A 接頭辞 may sit anywhere a 接尾辞 may, except the tail: a prefix
         // attaches to what follows, so a run ending on one ends inside a word.
-        let joinable = |t: &Token| {
-            is_content_word(&t.pos) || t.pos == "接頭辞" || t.pos == "接尾辞"
-        };
+        let joinable =
+            |t: &Token| is_content_word(&t.pos) || t.pos == "接頭辞" || t.pos == "接尾辞";
         run.iter().all(joinable)
             && run.last().is_some_and(|t| t.pos != "接頭辞")
             && head
