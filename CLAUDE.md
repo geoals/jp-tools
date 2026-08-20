@@ -291,9 +291,10 @@ English, as short as it can be. One pass to say the thing, then stop.
 walkthrough of what a function now does, no restating the diff in prose, no
 justifying an approach unless I asked or a decision is actually mine to make.
 
-**Keep the answer short enough to read without scrolling back.** Status, what
-changed in one line, what to do next. Cut the preamble, the recap and the
-closing summary. A long table — a wordlist, a set of measurements — is fine when
+**Keep the answer short enough to read without scrolling back.** Lead with the
+answer, then only what it needs to be correct and usable: status, what changed
+in one line, what to do next. Cut the preamble, the recap and the closing
+summary. A long table — a wordlist, a set of measurements — is fine when
 that is what I asked for; the prose around it still is not.
 
 Write more only when I explicitly ask for detail, or when something is broken
