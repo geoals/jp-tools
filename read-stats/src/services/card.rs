@@ -5,7 +5,7 @@
 //! [`crate::routes::reader::mine`]. It is the seam the enrichment hangs off, so
 //! a card is the same thing downstream whichever surface made it: the anchor
 //! timestamp, vn-capture's audio and picture, CompactDef, the deck mirror and
-//! the chime. Adding a third surface means calling this function, not routing
+//! the completion notification. Adding a third surface means calling this function, not routing
 //! an HTTP request through another handler.
 //!
 //! The request stays [`Bytes`] rather than a `Value` because the proxy forwards
@@ -155,8 +155,8 @@ async fn mirror_added_note(state: &AppState, note_id: i64, req: &Value) {
 /// two `updateNoteFields` stay strictly ordered — two concurrent writes to one
 /// note are untested and there is nothing to gain by starting.
 ///
-/// All of this happens behind a tab nobody is watching, so the chime at the end
-/// is the only report, and it plays only when nothing failed.
+/// All of this happens behind a tab nobody is watching, so the notification at the
+/// end is the only report, and it is sent only when nothing failed.
 async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_ts: f64) {
     // CompactDef: only when a target field and an API key are configured.
     let fields = req.pointer("/params/note/fields");
@@ -184,7 +184,7 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_t
     // Reports whether the media actually landed. `ok: false` is the script's
     // normal way of saying a capture was not possible (a stale ring, no speech
     // on the clip), which is a real outcome for the card even though it is not
-    // an error for us — so it counts as "did not fully succeed" for the chime.
+    // an error for us — so it counts as "did not fully succeed" for the report.
     let capture = async {
         if !state.auto_capture_on_add {
             return true;
@@ -231,7 +231,7 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_t
     // alone decides whether this card came out complete.
     let Some(api_key) = api_key else {
         if capture.await {
-            crate::services::chime::mine_complete();
+            crate::services::notify::mine_complete(&word);
         }
         return;
     };
@@ -274,9 +274,9 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_t
     };
 
     // The card is complete: media attached and the definition verified onto the
-    // note. Anything less stays silent, so the sound means one thing only.
+    // note. Anything less stays silent, so the notification means one thing only.
     if captured && defined {
-        crate::services::chime::mine_complete();
+        crate::services::notify::mine_complete(&word);
     }
 }
 

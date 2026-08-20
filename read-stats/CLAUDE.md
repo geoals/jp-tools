@@ -514,9 +514,10 @@ Mining:
   logged. The CompactDef path uses `anki::update_note_field_verified`, which
   reads the field back. It does not retry — don't open a freshly mined card for
   a few seconds.
-- **The chime is the only report a mine gets.** `services::chime::mine_complete`
-  plays only when the capture reported `ok` _and_ the CompactDef write verified.
-  Keep it that strict: silence is the signal to check the log.
+- **The notification is the only report a mine gets.**
+  `services::notify::mine_complete` fires only when the capture reported `ok`
+  _and_ the CompactDef write verified. Keep it that strict: silence is the
+  signal to check the log.
 - **The audio window's next-line bound is a hard cut, and that is a known
   defect.** When the next line is unvoiced the previous voice legitimately
   plays past its timestamp and the clip is truncated. It shipped that way

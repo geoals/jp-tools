@@ -4,7 +4,7 @@
 //! [`crate::services::card::add_note`], which every card path calls — Yomitan's
 //! own add arrives there too, through the proxy. That is deliberate and
 //! load-bearing: note-id extraction, the CompactDef enrichment, vn-capture's
-//! screenshot and voiceline, the deck mirror and the chime all hang off that
+//! screenshot and voiceline, the deck mirror and the notification all hang off that
 //! one function, so an overlay card and a Yomitan card are the same thing
 //! downstream rather than a second implementation kept in step by hand.
 //!

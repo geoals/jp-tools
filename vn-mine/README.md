@@ -114,7 +114,8 @@ Three actions on a word, and only one of them opens the popup:
 Opening the popup *is* the lookup, so it is the only thing that counts as one.
 Reaching a button through the popup meant judging a word already understood
 recorded a lookup that never happened, which is why the side buttons carry those
-two. Judging repaints the word; mining reports with the chime and nothing else.
+two. Judging repaints the word; mining reports with a desktop notification and
+nothing else.
 
 The popup head carries the same three actions as small ✓ / ✗ / ＋ buttons, sized
 and bordered like the frequency pills beside them — not every way of reading

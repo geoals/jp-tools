@@ -8,7 +8,7 @@
 //!
 //! What is *not* here is how a card reaches Anki. read-stats routes every add
 //! through its own `services::card::add_note`, which fires vn-capture and the
-//! chime; yt-mine attaches a screenshot and an audio clip cut from the video.
+//! completion notification; yt-mine attaches a screenshot and an audio clip cut from the video.
 //! Those are two different pipelines and stay that way.
 
 use jp_core::dictionary::html::html_escape;

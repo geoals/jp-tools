@@ -91,14 +91,14 @@ what its CSS descends through — and `jp_mine_core::compactdef` writes the glos
 One note type, one implementation of its markup. read-stats therefore depends on
 jp-mine-core, and the line it must not cross is `jp_mine_core::export`: an
 overlay card that went out that way would lose vn-capture, the deck mirror and
-the chime.
+the completion notification.
 
 The fullscreen overlay is the third case and does **not** break the rule.
 Yomitan cannot reach a layer surface — no browser can be one, and QtWebEngine
 loads no extensions — so `routes/reader/mine.rs` builds the card itself. It
 then hands it to `services::card::add_note`, which is also where Yomitan's own
 add arrives after the proxy has counted it, so note-id extraction, the deck
-mirror, CompactDef, vn-capture and the chime stay one implementation. **Every
+mirror, CompactDef, vn-capture and the notification stay one implementation. **Every
 card path calls `card::add_note`.** The proxy is not that seam and never was —
 it exists to observe Yomitan's popup opening (`LOOKUP_ACTIONS`), which is a
 browser-only concern the overlay answers for itself in `reader/define`.

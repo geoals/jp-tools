@@ -11,7 +11,7 @@
 //! | [`anki`] | AnkiConnect, read-only — snapshots the mined deck |
 //! | [`card`] | AnkiConnect — adds a card, then enriches it; every card path's seam |
 //! | [`capture`] | vn-mine's `vn-capture.sh`, and `xdotool` for window titles |
-//! | [`chime`] | `paplay` — the one sound a finished mine makes |
+//! | [`notify`] | `notify-send` — the one report a finished mine makes |
 //! | [`llm`] | the Anthropic API |
 //! | [`compactdef`] | — (builds the prompt [`llm`] sends, then the field value) |
 //! | [`tags`] | — (the two-axis tag rubric both prompts share) |
@@ -21,7 +21,7 @@
 pub mod anki;
 pub mod capture;
 pub mod card;
-pub mod chime;
 pub mod covers;
 pub mod llm;
+pub mod notify;
 pub mod vndb;
