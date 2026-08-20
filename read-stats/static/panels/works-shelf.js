@@ -22,6 +22,7 @@ import { workSpeedPerHour } from "../lib/pace.js";
 import { SegmentedControl } from "../components/controls.js";
 import { WorkMetaForm } from "../panels/work-form.js";
 import { AddPaperBook } from "../panels/paper.js";
+import { Modal } from "../components/modal.js";
 
 const ARTICLES = "Articles";
 
@@ -40,8 +41,8 @@ function statusOf(w) {
 
 export function WorksShelf({ works, settings, onSaved, onOpen }) {
   const [adding, setAdding] = useState(false);
-  // null = the chooser; a picked kind expands straight into its form, with
-  // no second disclosure to open.
+  // null = the chooser; a picked kind replaces it with that form inside the
+  // same dialog, so adding is never more than two clicks deep.
   const [addKind, setAddKind] = useState(null);
   const [kind, setKind] = useState("all");
 
@@ -87,39 +88,46 @@ export function WorksShelf({ works, settings, onSaved, onOpen }) {
           <button
             class="ghost add-toggle"
             title="Add a visual novel or a paper book"
-            onClick=${() => (adding ? close() : setAdding(true))}
+            onClick=${() => setAdding(true)}
           >
-            ${adding ? "×" : "+"}
+            +
           </button>
         </div>
       </div>
       ${
         adding &&
-        (addKind === null
-          ? html`<div class="add-chooser">
-              <button class="ghost" onClick=${() => setAddKind("work")}>
-                add visual novel
-              </button>
-              <button class="ghost" onClick=${() => setAddKind("paper")}>
-                add paper book
-              </button>
-            </div>`
-          : addKind === "work"
-            ? html`<${WorkMetaForm}
-                work=${null}
-                onSaved=${() => {
-                  close();
-                  onSaved();
-                }}
-                onCancel=${() => setAddKind(null)}
-              />`
-            : html`<${AddPaperBook}
-                onAdded=${onSaved}
-                onDone=${() => {
-                  close();
-                  onSaved();
-                }}
-              />`)
+        html`<${Modal}
+          title=${addKind === "paper" ? "Add a paper book" : "Add a work"}
+          onClose=${close}
+        >
+          ${
+            addKind === null
+              ? html`<div class="add-chooser">
+                  <button class="ghost" onClick=${() => setAddKind("work")}>
+                    add visual novel
+                  </button>
+                  <button class="ghost" onClick=${() => setAddKind("paper")}>
+                    add paper book
+                  </button>
+                </div>`
+              : addKind === "work"
+                ? html`<${WorkMetaForm}
+                    work=${null}
+                    onSaved=${() => {
+                      close();
+                      onSaved();
+                    }}
+                    onCancel=${() => setAddKind(null)}
+                  />`
+                : html`<${AddPaperBook}
+                    onAdded=${onSaved}
+                    onDone=${() => {
+                      close();
+                      onSaved();
+                    }}
+                  />`
+          }
+        <//>`
       }
       ${
         works.length === 0
