@@ -11,6 +11,7 @@
 //! | [`timeline`] | `/api/day/timeline` — one day's intra-day curve |
 //! | [`sessions`] | `/api/sessions` — derived sittings + manual entries |
 //! | [`works`] | `/api/works` — per-VN totals and metadata |
+//! | [`books`] | `/api/books/*` — a paper book logged against its epub |
 //! | [`lookups`] | `/api/lookups/summary` — the mining funnel |
 //! | [`kanji`] | `/api/kanji` — every kanji read, and how well each is known |
 //! | [`anki`] | `/api/anki/*` — deck snapshot, re-encounter stats, the card report |
@@ -21,6 +22,7 @@
 
 pub mod anki;
 pub mod ankiproxy;
+pub mod books;
 pub mod days;
 pub mod json;
 pub mod kanji;

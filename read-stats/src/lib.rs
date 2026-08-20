@@ -24,6 +24,7 @@
 //! to be the same character everywhere else.
 
 pub mod app;
+pub mod books;
 pub mod clock;
 pub mod config;
 pub mod db;

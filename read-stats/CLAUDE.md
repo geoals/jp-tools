@@ -60,6 +60,22 @@ Measurement:
 - **Exposure counts take all text; cost counts take only hooked text.** Pasted
   session `content` feeds `word_days`, the kanji grid and every coverage figure,
   but stays out of every rate — `lookups_per_1k` divides by hooked characters.
+- **A book read on paper is logged against its epub, and the epub is the
+  count.** `books` holds one flattening of the file and every position is a byte
+  offset into it, so the text is stored rather than the path — a re-parse under
+  a changed stripper would move every offset already recorded. A sitting is
+  named by where it *ended*: an anchor typed off the page, searched **forward
+  only** from the last position, which is what makes ten characters safe when
+  the same ten occur earlier in the book. What lands in `manual_sessions` is an
+  ordinary row carrying the span between the two positions, so nothing
+  downstream knows it came from paper.
+- **Catching up a part-read book moves the position without writing a
+  session** (`/api/books/skip`). Those pages were read before there was
+  anything to record them with; logging them would credit a day that never
+  happened and push the whole span through the ledger as freshly met.
+- **Chars per page comes from the pages the body runs between**, not from the
+  book's total page count — a total counts the blanks, the TOC and the
+  afterword, so every page estimate would read high.
 - **`chars` excludes punctuation** (`jp_core::text::chars`), matched to
   texthooker-ui so speeds are comparable with other people's. Startup recounts
   the column.

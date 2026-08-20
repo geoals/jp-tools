@@ -115,6 +115,30 @@ impl TestApp {
         (status, value)
     }
 
+    /// POST a raw body — the epub upload is the file itself, not a form.
+    pub async fn send_bytes(&self, uri: &str, body: Vec<u8>) -> (u16, Value) {
+        let res = self
+            .router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(uri)
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = res.status().as_u16();
+        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
+    }
+
     /// Append a hooked line the way vn-ws-logger.py does. `chars` is left to
     /// the startup recount in the real pipeline, so it is computed here too.
     pub async fn add_line(&self, ts: f64, text: &str, work: Option<&str>) {

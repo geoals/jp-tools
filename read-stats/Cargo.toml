@@ -28,3 +28,5 @@ jp-mine-core = { path = "../jp-mine-core" }
 # Drives the router directly in tests (`oneshot`), so an endpoint can be
 # exercised end to end without binding a port.
 tower = { version = "0.5", features = ["util"] }
+# Builds a two-page epub in memory for the book-logging test.
+zip = "2"

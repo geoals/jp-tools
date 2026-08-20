@@ -1348,3 +1348,221 @@ async fn a_deduped_lookup_names_the_row_it_folded_into() {
         1
     );
 }
+
+// ── Books on paper ────────────────────────────────────────────────────────
+//
+// The seam worth pinning is the whole round trip: an epub goes in, an anchor
+// typed off the page comes back as an offset, and what is logged is an
+// ordinary manual session carrying the text between two positions.
+
+/// A two-document epub whose body starts after a page of front matter.
+fn tiny_epub() -> Vec<u8> {
+    use std::io::Write;
+    let files = [
+        (
+            "META-INF/container.xml",
+            r#"<container><rootfiles><rootfile full-path="OEBPS/book.opf"/></rootfiles></container>"#
+                .to_string(),
+        ),
+        (
+            "OEBPS/book.opf",
+            r#"<package><manifest>
+                 <item id="front" href="front.xhtml"/>
+                 <item id="one" href="one.xhtml"/>
+               </manifest><spine>
+                 <itemref idref="front"/><itemref idref="one"/>
+               </spine></package>"#
+                .to_string(),
+        ),
+        (
+            "OEBPS/front.xhtml",
+            "<html><body><p>この本は縦書きです。</p></body></html>".to_string(),
+        ),
+        (
+            "OEBPS/one.xhtml",
+            "<html><body><p>少女は<ruby>言<rt>い</rt></ruby>った。</p>\
+             <p>それきり黙った。</p><p>雨が降っていた。</p></body></html>"
+                .to_string(),
+        ),
+    ];
+    let mut buf = Vec::new();
+    {
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+        for (name, body) in files {
+            zip.start_file::<_, ()>(name, Default::default()).unwrap();
+            zip.write_all(body.as_bytes()).unwrap();
+        }
+        zip.finish().unwrap();
+    }
+    buf
+}
+
+#[tokio::test]
+async fn a_book_is_logged_from_the_line_it_was_left_on() {
+    let app = TestApp::new().await;
+    let (status, up) = app
+        .send_bytes(
+            "/api/books/upload?title=%E3%83%86%E3%82%B9%E3%83%88",
+            tiny_epub(),
+        )
+        .await;
+    assert_eq!(status, 200, "{up}");
+    // The ruby reading is not text: 言った, never 言いった.
+    assert!(up["head"].as_str().unwrap().contains("少女は言った。"));
+
+    let (status, setup) = app
+        .send(
+            "POST",
+            "/api/books/setup",
+            json!({ "work": "テスト", "anchor": "少女は言った", "first_page": 1, "last_page": 2 }),
+        )
+        .await;
+    assert_eq!(status, 200, "{setup}");
+    // The front matter is before the anchor and is not part of the book.
+    assert_eq!(
+        setup["body_chars"], 20,
+        "少女は言った それきり黙った 雨が降っていた"
+    );
+
+    let (status, preview) = app
+        .send(
+            "POST",
+            "/api/books/preview",
+            json!({ "work": "テスト", "anchor": "それきり黙った", "minutes": 6 }),
+        )
+        .await;
+    assert_eq!(status, 200, "{preview}");
+    assert_eq!(preview["chars"], 13, "both sentences, punctuation excluded");
+    assert_eq!(preview["speed"], 130.0, "13 chars in 6 minutes");
+    // The 。 was not typed, so it is not part of the match — and does not count.
+    assert_eq!(preview["found"]["after"], "。\n雨が降っていた。");
+
+    let end = preview["found"]["end"].clone();
+    let (status, logged) = app
+        .send(
+            "POST",
+            "/api/books/log",
+            json!({ "work": "テスト", "end": end, "minutes": 6 }),
+        )
+        .await;
+    assert_eq!(status, 200, "{logged}");
+    assert_eq!(logged["session"]["chars"], 13);
+    assert_eq!(logged["session"]["source"], "book");
+    assert_eq!(logged["session"]["work"], "テスト");
+    // 20 characters over two printed pages, so 13 of them is 1.3 pages.
+    assert!((logged["session"]["pages"].as_f64().unwrap() - 1.3).abs() < 1e-9);
+
+    // The position moved, and the same anchor cannot be logged twice.
+    let books = app.get("/api/books").await;
+    assert_eq!(books["books"][0]["position"], end);
+    let (status, err) = app
+        .send(
+            "POST",
+            "/api/books/log",
+            json!({ "work": "テスト", "end": end }),
+        )
+        .await;
+    assert_eq!(status, 400, "{err}");
+}
+
+#[tokio::test]
+async fn the_anchor_search_only_ever_looks_forward() {
+    let app = TestApp::new().await;
+    app.send_bytes(
+        "/api/books/upload?title=%E3%83%86%E3%82%B9%E3%83%88",
+        tiny_epub(),
+    )
+    .await;
+    app.send(
+        "POST",
+        "/api/books/setup",
+        json!({ "work": "テスト", "anchor": "少女は言った" }),
+    )
+    .await;
+    let (_, preview) = app
+        .send(
+            "POST",
+            "/api/books/preview",
+            json!({ "work": "テスト", "anchor": "それきり黙った" }),
+        )
+        .await;
+    let end = preview["found"]["end"].clone();
+    app.send(
+        "POST",
+        "/api/books/log",
+        json!({ "work": "テスト", "end": end }),
+    )
+    .await;
+
+    // Already read, so it is behind the position and no longer findable.
+    let (status, err) = app
+        .send(
+            "POST",
+            "/api/books/preview",
+            json!({ "work": "テスト", "anchor": "少女は言った" }),
+        )
+        .await;
+    assert_eq!(status, 400, "{err}");
+}
+
+#[tokio::test]
+async fn a_book_already_part_read_is_caught_up_without_logging_it() {
+    let app = TestApp::new().await;
+    app.send_bytes(
+        "/api/books/upload?title=%E3%83%86%E3%82%B9%E3%83%88",
+        tiny_epub(),
+    )
+    .await;
+    app.send(
+        "POST",
+        "/api/books/setup",
+        json!({ "work": "テスト", "anchor": "少女は言った" }),
+    )
+    .await;
+
+    let (_, preview) = app
+        .send(
+            "POST",
+            "/api/books/preview",
+            json!({ "work": "テスト", "anchor": "それきり黙った" }),
+        )
+        .await;
+    let (status, skipped) = app
+        .send(
+            "POST",
+            "/api/books/skip",
+            json!({ "work": "テスト", "end": preview["found"]["end"] }),
+        )
+        .await;
+    assert_eq!(status, 200, "{skipped}");
+
+    // The bookmark moved and no day was credited for pages read before this
+    // existed — the whole reason skip is not a session with zero minutes.
+    assert_eq!(
+        app.get("/api/books").await["books"][0]["position"],
+        skipped["position"]
+    );
+    let sessions = app.get("/api/sessions").await;
+    assert!(
+        sessions["manual"].as_array().unwrap().is_empty(),
+        "{sessions}"
+    );
+
+    // Reading on from there logs only what is left.
+    let (_, preview) = app
+        .send(
+            "POST",
+            "/api/books/preview",
+            json!({ "work": "テスト", "anchor": "雨が降っていた" }),
+        )
+        .await;
+    let (status, logged) = app
+        .send(
+            "POST",
+            "/api/books/log",
+            json!({ "work": "テスト", "end": preview["found"]["end"] }),
+        )
+        .await;
+    assert_eq!(status, 200, "{logged}");
+    assert_eq!(logged["session"]["chars"], 7, "雨が降っていた alone");
+}

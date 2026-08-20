@@ -10,8 +10,8 @@ use tower_http::set_header::SetResponseHeaderLayer;
 
 use crate::routes::ankiproxy;
 use crate::routes::{
-    anki, days, kanji, lookups, reader, sessions, settings, summary, timeline, tokenize, vocab,
-    works,
+    anki, books, days, kanji, lookups, reader, sessions, settings, summary, timeline, tokenize,
+    vocab, works,
 };
 
 const SPA_HTML: &str = include_str!("../templates/spa.html");
@@ -77,6 +77,16 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/text/count", post(sessions::count_text))
         .route("/api/tokenize", post(tokenize::tokenize_text))
         .route("/api/day/timeline", get(timeline::day_timeline))
+        .route("/api/books", get(books::list_books))
+        // An epub is megabytes, past axum's 2 MB default.
+        .route(
+            "/api/books/upload",
+            post(books::upload_book).layer(axum::extract::DefaultBodyLimit::max(64 * 1024 * 1024)),
+        )
+        .route("/api/books/setup", post(books::setup_book))
+        .route("/api/books/preview", post(books::preview_book))
+        .route("/api/books/log", post(books::log_book))
+        .route("/api/books/skip", post(books::skip_book))
         .route("/api/works", get(works::works).post(works::upsert_work))
         .route("/api/works/detail", get(works::work_detail))
         .route("/api/works/triage", get(works::work_triage))

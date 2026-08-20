@@ -20,6 +20,7 @@
 //! | [`covers`] | `work_covers` | read-stats.db |
 //! | [`lines`] | `lines` | knowledge.db |
 //! | [`works`] | `works` | knowledge.db |
+//! | [`books`] | `books` | knowledge.db |
 //! | [`sessions`] | `manual_sessions` | knowledge.db |
 //! | [`anki_notes`] | `anki_notes` | knowledge.db |
 //! | [`word_days`] | `word_days` | knowledge.db |
@@ -36,6 +37,7 @@
 //! both do the join in memory rather than attaching one database to the other.
 
 pub mod anki_notes;
+pub mod books;
 pub mod covers;
 pub mod lines;
 pub mod lookups;
@@ -50,6 +52,7 @@ pub mod works;
 pub use anki_notes::{
     AnkiNote, fetch_anki_note_ids, fetch_anki_notes, insert_anki_note, replace_anki_notes,
 };
+pub use books::{Book, fetch_book, fetch_books, fetch_text as fetch_book_text, insert_book};
 pub use covers::{clear_work_cover_vndb, fetch_work_covers, set_work_cover_vndb};
 pub use lines::{
     IngestLine, ReaderLine, WorkedLine, fetch_current_session_lines, fetch_kanji_lines,

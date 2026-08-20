@@ -106,36 +106,23 @@ pub struct CreateSession {
     pub content: Option<String>,
 }
 
-pub async fn create_session(
-    State(state): State<AppState>,
-    Json(req): Json<CreateSession>,
-) -> Result<Json<db::ManualSession>, AppError> {
-    // Negated, not `m <= 0.0`: every NaN comparison is false, so the flipped
-    // form would let a NaN through as a valid duration.
-    #[allow(clippy::neg_cmp_op_on_partial_ord)]
-    if req.minutes.is_some_and(|m| !(m > 0.0)) {
-        return Err(AppError::BadRequest("minutes must be > 0".into()));
-    }
-    let settings = db::load_settings(&state.local).await?;
-    let tz = crate::clock::tz_offset_secs();
-
-    // Content wins: when the text is here the count is exact, and it is
-    // counted by the same rule as a hooked line so the speeds compare.
-    // Then an explicitly given count, then pages × the estimate.
-    let content = req.content.as_deref().filter(|c| !c.trim().is_empty());
-    let chars = match (content, req.chars, req.pages) {
-        (Some(text), _, _) => jp_core::text::chars::count_chars(text),
-        (None, Some(c), _) if c >= 0 => c,
-        (None, None, Some(p)) if p > 0.0 => (p * settings.chars_per_page).round() as i64,
-        _ => return Err(AppError::BadRequest("need content, chars or pages".into())),
-    };
-
+/// When a hand-entered session started.
+///
+/// Shared with the book log, which resolves the same three ways: an explicit
+/// timestamp, a date being back-filled, or nothing at all.
+pub fn resolve_start_ts(
+    start_ts: Option<f64>,
+    date: Option<&str>,
+    minutes: Option<f64>,
+    settings: &db::Settings,
+) -> Result<f64, AppError> {
     // An untimed session has no span to walk back over, so it anchors at the
     // moment it was logged.
-    let ends_now = now_ts() - req.minutes.unwrap_or(0.0) * 60.0;
+    let ends_now = now_ts() - minutes.unwrap_or(0.0) * 60.0;
+    let tz = crate::clock::tz_offset_secs();
     let today = stats::date_key(now_ts(), settings.day_rollover_hour, tz);
 
-    let start_ts = match (req.start_ts, &req.date) {
+    Ok(match (start_ts, date) {
         (Some(ts), _) => ts,
         (None, Some(d)) => {
             let date = d
@@ -159,7 +146,33 @@ pub async fn create_session(
             }
         }
         (None, None) => ends_now,
+    })
+}
+
+pub async fn create_session(
+    State(state): State<AppState>,
+    Json(req): Json<CreateSession>,
+) -> Result<Json<db::ManualSession>, AppError> {
+    // Negated, not `m <= 0.0`: every NaN comparison is false, so the flipped
+    // form would let a NaN through as a valid duration.
+    #[allow(clippy::neg_cmp_op_on_partial_ord)]
+    if req.minutes.is_some_and(|m| !(m > 0.0)) {
+        return Err(AppError::BadRequest("minutes must be > 0".into()));
+    }
+    let settings = db::load_settings(&state.local).await?;
+
+    // Content wins: when the text is here the count is exact, and it is
+    // counted by the same rule as a hooked line so the speeds compare.
+    // Then an explicitly given count, then pages × the estimate.
+    let content = req.content.as_deref().filter(|c| !c.trim().is_empty());
+    let chars = match (content, req.chars, req.pages) {
+        (Some(text), _, _) => jp_core::text::chars::count_chars(text),
+        (None, Some(c), _) if c >= 0 => c,
+        (None, None, Some(p)) if p > 0.0 => (p * settings.chars_per_page).round() as i64,
+        _ => return Err(AppError::BadRequest("need content, chars or pages".into())),
     };
+
+    let start_ts = resolve_start_ts(req.start_ts, req.date.as_deref(), req.minutes, &settings)?;
 
     let url = req.url.as_deref().filter(|u| !u.trim().is_empty());
     // An article says what it is: it arrived with a URL or with its text.

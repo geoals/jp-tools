@@ -1,0 +1,241 @@
+/* Logging a book read on paper.
+ *
+ * The one thing on this view that has to be legible is the found text: it is
+ * the only check that the anchor landed where the reader meant, and a check
+ * nobody can read is not a check. So it gets prose type and prose line height,
+ * and the surrounding text is dimmed rather than hidden — the match has to be
+ * findable at a glance without the context being unreadable. */
+
+.book-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+.book-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px auto;
+  grid-template-areas:
+    "title meter pct"
+    "pos   meter pct";
+  align-items: center;
+  gap: 2px 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.book-row:disabled {
+  cursor: default;
+}
+.book-row-open {
+  border-color: var(--series-1);
+}
+.book-title {
+  grid-area: title;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.book-pos {
+  grid-area: pos;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.book-meter {
+  grid-area: meter;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--meter-track);
+  overflow: hidden;
+}
+.book-meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--series-1);
+}
+.book-pct {
+  grid-area: pct;
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.book-done {
+  margin-top: 16px;
+}
+.book-done summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* The form */
+.book-log {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.book-anchor-label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.book-anchor {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--page);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 16px; /* iOS zooms into anything smaller on focus. */
+  line-height: 1.8;
+  resize: vertical;
+}
+.book-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.book-fields label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+.book-fields input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--page);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 16px;
+}
+.book-actions,
+.book-confirm {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.book-log button {
+  padding: 9px 18px;
+  border: none;
+  border-radius: 6px;
+  background: var(--series-1);
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+.book-log button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.book-log button.book-secondary {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+/* The confirmation */
+.book-found {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
+}
+.book-context {
+  margin: 0 0 10px;
+  font-size: 15px;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+}
+.book-ctx-side {
+  color: var(--muted);
+}
+.book-context mark {
+  background: var(--vocab-new);
+  color: var(--text-primary);
+  border-radius: 3px;
+  padding: 1px 2px;
+}
+.book-figures {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.book-words {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.book-loose {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--warn);
+}
+.book-confirm {
+  margin-top: 12px;
+}
+
+/* Setup */
+.book-setup-hint {
+  margin: 12px 0 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  max-width: 62ch;
+}
+.book-head {
+  max-height: 240px;
+  overflow: auto;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--page);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 560px) {
+  .book-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "title pct"
+      "pos   pct"
+      "meter meter";
+  }
+  .book-meter {
+    margin-top: 6px;
+  }
+}
+
+/* Shown until the first sitting is logged: the one moment where moving the
+   bookmark without recording anything is the right thing to do. */
+.book-catchup {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  max-width: 62ch;
+}

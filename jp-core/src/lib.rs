@@ -1,5 +1,6 @@
 pub mod define;
 pub mod dictionary;
+pub mod epub;
 /// Snapshotting the tokenizer over a fixed corpus. Test scaffolding, kept out of
 /// production builds.
 #[cfg(any(test, feature = "test-support"))]

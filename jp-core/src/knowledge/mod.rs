@@ -42,6 +42,7 @@ const MIGRATION_STRIP_OKURIGANA_MARKER: &str =
 const MIGRATION_WORK_SCRIPTS: &str =
     include_str!("../../migrations/knowledge/012_work_scripts.sql");
 const MIGRATION_WORK_NAMES: &str = include_str!("../../migrations/knowledge/013_work_names.sql");
+const MIGRATION_BOOKS: &str = include_str!("../../migrations/knowledge/014_books.sql");
 
 /// A connection pool for `knowledge.db`.
 ///
@@ -116,6 +117,7 @@ impl Knowledge {
             MIGRATION_WORK_TERMS,
             MIGRATION_WORK_SCRIPTS,
             MIGRATION_WORK_NAMES,
+            MIGRATION_BOOKS,
             MIGRATION_TERM_SURFACES,
             MIGRATION_STRIP_CONTROL,
         ] {
@@ -400,6 +402,7 @@ mod tests {
             "word_days",
             "lookups",
             "vocabulary",
+            "books",
         ] {
             let count: (i64,) = sqlx::query_as(&format!("SELECT COUNT(*) FROM {table}"))
                 .fetch_one(k.pool())

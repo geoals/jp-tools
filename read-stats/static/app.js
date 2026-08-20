@@ -25,6 +25,7 @@ import { TokenizeView } from "./panels/tokenize.js";
 import { CurrentReading } from "./panels/current-reading.js";
 import { DayCard } from "./panels/day.js";
 import { LibraryView } from "./panels/library.js";
+import { BooksView } from "./panels/books.js";
 import { SettingsView } from "./panels/settings.js";
 import { KanjiView } from "./panels/kanji.js";
 import { VocabView } from "./panels/vocab.js";
@@ -39,6 +40,7 @@ const TABS = [
   { id: "today", label: "Today" },
   { id: "trends", label: "Trends" },
   { id: "library", label: "Library" },
+  { id: "books", label: "Books" },
   { id: "kanji", label: "Kanji" },
   { id: "vocab", label: "Vocab" },
 ];
@@ -203,45 +205,47 @@ function App({ view, sub }) {
       isTokenize
         ? html`<${TokenizeView} />`
         : isSettings
-        ? html`<${SettingsView} settings=${settings} onSaved=${load} />`
-        : tab === "trends"
-          ? html`<${TrendsCard}
-              days=${days}
-              targetMins=${summary.goal.target_mins}
-              todayDate=${summary.today.date}
-            />`
-          : tab === "kanji"
-            ? html`<${KanjiView} />`
-            : tab === "vocab"
-              ? html`<${VocabView}
-                  vocab=${vocab}
-                  settings=${settings}
-                  onJudged=${load}
-                />`
-              : tab === "library"
-                ? html`<${LibraryView}
-                    works=${works}
+          ? html`<${SettingsView} settings=${settings} onSaved=${load} />`
+          : tab === "trends"
+            ? html`<${TrendsCard}
+                days=${days}
+                targetMins=${summary.goal.target_mins}
+                todayDate=${summary.today.date}
+              />`
+            : tab === "kanji"
+              ? html`<${KanjiView} />`
+              : tab === "vocab"
+                ? html`<${VocabView}
+                    vocab=${vocab}
                     settings=${settings}
-                    anki=${anki}
-                    lookups=${lookups}
-                    openWork=${sub}
-                    onRefreshAnki=${refreshAnki}
-                    ankiBusy=${ankiBusy}
-                    onSaved=${load}
+                    onJudged=${load}
                   />`
-                : html`
-                    <${CurrentReading}
-                      works=${works}
-                      settings=${settings}
-                      days=${days}
-                      onSaved=${load}
-                    />
-                    <${DayCard}
-                      days=${days}
-                      todayDate=${summary.today.date}
-                      goal=${summary.goal}
-                    />
-                  `
+                : tab === "books"
+                  ? html`<${BooksView} onSaved=${load} />`
+                  : tab === "library"
+                    ? html`<${LibraryView}
+                        works=${works}
+                        settings=${settings}
+                        anki=${anki}
+                        lookups=${lookups}
+                        openWork=${sub}
+                        onRefreshAnki=${refreshAnki}
+                        ankiBusy=${ankiBusy}
+                        onSaved=${load}
+                      />`
+                    : html`
+                        <${CurrentReading}
+                          works=${works}
+                          settings=${settings}
+                          days=${days}
+                          onSaved=${load}
+                        />
+                        <${DayCard}
+                          days=${days}
+                          todayDate=${summary.today.date}
+                          goal=${summary.goal}
+                        />
+                      `
     }
   `;
 }
