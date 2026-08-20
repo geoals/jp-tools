@@ -604,6 +604,14 @@ add to when the question is "does the SQL select what the derivation assumes".
 - **Pause capture appears only where reading does** — in `#read`, and under ⚙
   beside the settings. A live switch next to numbers that only report was read
   as a filter.
+- **The library is the only list of works, and a paper book is not a second
+  kind of thing.** Uploading an epub creates the work's row, so a book is on
+  the shelf like anything else; its bookmark and its log-a-sitting form are on
+  its own page (`panels/paper.js`, drawn by `work-detail.js`), and `#books`
+  resolves to `#library` so saved links still land. `/api/works` therefore asks
+  the `books` table before it asks anything else: a book whose epub is up but
+  which has had no sitting logged has no manual sources to judge by, and an
+  empty source list satisfies every `all` test — it read as a VN.
 - **Library has two levels.** The shelf lists works as cards; opening one
   replaces the tab with `work-detail.js` over `GET /api/works/detail`, keyed by
   title. A work with no reading behind it does not appear. Logged articles

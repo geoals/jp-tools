@@ -24,14 +24,27 @@ use jp_core::knowledge::{work_scripts, work_terms};
 /// pass — a list of two hundred unknown words is a wall, not a plan.
 const MINED_LEN: usize = 24;
 
-/// What a work is, for the library filter. Derivable rather than stored: the
-/// texthooker only ever stamps VNs, so a title with a line stream is a VN;
+/// What a work is, for the library filter. Derivable rather than stored: an
+/// epub settles it outright, the texthooker only ever stamps VNs, and
 /// everything else entered the library by hand, where the log form says what
 /// it was. The synthetic Articles work is its own kind, because it is a
 /// bucket, not a thing being read through.
-fn work_kind(title: &str, has_lines: bool, manual_sources: &[String]) -> &'static str {
+///
+/// The epub has to be asked first, and before the sources are consulted at
+/// all: a book whose epub is uploaded but which has had no sitting logged yet
+/// has no sources to go on, and an empty list satisfies every `all` test.
+/// A work with nothing behind it at all is taken for a VN — that is what the
+/// queue is made of, and one sitting corrects it.
+fn work_kind(
+    title: &str,
+    has_lines: bool,
+    has_epub: bool,
+    manual_sources: &[String],
+) -> &'static str {
     if title == stats::ARTICLES_WORK {
         "articles"
+    } else if has_epub {
+        "book"
     } else if has_lines
         || manual_sources
             .iter()
@@ -91,10 +104,16 @@ pub async fn works(State(state): State<AppState>) -> Result<Json<Value>, AppErro
                 .push(s.source.clone());
         }
     }
+    let epub_titles: HashSet<String> = db::fetch_books(&state.knowledge)
+        .await?
+        .into_iter()
+        .map(|b| b.work)
+        .collect();
     let kind_of = |title: &str| {
         work_kind(
             title,
             line_titles.contains(title),
+            epub_titles.contains(title),
             manual_sources.get(title).map(Vec::as_slice).unwrap_or(&[]),
         )
     };

@@ -302,9 +302,8 @@ export function AddPaperBook({ work, onAdded, onDone }) {
   }
 
   return html`
-    <details class="log" open=${added !== null}>
-      <summary>Add a book</summary>
-        ${
+    <div class="log book-add">
+      ${
           added === null
             ? html`
                 <form onSubmit=${upload}>
@@ -372,12 +371,12 @@ export function AddPaperBook({ work, onAdded, onDone }) {
                 </form>
               `
         }
-        ${
+      ${
           msg &&
           html`<p class=${`form-msg ${msg.ok ? "ok" : "error"}`}>
             ${msg.text}
           </p>`
         }
-    </details>
+    </div>
   `;
 }

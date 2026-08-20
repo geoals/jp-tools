@@ -269,6 +269,22 @@ print(urllib.parse.quote(max(rows, key=lambda w: w["chars"])["work"]) if rows el
     say "work page renders ($(wc -c <"$WORK/dom-work.html") bytes)"
   fi
 
+  # A paper book's page, which carries the bookmark and the log form that used
+  # to be the Books tab. Skipped when the frozen copy holds no epub.
+  local BOOKED
+  BOOKED=$(curl -s "http://127.0.0.1:$PORT/api/books" |
+    python3 -c 'import json,sys,urllib.parse
+rows=json.load(sys.stdin)["books"]
+print(urllib.parse.quote(rows[0]["work"]) if rows else "")')
+  if [ -n "$BOOKED" ]; then
+    "$CHROME" --headless --disable-gpu --no-sandbox --dump-dom --virtual-time-budget=15000 \
+      "http://127.0.0.1:$PORT/#library/$BOOKED" >"$WORK/dom-book.html" 2>>"$WORK/console.log"
+    for want in "Bookmark" "Last thing you read"; do
+      grep -qF "$want" "$WORK/dom-book.html" || die "book page is missing: $want"
+    done
+    say "book page renders ($(wc -c <"$WORK/dom-book.html") bytes)"
+  fi
+
   # The reading view is not rendered here: it holds an SSE connection open, so
   # --dump-dom never returns. Its modules are covered by the import check.
   local fail=0

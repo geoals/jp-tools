@@ -252,9 +252,9 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
   `;
 }
 
-/** Reading on paper, tracked against the epub: where the bookmark is, and the
- *  anchor log that moves it. A book with no epub yet offers to attach one; a
- *  work that is not a book gets no card at all. */
+/** Where the bookmark is in a book read on paper, and the anchor log that
+ *  moves it. A book with no epub yet offers to attach one; a work that is not
+ *  a book gets no card at all. */
 function PaperCard({ work, book, canTrack, onChanged }) {
   const [adding, setAdding] = useState(false);
 
@@ -264,19 +264,12 @@ function PaperCard({ work, book, canTrack, onChanged }) {
     return html`
       <div class="card">
         <div class="card-head">
-          <h2>On paper</h2>
+          <h2>Bookmark</h2>
         </div>
         ${
           adding
-            ? html`<${AddPaperBook}
-                work=${work}
-                onDone=${onChanged}
-              />`
-            : html`<div class="meta-hint">
-                Read on paper — attach the epub and every sitting is counted
-                exactly.
-              </div>
-              <div class="actions">
+            ? html`<${AddPaperBook} work=${work} onDone=${onChanged} />`
+            : html`<div class="actions">
                 <button class="ghost" onClick=${() => setAdding(true)}>
                   attach an epub
                 </button>
@@ -297,7 +290,7 @@ function PaperCard({ work, book, canTrack, onChanged }) {
   return html`
     <div class="card">
       <div class="card-head">
-        <h2>On paper</h2>
+        <h2>Bookmark</h2>
         <div class="card-controls">${(pct * 100).toFixed(1)}%</div>
       </div>
       <${ProgressBar} pct=${pct} label=${`Progress through ${work}`} />
@@ -350,22 +343,27 @@ function VocabCard({ vocab, script, onTriage }) {
           <tr>
             <th></th>
             <th>distinct</th>
-            <th title="Of the distinct words, how many you know — how much studying it needs.">
+            <th
+              title="Of the distinct words, how many you know — how much studying it needs."
+            >
               known, by word
             </th>
-            <th title="Of the running text, how much you know — how it will feel to read.">
+            <th
+              title="Of the running text, how much you know — how it will feel to read."
+            >
               known, by text
             </th>
           </tr>
         </thead>
         <tbody>
           ${rows.map(
-            (r) => html`<tr>
-              <th scope="row">${r.label}</th>
-              <td>${r.types.toLocaleString("en")}</td>
-              <td>${Math.round(r.known_type_pct)}%</td>
-              <td>${Math.round(r.known_token_pct)}%</td>
-            </tr>`,
+            (r) =>
+              html`<tr>
+                <th scope="row">${r.label}</th>
+                <td>${r.types.toLocaleString("en")}</td>
+                <td>${Math.round(r.known_type_pct)}%</td>
+                <td>${Math.round(r.known_token_pct)}%</td>
+              </tr>`,
           )}
         </tbody>
       </table>
@@ -373,7 +371,9 @@ function VocabCard({ vocab, script, onTriage }) {
         metLabel &&
         html`<div class="progress-caption">
           <span>${metLabel}</span>
-          <span title="A branching work's script holds every route, so more of it exists than any one playthrough reads.">
+          <span
+            title="A branching work's script holds every route, so more of it exists than any one playthrough reads."
+          >
             whole script, every route
           </span>
         </div>`

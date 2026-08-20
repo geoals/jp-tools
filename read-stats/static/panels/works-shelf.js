@@ -40,7 +40,8 @@ function statusOf(w) {
 
 export function WorksShelf({ works, settings, onSaved, onOpen }) {
   const [adding, setAdding] = useState(false);
-  // null = the chooser; a picked kind expands straight into its form.
+  // null = the chooser; a picked kind expands straight into its form, with
+  // no second disclosure to open.
   const [addKind, setAddKind] = useState(null);
   const [kind, setKind] = useState("all");
 
@@ -49,9 +50,7 @@ export function WorksShelf({ works, settings, onSaved, onOpen }) {
     setAddKind(null);
   };
 
-  const visible = works.filter(
-    (w) => kind === "all" || w.kind === kind,
-  );
+  const visible = works.filter((w) => kind === "all" || w.kind === kind);
   const named = visible.filter((w) => w.work);
   const read = named.filter((w) => w.chars > 0);
   const current = read.filter(
@@ -64,7 +63,9 @@ export function WorksShelf({ works, settings, onSaved, onOpen }) {
   const planned = named
     .filter(
       (w) =>
-        w.chars === 0 && statusOf(w) !== "finished" && statusOf(w) !== "dropped",
+        w.chars === 0 &&
+        statusOf(w) !== "finished" &&
+        statusOf(w) !== "dropped",
     )
     .sort(
       (a, b) =>
@@ -83,8 +84,12 @@ export function WorksShelf({ works, settings, onSaved, onOpen }) {
             onChange=${setKind}
             options=${KIND_FILTERS}
           />
-          <button class="ghost" onClick=${() => (adding ? close() : setAdding(true))}>
-            ${adding ? "close" : "add work"}
+          <button
+            class="ghost add-toggle"
+            title="Add a visual novel or a paper book"
+            onClick=${() => (adding ? close() : setAdding(true))}
+          >
+            ${adding ? "×" : "+"}
           </button>
         </div>
       </div>
@@ -92,18 +97,12 @@ export function WorksShelf({ works, settings, onSaved, onOpen }) {
         adding &&
         (addKind === null
           ? html`<div class="add-chooser">
-              <span class="meta-hint">
-                A work is anything you read. A paper book uploads its epub, so
-                every sitting is counted exactly.
-              </span>
-              <div class="add-chooser-buttons">
-                <button class="ghost" onClick=${() => setAddKind("work")}>
-                  a work
-                </button>
-                <button class="ghost" onClick=${() => setAddKind("paper")}>
-                  a paper book
-                </button>
-              </div>
+              <button class="ghost" onClick=${() => setAddKind("work")}>
+                add visual novel
+              </button>
+              <button class="ghost" onClick=${() => setAddKind("paper")}>
+                add paper book
+              </button>
             </div>`
           : addKind === "work"
             ? html`<${WorkMetaForm}
@@ -219,7 +218,11 @@ function WorkCover({ work: w, label }) {
     return html`<img class="cover" src=${w.meta.cover} alt="" />`;
   }
   if (w.work === ARTICLES) {
-    return html`<div class="cover cover-articles" role="img" aria-label="Articles">
+    return html`<div
+      class="cover cover-articles"
+      role="img"
+      aria-label="Articles"
+    >
       <svg
         viewBox="0 0 24 24"
         fill="none"

@@ -75,16 +75,21 @@ button.ghost:hover {
   padding-top: 18px;
   flex-wrap: wrap;
 }
-/* The add chooser: two ghost buttons under a hint. */
+/* What "+" opens: pick which of the two things is being added. */
 .add-chooser {
-  margin-bottom: 16px;
-}
-.add-chooser .meta-hint {
-  margin-bottom: 8px;
-}
-.add-chooser-buttons {
   display: flex;
   gap: 8px;
+  margin-bottom: 16px;
+}
+.add-toggle {
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 10px;
+}
+/* The epub form, opened straight from the chooser with no disclosure of its
+   own — so its spacing has to come from here rather than from `details`. */
+.book-add {
+  margin-bottom: 16px;
 }
 /* The shelf: one card per work being read. Auto-fill rather than a fixed
    column count, so the same markup is a single column on a phone beside the
