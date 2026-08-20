@@ -159,9 +159,11 @@ class Overlay(QObject):
         "a window matching this name appeared" that is cheaper than asking.
         """
         name = (name or "").strip()
-        if name == self._name:
-            return
         self._name = name
+        # Answer every push, not only a new name. The page pushes on each
+        # channel connect, and a reloaded page holds no geometry — dropping the
+        # repeat would leave it placing the line against the screen until the
+        # game next moved.
         self._rect = None
         if name and self._xdotool:
             self._poll_geometry()

@@ -152,6 +152,8 @@ if [ -n "$VN_WINDOW" ]; then
   else
     SHOT_NOTE=" (⚠ VN_WINDOW set but xdotool/import missing — captured the focused window)"
   fi
+else
+  SHOT_NOTE=" (⚠ no window name on this work — captured the focused window)"
 fi
 if [ ! -s "$TMP/$SCREENSHOT_FILE" ]; then
   rm -f "$TMP/$SCREENSHOT_FILE"

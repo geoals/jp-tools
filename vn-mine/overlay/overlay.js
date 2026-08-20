@@ -115,15 +115,25 @@ stream.onmessage = (e) => draw(JSON.parse(e.data));
 
 stream.addEventListener("status", (e) => {
   const { capture, vn_window } = JSON.parse(e.data);
-  warnEl.textContent = capture === "live" ? "" : capture;
+  // A missing window name is worth saying out loud: the screenshot on a card
+  // then grabs the whole screen with the overlay on it, and nothing else here
+  // reports that. A capture fault outranks it — no line at all is the bigger
+  // problem.
+  warnEl.textContent =
+    capture !== "live" ? capture : vn_window ? "" : "no window name on this work";
   // Only the two states that say what the flag is. `down` and `stalled` are
   // faults in the logger, and neither means capture was switched off.
   if (capture === "paused" || capture === "live") showPaused(capture === "paused");
   // Kept even before the channel is up: the first status usually beats it, and
   // the shell is told on connect. The name is per work, so it changes under a
-  // running overlay whenever the current work does.
-  windowName = vn_window ?? "";
-  shell?.setWindowName(windowName);
+  // running overlay whenever the current work does. Only on a change: the shell
+  // answers every push with the game's rectangle, and status arrives every two
+  // seconds.
+  const name = vn_window ?? "";
+  if (name !== windowName) {
+    windowName = name;
+    shell?.setWindowName(windowName);
+  }
 });
 
 /* Append `text[from..to)` to `parent`, drawing the game's own furigana where it
