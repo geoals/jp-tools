@@ -80,19 +80,27 @@ pub fn new_note_id(resp_bytes: &Bytes) -> Option<i64> {
 /// Post a raw AnkiConnect body and return `(status, response bytes)`, so the
 /// caller can relay it unchanged and inspect it.
 pub async fn forward(state: &AppState, body: Bytes) -> Result<(StatusCode, Bytes), String> {
-    let resp = state
-        .http
-        .post(&state.anki_url)
-        .header(header::CONTENT_TYPE, "application/json")
-        .body(body)
-        .send()
-        .await;
-
-    let resp = match resp {
-        Ok(r) => r,
-        Err(e) => {
-            warn!(error = %e, url = %state.anki_url, "AnkiConnect unreachable");
-            return Err(e.to_string());
+    // One retry on a send that never left, for the same reason
+    // `services::anki::call` has one: AnkiConnect closes the connection after
+    // every response, so the pooled one is already dead when the next request
+    // reaches for it. Adding the audio lookup in front of the add made that
+    // dead connection the normal case rather than an occasional one.
+    let mut attempt = 0;
+    let resp = loop {
+        let sent = state
+            .http
+            .post(&state.anki_url)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(body.clone())
+            .send()
+            .await;
+        match sent {
+            Ok(r) => break r,
+            Err(e) if attempt == 0 && e.is_request() => attempt += 1,
+            Err(e) => {
+                warn!(error = %e, url = %state.anki_url, "AnkiConnect unreachable");
+                return Err(e.to_string());
+            }
         }
     };
 
