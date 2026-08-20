@@ -13,9 +13,10 @@
 //! digit it finds in `VocabPitchNum`, so an empty field silently costs the
 //! colour. The markup is Yomitan's own, reproduced span for span.
 //!
-//! What this cannot reproduce is the vocabulary audio Yomitan pulls from its
-//! audio sources; `VocabAudio` is left empty. `SentAudio` and `Image` are not —
-//! vn-capture fills them exactly as it does for a Yomitan card.
+//! `VocabAudio` is a native recording from the local-audio add-on, which is
+//! also where Yomitan's audio sources point, so both surfaces attach the same
+//! file. `SentAudio` and `Image` come from vn-capture, exactly as they do for a
+//! Yomitan card.
 
 use axum::Json;
 use axum::body::Bytes;
@@ -66,6 +67,15 @@ pub async fn mine(
 
     let glossary = card::glossary(pool, &req.term, &req.reading).await?;
     let accent = card::accent(pool, &req.term, &req.reading).await?;
+    // Before the add, not after: the audio is a field of the note, and writing
+    // it afterwards would be a second write to race the editor with.
+    let vocab_audio = crate::services::anki::store_vocab_audio(
+        &state.http,
+        &state.anki_url,
+        &req.term,
+        &req.reading,
+    )
+    .await;
 
     let note = json!({
         "action": "addNote",
@@ -80,6 +90,7 @@ pub async fn mine(
                 state.anki_sentence_field.clone(): bold_surface(&req.sentence, &req.surface),
                 "Document": settings.current_work,
                 "Frequency": frequency.map(|f| f.to_string()).unwrap_or_default(),
+                "VocabAudio": vocab_audio,
                 "VocabPitchNum": accent.map(pitch_num).unwrap_or_default(),
                 "VocabPitchPattern": accent
                     .map(|a| pitch_pattern(&req.reading, a))

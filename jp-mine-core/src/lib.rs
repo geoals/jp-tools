@@ -5,5 +5,6 @@ pub mod card;
 pub mod compactdef;
 pub mod config;
 pub mod export;
+pub mod localaudio;
 pub mod lookup;
 pub mod tags;

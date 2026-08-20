@@ -103,6 +103,50 @@ pub async fn pick_url(
     None
 }
 
+/// Put a native recording of the word into Anki's media folder and return the
+/// `[sound:...]` tag for the card's audio field.
+///
+/// Yomitan pulls its vocabulary audio from the local-audio add-on; the overlay
+/// has no Yomitan, so it asks the same add-on itself and stores the result the
+/// way Yomitan would. Empty string when there is no recording, when the add-on
+/// is not running, or when Anki rejects the file — the card is worth adding
+/// without audio, and a failure here must not cost it.
+pub async fn store_vocab_audio(
+    client: &reqwest::Client,
+    url: &str,
+    term: &str,
+    reading: &str,
+) -> String {
+    let recording = match jp_mine_core::localaudio::fetch(client, term, reading).await {
+        Ok(Some(r)) => r,
+        Ok(None) => {
+            debug!(term, reading, "no local audio for this word");
+            return String::new();
+        }
+        Err(e) => {
+            warn!(term, reading, error = %e, "local audio lookup failed");
+            return String::new();
+        }
+    };
+    let stored = call(
+        client,
+        url,
+        "storeMediaFile",
+        json!({ "filename": recording.filename, "data": recording.data }),
+    )
+    .await;
+    match stored {
+        Ok(_) => {
+            debug!(term, source = %recording.source, "vocabulary audio attached");
+            format!("[sound:{}]", recording.filename)
+        }
+        Err(e) => {
+            warn!(term, error = %e, "storing vocabulary audio failed");
+            String::new()
+        }
+    }
+}
+
 /// Set fields on an existing note. Used by the AnkiConnect proxy to write
 /// CompactDef onto a note Yomitan just added.
 pub async fn update_note_fields(
