@@ -566,6 +566,20 @@ side rather than the ledger's:
   噂話, 毒付く for 毒突く, 貶する for 貶す. Group 1's mechanism, reaching the gate
   instead of the count.
 
+**A fifth cause, sighted 2026-08-21 and not in the sweep above: a
+normalisation that takes every kanji off the page.** SudachiDict reads 小心 as
+the Chinese name シアオシン and normalises it to that katakana, and the identity
+ladder's last rung takes it — `drops_kanji` fences every candidate above it, but
+the fallback is guarded by `adds_kanji` alone, so it is the one place a swap may
+drop the kanji the text wrote. Nothing lists シアオシン, so the gate refuses it
+and 小心 gets no span — 者 beside it is fine, so the line offers a popup on the
+suffix and none on the word. The context decides which SudachiDict
+entry wins: 小心な男 is right, and 小心者, 小心者め and 小心 alone all take the
+name. The master lists 小心/しょうしん, so the rung that would fix it keeps a
+surface the master holds under *some* reading rather than a katakana form
+nothing holds. 小心者 itself is Jitendex-only, so the join has no listed
+compound to build either.
+
 **The 17 dictionary gaps found in the same sweep are not parse defects.** 殺し合い
 (13), 居た堪れる (8), 先走り (5), 羽ばたき (5), 吐精, 心置き, 投げ矢, 滅び, 自罰,
 血しぶき, 車通り, すり替え, 尿量, 幾筋, 祝い金, 赤丸, 遼々 — 51 encounters where
