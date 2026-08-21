@@ -21,7 +21,6 @@
 import { html } from "htm/preact";
 import { useState } from "preact/hooks";
 import { api } from "../api.js";
-import { SegmentedControl } from "../components/controls.js";
 import { THEMES, setTheme, storedTheme } from "../lib/theme.js";
 
 /**
@@ -230,12 +229,22 @@ export function SettingsView({ settings, onSaved }) {
         <div class="settings-row">
           <label>Theme</label>
           <div class="settings-input">
-            <${SegmentedControl}
-              label="Theme"
-              value=${theme}
-              onChange=${pickTheme}
-              options=${THEMES.map((t) => ({ value: t, label: t }))}
-            />
+            <div class="radio-set" role="radiogroup" aria-label="Theme">
+              ${THEMES.map(
+                (t) => html`
+                  <label class="radio-opt" key=${t}>
+                    <input
+                      type="radio"
+                      name="theme"
+                      value=${t}
+                      checked=${theme === t}
+                      onChange=${() => pickTheme(t)}
+                    />
+                    <span>${t}</span>
+                  </label>
+                `,
+              )}
+            </div>
           </div>
           <p class="settings-hint">
             Stored on this device only, so one device can read dark while
@@ -254,6 +263,17 @@ export function SettingsView({ settings, onSaved }) {
           <p class="settings-hint">
             Cards past Anki's new/learning queues are marked known outright.
             Never overwrites a word already judged here.
+          </p>
+        </div>
+        <div class="settings-row">
+          <label>Reading view</label>
+          <div class="settings-input">
+            <a class="pause-btn" href="#read">📖 open #read</a>
+          </div>
+          <p class="settings-hint">
+            The live line feed in a browser, with Yomitan over it. The overlay
+            is the everyday surface; this is for text no hook produces, another
+            device, or going back over a session's lines.
           </p>
         </div>
         <div class="settings-row">

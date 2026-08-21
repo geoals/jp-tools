@@ -16,7 +16,11 @@ databases. Port 3200.
   cost in lookups. Everything is derived from the raw line stream at query time,
   so changing a threshold re-reads the whole history under the new rule.
 - **`#read`** — the live line feed read beside the running VN, the explain
-  button, and the AnkiConnect proxy Yomitan points at.
+  button, and the AnkiConnect proxy Yomitan points at. The VN overlay is the
+  everyday reading surface now, so `#read` is reached from ⚙ → Tools rather
+  than the header; it stays because it is the only surface for text no hook
+  produces, the only one another device can open, and the only one Yomitan is
+  actually over.
 
 ## The shape of the thing
 
@@ -610,7 +614,7 @@ add to when the question is "does the SQL select what the derivation assumes".
   **Trends** (one range selector over every chart), **Library**, **Kanji**,
   **Vocab**. The title is a link back to Today. `#settings` and `#tokenize` are
   reached from ⚙ and render inside the shell like any panel; `#read` is its own
-  route and unmounts the dashboard.
+  route and unmounts the dashboard, and is linked from ⚙ → Tools.
 - **Pause capture appears only where reading does** — in `#read`, and under ⚙
   beside the settings. A live switch next to numbers that only report was read
   as a filter.

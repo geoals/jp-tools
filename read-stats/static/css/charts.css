@@ -176,9 +176,11 @@
   cursor: pointer;
 }
 .segment:hover {
-  color: var(--text-primary);
+  background: var(--grid);
+  color: var(--text-secondary);
 }
-.segment-on {
+.segment-on,
+.segment-on:hover {
   background: var(--series-1);
   color: #fff;
 }

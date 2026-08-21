@@ -34,9 +34,37 @@
   padding: 5px 4px;
   min-width: 30px;
   cursor: pointer;
+  /* z-index needs a position for the hovered chip's ring to sit over its
+     neighbours in a 3px-gap grid. */
+  position: relative;
+  transition:
+    transform 90ms ease,
+    box-shadow 90ms ease,
+    background-color 90ms ease;
 }
 .kanji-cell:hover {
-  border-color: var(--text-secondary);
+  /* Hover has to read at --k: 0 as well as --k: 1, so it cannot be a stronger
+     fill alone. The ring carries it, the fill only deepens what is there. */
+  background: color-mix(
+    in srgb,
+    var(--series-1) calc(20% + var(--k) * 80%),
+    transparent
+  );
+  border-color: var(--series-1);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--series-1) 35%, transparent);
+  transform: scale(1.12);
+  z-index: 1;
+}
+.kanji-cell:active {
+  transform: scale(1.02);
+}
+@media (prefers-reduced-motion: reduce) {
+  .kanji-cell,
+  .kanji-cell:hover,
+  .kanji-cell:active {
+    transition: none;
+    transform: none;
+  }
 }
 .kanji-cell:focus-visible {
   outline: 2px solid var(--series-1);

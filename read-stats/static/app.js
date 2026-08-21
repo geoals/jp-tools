@@ -140,13 +140,6 @@ function App({ view, sub }) {
         )}
       </nav>
       <div class="header-right">
-        <a
-          class="pause-btn"
-          href="#read"
-          title="Live line feed + explain button"
-        >
-          📖 read
-        </a>
         ${
           // Capture belongs where reading happens: `#read` has its own, and ⚙.
           offTab &&

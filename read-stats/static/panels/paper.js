@@ -324,10 +324,7 @@ export function AddPaperBook({ work, onAdded, onDone }) {
                   ${
                     !work &&
                     html`<div class="log-wide">
-                      <label
-                        >title * — exactly how it should be named
-                        everywhere</label
-                      >
+                      <label>title *</label>
                       <input
                         type="text"
                         required
