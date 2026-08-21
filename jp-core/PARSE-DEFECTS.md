@@ -601,6 +601,22 @@ because 許せる is listed.
 the parse is right and no loaded dictionary holds the term. Nothing in the
 pipeline can fix those; a dictionary can.
 
+## The name gate, on a term that is only ever a word
+
+**一発屋, sighted 2026-08-21 in 「一発屋にならなかったわね」.** The identity is
+right — Sankoku, 明鏡 and Jitendex all list 一発屋/いっぱつや — and the token is
+dropped anyway: SudachiDict tags it 固有名詞, and every escape misses. No cast
+list holds it, `NOT_A_NAME` does not, and `ordinary_headword` wants okurigana,
+which bare kanji does not carry. The highlighter drops a proper noun before it
+consults the ledger, so the word has no popup and no row.
+
+**One term, not a rule.** 花屋, 本屋, 質屋, 八百屋, 居酒屋, 照れ屋, 殺し屋, 極道,
+太鼓持ち, 三日坊主, 風来坊 and 土左衛門 all come through as words, so nothing
+about the shape is at fault and this is a `NOT_A_NAME` judgement, the same as 眸
+and 予定調和. It is the easier half of 仁王立ち's defect, listed under *Fixed*:
+there the name-tagged morpheme really is a name and only the join is wrong,
+where 一発屋 is never a name in a sentence.
+
 ---
 
 # Not a parse defect — one surface for looking up, another for counting
