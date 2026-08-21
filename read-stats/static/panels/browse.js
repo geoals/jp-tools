@@ -103,7 +103,7 @@ export function BrowseView({ onJudged }) {
   return html`
     <div class="card">
       <h2 title="What the ledger holds, as opposed to what to judge next.">
-        browse
+        Browse
       </h2>
       <div class="triage-actions">
         <${Picker} options=${SOURCES} value=${source} onChange=${refilter(setSource)} />

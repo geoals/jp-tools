@@ -85,7 +85,7 @@
 }
 .reader-session-header {
   margin: 1.25em 0 0.75em;
-  font-family: "IBM Plex Sans", sans-serif;
+  font-family: "Inter", sans-serif;
   font-size: 0.75em;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -109,7 +109,7 @@
   white-space: pre-wrap;
   margin: 0 0 0.75em;
   line-height: 1.75;
-  font-family: "Noto Sans JP", "IBM Plex Sans", sans-serif;
+  font-family: "Noto Sans JP", "Inter", sans-serif;
   color: var(--text-primary);
 }
 /* The newest line is the one being read — the rest is context behind it. */
@@ -328,7 +328,7 @@
   line-height: 1.6;
   color: var(--text-primary);
   /* A returned explanation can hold Japanese — match the line feed's font. */
-  font-family: "Noto Sans JP", "IBM Plex Sans", sans-serif;
+  font-family: "Noto Sans JP", "Inter", sans-serif;
 }
 /* Tight blocks — the reply is a few short lines, so no big paragraph gaps. */
 .reader-explain-body p {

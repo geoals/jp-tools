@@ -168,7 +168,7 @@ export function TriageView({ minEncounters, onJudged }) {
 
   return html`
     <div class="card">
-      <h2>sweep</h2>
+      <h2>Sweep</h2>
       <p class="meta-hint">${pendingLine}</p>
       <label class="triage-floor">
         seen at least
@@ -305,7 +305,7 @@ export function TriageView({ minEncounters, onJudged }) {
       <h2
         title="Rows no loaded dictionary recognises as a word — tokenizer noise like っっ and あああ. The queue above never offers them; blacklisting clears them out so the untriaged count means 'vocabulary still to judge'."
       >
-        the non-vocabulary tail
+        The non-vocabulary tail
       </h2>
       ${
         noise === null

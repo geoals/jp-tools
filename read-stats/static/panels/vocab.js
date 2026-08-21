@@ -52,7 +52,7 @@ export function VocabView({ vocab, settings, onJudged }) {
   if (!vocab.total) {
     return html`
       <div class="card">
-        <h2>vocabulary</h2>
+        <h2>Vocabulary</h2>
         <p class="chart-empty">
           The ledger is empty — no reading has been tokenized into it yet.
           <code>POST /api/vocab/rebuild</code> fills it from the whole history.
@@ -63,7 +63,7 @@ export function VocabView({ vocab, settings, onJudged }) {
 
   return html`
     <div class="card">
-      <h2>vocabulary</h2>
+      <h2>Vocabulary</h2>
       <${SegmentedControl}
         value=${section}
         options=${SECTIONS}
@@ -159,7 +159,7 @@ function StatusSummary({ vocab }) {
     <${GrowthCard} knownWords=${vocab.known_words} />
 
     <div class="card">
-      <h2>by status</h2>
+      <h2>By status</h2>
       <table class="days">
         <thead>
           <tr>

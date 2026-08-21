@@ -202,7 +202,8 @@
 .toggle-btn:hover {
   color: var(--text-primary);
 }
-.toggle-on {
+.toggle-on,
+.toggle-on:hover {
   background: var(--series-1);
   color: #fff;
 }

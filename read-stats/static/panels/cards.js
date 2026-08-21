@@ -29,25 +29,25 @@ import { api } from "../api.js";
 const BUCKETS = [
   {
     id: "bring_forward",
-    label: "looked up anyway",
+    label: "Looked up anyway",
     hint: "Mature cards you reached for the dictionary on. Anki thinks these are known and the reading says otherwise — the leeches it cannot see.",
     columns: ["interval", "lookups", "met"],
   },
   {
     id: "defer",
-    label: "met, never looked up",
+    label: "Met, never looked up",
     hint: "Met on several separate days since the last review with no lookup. Each of those was a retrieval Anki did not record, so the next review is tax.",
     columns: ["interval", "met", "since"],
   },
   {
     id: "retire",
-    label: "done",
+    label: "Done",
     hint: "A long interval, met repeatedly across the reading, never looked up. Nothing left for the card to teach.",
     columns: ["interval", "met", "since"],
   },
   {
     id: "never_met",
-    label: "never met since mined",
+    label: "Never met since mined",
     hint: "Carded, and the reading has not shown the word again. Not evidence it is unknown — evidence the card is spending reviews on a word this reading does not contain.",
     columns: ["interval", "age"],
   },
@@ -110,7 +110,7 @@ export function CardsView() {
 
   return html`
     <div class="card">
-      <h2>cards vs. reading</h2>
+      <h2>Cards vs. reading</h2>
       <p class="meta-hint" title="Read-only. Nothing here changes a card.">
         ${scope}
       </p>

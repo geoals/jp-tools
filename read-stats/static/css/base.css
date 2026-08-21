@@ -102,7 +102,7 @@ body {
   margin: 0;
   background: var(--page);
   color: var(--text-primary);
-  font-family: "IBM Plex Sans", "Noto Sans JP", system-ui, sans-serif;
+  font-family: "Inter", "Noto Sans JP", system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.5;
 }
@@ -142,7 +142,11 @@ header {
 .tab:hover {
   color: var(--text-primary);
 }
-.tab-on {
+/* The picked tab keeps its white ink on hover: `.tab:hover` outranks a bare
+   `.tab-on`, so without this the filled tab's label flips dark against the
+   fill. */
+.tab-on,
+.tab-on:hover {
   background: var(--series-1);
   color: #fff;
 }
@@ -211,7 +215,8 @@ header h1 a {
 }
 .card h2 {
   font-size: 18px;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: -0.015em;
   color: var(--text-secondary);
   margin: 0 0 10px;
   text-transform: none;

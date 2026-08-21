@@ -56,7 +56,7 @@ export function TokenizeView() {
   return html`
     <div class="tokenize-page">
       <form class="card tokenize-form" onSubmit=${submit}>
-        <h2>tokenize</h2>
+        <h2>Tokenize</h2>
         <textarea
           rows="3"
           placeholder="Paste Japanese text"
@@ -95,7 +95,7 @@ function Result({ result }) {
     </div>
     <div class="card">
       <div class="card-head">
-        <h2>tokens</h2>
+        <h2>Tokens</h2>
         <span class="muted">${counted}</span>
       </div>
       <table class="tokenize-table">
@@ -235,7 +235,7 @@ function Trace({ steps }) {
   return html`
     <div class="card">
       <div class="card-head">
-        <h2>why</h2>
+        <h2>Why</h2>
         <span class="muted">${count}</span>
       </div>
       <ol class="trace">
