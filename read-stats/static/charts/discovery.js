@@ -68,14 +68,12 @@ export function DiscoveryChart({ days, label, empty, barLabel, lineLabel, tip })
         ${days.map((d, i) => {
           const cx = m.left + band * i + band / 2;
           const h = yBar(0) - yBar(d.new);
-          const dim = hover === null || hover === i ? 1 : 0.55;
           return html`
             ${
               h > 0.5 &&
               html`<path
                 d=${barPath(cx - barW / 2, yBar(d.new), barW, h, 4)}
-                fill="var(--series-1)"
-                opacity=${dim}
+                class=${hover === i ? "bar bar-hover" : "bar"}
               />`
             }
             ${

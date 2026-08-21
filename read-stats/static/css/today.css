@@ -35,9 +35,13 @@
   background: var(--series-1);
   border-radius: 5px;
 }
-/* A finished work, not a nearly-finished one. */
+/* A finished work, not a nearly-finished one. The track turns with the fill:
+   green ink on the blue track read as two different measures in one bar. */
 .meter-fill.done {
   background: var(--good);
+}
+.meter.done {
+  background: color-mix(in srgb, var(--good) 22%, var(--surface-1));
 }
 .meter-marker {
   position: absolute;

@@ -156,7 +156,7 @@ function GridCard({ rows, solidAt }) {
   return html`
     <div class="card">
       <div class="card-head">
-        <h2>Every kanji you have read</h2>
+        <h2>Every kanji read</h2>
         <span class="kanji-count">${countLine}</span>
       </div>
       <div class="card-controls kanji-sort">
