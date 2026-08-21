@@ -22,15 +22,26 @@ Cargo workspace for Japanese language learning tools.
 - `manga-mine/` — physical manga sentence mining (photo inbox → crop → OCR →
   Anki, stateless). See `manga-mine/CLAUDE.md`
 - `vn-mine/` — visual novel voiceline capture (bash/python, no Cargo member):
-  audio ring-buffer daemon + clipboard-timestamp + silero-VAD hotkey script →
-  Anki, plus `overlay/` — the line and its dictionary drawn *over* the game,
-  fullscreen included. See `vn-mine/README.md`
-- `read-stats/` — daily reading tracker (Axum + SQLite + Preact, port 3200), and
-  `#read`, the live line feed read beside the VN where Yomitan does its lookups
-  and mining. Shown to the reader as **コトデックス**, a proposed name only the
-  page title and the dashboard heading carry — the crate, the binary, the
-  service name and `read-stats.db` are all still `read-stats`, and the two names
-  mean the same thing. See `read-stats/CLAUDE.md`
+  audio ring-buffer daemon + Textractor line logger + silero-VAD hotkey script →
+  Anki. **It is a dependency of read-stats, not a peer**: read-stats runs
+  `vn-capture.sh` on every card path (`services::capture`), and
+  `vn-ws-logger.py` is the only producer of the `lines` read-stats serves.
+  Nothing here calls read-stats except to ask which window is the game. See
+  `vn-mine/README.md`
+- `read-stats/` — daily reading tracker (Axum + SQLite + Preact, port 3200), the
+  two reading surfaces over it, and the AnkiConnect proxy Yomitan points at.
+  Shown to the reader as **コトデックス**, a proposed name only the page title
+  and the dashboard heading carry — the crate, the binary, the service name and
+  `read-stats.db` are all still `read-stats`, and the two names mean the same
+  thing. See `read-stats/CLAUDE.md`. The surfaces:
+  - `#read` — the live line feed read *beside* the VN in a browser, which is
+    the only one Yomitan is over
+  - `overlay/` — the same feed and its own dictionary drawn *over* the game,
+    fullscreen included, launched by `overlay/vn-overlay.sh`
+- `layer-overlay/` — the Qt shell that puts a web page above fullscreen windows
+  and makes it clickable only where the page has drawn. Knows nothing about
+  Japanese, reading or read-stats; `read-stats/overlay/` is its one caller.
+  See `layer-overlay/README.md`
 - `manga-ocr-service/` — Python FastAPI wrapper around kha-white's manga-ocr
   (port 8200)
 - `whisper-service/` — Python FastAPI transcription service for yt-mine
@@ -73,6 +84,14 @@ Two rules for writing to them, both from one "database is locked":
 - WAL and `busy_timeout` go on the connect options, never as a `PRAGMA` against
   the pool: `busy_timeout` is per connection, so a pragma sets it on one pooled
   connection and leaves the rest at zero.
+
+**The migrations are the only thing that creates a table.** `vn-ws-logger.py`
+writes `lines` and once carried its own `CREATE TABLE` under a "keep in sync"
+comment, which is how the `ruby` column came to exist in Python and in
+`knowledge::migrate` and in no migration at all. A non-Rust writer now names
+the columns it needs (`REQUIRED`), checks for them, and waits — a daemon that
+starts before the migrations sits out a retry instead of creating a schema that
+drifts. Nothing outside jp-core and read-stats may `CREATE` or `ALTER`.
 
 `vocabulary` is the ledger of what is known, one row per `(headword, reading)`.
 Only the reader writes its `status` column, and `new` (never judged) is not
@@ -121,12 +140,13 @@ lookup on open and retracts it when ✓ is used; yt-mine does neither, because a
 lookup is a reading-session event and there is no session. It is vanilla DOM
 because one host is a plain page and the other is Preact.
 
-The overlay's page lives in `vn-mine/overlay/` and read-stats serves it from
-there, at `/overlay/`. It shares no code with read-stats' own frontend, so it
-belongs beside the Qt shell that shows it — but it calls eight `/api` routes
-with relative URLs, and neither a `file://` origin nor an absolute URL plus
-CORS is worth paying to pretend otherwise. read-stats is its backend; the
-directory is only where the file sits.
+**The overlay is a read-stats surface, and the Qt shell that shows it is not.**
+The page (`read-stats/overlay/`) calls eight `/api` routes and nothing else can
+answer one of them, so it lives with the app that serves it. What puts it over a
+fullscreen window — a layer surface, an input region, a tracked window's
+geometry — is `layer-overlay/`, which has no Japanese in it and takes a URL.
+Keeping those in one directory is what made the overlay look like a third
+project: half of it was generic and half of it was not vn-mine's.
 
 **Term identity is dictionary-gated, which is why `dictionary` and `knowledge`
 are one subsystem in jp-core rather than separable data.** The ledger keys on a

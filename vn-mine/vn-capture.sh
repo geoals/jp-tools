@@ -25,6 +25,8 @@
 #      VN_WINDOW       name (substring) of the VN's window — capture it by id
 #                      instead of whatever has focus. Needed when mining from
 #                      read-stats' #read page, where the browser is focused.
+#                      Unset, it is asked for: read-stats holds it per work.
+#      JP_TOOLS_READ_STATS_URL  where to ask (default http://localhost:3200)
 
 RUNDIR="${VN_RUNDIR:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/vn-mine}"
 SEGDIR="$RUNDIR/seg"
@@ -53,28 +55,7 @@ VN_ANCHOR_TS="${VN_ANCHOR_TS:-}"
 VN_NOTE_ID="${VN_NOTE_ID:-}"
 SHOT_NOTE=""
 
-# Unset, fall back to read-stats' per-work window, so the hotkey and the #read
-# mine button read the same config — otherwise switching VNs means remembering
-# to update two places, and the one you forget silently captures the wrong
-# window. The window is a column on the current work; the old global `vn_window`
-# setting is a legacy fallback for DBs that predate per-work windows. Read-only:
-# the logger writes to this DB concurrently.
-# Two databases since the knowledge split: `works` is shared knowledge, the
-# `current_work` / `vn_window` settings are read-stats' own.
-STATS_DB="${JP_TOOLS_STATS_DB_PATH:-$HOME/.local/share/jp-tools/read-stats.db}"
-KNOWLEDGE_DB="${JP_TOOLS_KNOWLEDGE_DB_PATH:-$HOME/.local/share/jp-tools/knowledge.db}"
-if [ -z "$VN_WINDOW" ] && command -v sqlite3 &>/dev/null && [ -f "$STATS_DB" ]; then
-  CURRENT_WORK=$(sqlite3 -readonly "$STATS_DB" \
-    "SELECT value FROM settings WHERE key = 'current_work'" 2>/dev/null)
-  if [ -n "$CURRENT_WORK" ] && [ -f "$KNOWLEDGE_DB" ]; then
-    VN_WINDOW=$(sqlite3 -readonly "$KNOWLEDGE_DB" \
-      "SELECT vn_window FROM works WHERE title = '${CURRENT_WORK//\'/\'\'}'" 2>/dev/null)
-  fi
-  if [ -z "$VN_WINDOW" ]; then
-    VN_WINDOW=$(sqlite3 -readonly "$STATS_DB" \
-      "SELECT value FROM settings WHERE key = 'vn_window'" 2>/dev/null)
-  fi
-fi
+READ_STATS_URL="${JP_TOOLS_READ_STATS_URL:-http://localhost:3200}"
 
 TMP=$(mktemp -d "$RUNDIR/cap.XXXXXX" 2>/dev/null) || TMP=$(mktemp -d)
 
@@ -95,6 +76,20 @@ die() {
 for cmd in curl jq spectacle ffmpeg; do
   command -v "$cmd" &>/dev/null || die "$cmd is not installed"
 done
+
+# Unset — fired by hotkey rather than by read-stats — so ask read-stats which
+# window is the VN, and aim at the same one the mine button does. Resolving it
+# here in SQL instead made this a second implementation of a rule that must have
+# exactly one: switching VNs would mean updating two places, and the one you
+# forget silently captures the last game.
+#
+# No answer means no window, and the screenshot falls back to whatever has
+# focus. That is what read-stats being down looks like, and it beats failing a
+# capture over it.
+if [ -z "$VN_WINDOW" ]; then
+  VN_WINDOW=$(curl -s --max-time 2 "$READ_STATS_URL/api/vn/window" 2>/dev/null |
+    jq -r '.window // empty' 2>/dev/null)
+fi
 
 NOW=$(date +%s.%N)
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)

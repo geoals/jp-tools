@@ -21,6 +21,12 @@ databases. Port 3200.
   than the header; it stays because it is the only surface for text no hook
   produces, the only one another device can open, and the only one Yomitan is
   actually over.
+- **`overlay/`** — the second reading surface, drawn *over* the game rather than
+  beside it, served at `/overlay/` and launched by `overlay/vn-overlay.sh`. It
+  is this app's page — every route it calls is one of these — and shares only
+  `web-shared/` with the dashboard. What puts it above a fullscreen window is
+  `layer-overlay/`, which has no Japanese in it and takes a URL. See
+  `overlay/README.md`.
 
 ## The shape of the thing
 
@@ -441,6 +447,12 @@ The reading view:
 
 Mining:
 
+- **One answer to "which window is the game".** `services::capture::vn_window`
+  resolves the current work's own column, then the legacy global setting, and
+  all three callers go through it: the capture it runs, the reader's status
+  event, and `vn-capture.sh` over `GET /api/vn/window`. The script resolved it
+  in its own SQL before, which is two places to say the same thing and one of
+  them silently aiming at the last VN.
 - **Mining is implicit.** Every card path — the overlay's `reader/mine`, and
   Yomitan's `addNote` through `routes/ankiproxy` — adds through
   `services::card::add_note`, which fires vn-capture.sh once Anki accepts the

@@ -55,15 +55,7 @@ pub async fn run(state: &AppState, target: Target) -> Result<Value, AppError> {
 
     // Which window to screenshot. Without it the script grabs whatever has
     // focus, which is the browser `#read` is open in, not the VN.
-    //
-    // The current work's own window comes first; the global `vn_window` setting
-    // is a legacy fallback for setups that predate per-work windows.
-    let settings = db::load_settings(&state.local).await.unwrap_or_default();
-    let vn_window = match db::current_work_vn_window(&state.knowledge, &settings.current_work).await
-    {
-        Ok(Some(w)) if !w.trim().is_empty() => w,
-        _ => settings.vn_window,
-    };
+    let vn_window = vn_window(state).await;
 
     let mut cmd = tokio::process::Command::new(&script);
     // The script normally reports through notify-send on the desktop it runs
@@ -126,6 +118,32 @@ pub async fn run(state: &AppState, target: Target) -> Result<Value, AppError> {
         warn!(result = %parsed, "vn-capture reported failure");
     }
     Ok(parsed)
+}
+
+/// Which window is the VN, as everything that needs to know resolves it.
+///
+/// The current work's own window first, then the global `vn_window` setting,
+/// which is a legacy fallback for setups that predate per-work windows. Empty
+/// when neither is set.
+///
+/// One implementation because there are three callers and they must not
+/// disagree: this module, the reader's status event, and `vn-capture.sh` over
+/// `GET /api/vn/window`. Two places to say which window is the game is the one
+/// thing the per-work column exists to stop — the one you forget points at the
+/// last VN.
+pub async fn vn_window(state: &AppState) -> String {
+    let settings = db::load_settings(&state.local).await.unwrap_or_else(|e| {
+        warn!(error = %e, "vn window: settings unreadable");
+        Default::default()
+    });
+    match db::current_work_vn_window(&state.knowledge, &settings.current_work).await {
+        Ok(Some(w)) if !w.trim().is_empty() => w,
+        Ok(_) => settings.vn_window,
+        Err(e) => {
+            warn!(error = %e, "vn window: the work's own is unreadable");
+            settings.vn_window
+        }
+    }
 }
 
 /// Candidate window titles for the `vn_window` setting.

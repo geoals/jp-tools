@@ -952,7 +952,7 @@ if (window.qt?.webChannelTransport) {
   new QWebChannel(window.qt.webChannelTransport, (channel) => {
     shell = channel.objects.shell;
     shell.geometry.connect(onGeometry);
-    shell.ghostToggled.connect(toggleGhost);
+    shell.userToggled.connect(toggleGhost);
     // The status event that carried it has usually already been and gone.
     if (windowName) shell.setWindowName(windowName);
     report();

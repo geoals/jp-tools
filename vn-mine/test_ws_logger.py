@@ -219,19 +219,32 @@ class RealLogInvariants(unittest.TestCase):
         self.assertGreater(kept, 0, "expected at least some dialogue in the log")
 
 
+def make_databases(tmp, paused=None):
+    """Both databases as the migrations leave them, with only what the sink
+    needs — built from `REQUIRED`, so a column added there without one added
+    here fails loudly rather than at the first insert of a session."""
+    lines = ", ".join(sorted(wl.REQUIRED["lines"]))
+    knowledge = os.path.join(tmp, "knowledge.db")
+    db = sqlite3.connect(knowledge, isolation_level=None)
+    db.execute(f"CREATE TABLE lines (id INTEGER PRIMARY KEY, {lines})")
+    db.close()
+
+    stats = os.path.join(tmp, "read-stats.db")
+    db = sqlite3.connect(stats, isolation_level=None)
+    db.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+    if paused is not None:
+        db.execute("INSERT INTO settings VALUES ('capture_paused', ?)", (paused,))
+    db.close()
+    return knowledge, stats
+
+
 class CapturePausedFlag(unittest.TestCase):
     """The one contract shared with read-stats: it writes the flag, this reads
     it. A regression here doesn't fail loudly — it silently keeps capturing."""
 
     def sink(self, value):
         tmp = tempfile.mkdtemp()
-        knowledge = os.path.join(tmp, "knowledge.db")
-        stats = os.path.join(tmp, "read-stats.db")
-        db = sqlite3.connect(stats, isolation_level=None)
-        db.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
-        if value is not None:
-            db.execute("INSERT INTO settings VALUES ('capture_paused', ?)", (value,))
-        db.close()
+        knowledge, stats = make_databases(tmp, paused=value)
         self.addCleanup(os.environ.pop, "JP_TOOLS_STATS_DISABLE", None)
         os.environ.pop("JP_TOOLS_STATS_DISABLE", None)
         old = (wl.KNOWLEDGE_DB, wl.STATS_DB)
@@ -257,6 +270,47 @@ class CapturePausedFlag(unittest.TestCase):
         )
 
 
+class SchemaIsNotOurs(unittest.TestCase):
+    """The schema belongs to jp-core's migrations and read-stats'. This daemon
+    checks for it and waits; it must never create or alter a table, or the copy
+    it creates becomes the one that goes stale."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        os.environ.pop("JP_TOOLS_STATS_DISABLE", None)
+        self.addCleanup(os.environ.pop, "JP_TOOLS_STATS_DISABLE", None)
+        old = (wl.KNOWLEDGE_DB, wl.STATS_DB)
+        wl.KNOWLEDGE_DB = os.path.join(self.tmp, "knowledge.db")
+        wl.STATS_DB = os.path.join(self.tmp, "read-stats.db")
+        self.addCleanup(lambda: setattr(wl, "KNOWLEDGE_DB", old[0]))
+        self.addCleanup(lambda: setattr(wl, "STATS_DB", old[1]))
+
+    def test_no_database_creates_none(self):
+        sink = wl.StatsSink()
+        self.assertIsNone(sink.db)
+        self.assertFalse(os.path.exists(wl.KNOWLEDGE_DB), "created a database")
+
+    def test_a_missing_column_is_refused(self):
+        db = sqlite3.connect(wl.KNOWLEDGE_DB, isolation_level=None)
+        db.execute("CREATE TABLE lines (id INTEGER PRIMARY KEY, ts REAL, chars INTEGER)")
+        db.close()
+        db = sqlite3.connect(wl.STATS_DB, isolation_level=None)
+        db.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        db.close()
+        self.assertIsNone(wl.StatsSink().db, "wrote against a schema it cannot satisfy")
+
+    def test_it_opens_once_the_migrations_have_run(self):
+        sink = wl.StatsSink()
+        self.assertIsNone(sink.db)
+        make_databases(self.tmp)
+        sink._next_try = 0
+        self.assertTrue(sink.ready(), "a sink that gave up loses the whole sitting")
+        sink.add(1.0, "テスト")
+        self.assertEqual(
+            sink.db.execute("SELECT text FROM lines").fetchall(), [("テスト",)]
+        )
+
+
 class SplitCaptureRejoined(unittest.TestCase):
     """Textractor splitting one script line at its own \\n, as it really
     arrived: two captures 30ms apart, the second opening on the break."""
@@ -269,12 +323,11 @@ class SplitCaptureRejoined(unittest.TestCase):
 
     def sink(self):
         tmp = tempfile.mkdtemp()
-        db = os.path.join(tmp, "knowledge.db")
+        knowledge, stats = make_databases(tmp)
         self.addCleanup(os.environ.pop, "JP_TOOLS_STATS_DISABLE", None)
         os.environ.pop("JP_TOOLS_STATS_DISABLE", None)
         old = (wl.KNOWLEDGE_DB, wl.STATS_DB)
-        wl.KNOWLEDGE_DB = db
-        wl.STATS_DB = os.path.join(tmp, "read-stats.db")
+        wl.KNOWLEDGE_DB, wl.STATS_DB = knowledge, stats
         self.addCleanup(lambda: setattr(wl, "KNOWLEDGE_DB", old[0]))
         self.addCleanup(lambda: setattr(wl, "STATS_DB", old[1]))
         return wl.StatsSink()

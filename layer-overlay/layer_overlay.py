@@ -1,65 +1,40 @@
-#!/usr/bin/env python3
-"""The line being read, as a layer-shell strip over the VN, fullscreen included.
+"""A web page as a `zwlr_layer_shell_v1` overlay surface, above fullscreen windows.
 
-KWin puts a `zwlr_layer_shell_v1` overlay surface above fullscreen windows, so
-the line can sit on the game instead of beside it.
+Nothing here knows what the page is for. Give it a URL and it draws that page
+over everything, clickable only where the page says it has drawn something —
+every click elsewhere reaches the window underneath.
 
-The page is `overlay.html` beside this file — the newest line, and a dictionary
-popup for the word clicked in it. Yomitan does not run here (QtWebEngine loads
-no extensions), so the popup is the page's own.
+Three pieces, and the page needs all three:
 
-read-stats serves that file, from this directory, and is the overlay's backend:
-the page calls eight `/api` routes for the line stream, the dictionary, the
-ledger and the card. Nothing of it can be answered locally — the dictionary and
-the ledger are jp-core's — so the overlay is a client of read-stats and starting
-without it gets a warning, not a failure.
+- [`Overlay`] is the object the page talks to over a WebChannel. The page
+  pushes the rectangles it has drawn; those become the input region.
+- [`Surface`] keeps a window on screen across output changes. A layer surface
+  belongs to an output, so losing one closes the surface with no error.
+- [`run`] wires both to a `QGuiApplication` and the two signals.
 
-**The surface is clickable only where it has drawn something.** The page pushes
-the box it has drawn the line in, and the popup's own box, over a WebChannel,
-and those become the input region: a click on a word looks it up while a click
-anywhere else reaches the VN and advances the line. There is no mode to switch.
+The page is expected to run `qwebchannel.js` — [`webchannel_script`] injects
+Qt's own copy — and to connect to the object registered as `shell`:
 
-That leaves nothing to dismiss the popup with, since a click outside never
-arrives here: it closes on the same word clicked again, on another word, or on
-the next line landing — which is what the click that missed it just caused.
+    shell.setHits([x, y, w, h, ...])   what takes clicks, flat
+    shell.setWindowName(name)          track this window's rectangle
+    shell.geometry(x, y, w, h)         where it is now, or zeros
+    shell.userToggled()                SIGUSR2 reached the page
 
-`SIGUSR1` makes the *whole* surface take input, for the rare case of wanting to
-select text rather than advance the VN. Bind it to a KDE shortcut:
+`SIGUSR1` makes the *whole* surface take input, for selecting text rather than
+clicking through. `SIGUSR2` is the page's to define. Both are sent by name:
 
-    pkill -USR1 -f vn-overlay.py
+    pkill -USR1 -f <the script that called run()>
 
-`SIGUSR2` toggles ghost mode: the line is laid over the game's own text and then
-drawn invisibly, so what is read is the game's typesetting and all this adds is
-the status tint per word and somewhere to click. It needs the line to sit on the
-game's text to the pixel, which is what the window geometry above is for — see
-`--text-x` and friends in `overlay.html` for the per-game measurements.
-
-    pkill -USR2 -f vn-overlay.py
-
-`--mobile` is the overlay read off a phone: everything at 1.75x, the line on
-the bottom edge, and the popup carrying known / unknown / mine buttons, since
-driving the PC's mouse from the phone leaves no side buttons for them. The
-strip grows with the type; `VN_OVERLAY_HEIGHT` still wins if it is set.
-
-    VN_OVERLAY_URL      page to show      (default overlay.html, over read-stats)
-    JP_TOOLS_ANKI_URL   AnkiConnect       (default http://127.0.0.1:8765)
-    VN_OVERLAY_HEIGHT   strip height, px  (default 300, 525 with --mobile)
-    VN_OVERLAY_BG       backdrop alpha    (default 0.82)
-    VN_OVERLAY_FONT     font for the line (vn-overlay.sh sets DNP Shuei Mincho
-                        Pr6; unset falls back to the page's Noto Sans CJK JP)
+Needs PySide6, qt6-webengine and layer-shell-qt as **system packages** — a venv
+build of PySide6 carries no `org.kde.layershell`.
 """
 
-import argparse
-import json
 import os
 import shutil
 import signal
 import subprocess
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
-from urllib.parse import quote, urlsplit
 
 # Turns every window of this process into a layer surface. Must be set before
 # QGuiApplication resolves the platform plugin.
@@ -73,69 +48,22 @@ from PySide6.QtWebChannel import QWebChannel  # noqa: F401
 from PySide6.QtWebEngineCore import QWebEngineScript
 from PySide6.QtWebEngineQuick import QtWebEngineQuick
 
-DEFAULT_URL = "http://localhost:3200/overlay/overlay.html"
-ANKI_URL = os.environ.get("JP_TOOLS_ANKI_URL", "http://127.0.0.1:8765")
-# Where the page's localStorage lives between runs — see Overlay.qml's profile.
-STORAGE = (
-    Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "vn-mine/overlay"
-)
-
-
-def check_dependencies(page_url: str) -> None:
-    """Say which of the overlay's dependencies are down, and keep going.
-
-    Warn rather than exit, both times: `EventSource` reconnects on its own, so
-    an overlay started before read-stats catches up when read-stats arrives,
-    and Anki is only needed at the moment a word is mined. Exiting would make
-    the start order matter when it does not.
-
-    Textractor is deliberately absent. The page already reports it live from
-    `settings.vn_logger_heartbeat`, in `#warn`, which stays right when it stops
-    mid-session — a check here would be a second answer that goes stale.
-    """
-    origin = urlsplit(page_url)
-    api = f"{origin.scheme}://{origin.netloc}"
-
-    try:
-        with urllib.request.urlopen(f"{api}/api/settings", timeout=2) as r:
-            json.load(r)
-    except (urllib.error.URLError, OSError, ValueError) as e:
-        print(
-            f"read-stats not answering on {api} ({e}) — the strip stays empty "
-            "until it does. scripts/start-all.sh start read-stats",
-            file=sys.stderr,
-        )
-
-    request = urllib.request.Request(
-        ANKI_URL,
-        data=json.dumps({"action": "version", "version": 6}).encode(),
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=2) as r:
-            json.load(r)
-    except (urllib.error.URLError, OSError, ValueError) as e:
-        print(
-            f"Anki not answering on {ANKI_URL} ({e}) — reading and lookups work, "
-            "mining will fail",
-            file=sys.stderr,
-        )
-
+QML = str(Path(__file__).resolve().parent / "Overlay.qml")
 
 GEOMETRY_POLL_MS = 300
 
 
 class Overlay(QObject):
-    """Owns which parts of the strip take clicks, and where the game is."""
+    """Owns which parts of the surface take clicks, and where the tracked window is."""
 
-    #: The game window as `x, y, width, height`, or a zero rectangle when it
-    #: cannot be found. The page lays the line over the game's own text off
-    #: this, so a move or a resize carries the line along instead of leaving it
-    #: measured against a screen the game no longer fills.
+    #: The tracked window as `x, y, width, height`, or a zero rectangle when it
+    #: cannot be found. A page that lays itself over another window's content
+    #: reads this, so a move or a resize carries it along instead of leaving it
+    #: measured against a screen that window no longer fills.
     geometry = Signal(int, int, int, int)
 
-    #: Draw the marks but not the words — see `SIGUSR2` in the module docstring.
-    ghostToggled = Signal()
+    #: SIGUSR2 reached the page. What it means is the page's to decide.
+    userToggled = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -151,19 +79,19 @@ class Overlay(QObject):
 
     @Slot(str)
     def setWindowName(self, name: str) -> None:
-        """Which window is the game, as read-stats holds it for the current work.
+        """Which window to track, by title substring.
 
-        Pushed from the page rather than read here: the name is a column on the
-        work, and a copy in this process would be the one left stale when the
-        work changes. Polled rather than watched because there is no X event for
+        Pushed from the page rather than read here: the page is where that name
+        comes from, and a copy in this process would be the one left stale when
+        it changes. Polled rather than watched because there is no X event for
         "a window matching this name appeared" that is cheaper than asking.
         """
         name = (name or "").strip()
         self._name = name
         # Answer every push, not only a new name. The page pushes on each
         # channel connect, and a reloaded page holds no geometry — dropping the
-        # repeat would leave it placing the line against the screen until the
-        # game next moved.
+        # repeat would leave it placed against the screen until the tracked
+        # window next moved.
         self._rect = None
         if name and self._xdotool:
             self._poll_geometry()
@@ -180,10 +108,10 @@ class Overlay(QObject):
         self.geometry.emit(*(rect or (0, 0, 0, 0)))
 
     def _window_rect(self):
-        # Wine and Proton VNs are XWayland windows, so they stay addressable
-        # through X under a Wayland session — the same reason vn-capture.sh
-        # finds the window this way. A Wayland-native game has no equivalent,
-        # and the page falls back to placing the line against the screen.
+        # XWayland windows stay addressable through X under a Wayland session,
+        # which is what makes this work for Wine and Proton games. A
+        # Wayland-native window has no equivalent, and the page falls back to
+        # placing itself against the screen.
         try:
             out = subprocess.run(
                 [self._xdotool, "search", "--name", self._name,
@@ -248,10 +176,10 @@ class Overlay(QObject):
         self._window.setMask(region)
         # The region reaches the compositor on the surface's next commit, and a
         # page that has finished painting schedules no further frame — so
-        # without this the popup can sit on screen taking no clicks until
-        # something else happens to repaint.
+        # without this a freshly drawn element can sit on screen taking no
+        # clicks until something else happens to repaint.
         self._window.requestUpdate()
-        if os.environ.get("VN_OVERLAY_DEBUG"):
+        if os.environ.get("LAYER_OVERLAY_DEBUG"):
             rects = " ".join(f"{r.x()},{r.y()} {r.width()}x{r.height()}" for r in region)
             print(f"mask [{len(self._hits)}] {rects}", flush=True)
         self._window.setProperty("interactive", self.interactive)
@@ -339,43 +267,32 @@ def webchannel_script() -> QWebEngineScript:
     return script
 
 
-def main() -> int:
+def run(url: str, *, scope: str, storage, qt_args=()) -> int:
+    """Show `url` as an overlay surface and run until it is killed.
+
+    `scope` names the surface to the compositor and names the page's persistent
+    storage, so window rules and anything in `localStorage` survive a restart.
+    `storage` is where that storage lives on disk.
+    """
     # Qt's event loop never returns to the interpreter, so a Python-level SIGINT
     # handler would never run and Ctrl+C would do nothing. The C default kills
     # the process, and the terminal signals the whole group, so the WebEngine
     # helper processes go with it.
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--mobile", action="store_true", help="1.75x, with touch buttons")
-    args, qt_args = ap.parse_known_args()
-    scale = 1.75 if args.mobile else 1
-
     QtWebEngineQuick.initialize()  # has to precede QGuiApplication
     app = QGuiApplication([sys.argv[0], *qt_args])
-
-    height = int(os.environ.get("VN_OVERLAY_HEIGHT", 300 * scale))
-    url = os.environ.get("VN_OVERLAY_URL", DEFAULT_URL)
-    if url == DEFAULT_URL:
-        url += f"?bg={os.environ.get('VN_OVERLAY_BG', '0.82')}&h={height}&scale={scale}"
-        if args.mobile:
-            url += "&mobile=1"
-        font = os.environ.get("VN_OVERLAY_FONT")
-        if font:
-            url += f"&font={quote(font)}"
-
-    check_dependencies(url)
 
     overlay = Overlay()
     surface = Surface(
         app,
         overlay,
-        str(Path(__file__).resolve().parent / "Overlay.qml"),
+        QML,
         {
             "overlay": overlay,
             "overlayUrl": url,
-            "overlayHeight": height,
-            "overlayStorage": str(STORAGE),
+            "overlayScope": scope,
+            "overlayStorage": str(storage),
             "overlayWebChannelScript": webchannel_script(),
         },
     )
@@ -384,7 +301,7 @@ def main() -> int:
         return 1
 
     signal.signal(signal.SIGUSR1, lambda *_: overlay.toggle())
-    signal.signal(signal.SIGUSR2, lambda *_: overlay.ghostToggled.emit())
+    signal.signal(signal.SIGUSR2, lambda *_: overlay.userToggled.emit())
     # Python only runs a signal handler between bytecodes and Qt's event loop
     # is C, so nothing above would ever land without a tick that returns to the
     # interpreter. It has no other work.
@@ -393,7 +310,3 @@ def main() -> int:
     wake.timeout.connect(lambda: None)
 
     return app.exec()
-
-
-if __name__ == "__main__":
-    sys.exit(main())

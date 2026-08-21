@@ -17,15 +17,17 @@ use crate::routes::{
 const SPA_HTML: &str = include_str!("../templates/spa.html");
 const STATIC_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
 
-/// The overlay's page, which belongs to vn-mine and is only served from here.
+/// The VN overlay's page, and the launcher that shows it.
 ///
-/// It shares no code with this app's own frontend — no imports, no stylesheet —
-/// so it lives with the Qt shell that shows it. Served from read-stats anyway
-/// because it needs this origin: it calls eight `/api` routes with relative
-/// URLs, and a `file://` origin resolves those against the filesystem. Serving
-/// it here is what keeps the overlay a client of this API rather than a second
-/// copy of the dictionary and the ledger.
-const OVERLAY_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../vn-mine/overlay");
+/// A second reading surface over this same API — the line feed, the dictionary,
+/// the ledger, the card — drawn over the game instead of beside it. It shares no
+/// code with the dashboard's own frontend, which is why it is its own directory
+/// rather than part of `static`, but it is this app's page: every route it calls
+/// is one of these, and none of them can be answered anywhere else.
+///
+/// The Qt shell that puts it over a fullscreen window is `layer-overlay`, which
+/// knows nothing about reading. See `overlay/vn-overlay.py`.
+const OVERLAY_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/overlay");
 
 /// Front-end code shared by more than one app in the workspace: the dictionary
 /// popup, which the VN overlay and yt-mine both draw. Served from both, at the
@@ -160,6 +162,7 @@ pub fn build_router(state: AppState) -> Router {
             axum::routing::post(reader::capture::vn_capture),
         )
         .route("/api/vn/windows", get(reader::capture::vn_windows))
+        .route("/api/vn/window", get(reader::capture::vn_window))
         .route(
             "/api/reader/explain",
             axum::routing::post(reader::explain::explain_line),

@@ -451,31 +451,25 @@ STATS_DB = os.environ.get("JP_TOOLS_STATS_DB_PATH") or os.path.expanduser(
     "~/.local/share/jp-tools/read-stats.db"
 )
 
-# Keep in sync with jp-core/migrations/knowledge/004_reading.sql — whichever
-# process starts first creates the schema.
-KNOWLEDGE_SCHEMA = """
-CREATE TABLE IF NOT EXISTS lines (
-    id     INTEGER PRIMARY KEY,
-    ts     REAL    NOT NULL,
-    chars  INTEGER NOT NULL,
-    text   TEXT,
-    source TEXT    NOT NULL DEFAULT 'vn',
-    work   TEXT,
-    discarded INTEGER NOT NULL DEFAULT 0,
-    ruby   TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_lines_ts ON lines(ts);
-"""
+# The columns this writes. Checked rather than created: the schema belongs to
+# jp-core's migrations and read-stats', and a second copy of it here is a copy
+# that goes stale silently — a column added there and missed here fails at the
+# insert, mid-session, with lines already hooked.
+REQUIRED = {
+    "lines": {"ts", "chars", "text", "source", "work", "discarded", "ruby"},
+    "stats.settings": {"key", "value"},
+}
 
-# read-stats/migrations/001_settings_and_pauses.sql. Created here only so the
-# current_work lookup has something to read on a first-ever run; read-stats
-# owns the table and everything else in that file.
-STATS_SCHEMA = """
-CREATE TABLE IF NOT EXISTS stats.settings (
-    key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-"""
+# How long to wait before trying the databases again. Nothing here creates
+# them, so a first-ever run has to sit out whatever starts read-stats.
+RETRY_SECS = 30
+
+
+def _columns(db, table):
+    """The columns of `table`, empty when there is no such table."""
+    schema, _, name = table.rpartition(".")
+    rows = db.execute(f"PRAGMA {schema or 'main'}.table_info({name})").fetchall()
+    return {r[1] for r in rows}
 
 
 class StatsSink:
@@ -493,32 +487,54 @@ class StatsSink:
     def __init__(self):
         self.db = None
         self.pending = []
-        if os.environ.get("JP_TOOLS_STATS_DISABLE"):
-            return
+        self.disabled = bool(os.environ.get("JP_TOOLS_STATS_DISABLE"))
+        self._next_try = 0.0
+        self._complained = False
+        self.ready()
+
+    def ready(self):
+        """Open both databases if they are not open yet, at most every
+        `RETRY_SECS`.
+
+        Retried rather than settled at startup because this daemon does not
+        create the schema and may well win the race to it: `vn-buffer.service`
+        comes up with the session, `start-all.sh` runs the migrations. Giving up
+        on the first attempt would mean a whole sitting logged to `lines.log`
+        and nowhere else.
+        """
+        if self.db is not None:
+            return True
+        if self.disabled or time.time() < self._next_try:
+            return False
+        self._next_try = time.time() + RETRY_SECS
+        db = None
         try:
-            os.makedirs(os.path.dirname(KNOWLEDGE_DB), exist_ok=True)
-            os.makedirs(os.path.dirname(STATS_DB), exist_ok=True)
-            self.db = sqlite3.connect(KNOWLEDGE_DB, isolation_level=None)
-            self.db.execute("PRAGMA journal_mode=WAL")
-            self.db.execute("PRAGMA busy_timeout=5000")
-            self.db.executescript(KNOWLEDGE_SCHEMA)
+            for path in (KNOWLEDGE_DB, STATS_DB):
+                if not os.path.exists(path):
+                    raise sqlite3.OperationalError(f"no {path} yet")
+            db = sqlite3.connect(KNOWLEDGE_DB, isolation_level=None)
+            db.execute("PRAGMA busy_timeout=5000")
             # read-stats' own DB, for the current_work and capture_paused
             # settings only.
-            self.db.execute("ATTACH DATABASE ? AS stats", (STATS_DB,))
-            self.db.executescript(STATS_SCHEMA)
-            for column in (
-                "work TEXT",
-                "discarded INTEGER NOT NULL DEFAULT 0",
-                "ruby TEXT",
-            ):
-                try:
-                    self.db.execute(f"ALTER TABLE lines ADD COLUMN {column}")
-                except sqlite3.OperationalError:
-                    pass  # column already exists
-            log(f"stats sink: {KNOWLEDGE_DB} (+ settings from {STATS_DB})")
+            db.execute("ATTACH DATABASE ? AS stats", (STATS_DB,))
+            missing = [
+                f"{table}.{column}"
+                for table, columns in REQUIRED.items()
+                for column in sorted(columns - _columns(db, table))
+            ]
+            if missing:
+                raise sqlite3.OperationalError(f"missing {', '.join(missing)}")
         except (OSError, sqlite3.Error) as e:
-            log(f"stats sink unavailable ({e}) — reading stats disabled")
-            self.db = None
+            if db is not None:
+                db.close()
+            if not self._complained:
+                self._complained = True
+                log(f"stats sink waiting ({e}) — lines.log still has everything")
+            return False
+        self.db = db
+        self._complained = False
+        log(f"stats sink: {KNOWLEDGE_DB} (+ settings from {STATS_DB})")
+        return True
 
     def heartbeat(self, ws_up):
         """Publish what only this process knows: that it is alive, whether
@@ -527,7 +543,7 @@ class StatsSink:
         `#read`'s live badge is otherwise the browser's own SSE connection,
         which stays perfectly healthy while nothing at all is being captured.
         """
-        if self.db is None:
+        if not self.ready():
             return
         beat = {"ts": time.time(), "ws": bool(ws_up), "pending": len(self.pending)}
         try:
@@ -561,6 +577,8 @@ class StatsSink:
     def current_work(self):
         """Title set via the dashboard's "now reading" field; read per line so a
         change applies immediately without restarting the daemon."""
+        if self.db is None:
+            return None
         try:
             row = self.db.execute(
                 "SELECT value FROM stats.settings WHERE key = 'current_work'"
@@ -570,7 +588,7 @@ class StatsSink:
             return None
 
     def add(self, ts, text, ruby=None):
-        if self.db is None:
+        if not self.ready():
             return
         chars = len(NOT_COUNTED.sub("", text))
         # clean_line() already dropped UI, skip-through and runaway captures, so

@@ -202,20 +202,8 @@ async fn capture_status(state: &AppState) -> CaptureStatus {
         .and_then(|v| serde_json::from_str::<Heartbeat>(v).ok());
 
     let settings = db::load_settings(&state.local).await.ok();
-    // Per work first, then the legacy global setting — the order vn-capture.sh
-    // resolves in. Diverging here would be the one thing the per-work column
-    // exists to stop: two places to say which window is the game, and the one
-    // you forgot pointing at the last VN.
-    let vn_window = match &settings {
-        Some(s) => db::current_work_vn_window(&state.knowledge, &s.current_work)
-            .await
-            .unwrap_or_else(|e| {
-                warn!(error = %e, "capture status: vn window unreadable");
-                None
-            })
-            .or_else(|| (!s.vn_window.is_empty()).then(|| s.vn_window.clone())),
-        None => None,
-    };
+    let vn_window = crate::services::capture::vn_window(state).await;
+    let vn_window = (!vn_window.is_empty()).then_some(vn_window);
 
     let Some(beat) = beat else {
         return CaptureStatus {
