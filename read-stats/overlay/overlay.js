@@ -16,6 +16,11 @@
 // the dictionaries offer, and picking one re-opens it on that term; see
 // expansions().
 //
+// ♪ in the popup head plays the word, from the Local Audio Server add-on
+// running beside Anki — the same recording Yomitan would play onto a card.
+// read-stats proxies it, because that server binds loopback and sends no CORS
+// headers, so neither this page nor a phone reading the overlay can ask it.
+//
 // Three actions on a word, and only one of them opens the popup: left-click
 // asks what it means, the back side button judges it known or unknown, the
 // forward one mines it. Splitting them that way is what keeps the lookup count
@@ -63,6 +68,9 @@ const popup = createPopup({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ note_id }),
       }).catch(() => {}),
+    audio: (term, reading) =>
+      `/api/reader/audio?${new URLSearchParams({ term, reading })}`,
+    audioClip: (path) => `/api/reader/audio/clip?${new URLSearchParams({ path })}`,
   },
   scanText: (target) => (line ? line.text.slice(target.start) : ""),
   judge: (target, status) => judge(popup.anchor(), status, target),

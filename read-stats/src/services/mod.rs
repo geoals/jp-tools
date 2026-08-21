@@ -9,6 +9,7 @@
 //! | module | talks to |
 //! |---|---|
 //! | [`anki`] | AnkiConnect, read-only — snapshots the mined deck |
+//! | [`audio`] | the Local Audio Server for Yomitan, for a word's pronunciation |
 //! | [`card`] | AnkiConnect — adds a card, then enriches it; every card path's seam |
 //! | [`capture`] | vn-mine's `vn-capture.sh`, and `xdotool` for window titles |
 //! | [`notify`] | `notify-send` — the one report a finished mine makes |
@@ -19,6 +20,7 @@
 //! | [`vndb`] | vndb.org, for the cover a work's art comes from |
 
 pub mod anki;
+pub mod audio;
 pub mod capture;
 pub mod card;
 pub mod covers;

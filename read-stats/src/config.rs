@@ -40,6 +40,9 @@ pub struct Config {
     /// Probed for the reader's status indicator; a capture still works without
     /// it (the clip is attached VAD-trimmed, just not narrowed to one sentence).
     pub whisper_url: String,
+    /// The Local Audio Server for Yomitan, an Anki add-on: the popup's 🔊.
+    /// Down or absent means no audio button, never a failed popup.
+    pub local_audio_url: String,
 }
 
 impl Config {
@@ -89,6 +92,10 @@ impl Config {
             anthropic_api_key: std::env::var("JP_TOOLS_ANTHROPIC_API_KEY").ok(),
             whisper_url: std::env::var("JP_TOOLS_WHISPER_URL")
                 .unwrap_or_else(|_| "http://localhost:8100".to_string()),
+            // Numeric for the same reason as `anki_url`: the add-on binds IPv4
+            // loopback and `localhost` resolves to `::1` first here.
+            local_audio_url: std::env::var("JP_TOOLS_LOCAL_AUDIO_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:5050".to_string()),
         }
     }
 }

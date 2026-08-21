@@ -135,7 +135,9 @@ that CSS *is* the definition being readable, and a second copy would drift from
 the dictionaries it was written against.
 
 Each host keeps only what is about its own surface: placement, the writes
-(`judge`, `mine`), and the text the expansion scan reads. The overlay records a
+(`judge`, `mine`), the text the expansion scan reads, and the URLs behind
+`api` — a host that passes no `audio` builder simply draws no ♪, which is how
+yt-mine has no audio button without knowing there is one. The overlay records a
 lookup on open and retracts it when ✓ is used; yt-mine does neither, because a
 lookup is a reading-session event and there is no session. It is vanilla DOM
 because one host is a plain page and the other is Preact.

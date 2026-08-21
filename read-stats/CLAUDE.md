@@ -487,6 +487,17 @@ Mining:
     outside the tokenizer, and Jitendex's 素振 would otherwise become a second
     ledger row beside 素振り. The popup defines and shows the dictionary's
     spelling; judge, mine and the duplicate check all send the key.
+- **♪ plays what Yomitan would play.** The Local Audio Server add-on (NHK,
+  新明解, Forvo, JPod) answers `(term, reading)` on :5050 and ranks its own
+  sources, so the popup plays the first and names it in the tooltip rather than
+  offering a list. **read-stats proxies it** — that server binds loopback and
+  sends no CORS headers, so neither the page nor a phone reading the overlay can
+  ask it directly. `/api/reader/audio` lists, `/api/reader/audio/clip` streams,
+  and `services::audio::safe_path` is what stops the second one being an open
+  proxy: a path may not start with `/`, contain `..`, a scheme or a backslash.
+  The clip is preloaded when the list lands, since a pronunciation that starts
+  after the press reads as a press that missed. No server and no recording are
+  the same answer — a hidden button, never a failed popup.
 - **The mined badge asks Anki, not `anki_notes`.** The table is a snapshot taken
   on demand, and the case that matters is a card made seconds ago;
   `reader/mined` runs the same duplicate check Yomitan does. It is fetched

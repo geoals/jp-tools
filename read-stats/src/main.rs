@@ -79,6 +79,7 @@ async fn main() {
         vn_capture_script: config.vn_capture_script.clone(),
         anthropic_api_key: config.anthropic_api_key.clone(),
         whisper_url: config.whisper_url.clone(),
+        local_audio_url: config.local_audio_url.clone(),
         highlighter: Default::default(),
     };
 

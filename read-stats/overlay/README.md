@@ -108,6 +108,13 @@ calibration above — a font whose advance differs from the game's drifts along
 the line until the tint sits between two words. The tints drop to a wash at that
 weight, since here they are over glyphs rather than under them.
 
+**♪ plays the word.** The Local Audio Server add-on beside Anki holds NHK,
+新明解, Forvo and JPod recordings and ranks them, so the button plays the first
+and names it on hover — the same recording Yomitan would put on a card.
+read-stats proxies it (`/api/reader/audio`), because that server binds loopback
+and sends no CORS headers, so neither this page nor a phone could reach it. A
+word with no recording shows no button.
+
 The popup carries a **mined** badge when the word is already a card, and
 clicking it opens that card in Anki. The check is Anki's own duplicate check,
 asked after the definition is drawn so a shut or slow Anki cannot hold it up,

@@ -50,6 +50,13 @@ export function createPopup(opts) {
   // ＋. Held for the same reason as the badge, and because the two are one
   // state: the badge appearing is what removes the button.
   let addButton = null;
+  // ♪, and the clip it plays. Built hidden and filled in when the source list
+  // lands, which is the same shape as the mined badge and for the same reason:
+  // most words have audio, some have none, and the answer arrives after the
+  // definition is already on screen. The clip is held so closing the popup can
+  // stop it — the word is gone, and so is the reason to hear it.
+  let audioButton = null;
+  let clip = null;
 
   function close() {
     popupEl.hidden = true;
@@ -57,6 +64,9 @@ export function createPopup(opts) {
     target = null;
     minedBadge = null;
     addButton = null;
+    audioButton = null;
+    clip?.pause();
+    clip = null;
     stepSource = null;
     onLayout();
   }
@@ -100,6 +110,8 @@ export function createPopup(opts) {
     popupEl.replaceChildren(...render(data, matches));
     onLayout();
 
+    loadAudio(mine_);
+
     if (!api.mined) return;
     // Asked after the definition is on screen, not before it: Anki is a second
     // process and a slow or shut one must not hold up the answer to the
@@ -127,6 +139,34 @@ export function createPopup(opts) {
     minedBadge.title = "Open this card in Anki";
     minedBadge.onclick = () => api.browse(noteId);
     if (addButton) addButton.hidden = true;
+    onLayout();
+  }
+
+  /** Find this word's audio and arm ♪ with the first clip.
+   *
+   * The audio server ranks its own sources — NHK before 新明解 before Forvo —
+   * so the first is the one to play, and the button names it rather than
+   * offering a list. A word with no recording is the ordinary case and leaves
+   * the button hidden.
+   *
+   * The clip is preloaded rather than fetched on the click: it is tens of
+   * kilobytes off the same machine, and a pronunciation that starts a moment
+   * after the press reads as a press that missed. */
+  async function loadAudio(on) {
+    if (!api.audio) return;
+    let sources;
+    try {
+      const res = await fetch(api.audio(on.term, on.reading ?? ""));
+      ({ sources } = await res.json());
+    } catch {
+      return; // No audio server. It is the one thing here that is optional.
+    }
+    if (target !== on || !audioButton || !sources?.length) return;
+    const [first] = sources;
+    clip = new Audio(api.audioClip(first.clip));
+    clip.preload = "auto";
+    audioButton.title = `Play — ${first.name}`;
+    audioButton.hidden = false;
     onLayout();
   }
 
@@ -272,6 +312,21 @@ export function createPopup(opts) {
   function actions() {
     const out = el("div", "acts");
     const on = target;
+
+    // First in the row, and the only one of these that writes nothing. Hidden
+    // until `loadAudio` finds a clip, so a word with no recording shows no
+    // button rather than one that does nothing.
+    audioButton = el("button", "", "♪");
+    audioButton.hidden = true;
+    audioButton.addEventListener("click", () => {
+      if (!clip) return;
+      // From the top every time: the second press means "again", and a clip
+      // played to its end would otherwise sit at the end and play nothing.
+      clip.currentTime = 0;
+      clip.play().catch(() => {});
+    });
+    out.append(audioButton);
+
     const mark = async (status) => {
       if (!(await judge(on, status))) return;
       on.status = status;
@@ -360,6 +415,10 @@ const API_DEFAULTS = {
   /** Null disables the mined badge — a host with no duplicate check to ask. */
   mined: null,
   browse: () => {},
+  /** Null disables 🔊 — a host with no audio server in front of it. The pair
+   *  goes together: the list names clips, `audioClip` is where they play from. */
+  audio: null,
+  audioClip: (path) => `/api/audio/clip?${new URLSearchParams({ path })}`,
 };
 
 export function el(tag, className, text) {

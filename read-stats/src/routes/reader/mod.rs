@@ -19,11 +19,13 @@
 //! | [`lines`] | clearing lines from the figures, and undoing that |
 //! | [`capture`] | the mine button, and the window picker behind it |
 //! | [`define`] | what a word means, for the overlay's popup |
+//! | [`audio`] | what a word sounds like, from the audio server beside Anki |
 //! | [`mine`] | making a card from the overlay, as Yomitan makes one |
 //! | [`mined`] | whether a word is already a card, and the way to it |
 //! | [`explain`] | "what does this line say", via the model |
 //! | [`state`] | what the page can do, in one round trip on open |
 
+pub mod audio;
 pub mod capture;
 pub mod define;
 pub mod explain;

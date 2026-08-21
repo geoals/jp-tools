@@ -56,6 +56,8 @@ pub struct AppState {
     pub anthropic_api_key: Option<String>,
     /// whisper-service base URL, probed for the reader's trim-status indicator.
     pub whisper_url: String,
+    /// The Local Audio Server for Yomitan, proxied for the popup's 🔊.
+    pub local_audio_url: String,
     /// The reading view's Sudachi pipeline, built on the first line that needs
     /// it and shared from then on. See [`reader::highlight::Shared`].
     pub highlighter: reader::highlight::Shared,
@@ -145,6 +147,8 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/api/reader/mine", axum::routing::post(reader::mine::mine))
         .route("/api/reader/mined", get(reader::mined::mined))
+        .route("/api/reader/audio", get(reader::audio::audio))
+        .route("/api/reader/audio/clip", get(reader::audio::clip))
         .route(
             "/api/reader/mined/browse",
             axum::routing::post(reader::mined::browse),
