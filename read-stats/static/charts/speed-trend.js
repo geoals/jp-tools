@@ -3,15 +3,7 @@
 
 import { html } from "htm/preact";
 import { useState } from "preact/hooks";
-import {
-  Tooltip,
-  W,
-  bandPath,
-  segments,
-  shortDate,
-  truncWork,
-  workChanges,
-} from "./svg.js";
+import { Tooltip, W, shortDate, truncWork, workChanges } from "./svg.js";
 
 /** Candidate y-axis steps for the speed chart, finest first. */
 
@@ -88,21 +80,11 @@ export function SpeedTrendChart({ days }) {
   const rawPath = rawPoints
     .map((p, k) => `${k === 0 ? "M" : "L"}${x(p.i)},${y(p.speed)}`)
     .join(" ");
-  // The lookup tax, as the area between the two lines — the same reading of
-  // the same pair the day timeline draws. Both lines have to be defined for a
-  // day to be inside the band, so it breaks where either is missing while the
-  // lines themselves join across the gap.
-  const paired = days.map((d, i) => {
-    const speed = points.find((p) => p.i === i)?.speed ?? null;
-    const raw = rawPoints.find((p) => p.i === i)?.speed ?? null;
-    return {
-      t: i,
-      speed,
-      raw,
-      both: speed !== null && raw !== null ? 1 : null,
-    };
-  });
-  const bands = segments(paired, "both").map((seg) => bandPath(seg, x, y));
+  // The lookup tax, as the area between the two lines. Built from the lines'
+  // own vertices rather than per day: a day nobody read drops out of both
+  // series, and the lines interpolate straight across it, so a band that
+  // required a point per day left a hole under two continuous lines.
+  const band = bandBetween(points, rawPoints, x, y);
   const last = points[points.length - 1];
   const labelEvery = Math.ceil(days.length / 6);
   const changes = workChanges(days);
@@ -156,7 +138,7 @@ export function SpeedTrendChart({ days }) {
             </text>
           `,
         )}
-        ${bands.map((d) => html`<path d=${d} class="tax-band" />`)}
+        ${band && html`<path d=${band} class="tax-band" />`}
         ${
           rawPoints.length > 1 &&
           html`<path
@@ -238,4 +220,43 @@ export function SpeedTrendChart({ days }) {
       }
     </div>
   `;
+}
+
+/** One polyline's height at day `i`, interpolated between the vertices it does
+ *  have — which is what the drawn line already shows there. */
+function speedAt(pts, i) {
+  if (i <= pts[0].i) return pts[0].speed;
+  const last = pts[pts.length - 1];
+  if (i >= last.i) return last.speed;
+  const k = pts.findIndex((p) => p.i >= i);
+  const a = pts[k - 1];
+  const b = pts[k];
+  return a.speed + ((b.speed - a.speed) * (i - a.i)) / (b.i - a.i);
+}
+
+/** A polyline's vertices between `lo` and `hi`, with both ends interpolated
+ *  onto it, so two lines with different vertices can be walked as one ring. */
+function clipTo(pts, lo, hi) {
+  return [
+    { i: lo, speed: speedAt(pts, lo) },
+    ...pts.filter((p) => p.i > lo && p.i < hi),
+    { i: hi, speed: speedAt(pts, hi) },
+  ];
+}
+
+/** The closed area between two speed polylines, over the span both cover.
+ *  Outside that span only one line exists and there is no gap to shade. */
+function bandBetween(a, b, x, y) {
+  if (a.length < 2 || b.length < 2) return null;
+  const lo = Math.max(a[0].i, b[0].i);
+  const hi = Math.min(a[a.length - 1].i, b[b.length - 1].i);
+  if (hi <= lo) return null;
+  const out = clipTo(a, lo, hi)
+    .map((p, k) => `${k === 0 ? "M" : "L"}${x(p.i)},${y(p.speed)}`)
+    .join(" ");
+  const back = clipTo(b, lo, hi)
+    .reverse()
+    .map((p) => `L${x(p.i)},${y(p.speed)}`)
+    .join(" ");
+  return `${out} ${back} Z`;
 }
