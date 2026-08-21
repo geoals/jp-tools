@@ -580,6 +580,21 @@ surface the master holds under *some* reading rather than a katakana form
 nothing holds. 小心者 itself is Jitendex-only, so the join has no listed
 compound to build either.
 
+**A sixth, sighted 2026-08-21: a lemma nothing lists, where the surface is the
+master's own headword.** SudachiDict has the verb 鷲掴む, which no reader's
+dictionary carries, and reads 鷲掴み as its 連用形. The ladder's surface rung is
+fenced to an uninflected token — a stem that happens to be listed is a different
+word, 許せ against 許せる — so the surface is never offered, the candidate list
+comes out empty, and the fallback keys 鷲掴む. The gate then refuses it: no
+popup, and Sankoku's 鷲掴み/わしづかみ is never counted. **The preceding particle
+decides it**: 鷲掴みにした, 鷲掴みにされた and 鷲掴みだ are all right, and
+胸を鷲掴みにした is not, because を in front makes the verb path cheaper. The kana
+spellings 鷲づかみ and わしづかみ key on 鷲掴み in every context, since SudachiDict
+has no verb written that way. The rule that would fix it is narrow: **where the
+lemma is in no dictionary at all and the surface is a master headword read the
+way the token reads, the surface wins** — 許せ is refused by the same rule
+because 許せる is listed.
+
 **The 17 dictionary gaps found in the same sweep are not parse defects.** 殺し合い
 (13), 居た堪れる (8), 先走り (5), 羽ばたき (5), 吐精, 心置き, 投げ矢, 滅び, 自罰,
 血しぶき, 車通り, すり替え, 尿量, 幾筋, 祝い金, 赤丸, 遼々 — 51 encounters where
