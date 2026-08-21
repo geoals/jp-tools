@@ -20,8 +20,6 @@ import { SegmentedControl } from "../components/controls.js";
 import { fmtTsDate } from "../lib/format.js";
 import { BrowseView } from "./browse.js";
 import { CardsView } from "./cards.js";
-import { FrequencyView } from "./frequency.js";
-import { PromotionView } from "./promotion.js";
 import { TriageView } from "./triage.js";
 
 /** The states a row is displayed in, which are not quite the states it is
@@ -42,8 +40,6 @@ const STATES = [
 const SECTIONS = [
   { value: "status", label: "status" },
   { value: "triage", label: "sweep" },
-  { value: "frequency", label: "frequency" },
-  { value: "promote", label: "promote" },
   { value: "browse", label: "browse" },
   { value: "cards", label: "cards" },
 ];
@@ -79,28 +75,20 @@ export function VocabView({ vocab, settings, onJudged }) {
       section === "cards"
         ? html`<${CardsView} />`
         : section === "triage"
-        ? html`<${TriageView}
-            minEncounters=${settings?.triage_min_encounters ?? 3}
-            onJudged=${onJudged}
-          />`
-        : section === "frequency"
-          ? html`<${FrequencyView}
-              maxFreqRank=${settings?.triage_max_freq_rank ?? 6000}
-              onCommitted=${onJudged}
+          ? html`<${TriageView}
+              minEncounters=${settings?.triage_min_encounters ?? 3}
+              onJudged=${onJudged}
             />`
-          : section === "promote"
-            ? html`<${PromotionView} onPromoted=${onJudged} />`
-            : section === "browse"
-              ? html`<${BrowseView} onJudged=${onJudged} />`
-              : html`<${StatusSummary} vocab=${vocab} onImported=${onJudged} />`
+          : section === "browse"
+            ? html`<${BrowseView} onJudged=${onJudged} />`
+            : html`<${StatusSummary} vocab=${vocab} />`
     }
   `;
 }
 
-/** The counts, plus the one-shot Anki import (Pass 1: cards past Anki's
- *  new/learning queues are evidence enough to mark known outright). Split out
- *  so the segmented control above it stays put when another view replaces it. */
-function StatusSummary({ vocab, onImported }) {
+/** The counts. Split out so the segmented control above it stays put when
+ *  another view replaces it. */
+function StatusSummary({ vocab }) {
   const byStatus = new Map(vocab.by_status.map((s) => [s.status, s]));
   const asserted = vocab.total - (byStatus.get("new")?.total ?? 0);
   // Built whole rather than interpolated beside literal text, where htm
@@ -126,135 +114,7 @@ function StatusSummary({ vocab, onImported }) {
     total: vocab.never_met,
     in_master: vocab.never_met_vocab ?? 0,
   });
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState(null);
-  const [err, setErr] = useState(null);
-  // 0 is no gate. Ranked against Jiten's list rather than BCCWJ: it is built
-  // from the same kind of material the reading is.
-  const [maxRank, setMaxRank] = useState(0);
-
-  async function importAnki() {
-    setBusy(true);
-    setErr(null);
-    try {
-      const res = await api("/api/vocab/anki-import", { method: "POST" });
-      const skippedLine = res.ambiguous_skipped
-        ? ` · ${res.ambiguous_skipped} skipped (more than one reading)`
-        : "";
-      setResult(`${res.imported} marked known${skippedLine}`);
-      onImported?.();
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  /** The jiten.moe JSON export. Sent as the file's own bytes rather than
-   *  through `api()`, which re-stringifies a parsed body — pointless work on
-   *  a few megabytes, and the parse would happen twice. */
-  async function importJiten(event) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    setBusy(true);
-    setErr(null);
-    try {
-      const gate = maxRank > 0 ? `?max_rank=${maxRank}` : "";
-      const res = await fetch(`/api/vocab/jiten-import${gate}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: await file.text(),
-      });
-      if (!res.ok) throw new Error((await res.text()) || res.statusText);
-      const r = await res.json();
-      const vetoed = `${r.vetoed_by_lookup.toLocaleString("en")} held back (looked up)`;
-      const rare = r.too_rare
-        ? `${r.too_rare.toLocaleString("en")} past the rank gate · `
-        : "";
-      setResult(
-        `${r.terms_marked.toLocaleString("en")} spellings marked known from ` +
-          `${r.resolved_entries.toLocaleString("en")} entries · ` +
-          `${vetoed} · ` +
-          rare +
-          `${r.unresolved_entries.toLocaleString("en")} not in the master dictionary`,
-      );
-      onImported?.();
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function undoSeed() {
-    if (!confirm("Put back the last jiten import? Words judged by hand since then are kept.")) {
-      return;
-    }
-    setBusy(true);
-    setErr(null);
-    try {
-      const r = await api("/api/vocab/seed-undo", { method: "POST" });
-      const n = r.reverted.toLocaleString("en");
-      setResult(`${n} spellings put back to unjudged`);
-      onImported?.();
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return html`
-    <div class="card">
-      <div class="triage-actions">
-        <span class="meta-hint">
-          Cards past Anki's new/learning queues are marked known outright.
-        </span>
-        <button class="pause-btn" onClick=${importAnki} disabled=${busy}>
-          ${busy ? "importing…" : "import Anki (reviewing cards)"}
-        </button>
-      </div>
-      <div class="triage-actions">
-        <span class="meta-hint">
-          jiten.moe's JSON export. Keyed by JMdict entry id, so readings are
-          exact and nothing is guessed. Never overwrites a word already judged,
-          and a word you have looked up is held back however the list grades it.
-        </span>
-        <label class="triage-floor">
-          skip past Jiten rank (0 = no gate)
-          <input
-            type="number"
-            min="0"
-            step="5000"
-            value=${maxRank}
-            onChange=${(e) => setMaxRank(Math.max(0, Number(e.target.value) || 0))}
-          />
-        </label>
-        <label class="pause-btn" style="cursor:pointer">
-          ${busy ? "importing…" : "import jiten.moe export…"}
-          <input
-            type="file"
-            accept=".json,application/json"
-            style="display:none"
-            onChange=${importJiten}
-            disabled=${busy}
-          />
-        </label>
-      </div>
-      <div class="triage-actions">
-        <span class="meta-hint">
-          Withdraws the last import's claims and keeps every judgement made by
-          hand since.
-        </span>
-        <button class="pause-btn" onClick=${undoSeed} disabled=${busy}>
-          ${busy ? "working…" : "undo last jiten import"}
-        </button>
-      </div>
-      ${err && html`<p class="chart-empty">Failed: ${err}</p>`}
-      ${result && html`<p class="meta-hint">${result}</p>`}
-    </div>
-
     <div class="card">
       <div class="tile-row" style="margin-top:0">
         <div
@@ -346,12 +206,7 @@ function GrowthCard({ knownWords }) {
 
   return html`
     <div class="card">
-      <h2>Words learnt per day</h2>
-      <p class="meta-hint">
-        Dated by the first time each word was called known, so a re-import
-        cannot redraw the past. The history starts where the ledger's event log
-        does — the first days are the jiten and Anki imports, not reading.
-      </p>
+      <h2>Words marked as known per day</h2>
       ${
         history
           ? html`<${DiscoveryChart}
@@ -359,7 +214,7 @@ function GrowthCard({ knownWords }) {
               label="Words marked known for the first time, per day"
               empty="No judgements recorded yet."
               barLabel="new that day"
-              lineLabel="known words"
+              lineLabel="accumulative total"
               tip=${VocabDayTip}
             />`
           : html`<p class="chart-empty">Loading…</p>`

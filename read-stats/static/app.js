@@ -49,22 +49,17 @@ function App({ view, sub }) {
   const [works, setWorks] = useState([]);
   const [settings, setSettings] = useState(null);
   const [sessions, setSessions] = useState(null);
-  const [anki, setAnki] = useState(null);
-  const [lookups, setLookups] = useState(null);
   const [vocab, setVocab] = useState(null);
-  const [ankiBusy, setAnkiBusy] = useState(false);
   const [error, setError] = useState(null);
 
   async function load() {
     try {
-      const [s, d, w, cfg, sess, ank, lk, vc] = await Promise.all([
+      const [s, d, w, cfg, sess, vc] = await Promise.all([
         api("/api/summary"),
         api("/api/days?days=60"),
         api("/api/works"),
         api("/api/settings"),
         api("/api/sessions"),
-        api("/api/anki/summary"),
-        api("/api/lookups/summary"),
         api("/api/vocab/summary"),
       ]);
       setSummary(s);
@@ -72,24 +67,10 @@ function App({ view, sub }) {
       setWorks(w);
       setSettings(cfg);
       setSessions(sess);
-      setAnki(ank);
-      setLookups(lk);
       setVocab(vc);
       setError(null);
     } catch (err) {
       setError(err.message);
-    }
-  }
-
-  async function refreshAnki() {
-    setAnkiBusy(true);
-    try {
-      await api("/api/anki/refresh", { method: "POST", body: {} });
-    } catch (err) {
-      alert(`Anki refresh failed: ${err.message}`);
-    } finally {
-      setAnkiBusy(false);
-      load();
     }
   }
 
@@ -144,7 +125,7 @@ function App({ view, sub }) {
 
   return html`
     <header>
-      <h1>read-stats</h1>
+      <h1><a href="#today">コトデックス</a></h1>
       <nav class="tabs">
         ${TABS.map(
           (t) => html`
@@ -227,11 +208,7 @@ function App({ view, sub }) {
                   ? html`<${LibraryView}
                         works=${works}
                         settings=${settings}
-                        anki=${anki}
-                        lookups=${lookups}
                         openWork=${sub}
-                        onRefreshAnki=${refreshAnki}
-                        ankiBusy=${ankiBusy}
                         onSaved=${load}
                       />`
                     : html`

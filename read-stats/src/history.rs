@@ -229,6 +229,26 @@ impl History {
         out
     }
 
+    /// Per-day characters and time with the lookups taken out: characters whose
+    /// own gap held no lookup, over what those gaps cost. Both sides drop
+    /// together — see [`stats::Bucket::clean_chars`]. The bucket width is
+    /// arbitrary here since this only re-aggregates to whole days.
+    pub fn clean_days(&self) -> BTreeMap<NaiveDate, DayBucket> {
+        let mut out: BTreeMap<NaiveDate, DayBucket> = BTreeMap::new();
+        for b in stats::bucket_lines(
+            &self.lines,
+            &self.lookups,
+            &self.presence(),
+            self.settings.session_gap_secs,
+            60.0,
+        ) {
+            let day = out.entry(self.date_of(b.t)).or_default();
+            day.chars += b.clean_chars;
+            day.active_secs += b.active_secs - b.lookup_secs;
+        }
+        out
+    }
+
     /// The two day maps added together — what the goal meter and the streak
     /// count against.
     pub fn total_days(&self) -> BTreeMap<NaiveDate, DayBucket> {

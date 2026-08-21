@@ -27,7 +27,10 @@ Cargo workspace for Japanese language learning tools.
   fullscreen included. See `vn-mine/README.md`
 - `read-stats/` — daily reading tracker (Axum + SQLite + Preact, port 3200), and
   `#read`, the live line feed read beside the VN where Yomitan does its lookups
-  and mining. See `read-stats/CLAUDE.md`
+  and mining. Shown to the reader as **コトデックス**, a proposed name only the
+  page title and the dashboard heading carry — the crate, the binary, the
+  service name and `read-stats.db` are all still `read-stats`, and the two names
+  mean the same thing. See `read-stats/CLAUDE.md`
 - `manga-ocr-service/` — Python FastAPI wrapper around kha-white's manga-ocr
   (port 8200)
 - `whisper-service/` — Python FastAPI transcription service for yt-mine
@@ -217,7 +220,7 @@ the question has a reading in it.**
   一 the text meant. Every BCCWJ row carries a reading, which is exactly what
   makes it usable here. `frequency_ranks` and `preferred_readings` stay on it.
 - **Jiten (jpdb) ranks a word**, and that is what everything reader-facing asks:
-  the underline in `#read`, frequency triage, the jiten import's rarity gate.
+  the underline in `#read`, and the sweep's by-frequency ordering.
   BCCWJ answers this one badly twice over. It files a word only under the
   corpus's orthography with no kana row, so いただく exists as 頂く/いただく
   alone and a kana-written line gets no rank at all — 2,872 of 16,003 ledger

@@ -117,45 +117,13 @@ pub fn build_router(state: AppState) -> Router {
             "/api/vocab/anki-import",
             axum::routing::post(vocab::vocab_anki_import),
         )
-        // The export is a few megabytes of JSON — past axum's 2 MB default,
-        // which rejects it as a bare 413 with nothing in the log to explain
-        // why. The limit is raised on this route alone.
-        .route(
-            "/api/vocab/jiten-import",
-            axum::routing::post(vocab::vocab_jiten_import)
-                .layer(axum::extract::DefaultBodyLimit::max(64 * 1024 * 1024)),
-        )
         .route(
             "/api/vocab/repair-empty-readings",
             axum::routing::post(vocab::vocab_repair_empty_readings),
         )
         .route(
-            "/api/vocab/promotion-queue",
-            get(vocab::vocab_promotion_queue),
-        )
-        .route(
-            "/api/vocab/promote",
-            axum::routing::post(vocab::vocab_promote),
-        )
-        .route(
-            "/api/vocab/frequency-summary",
-            get(vocab::vocab_frequency_summary),
-        )
-        .route(
-            "/api/vocab/frequency-queue",
-            get(vocab::vocab_frequency_queue),
-        )
-        .route(
-            "/api/vocab/frequency-commit",
-            axum::routing::post(vocab::vocab_frequency_commit),
-        )
-        .route(
             "/api/vocab/rebuild",
             axum::routing::post(vocab::vocab_rebuild),
-        )
-        .route(
-            "/api/vocab/seed-undo",
-            axum::routing::post(vocab::vocab_seed_undo),
         )
         .route("/api/lookups/summary", get(lookups::lookups_summary))
         .route("/api/kanji", get(kanji::kanji))

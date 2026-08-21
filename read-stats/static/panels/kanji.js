@@ -2,8 +2,7 @@
 //
 // The grid is the card the others explain. A kanji's chip is tinted by how
 // often it has been read — on a log scale, because linear would leave
-// everything but 人事言 invisible — and ringed green when the target word of a
-// card in the deck contains it.
+// everything but 人事言 invisible.
 //
 // One payload feeds all of it (see routes/kanji.rs). Everything below is a
 // re-slice in JS, which is what keeps the grid and the grade meters from
@@ -21,7 +20,7 @@ import { SegmentedControl } from "../components/controls.js";
 const SORTS = [
   { value: "count", label: "most read" },
   { value: "bccwj", label: "most common" },
-  { value: "recent", label: "newest to you" },
+  { value: "recent", label: "newest" },
 ];
 
 /** Grade 8 is the whole secondary-school half of the jōyō set, and 0 is
@@ -72,32 +71,37 @@ export function KanjiView() {
   const solidOf = ` (≥${solidAt}×)`;
 
   return html`
-    <div class="tile-row kanji-tiles">
-      <div class="tile">
-        <div class="label">distinct kanji</div>
-        <div class="value">${rows.length.toLocaleString("en")}</div>
-      </div>
-      <div class="tile">
-        <div class="label">jōyō met</div>
-        <div class="value">
-          ${Math.round((joyoMet / joyoTotal) * 100)}%
-          <span class="value-sub">${joyoOf}</span>
+    <div class="card">
+      <h2>Kanji</h2>
+      <div class="tile-row" style="margin-top:0">
+        <div class="tile">
+          <div class="label">distinct kanji</div>
+          <div class="value">${rows.length.toLocaleString("en")}</div>
         </div>
-      </div>
-      <div class="tile">
-        <div class="label">solid</div>
-        <div class="value">
-          ${solid.toLocaleString("en")}
-          <span class="value-sub">${solidOf}</span>
+        <div class="tile">
+          <div class="label">jōyō met</div>
+          <div class="value">
+            ${Math.round((joyoMet / joyoTotal) * 100)}%
+            <span class="value-sub">${joyoOf}</span>
+          </div>
         </div>
-      </div>
-      <div class="tile">
-        <div class="label">seen once</div>
-        <div class="value">${once.toLocaleString("en")}</div>
-      </div>
-      <div class="tile">
-        <div class="label">kanji read</div>
-        <div class="value">${kanji.total_encounters.toLocaleString("en")}</div>
+        <div class="tile">
+          <div class="label">solid</div>
+          <div class="value">
+            ${solid.toLocaleString("en")}
+            <span class="value-sub">${solidOf}</span>
+          </div>
+        </div>
+        <div class="tile">
+          <div class="label">seen once</div>
+          <div class="value">${once.toLocaleString("en")}</div>
+        </div>
+        <div class="tile">
+          <div class="label">kanji read</div>
+          <div class="value">
+            ${kanji.total_encounters.toLocaleString("en")}
+          </div>
+        </div>
       </div>
     </div>
 
@@ -120,7 +124,7 @@ export function KanjiView() {
 
 /* The grid ---------------------------------------------------------------- */
 
-/** Tint strength for a chip, on a log scale against the commonest kanji. The
+/** Tint strength for a chip, on a log scale against the most-read kanji. The
  *  floor keeps a once-seen kanji visible as a chip rather than a hole in the
  *  grid, and the ceiling stops the top of the ramp from swallowing the glyph. */
 function tint(count, max) {
@@ -168,7 +172,6 @@ function GridCard({ rows, solidAt }) {
       <div class="kanji-grid">
         ${shown.map((r) => {
           const classes = ["kanji-cell"];
-          if (r.mined) classes.push("kanji-mined");
           if (r.kanji === picked) classes.push("kanji-picked");
           if (r.count >= solidAt) classes.push("kanji-solid");
           const rank = r.bccwj_rank ? `BCCWJ #${r.bccwj_rank}` : "not in BCCWJ";

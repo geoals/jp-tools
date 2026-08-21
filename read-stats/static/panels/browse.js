@@ -16,16 +16,15 @@
 // The rank shown is the *word's*, not the spelling's — see `word_rank_sql`.
 //
 // Judging writes straight through `POST /api/vocab/judge`, one word at a time
-// and optimistically, the same shape `frequency.js` uses — the point of a list
-// you are scanning is that marking something takes no more thought than
-// noticing it.
+// and optimistically — the point of a list you are scanning is that marking
+// something takes no more thought than noticing it.
 
 import { html } from "htm/preact";
 import { useEffect, useState } from "preact/hooks";
 import { api } from "../api.js";
 
 const SOURCES = [
-  ["seed", "jiten import"],
+  ["seed", "bulk import"],
   ["triage", "judged by hand"],
   ["any", "any source"],
 ];
@@ -99,7 +98,7 @@ export function BrowseView({ onJudged }) {
   const from = page.total ? offset + 1 : 0;
   const to = Math.min(offset + page.limit, page.total);
   const shown = `${from.toLocaleString("en")}–${to.toLocaleString("en")} of ${page.total.toLocaleString("en")}`;
-  const orderLabel = commonFirst ? "commonest first" : "rarest first";
+  const orderLabel = commonFirst ? "most common first" : "rarest first";
 
   return html`
     <div class="card">

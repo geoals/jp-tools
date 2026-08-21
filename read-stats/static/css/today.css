@@ -35,6 +35,10 @@
   background: var(--series-1);
   border-radius: 5px;
 }
+/* A finished work, not a nearly-finished one. */
+.meter-fill.done {
+  background: var(--good);
+}
 .meter-marker {
   position: absolute;
   top: -2px;

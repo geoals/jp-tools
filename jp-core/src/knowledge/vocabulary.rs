@@ -401,134 +401,6 @@ pub async fn set_status(
     Ok(())
 }
 
-/// One row of a frequency-triage page: a term, its rank, and its single
-/// resolved master-dictionary reading. Always resolvable — [`frequency_queue`]
-/// only returns rows with exactly one reading; a homograph never reaches this
-/// struct at all; see [`frequency_pending`]'s `ambiguous` count for those.
-#[derive(Debug, Clone)]
-pub struct FrequencyCandidate {
-    pub term: String,
-    pub rank: i64,
-    pub reading: String,
-}
-
-/// The shared filter behind both frequency-triage functions: frequency rows within
-/// `dictionary_id`, restricted to master-dictionary terms, excluding any
-/// headword already judged under *any* of its readings — `UNJUDGED_HEADWORD`'s
-/// rule, simpler here because no ledger row need exist yet.
-///
-/// Both EXISTS clauses must seek rather than scan; see the note on
-/// [`refresh_dictionary_flags`].
-const FREQUENCY_FILTER: &str = "df.dictionary_id = ? \
-     AND EXISTS (SELECT 1 FROM dictionary_entries de \
-                 WHERE de.dictionary_id = ? AND de.term = df.term) \
-     AND NOT EXISTS (SELECT 1 FROM vocabulary v \
-                     WHERE v.headword = df.term AND v.status != 'new')";
-
-/// How many pending terms at a threshold a commit would actually write, and
-/// how many it would skip as homographs.
-///
-/// Two numbers rather than one, because a homograph stays pending forever —
-/// nothing here resolves one. Conflated, a "mark all N known" button promised
-/// work a second commit could not do: after the first, the same N reappears as
-/// the standing homograph tail and the button looks broken.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct FrequencyPending {
-    pub committable: i64,
-    pub ambiguous: i64,
-}
-
-/// How many ranked terms at or under `max_rank` are still unjudged master
-/// vocabulary — the count a threshold slider shows before a preview is asked
-/// for.
-///
-/// **The reading-count subquery is pinned to `idx_dictionary_entries_lookup`
-/// with `INDEXED BY`, and must stay pinned.** `COUNT(DISTINCT de.reading)` gives
-/// the planner a reason to prefer `idx_dictionary_entries_reading`, which is
-/// keyed `(dictionary_id, reading)` and so can only seek on `dictionary_id` —
-/// turning the `term` filter into a scan per frequency row. Unpinned this hung past
-/// 15s; pinned it runs in 0.6s. Check `EXPLAIN QUERY PLAN` says SEARCH with
-/// **both** key columns bound, not a bare `dictionary_id` seek.
-pub async fn frequency_pending(
-    k: &Knowledge,
-    freq_id: i64,
-    master_id: i64,
-    max_rank: i64,
-) -> Result<FrequencyPending, sqlx::Error> {
-    let row = sqlx::query(&format!(
-        "SELECT \
-             COALESCE(SUM(CASE WHEN readings <= 1 THEN 1 ELSE 0 END), 0) AS committable, \
-             COALESCE(SUM(CASE WHEN readings > 1 THEN 1 ELSE 0 END), 0) AS ambiguous \
-         FROM ( \
-             SELECT df.term, \
-                    (SELECT COUNT(DISTINCT de.reading) FROM dictionary_entries de \
-                     INDEXED BY idx_dictionary_entries_lookup \
-                     WHERE de.dictionary_id = ? AND de.term = df.term) AS readings \
-             FROM dictionary_frequency df \
-             WHERE {FREQUENCY_FILTER} \
-             GROUP BY df.term HAVING MIN(df.frequency) <= ?)"
-    ))
-    .bind(master_id)
-    .bind(freq_id)
-    .bind(master_id)
-    .bind(max_rank)
-    .fetch_one(k.pool())
-    .await?;
-    Ok(FrequencyPending {
-        committable: row.get("committable"),
-        ambiguous: row.get("ambiguous"),
-    })
-}
-
-/// A page of frequency-triage candidates, commonest first — **committable ones
-/// only**. A homograph is excluded rather than flagged: it cannot be written
-/// without guessing a reading, so a page slot spent on one is a row the reader
-/// clicks past for nothing. [`frequency_pending`]'s `ambiguous` count is where
-/// it stays visible, as a total.
-///
-/// Both extra subqueries are `INDEXED BY`-pinned to
-/// `idx_dictionary_entries_lookup` for the reason [`frequency_pending`]'s is.
-pub async fn frequency_queue(
-    k: &Knowledge,
-    freq_id: i64,
-    master_id: i64,
-    max_rank: i64,
-    limit: i64,
-    offset: i64,
-) -> Result<Vec<FrequencyCandidate>, sqlx::Error> {
-    let rows = sqlx::query(&format!(
-        "SELECT term, rank, reading FROM ( \
-             SELECT df.term AS term, MIN(df.frequency) AS rank, \
-                    (SELECT COUNT(DISTINCT de.reading) FROM dictionary_entries de \
-                     INDEXED BY idx_dictionary_entries_lookup \
-                     WHERE de.dictionary_id = ? AND de.term = df.term) AS reading_count, \
-                    (SELECT MIN(de.reading) FROM dictionary_entries de \
-                     INDEXED BY idx_dictionary_entries_lookup \
-                     WHERE de.dictionary_id = ? AND de.term = df.term) AS reading \
-             FROM dictionary_frequency df \
-             WHERE {FREQUENCY_FILTER} \
-             GROUP BY df.term HAVING MIN(df.frequency) <= ? AND reading_count = 1) \
-         ORDER BY rank, term LIMIT ? OFFSET ?"
-    ))
-    .bind(master_id)
-    .bind(master_id)
-    .bind(freq_id)
-    .bind(master_id)
-    .bind(max_rank)
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(k.pool())
-    .await?;
-    Ok(rows
-        .iter()
-        .map(|r| FrequencyCandidate {
-            term: r.get("term"),
-            rank: r.get("rank"),
-            reading: r.get("reading"),
-        })
-        .collect())
-}
-
 pub async fn fetch(k: &Knowledge, term: &Term) -> Result<Option<VocabRow>, sqlx::Error> {
     let row = sqlx::query("SELECT * FROM vocabulary WHERE headword = ? AND reading = ?")
         .bind(&term.headword)
@@ -749,41 +621,6 @@ pub fn preselects_known(row: &VocabRow, min_encounters: i64) -> bool {
     row.encounter_count >= min_encounters && row.lookup_count == 0
 }
 
-/// Assert `status` only where nothing has been asserted yet.
-///
-/// The write a *bulk seed* wants, against [`set_status_each`]'s, which is what
-/// a person clicking a row wants. A seed carries thousands of judgements made
-/// elsewhere months ago; a row saying `unknown` carries one made here with the
-/// word on screen, and the seed must not overrule it.
-///
-/// So an existing row is written only while still `new`, and missing rows are
-/// created. That also makes the import idempotent and order-independent.
-pub async fn seed_status_each(
-    k: &Knowledge,
-    judgements: &[(Term, Status)],
-    ts: f64,
-) -> Result<u64, sqlx::Error> {
-    let mut tx = k.pool().begin().await?;
-    let mut n = 0;
-    for (term, status) in judgements {
-        n += sqlx::query(
-            "INSERT INTO vocabulary (headword, reading, status, status_ts, status_source) \
-                 VALUES (?, ?, ?, ?, 'seed') \
-             ON CONFLICT(headword, reading) DO UPDATE SET status = excluded.status, \
-                 status_ts = excluded.status_ts, status_source = excluded.status_source \
-             WHERE vocabulary.status = 'new'",
-        )
-        .bind(&term.headword)
-        .bind(&term.reading)
-        .bind(status.as_str())
-        .bind(ts)
-        .execute(&mut *tx)
-        .await?
-        .rows_affected();
-    }
-    tx.commit().await?;
-    Ok(n)
-}
 
 /// How common the *word* is, as an SQL expression over a `vocabulary` row.
 ///
@@ -868,7 +705,7 @@ fn word_rank_sql(lex: Option<i64>, corpus: Option<i64>, alias: &str) -> String {
 /// goes wrong along: the rare end is where a threshold rule claims words that
 /// were never really met.
 ///
-/// `source` filters on `status_source`, so `seed` is the jiten import and
+/// `source` filters on `status_source`, so `seed` is a bulk import and
 /// `triage` is what was judged by hand. Unranked rows sort last: BCCWJ is a
 /// written corpus and its silence about この野郎 is a gap in the corpus, not a
 /// statement about the word.
@@ -1035,36 +872,9 @@ pub async fn first_known_at(k: &Knowledge) -> Result<Vec<(Term, f64)>, sqlx::Err
         .collect())
 }
 
-/// Revert the most recent [`seed_status_each`] batch, and only that one.
-///
-/// A batch is identified by its `status_ts`, which the seed writes identically
-/// across the whole import. Every row it touched was `new` before — the seed's
-/// `WHERE status = 'new'` guarantees it — so `new` is what they go back to, with
-/// no need to consult the event log. A row judged by hand since then has
-/// `status_source = 'triage'` and is left alone.
-///
-/// Returns how many rows were put back.
-pub async fn undo_last_seed(k: &Knowledge) -> Result<u64, sqlx::Error> {
-    let Some((batch,)): Option<(f64,)> =
-        sqlx::query_as("SELECT MAX(status_ts) FROM vocabulary WHERE status_source = 'seed'")
-            .fetch_optional(k.pool())
-            .await?
-    else {
-        return Ok(0);
-    };
-    Ok(sqlx::query(
-        "UPDATE vocabulary SET status = 'new', status_ts = NULL, status_source = NULL \
-         WHERE status_source = 'seed' AND status_ts = ?",
-    )
-    .bind(batch)
-    .execute(k.pool())
-    .await?
-    .rows_affected())
-}
-
 /// `source` labels the pass in the history log — `triage`, `anki`,
-/// `frequency`; [`seed_status_each`] writes `seed` for the jiten import. It is
-/// informational; it never affects what is written to `vocabulary` itself.
+/// `source` labels the pass in the history log — `triage`, `anki`, `seed`. It
+/// is informational; it never affects what is written to `vocabulary` itself.
 pub async fn set_status_each(
     k: &Knowledge,
     judgements: &[(Term, Status)],
@@ -1257,99 +1067,6 @@ pub async fn status_counts(k: &Knowledge) -> Result<Vec<StatusCount>, sqlx::Erro
             in_master: r.get::<Option<i64>, _>("in_master").unwrap_or(0),
         })
         .collect())
-}
-
-/// A term that would count toward the vocabulary scale if the reader said so.
-///
-/// The escape hatch's queue. Two things put a term here, both evidence the
-/// reader cares about it:
-///
-/// - **it was mined** — a card exists. Structurally the only way a non-master
-///   term reaches them at all, since every reading-based queue gates on the
-///   vocabulary predicate.
-/// - **it was read often** — 懲罰房 was met 61 times and credited to nothing,
-///   Sudachi tagging it a place name so the name filter drops it.
-///
-/// Not "every non-master term": most of those are tokenizer noise, and the
-/// blacklist bulk action exists for them.
-#[derive(Debug, Clone)]
-pub struct PromotionCandidate {
-    pub term: Term,
-    pub mined: bool,
-    pub encounter_count: i64,
-    pub in_reference: bool,
-}
-
-/// Terms outside the vocabulary scale that are worth a promote/skip decision.
-///
-/// Mined first, then by how often they were read: the mined ones are the
-/// reader's own claims and the read ones are the dictionary's misses.
-pub async fn promotion_candidates(
-    k: &Knowledge,
-    min_encounters: i64,
-    limit: i64,
-) -> Result<Vec<PromotionCandidate>, sqlx::Error> {
-    let rows = sqlx::query(
-        "SELECT headword, reading, mined, encounter_count, in_reference \
-         FROM vocabulary \
-         WHERE promoted = 0 AND in_master = 0 AND in_name = 0 \
-           AND (mined = 1 OR encounter_count >= ?) \
-         ORDER BY mined DESC, encounter_count DESC LIMIT ?",
-    )
-    .bind(min_encounters)
-    .bind(limit)
-    .fetch_all(k.pool())
-    .await?;
-    Ok(rows
-        .iter()
-        .map(|r| PromotionCandidate {
-            term: Term {
-                headword: r.get("headword"),
-                reading: r.get("reading"),
-            },
-            mined: r.get::<i64, _>("mined") != 0,
-            encounter_count: r.get("encounter_count"),
-            in_reference: r.get::<i64, _>("in_reference") != 0,
-        })
-        .collect())
-}
-
-/// How many candidates there are in total, since the queue is only its head.
-pub async fn promotion_pending(k: &Knowledge, min_encounters: i64) -> Result<i64, sqlx::Error> {
-    let (n,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM vocabulary \
-         WHERE promoted = 0 AND in_master = 0 AND in_name = 0 \
-           AND (mined = 1 OR encounter_count >= ?)",
-    )
-    .bind(min_encounters)
-    .fetch_one(k.pool())
-    .await?;
-    Ok(n)
-}
-
-/// Count these terms as vocabulary though no master dictionary lists them.
-///
-/// An assertion like `status`: only ever written from a request the reader made.
-/// Never sets `status` as a side effect — promoting 冪等性 says it is a word,
-/// not that it is known.
-pub async fn set_promoted(
-    k: &Knowledge,
-    terms: &[Term],
-    promoted: bool,
-) -> Result<u64, sqlx::Error> {
-    let mut tx = k.pool().begin().await?;
-    let mut n = 0;
-    for term in terms {
-        n += sqlx::query("UPDATE vocabulary SET promoted = ? WHERE headword = ? AND reading = ?")
-            .bind(i64::from(promoted))
-            .bind(&term.headword)
-            .bind(&term.reading)
-            .execute(&mut *tx)
-            .await?
-            .rows_affected();
-    }
-    tx.commit().await?;
-    Ok(n)
 }
 
 /// What [`repair_empty_readings`] did.
@@ -1705,80 +1422,6 @@ mod tests {
         assert!(
             !detail.iter().any(|d| d.starts_with("SCAN de")),
             "scanning every entry per ledger row is the six-minute bug: {detail:?}"
-        );
-    }
-
-    /// Pins the plan for the same reason as the test above. A correctness test
-    /// would not have caught the regression: the counts were right, just
-    /// minutes late.
-    #[tokio::test]
-    async fn frequency_pending_seeks_the_dictionary_index_for_readings_too() {
-        let k = temp().await;
-        let plan: Vec<(i64, i64, i64, String)> = sqlx::query_as(&format!(
-            "EXPLAIN QUERY PLAN SELECT \
-                 COALESCE(SUM(CASE WHEN readings <= 1 THEN 1 ELSE 0 END), 0), \
-                 COALESCE(SUM(CASE WHEN readings > 1 THEN 1 ELSE 0 END), 0) \
-             FROM ( \
-                 SELECT df.term, \
-                        (SELECT COUNT(DISTINCT de.reading) FROM dictionary_entries de \
-                         INDEXED BY idx_dictionary_entries_lookup \
-                         WHERE de.dictionary_id = 1 AND de.term = df.term) AS readings \
-                 FROM dictionary_frequency df \
-                 WHERE {FREQUENCY_FILTER} \
-                 GROUP BY df.term HAVING MIN(df.frequency) <= 6000)"
-        ))
-        .bind(2)
-        .bind(1)
-        .fetch_all(k.pool())
-        .await
-        .unwrap();
-        let detail: Vec<&str> = plan.iter().map(|r| r.3.as_str()).collect();
-        assert!(
-            detail.iter().any(|d| d
-                .contains("SEARCH de USING INDEX idx_dictionary_entries_lookup")
-                && d.contains("dictionary_id=?")
-                && d.contains("term=?")),
-            "the reading-count subquery must seek on (dictionary_id, term), not just dictionary_id: {detail:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn frequency_queue_excludes_homographs_and_resolves_the_rest() {
-        let k = temp().await;
-        sqlx::query(
-            "INSERT INTO dictionaries (id, title, source_path, role) \
-                 VALUES (1, 'Sankoku', '/s.zip', 'master'), (2, 'BCCWJ', '/b.zip', 'reference');\
-             INSERT INTO dictionary_entries (dictionary_id, term, reading, definitions_json) \
-                 VALUES (1, '二十', 'にじゅう', '[]'), (1, '二十', 'はたち', '[]'), \
-                        (1, '犬', 'いぬ', '[]');\
-             INSERT INTO dictionary_frequency (dictionary_id, term, frequency) \
-                 VALUES (2, '二十', 10), (2, '犬', 20);",
-        )
-        .execute(k.pool())
-        .await
-        .unwrap();
-
-        let pending = frequency_pending(&k, 2, 1, 100).await.unwrap();
-        assert_eq!(pending.committable, 1, "only 犬 has one reading");
-        assert_eq!(pending.ambiguous, 1, "二十 is にじゅう or はたち");
-
-        let queue = frequency_queue(&k, 2, 1, 100, 10, 0).await.unwrap();
-        assert_eq!(queue.len(), 1, "二十 must not occupy a page slot");
-        assert_eq!(queue[0].term, "犬");
-        assert_eq!(queue[0].reading, "いぬ");
-
-        // A term the reader has already judged (however that happened) drops
-        // out on the next call, exactly like the triage queue's own rule.
-        set_status(&k, &Term::new("犬", "いぬ"), Status::Unknown, 1.0)
-            .await
-            .unwrap();
-        assert_eq!(
-            frequency_queue(&k, 2, 1, 100, 10, 0).await.unwrap().len(),
-            0
-        );
-        assert_eq!(
-            frequency_pending(&k, 2, 1, 100).await.unwrap().committable,
-            0
         );
     }
 
@@ -2351,64 +1994,6 @@ mod tests {
                 .unwrap()
                 .status,
             Status::New
-        );
-    }
-
-    /// A bulk seed carries judgements made elsewhere and months ago. A row
-    /// already saying `unknown` carries one made here, with the word on
-    /// screen — and the first jiten import quietly turned 16 of those into
-    /// `known` before this guard existed.
-    #[tokio::test]
-    async fn a_seed_fills_new_rows_and_leaves_judged_ones_alone() {
-        let k = temp().await;
-        let judged = Term::new("辛い", "からい");
-        let untouched = Term::new("零れ落ちる", "こぼれおちる");
-        set_status(&k, &judged, Status::Unknown, 1.0).await.unwrap();
-        set_status(&k, &untouched, Status::New, 1.0).await.unwrap();
-
-        let fresh = Term::new("こぼれ落ちる", "こぼれおちる");
-        seed_status_each(
-            &k,
-            &[
-                (judged.clone(), Status::Known),
-                (untouched.clone(), Status::Known),
-                (fresh.clone(), Status::Known),
-            ],
-            9.0,
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(
-            get(&k, &judged).await.status,
-            Status::Unknown,
-            "a judgement survives a seed"
-        );
-        assert_eq!(
-            get(&k, &untouched).await.status,
-            Status::Known,
-            "an unjudged row is filled"
-        );
-        assert_eq!(
-            get(&k, &fresh).await.status,
-            Status::Known,
-            "a missing row is created"
-        );
-    }
-
-    /// Running it twice must land where running it once did.
-    #[tokio::test]
-    async fn seeding_is_idempotent() {
-        let k = temp().await;
-        let t = Term::new("零れ落ちる", "こぼれおちる");
-        let seed = [(t.clone(), Status::Known)];
-        seed_status_each(&k, &seed, 1.0).await.unwrap();
-        set_status(&k, &t, Status::Unknown, 2.0).await.unwrap();
-        seed_status_each(&k, &seed, 3.0).await.unwrap();
-        assert_eq!(
-            get(&k, &t).await.status,
-            Status::Unknown,
-            "a re-run cannot undo a judgement made between the two"
         );
     }
 

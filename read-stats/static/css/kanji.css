@@ -5,12 +5,6 @@
    strength is the only honest encoding. --k is set per chip in JS (log-scaled
    encounter count) and everything here reads it. */
 
-/* These tiles are bare on the page rather than inside a card, so nothing
-   separates them from the card below. */
-.kanji-tiles {
-  margin-bottom: 18px;
-}
-
 .kanji-grid {
   display: flex;
   flex-wrap: wrap;
@@ -47,12 +41,6 @@
 .kanji-cell:focus-visible {
   outline: 2px solid var(--series-1);
   outline-offset: -2px;
-}
-/* The ring for a kanji a card's target word contains. Rare by construction,
-   which is what lets it mean something at a glance across two thousand
-   chips. */
-.kanji-mined {
-  border-color: var(--series-2);
 }
 .kanji-picked {
   outline: 2px solid var(--text-primary);

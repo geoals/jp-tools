@@ -3,7 +3,15 @@
 
 import { html } from "htm/preact";
 import { useState } from "preact/hooks";
-import { Tooltip, W, shortDate, truncWork, workChanges } from "./svg.js";
+import {
+  Tooltip,
+  W,
+  bandPath,
+  segments,
+  shortDate,
+  truncWork,
+  workChanges,
+} from "./svg.js";
 
 /** Candidate y-axis steps for the speed chart, finest first. */
 
@@ -14,8 +22,7 @@ const SPEED_STEPS = [500, 1000, 2000, 2500, 5000, 10000];
  *
  *  `clean` — characters read across gaps holding no lookup, over what those
  *  gaps cost — draws the same measure under the other condition: the pace
- *  without the lookup tax. Only the work detail sends it; the whole-history
- *  chart draws the measured line alone. */
+ *  without the lookup tax. */
 
 export function SpeedTrendChart({ days }) {
   const [hover, setHover] = useState(null);
@@ -81,6 +88,21 @@ export function SpeedTrendChart({ days }) {
   const rawPath = rawPoints
     .map((p, k) => `${k === 0 ? "M" : "L"}${x(p.i)},${y(p.speed)}`)
     .join(" ");
+  // The lookup tax, as the area between the two lines — the same reading of
+  // the same pair the day timeline draws. Both lines have to be defined for a
+  // day to be inside the band, so it breaks where either is missing while the
+  // lines themselves join across the gap.
+  const paired = days.map((d, i) => {
+    const speed = points.find((p) => p.i === i)?.speed ?? null;
+    const raw = rawPoints.find((p) => p.i === i)?.speed ?? null;
+    return {
+      t: i,
+      speed,
+      raw,
+      both: speed !== null && raw !== null ? 1 : null,
+    };
+  });
+  const bands = segments(paired, "both").map((seg) => bandPath(seg, x, y));
   const last = points[points.length - 1];
   const labelEvery = Math.ceil(days.length / 6);
   const changes = workChanges(days);
@@ -134,6 +156,7 @@ export function SpeedTrendChart({ days }) {
             </text>
           `,
         )}
+        ${bands.map((d) => html`<path d=${d} class="tax-band" />`)}
         ${
           rawPoints.length > 1 &&
           html`<path

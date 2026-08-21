@@ -225,7 +225,7 @@ cmd_browser() {
 
   "$CHROME" --headless --disable-gpu --no-sandbox --dump-dom --virtual-time-budget=15000 \
     "http://127.0.0.1:$PORT/#trends" >"$WORK/dom-trends.html" 2>>"$WORK/console.log"
-  for want in "avg speed" "avg/day" "Reading speed" "Lookups &amp; cards"; do
+  for want in "avg speed" "avg/day" "Reading speed" "Lookups and new cards"; do
     grep -qF "$want" "$WORK/dom-trends.html" || die "trends tab is missing: $want"
   done
   say "trends tab renders ($(wc -c <"$WORK/dom-trends.html") bytes)"

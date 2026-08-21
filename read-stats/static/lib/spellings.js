@@ -53,7 +53,7 @@ export function useSpellings() {
   };
 }
 
-/** One term's spellings, commonest first, each with a line it appeared in.
+/** One term's spellings, most common first, each with a line it appeared in.
  *
  *  Counts are per surface with inflection kept, so 出来る and 出来れ are separate
  *  rows. Folding them would need the same normalization that lost the

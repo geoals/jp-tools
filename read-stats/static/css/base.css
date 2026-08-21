@@ -124,10 +124,9 @@ header {
    stay right-aligned and the tabs never push them off a narrow screen.
 
    Selected state is the one this app already uses everywhere a control is
-   chosen — the --meter-track tint with primary ink, as on .segment-on and
-   .toggle-on. Not an accent underline and not a filled accent: saturated
-   --series-1 is spent on exactly one thing here, the paused alarm, and it only
-   reads as an alarm while nothing else claims it. */
+   chosen — filled --series-1, as on .segment-on. It is the same blue the
+   charts draw with, so "this one is picked" and "this is the reading" are one
+   colour rather than two that nearly match. */
 .tabs {
   display: flex;
   gap: 2px;
@@ -144,8 +143,8 @@ header {
   color: var(--text-primary);
 }
 .tab-on {
-  background: var(--meter-track);
-  color: var(--text-primary);
+  background: var(--series-1);
+  color: #fff;
 }
 .tab:focus-visible {
   outline: 2px solid var(--series-1);
@@ -164,6 +163,10 @@ header h1 {
   font-size: 24px;
   font-weight: 600;
   margin: 0;
+}
+header h1 a {
+  color: inherit;
+  text-decoration: none;
 }
 .header-right {
   display: flex;
@@ -256,6 +259,8 @@ header h1 {
    sitting between shelf rows would only pad the dialog's own. */
 .modal-body .work-meta-form,
 .modal-body .book-add,
-.modal-body .add-chooser {
+.modal-body .add-chooser,
+.modal-body .log,
+.modal-body .now-reading {
   margin: 0;
 }

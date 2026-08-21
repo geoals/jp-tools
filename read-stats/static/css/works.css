@@ -23,6 +23,17 @@
   font-weight: 600;
   margin-bottom: 4px;
 }
+.current-work .title a,
+.current-work a:has(> .cover) {
+  color: inherit;
+  text-decoration: none;
+}
+.current-work .title a:hover {
+  text-decoration: underline;
+}
+.current-work a:has(> .cover):hover .cover {
+  border-color: var(--muted);
+}
 .current-work .meter {
   margin: 8px 0 4px;
 }
@@ -48,7 +59,8 @@
 .card-head h2 {
   margin-bottom: 0;
 }
-button.ghost {
+button.ghost,
+a.ghost {
   background: none;
   border: 1px solid var(--border);
   border-radius: 5px;
@@ -57,7 +69,12 @@ button.ghost {
   padding: 3px 9px;
   cursor: pointer;
 }
-button.ghost:hover {
+a.ghost {
+  text-decoration: none;
+  line-height: normal;
+}
+button.ghost:hover,
+a.ghost:hover {
   color: var(--text-primary);
   border-color: var(--muted);
 }
@@ -286,7 +303,6 @@ button.ghost:hover {
   margin-left: 4px;
 }
 
-/* Anki re-encounters */
 .value-sub {
   font-size: 13px;
   font-weight: 400;
@@ -313,29 +329,6 @@ button.ghost:hover {
 .chip b {
   color: var(--text-secondary);
   font-weight: 500;
-}
-/* Secondary fact on a chip (card age, outcome) — recedes so the word leads. */
-.chip-note {
-  color: var(--muted);
-  font-size: 12px;
-  margin-left: 4px;
-}
-details.never-seen {
-  margin-top: 12px;
-}
-details.never-seen summary {
-  cursor: pointer;
-  color: var(--text-secondary);
-  font-size: 13px;
-  user-select: none;
-}
-.anki-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 14px;
-  color: var(--muted);
-  font-size: 12px;
 }
 
 /* Now reading */

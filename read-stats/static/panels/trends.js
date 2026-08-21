@@ -50,6 +50,13 @@ export function TrendsCard({ days, targetMins, todayDate }) {
     measSecs >= MIN_RATE_SECS
       ? `${fmtChars(Math.round(measChars / (measSecs / 3600)))}/h`
       : "—";
+  // Both sides of the clean figure drop together — see Bucket::clean_chars.
+  const cleanChars = win.reduce((a, d) => a + (d.clean?.chars ?? 0), 0);
+  const cleanSecs = win.reduce((a, d) => a + (d.clean?.active_secs ?? 0), 0);
+  const avgSpeedTitle =
+    cleanSecs >= MIN_RATE_SECS && cleanChars > 0
+      ? `${fmtChars(Math.round(cleanChars / (cleanSecs / 3600)))}/h without lookups.`
+      : "";
   const daysReadLabel = `${daysRead}/${win.length}`;
 
   // Today is still being read, so averaging it in reports a slump that is only
@@ -80,7 +87,8 @@ export function TrendsCard({ days, targetMins, todayDate }) {
   // a second y-scale, and where two scales line up is a choice rather than a
   // fact. Reading speed is exactly the relationship between them, and it has
   // its own panel below.
-  const barsTitle = metric === "minutes" ? "Daily minutes" : "Daily characters";
+  const barsTitle =
+    metric === "minutes" ? "Daily minutes read" : "Daily characters read";
   const perDayLabel = metric === "minutes" ? "avg/day" : "avg chars/day";
 
   return html`
@@ -112,7 +120,7 @@ export function TrendsCard({ days, targetMins, todayDate }) {
           <div class="label">${perDayLabel}</div>
           <div class="value">${perDay}</div>
         </div>
-        <div class="tile">
+        <div class="tile" title=${avgSpeedTitle}>
           <div class="label">avg speed</div>
           <div class="value">${avgSpeed}</div>
         </div>
@@ -133,12 +141,12 @@ export function TrendsCard({ days, targetMins, todayDate }) {
       <${DailyBarChart} days=${win} metric=${metric} targetMins=${targetMins} />
 
       <div class="day-chart-head">
-        <h3>Reading speed · chars/hour</h3>
+        <h3>Reading speed (chars/h)</h3>
       </div>
       <${SpeedTrendChart} days=${win} />
 
       <div class="day-chart-head">
-        <h3>Lookups & cards · per hour read</h3>
+        <h3>Lookups and new cards</h3>
       </div>
       <${RateTrendChart} days=${win} />
 

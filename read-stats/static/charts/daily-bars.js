@@ -12,8 +12,6 @@ import {
   shortDate,
 } from "./svg.js";
 
-const BAR_COLOR = "var(--series-1)";
-
 /** Daily reading, as minutes or as characters. days: [{date, active_secs, chars}] */
 export function DailyBarChart({ days, metric, targetMins }) {
   const [hover, setHover] = useState(null);
@@ -93,15 +91,16 @@ export function DailyBarChart({ days, metric, targetMins }) {
           const cx = m.left + band * i + band / 2;
           const v = total(d);
           const h = y(0) - y(v);
-          const dim = hover === null || hover === i ? 1 : 0.55;
+          // Only the bar under the pointer changes; every other bar keeps the
+          // colour it has when nothing is hovered. Dimming the rest instead
+          // left the hovered day as the one thing that had not moved.
           return html`
             ${
               h > 0.5 &&
               html`
                 <path
                   d=${barPath(cx - barW / 2, y(v), barW, h, 4)}
-                  fill=${BAR_COLOR}
-                  opacity=${dim}
+                  class=${hover === i ? "bar bar-hover" : "bar"}
                 />
               `
             }

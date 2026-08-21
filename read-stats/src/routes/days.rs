@@ -26,6 +26,7 @@ pub async fn days(
     let (vn, manual) = h.day_maps();
     let lookups = h.lookup_days();
     let measured = h.measured_days();
+    let clean = h.clean_days();
     let focus = h.focus_days();
     let work_days = h.dominant_work_days();
 
@@ -46,6 +47,9 @@ pub async fn days(
             // Reading whose duration was measured rather than derived — the
             // only honest denominator for chars/hour. See measured_days.
             "measured": measured.get(&date).copied().unwrap_or_default(),
+            // The same measure with the lookups taken out — the pace on the
+            // text itself. See History::clean_days.
+            "clean": clean.get(&date).copied().unwrap_or_default(),
             "lookups": l,
             // Hooked characters only. Lookups are recorded only while the
             // line stream is live, so manual characters can enter this

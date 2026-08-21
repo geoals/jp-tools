@@ -376,9 +376,8 @@
 }
 
 /* The highlight toggle in the reader bar, in the app's one selected-state
-   vocabulary: the --meter-track tint with primary ink, as on .tab-on and
-   .segment-on. */
+   vocabulary: filled --series-1, as on .tab-on and .segment-on. */
 .reader-bar .ghost.on {
-  background: var(--meter-track);
-  color: var(--text-primary);
+  background: var(--series-1);
+  color: #fff;
 }

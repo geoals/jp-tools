@@ -40,10 +40,6 @@ pub struct Settings {
     /// reached by words never looked up — see
     /// `jp_core::knowledge::vocabulary::preselects_known`.
     pub triage_min_encounters: i64,
-    /// Highest frequency rank frequency-triage will mark `known` in one
-    /// sweep, persisted across visits. Default 6000, a rough top of "common
-    /// enough that I probably know it", for the reader to widen.
-    pub triage_max_freq_rank: i64,
     /// Highest rank the reading view calls *common*. A word at or above
     /// this rank that is `new` or `unknown` is underlined: not knowing a rare
     /// word is expected, not knowing a common one is the gap worth seeing.
@@ -80,7 +76,6 @@ impl Default for Settings {
             // meaningful signal, and a higher floor mostly just shortens the
             // queue. Tune it from the settings page against a real queue.
             triage_min_encounters: 3,
-            triage_max_freq_rank: 6000,
             reader_common_max_freq_rank: 5000,
             reader_common_max_bccwj_rank: 10000,
             capture_paused: false,
@@ -99,7 +94,6 @@ pub const SETTING_KEYS: &[&str] = &[
     "pace_start_date",
     "vn_window",
     "triage_min_encounters",
-    "triage_max_freq_rank",
     "reader_common_max_freq_rank",
     "reader_common_max_bccwj_rank",
     "capture_paused",
@@ -139,10 +133,6 @@ pub async fn load_settings(pool: &SqlitePool) -> Result<Settings, sqlx::Error> {
             "triage_min_encounters" => {
                 settings.triage_min_encounters =
                     value.parse().unwrap_or(settings.triage_min_encounters)
-            }
-            "triage_max_freq_rank" => {
-                settings.triage_max_freq_rank =
-                    value.parse().unwrap_or(settings.triage_max_freq_rank)
             }
             "reader_common_max_freq_rank" => {
                 settings.reader_common_max_freq_rank = value

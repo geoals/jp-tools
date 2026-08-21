@@ -177,6 +177,7 @@ export function WorksShelf({ works, settings, onSaved, onOpen }) {
  *  where there is room to say what it does. */
 function WorkCard({ work: w, isCurrent, onOpen }) {
   const total = w.meta?.total_chars;
+  const done = statusOf(w) === "finished";
   const speed = workSpeedPerHour(w);
   // Hours left at this work's own speed. Its own, not your average: a harder
   // VN should say so in its own estimate rather than borrow an easier one's.
@@ -207,7 +208,7 @@ function WorkCard({ work: w, isCurrent, onOpen }) {
         ${
           pct !== null &&
           html`<div class="work-card-progress">
-            <${ProgressBar} pct=${pct} />
+            <${ProgressBar} pct=${pct} done=${done} />
             <div class="work-card-facts">
               ${`${pct.toFixed(0)}%${leftLabel ? ` · ${leftLabel}` : ""}`}
             </div>

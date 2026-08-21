@@ -73,6 +73,16 @@
   font-size: 10px;
 }
 
+/* A daily bar keeps one colour whatever is hovered; the hovered one alone
+   deepens. Mixed toward --text-primary rather than given a second hue, so it
+   picks itself out in both themes without becoming a different series. */
+.bar {
+  fill: var(--series-1);
+}
+.bar-hover {
+  fill: color-mix(in srgb, var(--series-1) 65%, var(--text-primary));
+}
+
 .trend-line {
   fill: none;
   stroke: var(--series-1);
@@ -169,8 +179,8 @@
   color: var(--text-primary);
 }
 .segment-on {
-  background: var(--meter-track);
-  color: var(--text-primary);
+  background: var(--series-1);
+  color: #fff;
 }
 .segment:focus-visible {
   outline: 2px solid var(--series-1);
@@ -191,8 +201,8 @@
   color: var(--text-primary);
 }
 .toggle-on {
-  background: var(--meter-track);
-  color: var(--text-primary);
+  background: var(--series-1);
+  color: #fff;
 }
 .toggle-btn:focus-visible {
   outline: 2px solid var(--series-1);

@@ -135,106 +135,101 @@ export function LogForm({ onLogged }) {
   `;
 
   return html`
-    <div class="card">
-      <details class="log">
-        <summary>
-          Log reading (physical book, article, anything unhooked)
-        </summary>
-        <div class="log-modes">
-          <div class="segmented">
-            ${modeButton("pages", "pages")} ${modeButton("text", "paste text")}
-          </div>
+    <div class="log">
+      <div class="log-modes">
+        <div class="segmented">
+          ${modeButton("pages", "pages")} ${modeButton("text", "paste text")}
         </div>
-        <form onSubmit=${submit}>
-          <div>
-            <label>date</label
-            ><input
-              name="date"
-              type="date"
-              value=${date}
-              onInput=${(e) => setDate(e.currentTarget.value)}
-            />
-          </div>
-          <div>
-            <label>minutes</label
-            ><input
-              name="minutes"
-              type="number"
-              min="1"
-              placeholder="estimated"
-              value=${minutes}
-              onInput=${(e) => setMinutes(e.currentTarget.value)}
-            />
-          </div>
-          <div>
-            <label>title</label
-            ><input
-              name="work"
-              type="text"
-              placeholder="本日は、お日柄もよく"
-            />
-          </div>
-          <div>
-            <label>source</label>
-            <select
-              name="source"
-              value=${source}
-              onChange=${(e) => setSource(e.currentTarget.value)}
-            >
-              <option value="book">book</option>
-              <option value="article">article</option>
-              <option value="manga">manga</option>
-              <option value="other">other</option>
-            </select>
-          </div>
+      </div>
+      <form onSubmit=${submit}>
+        <div>
+          <label>date</label
+          ><input
+            name="date"
+            type="date"
+            value=${date}
+            onInput=${(e) => setDate(e.currentTarget.value)}
+          />
+        </div>
+        <div>
+          <label>minutes</label
+          ><input
+            name="minutes"
+            type="number"
+            min="1"
+            placeholder="estimated"
+            value=${minutes}
+            onInput=${(e) => setMinutes(e.currentTarget.value)}
+          />
+        </div>
+        <div>
+          <label>title</label
+          ><input
+            name="work"
+            type="text"
+            placeholder="本日は、お日柄もよく"
+          />
+        </div>
+        <div>
+          <label>source</label>
+          <select
+            name="source"
+            value=${source}
+            onChange=${(e) => setSource(e.currentTarget.value)}
+          >
+            <option value="book">book</option>
+            <option value="article">article</option>
+            <option value="manga">manga</option>
+            <option value="other">other</option>
+          </select>
+        </div>
+        ${
+          mode === "pages"
+            ? html`
+                <div>
+                  <label>pages</label
+                  ><input name="pages" type="number" min="0" step="0.5" />
+                </div>
+                <div>
+                  <label>chars (overrides pages)</label
+                  ><input name="chars" type="number" min="0" />
+                </div>
+              `
+            : html`
+                <div class="log-wide">
+                  <label>url</label
+                  ><input
+                    name="url"
+                    type="url"
+                    placeholder="https://www3.nhk.or.jp/news/…"
+                  />
+                </div>
+                <div class="log-wide">
+                  <label>text read *</label>
+                  <textarea
+                    name="content"
+                    rows="8"
+                    required
+                    placeholder="paste the article here"
+                    value=${content}
+                    onInput=${(e) => setContent(e.currentTarget.value)}
+                  ></textarea>
+                  <p class="log-count">${preview ?? "—"}</p>
+                </div>
+              `
+        }
+        <div class="actions">
+          <button type="submit" disabled=${busy}>
+            ${busy ? "logging…" : "log"}
+          </button>
           ${
-            mode === "pages"
-              ? html`
-                  <div>
-                    <label>pages</label
-                    ><input name="pages" type="number" min="0" step="0.5" />
-                  </div>
-                  <div>
-                    <label>chars (overrides pages)</label
-                    ><input name="chars" type="number" min="0" />
-                  </div>
-                `
-              : html`
-                  <div class="log-wide">
-                    <label>url</label
-                    ><input
-                      name="url"
-                      type="url"
-                      placeholder="https://www3.nhk.or.jp/news/…"
-                    />
-                  </div>
-                  <div class="log-wide">
-                    <label>text read *</label>
-                    <textarea
-                      name="content"
-                      rows="8"
-                      required
-                      placeholder="paste the article here"
-                      value=${content}
-                      onInput=${(e) => setContent(e.currentTarget.value)}
-                    ></textarea>
-                    <p class="log-count">${preview ?? "—"}</p>
-                  </div>
-                `
+            msg &&
+            html`<span class="form-msg ${msg.ok ? "ok" : "error"}"
+              >${msg.text}</span
+            >`
           }
-          <div class="actions">
-            <button type="submit" disabled=${busy}>
-              ${busy ? "logging…" : "log"}
-            </button>
-            ${
-              msg &&
-              html`<span class="form-msg ${msg.ok ? "ok" : "error"}"
-                >${msg.text}</span
-              >`
-            }
-          </div>
-        </form>
-      </details>
+        </div>
+      </form>
     </div>
   `;
 }

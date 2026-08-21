@@ -18,7 +18,7 @@
 // default defensible.
 //
 // The page can be taken from either end of that batch: most-seen first, or
-// commonest in BCCWJ first. Only the ordering changes — the filter, the counts
+// most common in BCCWJ first. Only the ordering changes — the filter, the counts
 // and what a submit writes are the same either way — but the second reaches the
 // words that are common in Japanese rather than common in whatever was read.
 //
@@ -49,7 +49,7 @@ import { Spellings, useSpellings } from "../lib/spellings.js";
  *  frequency view thresholds on — here it only decides what the page reaches. */
 const ORDERS = [
   { value: "encounters", label: "most seen" },
-  { value: "frequency", label: "commonest in Japanese" },
+  { value: "frequency", label: "most common in Japanese" },
 ];
 
 export function TriageView({ minEncounters, onJudged }) {
@@ -339,7 +339,7 @@ function NoisePreview({ noise, busy, onPage, onBlacklist, onCancel }) {
   }
   const { total, offset, limit, terms } = noise;
   const last = Math.min(offset + terms.length, total);
-  const rangeLine = `${(offset + 1).toLocaleString("en")}–${last.toLocaleString("en")} of ${total.toLocaleString("en")}, commonest first`;
+  const rangeLine = `${(offset + 1).toLocaleString("en")}–${last.toLocaleString("en")} of ${total.toLocaleString("en")}, most common first`;
 
   return html`
     <p class="meta-hint">${rangeLine}</p>

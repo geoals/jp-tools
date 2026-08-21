@@ -1,5 +1,14 @@
 # read-stats — daily reading tracker + the `#read` reading view
 
+**The app is called コトデックス.** It is a proposed name and only the surface
+wears it so far: the page title and the dashboard heading. Everything
+underneath is still `read-stats` — the crate, the binary, the service name in
+`start-all.sh`, `read-stats.db`, the log file, the `read-stats-theme`
+localStorage key, this file. That is deliberate rather than half-done: renaming
+a database or a crate is a migration, and the name is not settled enough to pay
+for one. **Read `read-stats` and コトデックス as the same thing**, and do not
+rename anything below the surface without being asked.
+
 Rust 2024. Axum JSON API + Preact/htm frontend (no build step), two SQLite
 databases. Port 3200.
 
@@ -98,7 +107,7 @@ The ledger (`vocabulary`):
   lookup sync — a resync must never demote a word marked known, and an encounter
   count must never promote one. Today's writers:
   `/api/vocab/judge`, `/api/vocab/blacklist-non-words`, the tap in `#read`, and
-  the `anki-import` / `jiten-import` / frequency imports.
+  `anki-import`.
 - **`new` ≠ `unknown`.** `new` means never judged; collapsing them is
   irreversible and breaks the triage progress figure.
 - **Anki owns mined-state.** `anki_notes` is a snapshot, replaced wholesale,
@@ -599,8 +608,9 @@ add to when the question is "does the SQL select what the derivation assumes".
   rather than holding up the first paint of a page not showing it.
 - Five tabs, one per question: **Today** (`current-reading.js` over `day.js`),
   **Trends** (one range selector over every chart), **Library**, **Kanji**,
-  **Vocab**. `#settings` and `#tokenize` are reached from ⚙ and render inside
-  the shell like any panel; `#read` is its own route and unmounts the dashboard.
+  **Vocab**. The title is a link back to Today. `#settings` and `#tokenize` are
+  reached from ⚙ and render inside the shell like any panel; `#read` is its own
+  route and unmounts the dashboard.
 - **Pause capture appears only where reading does** — in `#read`, and under ⚙
   beside the settings. A live switch next to numbers that only report was read
   as a filter.
@@ -656,6 +666,10 @@ add to when the question is "does the SQL select what the derivation assumes".
   **on submit, never on load**; only for a
   request that asked (`advance_sweep`); and it is a filter and nothing else —
   `scoped=0` still reaches every ready row.
+- **A form that would push the page around opens in a dialog**
+  (`components/modal.js`): adding a work, editing one, logging a session by
+  hand. An inline form under a card head moved everything below it while it was
+  open.
 - **The sweep's two orderings are one batch, seen from either end.**
   `order=frequency` sorts the same rows by jiten rank instead of encounter
   count, so the page reaches words common in Japanese rather than common in
@@ -669,6 +683,8 @@ add to when the question is "does the SQL select what the derivation assumes".
   loudly, and the dark ramp mirrors the light one. Both places that show a
   status read these, so the tint under a word in the feed is the colour of the
   pile it is counted in.
-- Selected state has one vocabulary: `background: var(--meter-track)` with
-  primary ink (`.segment-on`, `.toggle-on`, `.tab-on`). `--series-1` at full
-  strength is spent on the paused alarm alone.
+- Selected state has one vocabulary: filled `var(--series-1)` with white ink
+  (`.segment-on`, `.tab-on`, the reader bar's `.ghost.on`). It is the same blue
+  the charts draw with, so a picked control and a plotted series are one colour.
+  `--meter-track` is a *track* — the unfilled half of a meter — and nothing
+  else.

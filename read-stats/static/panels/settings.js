@@ -10,6 +10,10 @@
 //     device you are looking at, and a device reading in the dark should not
 //     have to agree with one that isn't.
 //
+// The Anki import is here for the same reason as the tokenizer link: it is a
+// maintenance action on the ledger, run once in a while, not a reading of it.
+// The vocab tab reports what the ledger holds.
+//
 // What is deliberately *not* here: the current work and the VN window. Both are
 // per-work workflow rather than configuration, and they belong next to the work
 // they describe (Currently reading, Library) where the context is.
@@ -243,6 +247,16 @@ export function SettingsView({ settings, onSaved }) {
       <div class="settings-group">
         <h3>Tools</h3>
         <div class="settings-row">
+          <label>Anki import</label>
+          <div class="settings-input">
+            <${AnkiImport} onImported=${onSaved} />
+          </div>
+          <p class="settings-hint">
+            Cards past Anki's new/learning queues are marked known outright.
+            Never overwrites a word already judged here.
+          </p>
+        </div>
+        <div class="settings-row">
           <label>Tokenizer</label>
           <div class="settings-input">
             <a class="pause-btn" href="#tokenize">🔤 tokenize a line</a>
@@ -254,5 +268,38 @@ export function SettingsView({ settings, onSaved }) {
         </div>
       </div>
     </div>
+  `;
+}
+
+/** The one-shot Anki import: a card the reader is reviewing is evidence enough
+ *  to mark its word known without asking again. */
+function AnkiImport({ onImported }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [err, setErr] = useState(null);
+
+  async function run() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await api("/api/vocab/anki-import", { method: "POST" });
+      const skipped = res.ambiguous_skipped
+        ? ` · ${res.ambiguous_skipped} skipped (more than one reading)`
+        : "";
+      setResult(`${res.imported} marked known${skipped}`);
+      onImported?.();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return html`
+    <button type="button" class="pause-btn" onClick=${run} disabled=${busy}>
+      ${busy ? "importing…" : "import reviewing cards"}
+    </button>
+    ${err && html`<span class="settings-err">${err}</span>`}
+    ${result && html`<span class="settings-hint">${result}</span>`}
   `;
 }

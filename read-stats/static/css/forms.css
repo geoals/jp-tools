@@ -1,14 +1,7 @@
 /* The log form, and the tables that are the charts' accessible fallback. */
 
-/* Log form */
-details.log summary {
-  cursor: pointer;
-  color: var(--text-secondary);
-  font-size: 14px;
-  user-select: none;
-}
-/* Matches both a form nested in a .log details block and a form that is
-   itself .log (the work editor, which has no disclosure wrapper). */
+/* Log form. Matches both a form nested in a .log wrapper and a form that is
+   itself .log (the work editor). */
 .log form,
 form.log {
   display: grid;

@@ -8,6 +8,7 @@ import { api } from "../api.js";
 import { fmtChars, fmtHours } from "../lib/format.js";
 import { workProgress } from "../lib/pace.js";
 import { WorkMetaForm, setCurrentWork } from "../panels/work-form.js";
+import { Modal } from "../components/modal.js";
 
 export function CurrentReading({ works, settings, days, onSaved }) {
   const [busy, setBusy] = useState(false);
@@ -34,6 +35,11 @@ export function CurrentReading({ works, settings, days, onSaved }) {
   // Built whole: htm collapses the whitespace where literal text meets an
   // interpolation across a line break.
   const hoursRead = current ? fmtHours(current.active_secs) : "—";
+  // A plain link, not a handler: opening a work is a navigation the library
+  // already owns, so back returns here and the URL is shareable.
+  const detailHref = current
+    ? `#library/${encodeURIComponent(current.work)}`
+    : null;
 
   async function pick(e) {
     const next = e.currentTarget.value;
@@ -74,9 +80,12 @@ export function CurrentReading({ works, settings, days, onSaved }) {
         <h2>Currently reading</h2>
         ${
           current &&
-          html`<button class="ghost" onClick=${() => setEditing((v) => !v)}>
-            ${editing ? "close" : "edit"}
-          </button>`
+          html`<div class="card-controls">
+            <a class="ghost" href=${detailHref}>details</a>
+            <button class="ghost" onClick=${() => setEditing(true)}>
+              edit
+            </button>
+          </div>`
         }
       </div>
       ${
@@ -86,12 +95,17 @@ export function CurrentReading({ works, settings, days, onSaved }) {
           <div class="current-work">
             ${
               meta.cover &&
-              html`<img class="cover" src=${meta.cover} alt="cover" />`
+              html`<a href=${detailHref}
+                ><img class="cover" src=${meta.cover} alt="cover"
+              /></a>`
             }
             <div class="info">
-              <div class="title">${current.work}</div>
+              <div class="title">
+                <a href=${detailHref}>${current.work}</a>
+              </div>
               <${ProgressBar}
                 pct=${prog.pct}
+                done=${prog.done}
                 label="Progress through ${current.work}"
               />
               <div class="progress-caption">
@@ -186,7 +200,9 @@ export function CurrentReading({ works, settings, days, onSaved }) {
         html`
           <div class="current-work">
             <div class="info">
-              <div class="title">${current.work}</div>
+              <div class="title">
+                <a href=${detailHref}>${current.work}</a>
+              </div>
               <div class="tile-row">
                 <div class="tile">
                   <div class="label">characters read</div>
@@ -250,7 +266,10 @@ export function CurrentReading({ works, settings, days, onSaved }) {
       </div>
       ${
         editing &&
-        html`
+        html`<${Modal}
+          title=${`Edit ${current.work}`}
+          onClose=${() => setEditing(false)}
+        >
           <${WorkMetaForm}
             work=${current}
             onSaved=${onSaved}
@@ -276,7 +295,7 @@ export function CurrentReading({ works, settings, days, onSaved }) {
             </div>
             <div class="meta-hint">${vnWindowHint(meta, windows)}</div>
           </form>
-        `
+        <//>`
       }
     </div>
   `;

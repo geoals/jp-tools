@@ -2,9 +2,13 @@
 
 import { html } from "htm/preact";
 
-/** Plain progress bar (same visual language as the goal meter, no marker). */
+/** Plain progress bar (same visual language as the goal meter, no marker).
+ *
+ *  `done` paints the fill green: a finished work is not "in progress, further
+ *  along", and a full blue bar reads as the former. It is the same green every
+ *  other met threshold on the dashboard uses. */
 
-export function ProgressBar({ pct, label }) {
+export function ProgressBar({ pct, label, done }) {
   return html`
     <div
       class="meter"
@@ -14,7 +18,10 @@ export function ProgressBar({ pct, label }) {
       aria-valuemax="100"
       aria-label=${label}
     >
-      <div class="meter-fill" style="width:${Math.min(100, pct)}%"></div>
+      <div
+        class=${done ? "meter-fill done" : "meter-fill"}
+        style="width:${Math.min(100, pct)}%"
+      ></div>
     </div>
   `;
 }

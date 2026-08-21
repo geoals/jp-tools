@@ -366,7 +366,7 @@ export function Reader() {
 
   // Yomitan's {document-title} marker becomes the note's Document field, which
   // is how a card's source is tracked — so while reading, the page title has to
-  // be the VN rather than "read-stats". Restored on the way out so the
+  // be the VN rather than the app's own. Restored on the way out so the
   // dashboard tab reads normally again.
   useEffect(() => {
     const workTitle = (state && state.current_work) || "";

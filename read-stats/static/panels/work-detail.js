@@ -17,6 +17,7 @@ import { fmtChars, fmtDateStr, fmtHours, fmtMins } from "../lib/format.js";
 import { WorkMetaForm, setCurrentWork } from "../panels/work-form.js";
 import { WorkTriage } from "../panels/work-triage.js";
 import { AddPaperBook, PaperLog } from "../panels/paper.js";
+import { Modal } from "../components/modal.js";
 
 const SITTINGS_SHOWN = 20;
 
@@ -105,6 +106,7 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
   }
 
   const meta = detail.meta;
+  const done = meta?.status === "finished";
   const total = meta?.total_chars;
   const pct = total ? Math.min(100, (detail.chars / total) * 100) : null;
   const speed = detail.speed;
@@ -153,8 +155,8 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
           }
           ${
             meta &&
-            html`<button class="ghost" onClick=${() => setEditing((v) => !v)}>
-              ${editing ? "close" : "edit"}
+            html`<button class="ghost" onClick=${() => setEditing(true)}>
+              edit
             </button>`
           }
           ${back}
@@ -190,6 +192,7 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
             html`<div class="work-detail-progress">
               <${ProgressBar}
                 pct=${pct}
+                done=${done}
                 label=${`Progress through ${detail.work}`}
               />
               <div class="progress-caption">
@@ -204,14 +207,19 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
       ${
         editing &&
         row &&
-        html`<${WorkMetaForm}
-          work=${row}
-          onSaved=${() => {
-            setEditing(false);
-            onSaved();
-          }}
-          onCancel=${() => setEditing(false)}
-        />`
+        html`<${Modal}
+          title=${`Edit ${detail.work}`}
+          onClose=${() => setEditing(false)}
+        >
+          <${WorkMetaForm}
+            work=${row}
+            onSaved=${() => {
+              setEditing(false);
+              onSaved();
+            }}
+            onCancel=${() => setEditing(false)}
+          />
+        <//>`
       }
     </div>
 
