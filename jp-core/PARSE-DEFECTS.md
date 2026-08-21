@@ -617,6 +617,28 @@ and 予定調和. It is the easier half of 仁王立ち's defect, listed under *
 there the name-tagged morpheme really is a name and only the join is wrong,
 where 一発屋 is never a name in a sentence.
 
+## A join that eats the suffix in front of it
+
+**美しさまで, sighted 2026-08-21 in 「――お前の美しさまでは、奪えなかった」.**
+Sudachi is right — 美し (形容詞 語幹) + さ (接尾辞 名詞的) + まで — and the join
+takes the last two, because Sankoku lists さまで, the archaic adverb of
+「さまで気にしない」, as a kana headword. The suffix that makes 美しさ a noun is
+pulled off the word it belongs to, so the line credits an adverb nobody wrote
+and leaves 美し keyed on plain 美しい. `NEVER_JOIN` is the shape of the fix.
+
+**Two different token pairs spell it, and both fire.** The other is おかげ + さま
+in 「おかげさまで」, which arrives as a second defect stacked on the first:
+Sudachi hands over おかげさま whole and the wordhood gate refuses it — no
+segmentation authority lists the kana, 明鏡 has only 御蔭様 — so mode A splits it
+into おかげ + さま and the join then builds さまで across the seam. Fixing the
+join alone leaves おかげさま in two pieces.
+
+**Three of the corpus's eight さまで lines join, and none of them is the
+adverb**; the ledger row reads two encounters. 高さまで survives only because
+Sudachi keeps 高さ as one token, so the collision is confined to the suffixes it
+hands over separately. The rule worth weighing beyond the named string: a
+接尾辞 binds to what precedes it, so it cannot open a join run.
+
 ---
 
 # Not a parse defect — one surface for looking up, another for counting
