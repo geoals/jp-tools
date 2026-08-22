@@ -801,6 +801,10 @@ pub struct Dictionary {
     pub title: String,
     pub source_path: String,
     pub role: Role,
+    /// Who answers first among equals: the popup's page order, and which
+    /// frequency list is the reader's. Defaults to the id, so install order is
+    /// the order until someone says otherwise.
+    pub priority: i64,
 }
 
 /// Drop a cached dictionary and everything it holds.
@@ -836,9 +840,12 @@ pub async fn remove_dictionary(pool: &SqlitePool, id: i64) -> Result<u64, sqlx::
 }
 
 pub async fn list_dictionaries(pool: &SqlitePool) -> Result<Vec<Dictionary>, sqlx::Error> {
-    let rows = sqlx::query("SELECT id, title, source_path, role FROM dictionaries ORDER BY id")
-        .fetch_all(pool)
-        .await?;
+    let rows = sqlx::query(
+        "SELECT id, title, source_path, role, priority FROM dictionaries \
+         ORDER BY priority, id",
+    )
+    .fetch_all(pool)
+    .await?;
     Ok(rows
         .iter()
         .map(|r| Dictionary {
@@ -846,6 +853,7 @@ pub async fn list_dictionaries(pool: &SqlitePool) -> Result<Vec<Dictionary>, sql
             title: r.get("title"),
             source_path: r.get("source_path"),
             role: Role::parse(r.get("role")),
+            priority: r.get("priority"),
         })
         .collect())
 }
@@ -863,6 +871,15 @@ pub async fn set_source_path(
 ) -> Result<(), sqlx::Error> {
     sqlx::query("UPDATE dictionaries SET source_path = ? WHERE id = ?")
         .bind(source_path)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn set_priority(pool: &SqlitePool, id: i64, priority: i64) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE dictionaries SET priority = ? WHERE id = ?")
+        .bind(priority)
         .bind(id)
         .execute(pool)
         .await?;
@@ -914,8 +931,7 @@ pub async fn reader_frequency(pool: &SqlitePool) -> Result<Option<Dictionary>, s
     Ok(list_dictionaries(pool)
         .await?
         .into_iter()
-        .filter(|d| d.role == Role::Frequency)
-        .min_by_key(|d| d.id))
+        .find(|d| d.role == Role::Frequency))
 }
 
 /// What the installer assigns [`Role::Frequency`] to when it downloads the

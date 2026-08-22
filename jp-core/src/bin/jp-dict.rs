@@ -34,6 +34,8 @@ usage:
   jp-dict remove <id>             forget a cached dictionary and its entries
                                   (the zip on disk is left alone)
   jp-dict import <zip>...         --role <role> overrides the guess
+  jp-dict priority <id> <n>       who answers first: the popup's page order,
+                                  and which frequency list is the reader's
   jp-dict set-role <id> <role>    role is master, standard, name, frequency,
                                   pitch or reference
                                   (standard: decides segmentation beside the
@@ -108,6 +110,19 @@ async fn run() -> Result<(), String> {
             list(pool).await
         }
         "list" => list(pool).await,
+        "priority" => {
+            let [id, priority] = rest else {
+                return Err(format!("priority needs an id and a number\n\n{USAGE}"));
+            };
+            let id: i64 = id.parse().map_err(|_| format!("not an id: {id}"))?;
+            let priority: i64 = priority
+                .parse()
+                .map_err(|_| format!("not a number: {priority}"))?;
+            db::set_priority(pool, id, priority)
+                .await
+                .map_err(|e| format!("cannot set the priority: {e}"))?;
+            list(pool).await
+        }
         "reimport" => {
             let [id] = rest else {
                 return Err(format!("reimport needs an id\n\n{USAGE}"));
@@ -286,6 +301,14 @@ async fn import_all(
                     ),
                     _ => None,
                 };
+                // A new row lands at priority 0, which would put it ahead of
+                // everything the backfill numbered by id. Install order is the
+                // default, so a new dictionary goes last.
+                if fresh && let Some(id) = id {
+                    db::set_priority(pool, id, id)
+                        .await
+                        .map_err(|e| format!("cannot order {}: {e}", dict.title()))?;
+                }
                 match (role, id) {
                     (Some(role), Some(id)) => {
                         db::set_role(pool, id, role)
@@ -355,8 +378,9 @@ async fn list(pool: &sqlx::SqlitePool) -> Result<(), String> {
             "  (zip missing)"
         };
         println!(
-            "{:>3}  {:<9}  {}{}",
+            "{:>3}  {:>4}  {:<9}  {}{}",
             d.id,
+            d.priority,
             d.role.as_str(),
             d.title,
             missing

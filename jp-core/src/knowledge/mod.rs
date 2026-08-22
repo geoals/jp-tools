@@ -148,6 +148,19 @@ impl Knowledge {
             .execute(&self.0)
             .await?;
         }
+        // Where a dictionary sits in the popup's paging, and which frequency
+        // list is the reader's. Install order is the default and says nothing
+        // on its own, so it is a column the reader can set rather than a rule
+        // in code: role decides what a dictionary may answer, priority decides
+        // who answers first.
+        if !has_column(&self.0, "dictionaries", "priority").await? {
+            sqlx::raw_sql(
+                "ALTER TABLE dictionaries ADD COLUMN priority INTEGER NOT NULL DEFAULT 0;\
+                 UPDATE dictionaries SET priority = id;",
+            )
+            .execute(&self.0)
+            .await?;
+        }
         // The lexeme layer. `sequence` is the dictionary's own entry id, the
         // only thing that says two spellings are one word; `seq_checked` marks
         // a cached dictionary whose zip has already been re-read for them, so

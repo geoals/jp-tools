@@ -141,20 +141,14 @@ pub async fn define(
                 .collect(),
         });
     }
-    // The master, then the standard monolinguals, then everything else in
-    // install order — a stable sort, so the last tier keeps it. By role rather
-    // than by name: install order is the order zips were first seen, which says
-    // nothing about which definition is worth reading first.
+    // The master, then priority order — a stable sort over a list that is
+    // already in priority order, so the rest keeps it. By role and a column
+    // rather than by name: which definition is worth reading first is the
+    // reader's call, and install order is only the default.
     sources.sort_by_key(|s| {
-        match dicts
+        !dicts
             .iter()
-            .find(|d| d.title == s.dictionary)
-            .map(|d| d.role)
-        {
-            Some(dictionaries::Role::Master) => 0,
-            Some(dictionaries::Role::Standard) => 1,
-            _ => 2,
-        }
+            .any(|d| d.title == s.dictionary && d.role == dictionaries::Role::Master)
     });
 
     // The pitch dictionaries first, then anything else carrying accent rows —

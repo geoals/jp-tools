@@ -201,18 +201,13 @@ draws lines with no underlines and no crash, then set it back.
 
 ### T1.3 — Corpus frequency pill by role
 
-**Status:** done, with one decision left to you. `Definition.jiten`/`.bccwj` are
+**Status:** done. `Definition.jiten`/`.bccwj` are
 gone; the popup gets `frequencies: [{dictionary, rank}]`, one entry per
 `Role::Frequency` dictionary in id order, and draws no pill row when it is
 empty. The label is the dictionary's own title.
 
-**BCCWJ is back on `reference`, so there is one pill live, not two.** Giving it
-the frequency role puts it *first* — it is id 4 and Jiten is 5 — and the first
-entry is what the mined card's rank and the reader's underline take, so two
-pills would have quietly re-ranked both onto newspaper prose. Ordering by id
-only works if the reader's list was imported first, which it was not here. See
-the open decision below; `jp-dict set-role 4 frequency` restores the second pill
-the moment the ordering rule is settled.
+Both pills are live, Jiten first, because `dictionaries.priority` decides who
+answers first — see the note under T1.4.
 
 `jp-core/src/define.rs:33` — `CORPUS_FREQUENCY` becomes "a second dictionary
 with `Role::Frequency`, if there is one". With one frequency dictionary the
@@ -925,9 +920,5 @@ Phase 4; T7.3 (media) as soon as Phase 5 looks final.
 5. **Prebuilt binaries in the tarball or build on install** (T7.1).
 6. **Licence** (T7.4).
 7. **Which VN to record** for the README (T7.3).
-8. **Which frequency dictionary is the reader's** when several hold
-   `Role::Frequency` (T1.3). Today the rule is lowest id, which on this machine
-   picks BCCWJ over Jiten and would re-rank cards onto newspaper prose. The
-   options: an explicit ordering column, a separate role for the tokenizer's
-   corpus list, or the installer importing the reader's list first and the rule
-   staying as it is.
+8. ~~**Which frequency dictionary is the reader's**~~ (T1.3) — decided: the
+   first by `dictionaries.priority`.
