@@ -9,6 +9,14 @@ import { fmtMins } from "../lib/format.js";
 
 export function DaysTable({ days, todayDate, bare }) {
   const recent = days.slice(-14).reverse();
+  // A fortnight of dashes says nothing. Until one day has reading on it, say
+  // what would fill the table instead of drawing its shape.
+  if (!recent.some((d) => d.active_secs > 0 || d.chars > 0)) {
+    const empty = html`<p class="chart-empty">No reading recorded yet.</p>`;
+    return bare
+      ? empty
+      : html`<div class="card"><h2>Recent days</h2>${empty}</div>`;
+  }
   const table = html`
     <table class="days">
       <thead>

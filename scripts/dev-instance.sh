@@ -210,7 +210,7 @@ cmd_browser() {
   # above while showing an empty page.
   "$CHROME" --headless --disable-gpu --no-sandbox --dump-dom --virtual-time-budget=15000 \
     "http://127.0.0.1:$PORT/#kanji" >"$WORK/dom-kanji.html" 2>>"$WORK/console.log"
-  for want in "Every kanji you have read" "Jōyō coverage" "kanji-cell"; do
+  for want in "Every kanji read" "Jōyō coverage" "kanji-cell"; do
     grep -qF "$want" "$WORK/dom-kanji.html" || die "kanji tab is missing: $want"
   done
   say "kanji tab renders ($(wc -c <"$WORK/dom-kanji.html") bytes)"
@@ -235,9 +235,13 @@ cmd_browser() {
   for view in settings tokenize; do
     "$CHROME" --headless --disable-gpu --no-sandbox --dump-dom --virtual-time-budget=15000 \
       "http://127.0.0.1:$PORT/#$view" >"$WORK/dom-$view.html" 2>>"$WORK/console.log"
-    for want in "read-stats" "pause capture" "$view"; do
+    for want in "read-stats" "$view"; do
       grep -qF "$want" "$WORK/dom-$view.html" || die "$view view is missing: $want"
     done
+    # The capture control, whichever way round it is: the frozen copy carries
+    # whatever state capture was left in, and the button names the *action*.
+    grep -qE 'pause capture|resume capture' "$WORK/dom-$view.html" ||
+      die "$view view is missing the capture control"
     say "$view view renders ($(wc -c <"$WORK/dom-$view.html") bytes)"
   done
 

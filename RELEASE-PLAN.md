@@ -516,6 +516,20 @@ still computed — they are the click targets — but carry no status class.
 
 ### T3.4 — Empty-database states
 
+**Status:** done, and it was mostly already there. Against empty copies of both
+databases every endpoint answers 200 with nothing in the log, and the kanji
+grid, vocabulary curve, library, work triage, mined list and both trend charts
+each say what would fill them.
+
+One real gap, now fixed: Trends' day-by-day table drew a fortnight of dashes —
+the shape of a table with nothing in it. It says "No reading recorded yet."
+instead.
+
+Two stale assertions in `dev-instance.sh browser` were fixed on the way: it
+looked for kanji text that has since been reworded, and for "pause capture"
+when the frozen copy had capture already paused, so the button read "resume
+capture".
+
 Every dashboard surface that assumes data: kanji grid, vocabulary curve, work
 triage, mined list, timeline. Each gets an empty state saying what would fill
 it. Nothing renders a zeroed chart.
