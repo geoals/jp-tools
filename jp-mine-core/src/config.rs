@@ -3,8 +3,9 @@ use std::env;
 /// Anki note type configuration: model name, deck name, and field mapping.
 ///
 /// Each field is `Option<String>` — `Some("FieldName")` means populate that
-/// field on the Anki note, `None` means skip it. Defaults match the
-/// "Japanese sentences" note type used by Yomitan.
+/// field on the Anki note, `None` means skip it. Defaults are Lapis's field
+/// names, since that is the note type a new install is set up with; every one
+/// is overridable through `JP_TOOLS_ANKI_FIELD_*` for a note type of your own.
 #[derive(Debug, Clone)]
 pub struct AnkiConfig {
     pub model_name: String,
@@ -20,6 +21,11 @@ pub struct AnkiConfig {
     pub field_pitch_pattern: Option<String>,
     pub field_frequency: Option<String>,
     pub field_compact_def: Option<String>,
+    pub field_reading: Option<String>,
+    /// The reader-facing rank as a plain integer, for sorting a deck by how
+    /// common the word is. Separate from `field_frequency`, which is the
+    /// rendered pill.
+    pub field_freq_sort: Option<String>,
     /// Tags added to every exported note (set per application).
     pub tags: Vec<String>,
 }
@@ -27,23 +33,21 @@ pub struct AnkiConfig {
 impl Default for AnkiConfig {
     fn default() -> Self {
         Self {
-            model_name: "Japanese sentences".into(),
+            model_name: "Lapis".into(),
             deck_name: "Japanese".into(),
-            field_vocab: Some("VocabKanji".into()),
-            // The full glossary, in Yomitan's per-dictionary markup — the same
-            // field read-stats writes, because the note type's CSS is written
-            // against it. `VocabDef` holds Yomitan's own short gloss and is not
-            // ours to overwrite.
-            field_definition: Some("VocabDefFull".into()),
-            field_sentence: Some("SentKanji".into()),
-            field_image: Some("Image".into()),
-            field_audio: Some("SentAudio".into()),
-            field_source: Some("Document".into()),
-            field_furigana: Some("VocabFurigana".into()),
-            field_pitch_num: Some("VocabPitchNum".into()),
-            field_pitch_pattern: Some("VocabPitchPattern".into()),
+            field_vocab: Some("Expression".into()),
+            field_definition: Some("Glossary".into()),
+            field_sentence: Some("Sentence".into()),
+            field_image: Some("Picture".into()),
+            field_audio: Some("SentenceAudio".into()),
+            field_source: Some("MiscInfo".into()),
+            field_furigana: Some("ExpressionFurigana".into()),
+            field_pitch_num: Some("PitchPosition".into()),
+            field_pitch_pattern: Some("PitchCategories".into()),
             field_frequency: Some("Frequency".into()),
-            field_compact_def: Some("CompactDef".into()),
+            field_compact_def: Some("MainDefinition".into()),
+            field_reading: Some("ExpressionReading".into()),
+            field_freq_sort: Some("FreqSort".into()),
             tags: Vec::new(),
         }
     }
@@ -60,7 +64,7 @@ fn anki_field(var: &str, default: &str) -> Option<String> {
 
 impl AnkiConfig {
     /// Load Anki config from `JP_TOOLS_ANKI_*` environment variables, falling
-    /// back to the "Japanese sentences" defaults. `tags` stays empty — set it
+    /// back to the Lapis defaults. `tags` stays empty — set it
     /// per application after loading.
     pub fn from_env() -> Self {
         let defaults = AnkiConfig::default();
@@ -112,7 +116,33 @@ impl AnkiConfig {
                 "JP_TOOLS_ANKI_FIELD_COMPACT_DEF",
                 defaults.field_compact_def.as_deref().unwrap_or(""),
             ),
+            field_reading: anki_field(
+                "JP_TOOLS_ANKI_FIELD_READING",
+                defaults.field_reading.as_deref().unwrap_or(""),
+            ),
+            field_freq_sort: anki_field(
+                "JP_TOOLS_ANKI_FIELD_FREQ_SORT",
+                defaults.field_freq_sort.as_deref().unwrap_or(""),
+            ),
             tags: Vec::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The defaults are what a fresh install gets, so they are Lapis's names.
+    /// An existing note type pins its own through `JP_TOOLS_ANKI_FIELD_*`.
+    #[test]
+    fn the_defaults_are_the_lapis_note_type() {
+        let c = AnkiConfig::default();
+        assert_eq!(c.model_name, "Lapis");
+        assert_eq!(c.field_vocab.as_deref(), Some("Expression"));
+        assert_eq!(c.field_definition.as_deref(), Some("Glossary"));
+        assert_eq!(c.field_compact_def.as_deref(), Some("MainDefinition"));
+        assert_eq!(c.field_reading.as_deref(), Some("ExpressionReading"));
+        assert_eq!(c.field_freq_sort.as_deref(), Some("FreqSort"));
     }
 }

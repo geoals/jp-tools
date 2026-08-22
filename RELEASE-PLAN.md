@@ -350,6 +350,14 @@ identical to baseline. **Commit:** `card: lapis and legacy glossary styles`.
 
 ### T2.3 — Lapis field defaults
 
+**Status:** done. `AnkiConfig::default()` is Lapis; `field_reading` and
+`field_freq_sort` are new and are written by `export`, the reading taken out of
+the furigana's brackets rather than plumbed through a second time. The existing
+note type's names are pinned in `.env` — every field, including the five that
+used to rely on the defaults — so nothing about the live export moves. An empty
+value means "this note type has no such field", which is how `ExpressionReading`
+and `FreqSort` stay off it.
+
 `jp-mine-core/src/config.rs` — `AnkiConfig::default()` becomes the Lapis map:
 
 | field | Lapis |

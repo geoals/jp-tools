@@ -71,6 +71,18 @@ pub struct NoteData {
     /// Frequency rank as a plain number string, empty when unknown.
     pub vocab_frequency: String,
     pub compact_def: String,
+    /// The reading alone, for a note type that keeps it apart from the
+    /// furigana spelling. Empty for a kana headword.
+    pub vocab_reading: String,
+}
+
+/// The reading out of Anki's bracket notation — `隔週[かくしゅう]` is かくしゅう,
+/// and a kana headword carries no bracket and so no separate reading.
+fn reading_of(furigana: &str) -> String {
+    match (furigana.find('['), furigana.rfind(']')) {
+        (Some(open), Some(close)) if close > open => furigana[open + 1..close].to_string(),
+        _ => String::new(),
+    }
 }
 
 /// Build one AnkiConnect `addNote` request using the configured field mapping.
@@ -126,6 +138,13 @@ pub fn build_add_note_request(n: &NoteData, config: &AnkiConfig) -> Value {
     if let Some(ref f) = config.field_compact_def {
         fields.insert(f.clone(), json!(n.compact_def));
     }
+    if let Some(ref f) = config.field_reading {
+        fields.insert(f.clone(), json!(n.vocab_reading));
+    }
+    // The same rank as the pill, unformatted: a deck sorts on this one.
+    if let Some(ref f) = config.field_freq_sort {
+        fields.insert(f.clone(), json!(n.vocab_frequency));
+    }
 
     json!({
         "action": "addNote",
@@ -165,6 +184,8 @@ fn build_create_model_request(config: &AnkiConfig) -> Value {
         config.field_pitch_pattern.as_deref(),
         config.field_frequency.as_deref(),
         config.field_compact_def.as_deref(),
+        config.field_reading.as_deref(),
+        config.field_freq_sort.as_deref(),
     ]
     .into_iter()
     .flatten()
@@ -484,6 +505,7 @@ impl AnkiExporter for AnkiConnectExporter {
                         .map(|f| f.to_string())
                         .unwrap_or_default(),
                     compact_def: es.compact_def.clone().unwrap_or_default(),
+                    vocab_reading: reading_of(es.vocab_furigana.as_deref().unwrap_or_default()),
                 };
 
                 let add_note_req = build_add_note_request(&note, &config);
@@ -531,6 +553,7 @@ mod tests {
             vocab_pitch_pattern: "0".into(),
             vocab_frequency: "2000".into(),
             compact_def: "".into(),
+            vocab_reading: String::new(),
         };
 
         let request = build_add_note_request(&note, &config);
@@ -540,22 +563,22 @@ mod tests {
 
         let result_note = &request["params"]["note"];
         assert_eq!(result_note["deckName"], "Japanese");
-        assert_eq!(result_note["modelName"], "Japanese sentences");
+        assert_eq!(result_note["modelName"], "Lapis");
         assert_eq!(result_note["tags"], json!(["yt-mine", "youtube"]));
-        assert_eq!(result_note["fields"]["SentKanji"], "テスト文");
+        assert_eq!(result_note["fields"]["Sentence"], "テスト文");
         assert_eq!(
-            result_note["fields"]["Image"],
+            result_note["fields"]["Picture"],
             "<img src=\"yt-mine_1_1.jpg\">"
         );
         assert_eq!(
-            result_note["fields"]["SentAudio"],
+            result_note["fields"]["SentenceAudio"],
             "[sound:yt-mine_1_1.mp3]"
         );
-        assert_eq!(result_note["fields"]["Document"], "Test Video (0:05)");
-        assert_eq!(result_note["fields"]["VocabKanji"], "テスト");
-        assert_eq!(result_note["fields"]["VocabDefFull"], "test");
-        assert_eq!(result_note["fields"]["VocabFurigana"], "テスト");
-        assert_eq!(result_note["fields"]["VocabPitchNum"], "0");
+        assert_eq!(result_note["fields"]["MiscInfo"], "Test Video (0:05)");
+        assert_eq!(result_note["fields"]["Expression"], "テスト");
+        assert_eq!(result_note["fields"]["Glossary"], "test");
+        assert_eq!(result_note["fields"]["ExpressionFurigana"], "テスト");
+        assert_eq!(result_note["fields"]["PitchPosition"], "0");
         assert_eq!(result_note["fields"]["Frequency"], "2000");
 
         // AnkiconnectAndroid requires the full options object
@@ -582,17 +605,18 @@ mod tests {
             vocab_pitch_pattern: "".into(),
             vocab_frequency: "".into(),
             compact_def: "".into(),
+            vocab_reading: String::new(),
         };
 
         let request = build_add_note_request(&note, &config);
         let fields = &request["params"]["note"]["fields"];
 
-        assert_eq!(fields["Image"], "");
-        assert_eq!(fields["SentAudio"], "");
-        assert_eq!(fields["VocabKanji"], "もう一つ");
-        assert_eq!(fields["VocabDefFull"], "");
-        assert_eq!(fields["VocabFurigana"], "");
-        assert_eq!(fields["VocabPitchNum"], "");
+        assert_eq!(fields["Picture"], "");
+        assert_eq!(fields["SentenceAudio"], "");
+        assert_eq!(fields["Expression"], "もう一つ");
+        assert_eq!(fields["Glossary"], "");
+        assert_eq!(fields["ExpressionFurigana"], "");
+        assert_eq!(fields["PitchPosition"], "");
         assert_eq!(fields["Frequency"], "");
     }
 
@@ -612,6 +636,8 @@ mod tests {
             field_pitch_pattern: None,
             field_frequency: None,
             field_compact_def: None,
+            field_reading: None,
+            field_freq_sort: None,
             tags: vec![],
         };
 
@@ -627,6 +653,7 @@ mod tests {
             vocab_pitch_pattern: "".into(),
             vocab_frequency: "500".into(),
             compact_def: "llm def".into(),
+            vocab_reading: String::new(),
         }];
 
         let request = build_add_note_request(&notes[0], &config);
@@ -645,6 +672,14 @@ mod tests {
     }
 
     #[test]
+    fn the_reading_comes_out_of_ankis_bracket_notation() {
+        assert_eq!(reading_of("隔週[かくしゅう]"), "かくしゅう");
+        // A kana headword carries no bracket, and its reading is the spelling.
+        assert_eq!(reading_of("テスト"), "");
+        assert_eq!(reading_of(""), "");
+    }
+
+    #[test]
     fn build_add_notes_custom_field_names() {
         let config = AnkiConfig {
             model_name: "Custom".into(),
@@ -660,6 +695,8 @@ mod tests {
             field_pitch_pattern: Some("PitchNum".into()),
             field_frequency: Some("FreqRank".into()),
             field_compact_def: Some("AIDef".into()),
+            field_reading: None,
+            field_freq_sort: None,
             tags: vec![],
         };
 
@@ -675,6 +712,7 @@ mod tests {
             vocab_pitch_pattern: "1".into(),
             vocab_frequency: "1234".into(),
             compact_def: "ai definition".into(),
+            vocab_reading: reading_of("語[ご]"),
         }];
 
         let request = build_add_note_request(&notes[0], &config);
