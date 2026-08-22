@@ -43,6 +43,13 @@ compositors older than the ones in T0.4, GNOME under Wayland if T0.4 says no.
   what, no history in comments.
 - A task that turns out bigger than its description gets split rather than
   stretched.
+- **This document is the live status, not a plan written once.** Every task
+  carries a status line — `**Status:** done (<commit>)`, `blocked (why)` or
+  nothing while it is untouched — updated in the same commit as the work.
+  A decision made, a fact learned or a task that turned out different is
+  written back here, and the open-decisions list at the end shrinks as they are
+  settled. If the document and the repo disagree, the document is wrong and
+  fixing it is part of the task.
 
 ---
 
@@ -52,6 +59,8 @@ No production code. Output is a decision record and two baselines that later
 phases diff against.
 
 ### T0.1 — Name, ids, paths
+
+**Status:** done (46b9cde).
 
 Decide and write down:
 
@@ -75,6 +84,8 @@ and database names (`read-stats`, `read-stats.db`) do not change.
 
 ### T0.2 — Tokenizer and card baselines
 
+**Status:** done (46b9cde); the golden fixtures were stale and were regenerated first (4118339).
+
 **Done.** Captured into the session scratchpad's `baseline/`:
 
 - `tests-before.txt` — the golden gate, green after regenerating the fixtures
@@ -92,6 +103,8 @@ The live roles, for Phase 1 to move: 1 三省堂 `master`; 6 明鏡, 7 小学館
 
 ### T0.3 — Degradation matrix
 
+**Status:** done (d816320) — `docs/degradation.md`.
+
 Write `docs/degradation.md`: every optional component, what it gives, what
 happens without it, and the one command that installs it. This is the
 specification that Phase 3's capability probe and Phase 6's installer both
@@ -105,6 +118,9 @@ layer-shell vs X11 backend, Textractor WebSocket source vs clipboard.
 **Verify:** every row has all four columns filled. **Commit:** `docs: degradation matrix`.
 
 ### T0.4 — Compositor spike (blocks the "90%" claim)
+
+**Status:** blocked — needs installing gnome-shell and logging in and out of each
+session on the real machine. Nothing in Phase 1 waits on it.
 
 Cheapest first: install `gnome-shell` alongside the current session on the real
 machine, log into GNOME Wayland, and test whether an X11 `_NET_WM_STATE_ABOVE`
@@ -138,6 +154,8 @@ consumer asks for a **role** and handles `None`.
 Order matters — T1.1 first, then each consumer, then the fallbacks.
 
 ### T1.1 — Two new roles
+
+**Status:** done (c02cd8a).
 
 `jp-core/src/knowledge/dictionaries.rs`: add `Role::Frequency` and `Role::Pitch`
 to the enum, its `as_str`/`FromStr`, and `jp-dict set-role`'s accepted values.
