@@ -19,7 +19,6 @@ import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { html } from "htm/preact";
 import { api } from "./api.js";
-import { fmtTsDate } from "./lib/format.js";
 import { Reader } from "./reader.js";
 import { TokenizeView } from "./panels/tokenize.js";
 import { CurrentReading } from "./panels/current-reading.js";
@@ -112,17 +111,6 @@ function App({ view, sub }) {
       ? "library"
       : "today";
 
-  // The periodic sweep's trigger is "after a day of reading", which is a thing
-  // you notice here and not on the vocab tab. One line, only when there is a
-  // batch waiting, and never a number the sweep itself would disagree with —
-  // `ready_since` is the same count `/api/vocab/queue` would return.
-  const sweepReady = vocab?.ready_since ?? 0;
-  const sweptOn = fmtTsDate(vocab?.swept_through);
-  const sweepLine =
-    sweepReady > 0
-      ? `${sweepReady.toLocaleString("en")} words ready to judge${sweptOn ? ` since ${sweptOn}` : ""}`
-      : null;
-
   return html`
     <header>
       <h1><a href="#today">コトデックス</a></h1>
@@ -167,15 +155,6 @@ function App({ view, sub }) {
         title="The logger is disconnected from Textractor, so nothing enters the line stream at all — this is capture, not accounting."
       >
         ⏸ Capture paused — no lines are being recorded.
-      </div>`
-    }
-    ${
-      !offTab &&
-      tab === "today" &&
-      sweepLine &&
-      html`<div class="sweep-nudge">
-        <span>${sweepLine}</span>
-        <a href="#vocab">sweep them →</a>
       </div>`
     }
     ${

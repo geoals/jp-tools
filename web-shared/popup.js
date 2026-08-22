@@ -50,8 +50,9 @@ export function createPopup(opts) {
   // ＋. Held for the same reason as the badge, and because the two are one
   // state: the badge appearing is what removes the button.
   let addButton = null;
-  // ♪, and the clip it plays. Built hidden and filled in when the source list
-  // lands, which is the same shape as the mined badge and for the same reason:
+  // The speaker button, and the clip it plays. Built hidden and filled in when
+  // the source list lands, which is the same shape as the mined badge and for
+  // the same reason:
   // most words have audio, some have none, and the answer arrives after the
   // definition is already on screen. The clip is held so closing the popup can
   // stop it — the word is gone, and so is the reason to hear it.
@@ -98,7 +99,9 @@ export function createPopup(opts) {
       data = await res.json();
     } catch (err) {
       if (target === mine_) {
-        popupEl.replaceChildren(el("div", "none", `Lookup failed — ${err.message}`));
+        popupEl.replaceChildren(
+          el("div", "none", `Lookup failed — ${err.message}`),
+        );
       }
       return;
     }
@@ -142,7 +145,7 @@ export function createPopup(opts) {
     onLayout();
   }
 
-  /** Find this word's audio and arm ♪ with the first clip.
+  /** Find this word's audio and arm the speaker button with the first clip.
    *
    * The audio server ranks its own sources — NHK before 新明解 before Forvo —
    * so the first is the one to play, and the button names it rather than
@@ -174,14 +177,17 @@ export function createPopup(opts) {
     const { reading, surface } = target;
     const head = el("div", "head");
     head.append(el("span", "term", data.term));
-    if (reading && reading !== data.term) head.append(el("span", "reading", reading));
+    if (reading && reading !== data.term)
+      head.append(el("span", "reading", reading));
     // NHK's downstep for this reading, the accent Yomitan would show.
     for (const p of data.pitch ?? []) {
-      if (p.positions.length) head.append(el("span", "pitch", `[${p.positions.join("] [")}]`));
+      if (p.positions.length)
+        head.append(el("span", "pitch", `[${p.positions.join("] [")}]`));
     }
     // The surface is worth showing only where it differs from the headword —
     // that difference is the conjugation the tokenizer saw through.
-    if (surface !== data.term) head.append(el("span", "reading", `— ${surface}`));
+    if (surface !== data.term)
+      head.append(el("span", "reading", `— ${surface}`));
     head.append(ranks(data));
     // Built hidden and kept, rather than added when the answer arrives: the
     // answer can arrive from two directions — Anki's duplicate check, or a mine
@@ -279,10 +285,15 @@ export function createPopup(opts) {
       // The popup moved on while the scan was out.
       if (target !== mine_ || !Array.isArray(found)) return;
       // Minus the one already showing, which is a match of itself.
-      const others = found.filter((e) => !(e.term === target.term && e.reading === target.reading));
+      const others = found.filter(
+        (e) => !(e.term === target.term && e.reading === target.reading),
+      );
       row.replaceChildren(
         ...others.map((e) => {
-          const label = e.reading && e.reading !== e.term ? `${e.term}・${e.reading}` : e.term;
+          const label =
+            e.reading && e.reading !== e.term
+              ? `${e.term}・${e.reading}`
+              : e.term;
           const chip = el("button", "", label);
           chip.title = e.dictionaries.join(", ");
           chip.addEventListener("click", () =>
@@ -316,7 +327,14 @@ export function createPopup(opts) {
     // First in the row, and the only one of these that writes nothing. Hidden
     // until `loadAudio` finds a clip, so a word with no recording shows no
     // button rather than one that does nothing.
-    audioButton = el("button", "", "♪");
+    audioButton = el("button", "audio");
+    // Inline SVG, not an emoji: the emoji renders as a colour glyph the font
+    // picks, and this row is monochrome text.
+    audioButton.innerHTML =
+      '<svg viewBox="0 0 16 16" aria-hidden="true">' +
+      '<path d="M8.5 2.2 4.8 5.3H2.3v5.4h2.5l3.7 3.1z"/>' +
+      '<path d="M11 5.6a3.4 3.4 0 0 1 0 4.8M13.2 3.4a6.5 6.5 0 0 1 0 9.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>' +
+      "</svg>";
     audioButton.hidden = true;
     audioButton.addEventListener("click", () => {
       if (!clip) return;
@@ -330,7 +348,8 @@ export function createPopup(opts) {
     const mark = async (status) => {
       if (!(await judge(on, status))) return;
       on.status = status;
-      for (const b of out.children) b.classList.toggle("on", b.dataset.status === status);
+      for (const b of out.children)
+        b.classList.toggle("on", b.dataset.status === status);
       onJudged(on, status);
     };
     // The status of the term the popup is about, which for a picked match is
@@ -403,7 +422,9 @@ function ranks(data) {
   ]) {
     const pill = el("span", "freq");
     pill.append(el("span", "freq-name", name));
-    pill.append(el("span", "freq-value", rank == null ? "—" : rank.toLocaleString("en")));
+    pill.append(
+      el("span", "freq-value", rank == null ? "—" : rank.toLocaleString("en")),
+    );
     out.append(pill);
   }
   return out;
@@ -415,7 +436,7 @@ const API_DEFAULTS = {
   /** Null disables the mined badge — a host with no duplicate check to ask. */
   mined: null,
   browse: () => {},
-  /** Null disables 🔊 — a host with no audio server in front of it. The pair
+  /** Null disables the speaker button — a host with no audio server in front of it. The pair
    *  goes together: the list names clips, `audioClip` is where they play from. */
   audio: null,
   audioClip: (path) => `/api/audio/clip?${new URLSearchParams({ path })}`,

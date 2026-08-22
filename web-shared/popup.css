@@ -130,6 +130,16 @@
   line-height: 1.55;
   cursor: pointer;
 }
+.jp-popup .acts button.audio {
+  display: flex;
+  align-items: center;
+  padding: 0 0.45em;
+}
+.jp-popup .acts button.audio svg {
+  width: 0.95em;
+  height: 0.95em;
+  fill: currentColor;
+}
 .jp-popup .acts button:hover {
   background: #262c3a;
 }
