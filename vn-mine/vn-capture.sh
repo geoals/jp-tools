@@ -1,10 +1,10 @@
 #!/bin/bash
 # VN mine capture — bind this to a single hotkey.
-# Cuts the last voiceline out of the vn-buffer ring buffer (start = timestamp
+# Cuts the last voiceline out of the kotodex-capture ring buffer (start = timestamp
 # of the last Japanese line Textractor hooked, end = silero-VAD end of speech,
 # never past the *next* hooked line), screenshots the active window, and
 # attaches both to the most recently added "Japanese sentences" Anki note.
-# Requires: vn-buffer.service running, curl, jq, spectacle, ffmpeg
+# Requires: kotodex-capture running, curl, jq, spectacle, ffmpeg
 # Env: VN_DRY=1        build the clip + screenshot but skip Anki, keep files
 #                      (also skips the sentence trim — it needs the note)
 #      VN_JSON=1       print a JSON result object instead of notifying the
@@ -32,7 +32,7 @@ RUNDIR="${VN_RUNDIR:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/vn-mine}"
 SEGDIR="$RUNDIR/seg"
 LINES_LOG="$RUNDIR/lines.log"
 BPS=192000 # 48000 Hz * 2 ch * 2 bytes/sample
-WAV_HDR=44 # bytes; vn-buffer.sh records with -fflags +bitexact
+WAV_HDR=44 # bytes; kotodex-capture records with -fflags +bitexact
 PRE_PAD=0.30
 POST_PAD=0.25
 # 10s, not 20: a voiceline that long doesn't exist, so the extra ten seconds
@@ -121,7 +121,7 @@ FIELD_AUDIO="${JP_TOOLS_ANKI_FIELD_AUDIO:-SentenceAudio}"
 
 # === LOCATE THE VOICELINE START (before the screenshot — anchor the line at
 # the press so advancing to the next line immediately after can't re-anchor) ===
-[ -s "$LINES_LOG" ] || die "No hooked lines logged yet. Is vn-buffer running and Textractor copying to clipboard?"
+[ -s "$LINES_LOG" ] || die "No hooked lines logged yet. Is kotodex-capture running and Textractor copying to clipboard?"
 # With VN_ANCHOR_TS, the newest line *as of that instant* — the line that was on
 # screen when the card was added, not whatever is on screen now. The card-add
 # path can take seconds to reach here (an LLM call, a screenshot, VAD), which is
@@ -183,7 +183,7 @@ fi
 
 # Snapshot the ring: fractional mtime + size per segment, oldest first
 SEG_SNAPSHOT=$(find "$SEGDIR" -name 'seg*.wav' -printf '%T@ %s %p\n' 2>/dev/null | sort -n)
-[ -n "$SEG_SNAPSHOT" ] || die "Ring buffer is empty. Is vn-buffer.service running?"
+[ -n "$SEG_SNAPSHOT" ] || die "Ring buffer is empty. Is kotodex-capture running?"
 
 # The ring is one contiguous PCM stream; anchor its end at the newest
 # segment's mtime and work back by byte count to place [START,END] in it.

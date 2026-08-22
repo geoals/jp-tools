@@ -10,7 +10,7 @@ what the thing does, how to set it up, the endpoints and the config.
 
 ## How it works
 
-- **Ingestion is passive.** `vn-ws-logger.py` (under the `vn-buffer` systemd
+- **Ingestion is passive.** `vn-ws-logger.py` (under the `kotodex-capture` systemd
   unit) inserts every hooked line — timestamp, char count, text — into the shared
   `knowledge.db`. Stats are captured whenever you read, whether or not the
   dashboard is running.
@@ -160,8 +160,8 @@ cargo run -p read-stats     # http://localhost:3200
 ```
 
 Or as part of the stack: `scripts/start-all.sh`, which takes service names
-(`start-all.sh restart read-stats`). The `vn-buffer` ingestion daemon is a
-separate systemd user unit: `systemctl --user start vn-buffer`.
+(`start-all.sh restart read-stats`). The `kotodex-capture` ingestion daemon is a
+separate systemd user unit: `systemctl --user start kotodex-capture`.
 
 ## API
 

@@ -585,6 +585,11 @@ with nothing installed (everything red, no crash, useful text).
 
 ### T4.1 — Rename the capture daemon
 
+**Status:** done. `vn-mine/kotodex-capture` and `kotodex-capture.service`;
+`vn-buffer.sh` stays as a one-line shim that execs the new name, so an installed
+`vn-buffer.service` naming the old path keeps working. Docs swept: both READMEs,
+`vn-capture.sh`'s messages, `vn-ws-logger.py`'s comment and root `CLAUDE.md`.
+
 `vn-mine/vn-buffer.sh` → `kotodex-capture`, `vn-buffer.service` →
 `kotodex-capture.service`. Keep a `vn-buffer.sh` shim that execs the new name
 for one release. Update `vn-mine/README.md`, root `CLAUDE.md`, and the memory
@@ -594,6 +599,15 @@ note about restarting via vn-buffer.
 **Commit:** `vn-mine: rename vn-buffer to kotodex-capture`.
 
 ### T4.2 — Remove hardcoded paths from the unit
+
+**Status:** done. **Decided: both, not either.** `ExecStart` is
+`%h/.local/bin/kotodex-capture run` — no checkout path in it — and the unit
+stays supported, because a systemd-managed daemon is what an existing install
+already has and it survives a crashed supervisor. T4.3's adopt-or-start is what
+makes the two coexist: the supervisor starts a daemon only when nothing is
+already recording.
+
+Running from a checkout is one symlink, which the README now names.
 
 `vn-mine/vn-buffer.service:6` is `ExecStart=%h/git/jp-tools/vn-mine/vn-buffer.sh run`
 — an absolute assumption about where the repo is cloned. The unit is generated
@@ -1015,7 +1029,9 @@ Phase 4; T7.3 (media) as soon as Phase 5 looks final.
 1. ~~**Product name** (T0.1)~~ — decided: Kotodex / コトデックス.
 2. ~~**Compositor support statement** (T0.4)~~ — decided: layer-shell where the
    compositor has it, X11 always-on-top otherwise. GNOME included.
-3. **Systemd unit or supervisor child** for the capture daemon (T4.2).
+3. ~~**Systemd unit or supervisor child**~~ (T4.2) — decided: both. The unit
+   stays; the supervisor adopts a running daemon and starts one only if there
+   is none.
 4. **Vendor the Lapis note type or link to it** (T2.5).
 5. **Prebuilt binaries in the tarball or build on install** (T7.1).
 6. **Licence** (T7.4).

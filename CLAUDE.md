@@ -22,7 +22,7 @@ Cargo workspace for Japanese language learning tools.
 - `manga-mine/` — physical manga sentence mining (photo inbox → crop → OCR →
   Anki, stateless). See `manga-mine/CLAUDE.md`
 - `vn-mine/` — visual novel voiceline capture (bash/python, no Cargo member):
-  audio ring-buffer daemon + Textractor line logger + silero-VAD hotkey script →
+  `kotodex-capture` ring-buffer daemon + Textractor line logger + silero-VAD hotkey script →
   Anki. **It is a dependency of read-stats, not a peer**: read-stats runs
   `vn-capture.sh` on every card path (`services::capture`), and
   `vn-ws-logger.py` is the only producer of the `lines` read-stats serves.

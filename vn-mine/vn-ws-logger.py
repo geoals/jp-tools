@@ -497,7 +497,7 @@ class StatsSink:
         `RETRY_SECS`.
 
         Retried rather than settled at startup because this daemon does not
-        create the schema and may well win the race to it: `vn-buffer.service`
+        create the schema and may well win the race to it: `kotodex-capture.service`
         comes up with the session, `start-all.sh` runs the migrations. Giving up
         on the first attempt would mean a whole sitting logged to `lines.log`
         and nowhere else.

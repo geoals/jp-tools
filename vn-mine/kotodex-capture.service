@@ -1,0 +1,16 @@
+[Unit]
+Description=Kotodex audio ring buffer + Textractor WebSocket line logger
+PartOf=graphical-session.target
+After=graphical-session.target pipewire.service
+
+[Service]
+# The installed binary, not a checkout: the repo can be anywhere, and a unit
+# naming one directory is a unit that works on one machine. Running from a
+# checkout means linking it in:
+#   ln -sf "$PWD/vn-mine/kotodex-capture" ~/.local/bin/kotodex-capture
+ExecStart=%h/.local/bin/kotodex-capture run
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

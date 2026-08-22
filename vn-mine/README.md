@@ -12,9 +12,9 @@ silero-VAD finds where the speech ends.
 
 ## Components
 
-- `vn-buffer.sh` — daemon: ffmpeg ring buffer (60 × 5s WAV segments from the
+- `kotodex-capture` (was `vn-buffer.sh`) — daemon: ffmpeg ring buffer (60 × 5s WAV segments from the
   default sink monitor) + `vn-ws-logger.py` hooked-line logger, both in
-  `$XDG_RUNTIME_DIR/vn-mine/`. Run via the `vn-buffer.service` systemd user
+  `$XDG_RUNTIME_DIR/vn-mine/`. Run via the `kotodex-capture.service` systemd user
   unit.
 - `vn-ws-logger.py` — connects to the Textractor WebSocket server
   (`ws://localhost:6677`, override with `VN_WS_URL`) and appends each hooked
@@ -55,7 +55,7 @@ silero-VAD finds where the speech ends.
   kept unchanged. Needs whisper-service running on :8100.
 - `test_ws_logger.py` — the logger's tests. `python3 -m pytest vn-mine`.
 
-Everything above is on one path: `vn-buffer.service` runs the ring buffer and
+Everything above is on one path: `kotodex-capture.service` runs the ring buffer and
 the logger, and a capture reads what they left. Nothing here is optional and
 nothing is a spare copy.
 
@@ -83,9 +83,10 @@ python3 -m venv ~/.local/share/vn-mine/venv
 curl -sL -o ~/.local/share/vn-mine/silero_vad.onnx \
   https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx
 
-cp vn-buffer.service ~/.config/systemd/user/
+ln -sf "$PWD/kotodex-capture" ~/.local/bin/kotodex-capture
+cp kotodex-capture.service ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemctl --user enable --now vn-buffer
+systemctl --user enable --now kotodex-capture
 ```
 
 Bind `vn-capture.sh` to a KDE shortcut. Requires: ffmpeg, pactl
@@ -128,7 +129,7 @@ clips score ~1.00 standalone; the sound effect that prompted the check scored
 0.35.
 
 - The daemon binds the default sink at startup — `systemctl --user restart
-  vn-buffer` after switching audio outputs. Safe with Textractor open.
+  kotodex-capture` after switching audio outputs. Safe with Textractor open.
 - `VN_WS_URL` (default `ws://localhost:6677`) — Textractor WebSocket server.
 - `VN_DRY=1 ./vn-capture.sh` — build clip + screenshot, skip Anki, keep files.
 - `VN_JSON=1 ./vn-capture.sh` — print a result object
