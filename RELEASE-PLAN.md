@@ -260,6 +260,13 @@ accent line disappears cleanly. **Commit:** `define: pitch by role`.
 
 ### T1.6 — Master becomes optional
 
+**Status:** done. `ensure_master` falls back to the first `standard`
+monolingual, then the dictionary with the fewest headwords, then — before any
+entries have been counted — the first that could hold definitions at all. A
+config naming an uninstalled dictionary still leaves an existing master alone;
+the fallback is only for having none. Verified on a Jitendex-only copy of the
+database: it takes the master role and the whole corpus tokenizes sensibly.
+
 `ensure_master` keeps its marker argument. New fallback chain when the marker
 matches nothing: the highest-priority `Standard` present, else the dictionary
 with the fewest headwords (a monolingual is smaller than Jitendex), else no

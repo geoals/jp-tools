@@ -264,9 +264,21 @@ async fn ensure_master(pool: &sqlx::SqlitePool) -> Result<(), String> {
     let marker =
         std::env::var("JP_TOOLS_MASTER_DICTIONARY").unwrap_or_else(|_| DEFAULT_MASTER.to_string());
     match db::ensure_master(pool, &marker).await {
-        Ok(Some(_)) => println!("master: {marker}"),
+        Ok(Some(id)) => {
+            let title = db::master(pool)
+                .await
+                .ok()
+                .flatten()
+                .map(|d| d.title)
+                .unwrap_or_else(|| id.to_string());
+            if title == marker || marker.is_empty() {
+                println!("master: {title}");
+            } else {
+                println!("master: {title} ({marker} is not cached)");
+            }
+        }
         Ok(None) => eprintln!(
-            "warning: no master dictionary — {marker} is not cached. \
+            "warning: no master dictionary — nothing is cached to fall back to. \
              The vocabulary count will read zero until one is set."
         ),
         Err(e) => return Err(format!("cannot set the master dictionary: {e}")),

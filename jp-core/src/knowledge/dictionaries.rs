@@ -974,6 +974,43 @@ pub async fn any_readings(pool: &SqlitePool, term: &str) -> Result<Vec<String>, 
     Ok(readings)
 }
 
+/// Which dictionary to call master when the configured one is not installed.
+///
+/// A stranger's set has no 三省堂 in it, and a master is what segmentation and
+/// the vocabulary scale are measured against — so picking a defensible one
+/// beats having none. The standard monolinguals first, then the *smallest*
+/// dictionary: a monolingual is an order of magnitude smaller than a bilingual
+/// like Jitendex, whose 335k headwords include every compositional compound and
+/// orthographic variant and would make "I know N words" meaningless.
+///
+/// Returns an index into `all`. The count query walks `dictionary_entries`, so
+/// it runs only on the no-master path — once, at startup.
+async fn fallback_master(
+    pool: &SqlitePool,
+    all: &[Dictionary],
+) -> Result<Option<usize>, sqlx::Error> {
+    if let Some(i) = all.iter().position(|d| d.role == Role::Standard) {
+        return Ok(Some(i));
+    }
+    let counts: Vec<(i64, i64)> =
+        sqlx::query_as("SELECT dictionary_id, COUNT(*) FROM dictionary_entries GROUP BY 1")
+            .fetch_all(pool)
+            .await?;
+    if let Some(i) = counts
+        .into_iter()
+        .filter(|(_, n)| *n > 0)
+        .min_by_key(|(_, n)| *n)
+        .and_then(|(id, _)| all.iter().position(|d| d.id == id))
+    {
+        return Ok(Some(i));
+    }
+    // Nothing has been counted yet — the entries land after the row does. Take
+    // the first dictionary that could hold definitions at all.
+    Ok(all
+        .iter()
+        .position(|d| !matches!(d.role, Role::Frequency | Role::Pitch)))
+}
+
 /// Mark the dictionary whose `source_path` ends with `marker` as master, and
 /// demote any other master. Idempotent, and a no-op when nothing matches — the
 /// master is named in configuration, and a config naming a dictionary that
@@ -982,16 +1019,28 @@ pub async fn any_readings(pool: &SqlitePool, term: &str) -> Result<Vec<String>, 
 /// Called at startup rather than at import time, so changing the setting takes
 /// effect on the next run without re-importing 400k entries.
 pub async fn ensure_master(pool: &SqlitePool, marker: &str) -> Result<Option<i64>, sqlx::Error> {
-    if marker.is_empty() {
-        return Ok(None);
-    }
     let all = list_dictionaries(pool).await?;
-    let Some(target) = all
-        .iter()
-        .find(|d| d.source_path.ends_with(marker) || d.title == marker)
-    else {
-        return Ok(None);
+    let named = (!marker.is_empty())
+        .then(|| {
+            all.iter()
+                .position(|d| d.source_path.ends_with(marker) || d.title == marker)
+        })
+        .flatten();
+    let index = match named {
+        Some(i) => i,
+        None => {
+            // A config naming a dictionary that isn't loaded must not clear the
+            // master that is; the fallback is only for having none at all.
+            if all.iter().any(|d| d.role == Role::Master) {
+                return Ok(None);
+            }
+            match fallback_master(pool, &all).await? {
+                Some(i) => i,
+                None => return Ok(None),
+            }
+        }
     };
+    let target = &all[index];
     for d in &all {
         if d.id == target.id && d.role != Role::Master {
             set_role(pool, d.id, Role::Master).await?;
@@ -1064,6 +1113,31 @@ mod tests {
         let all = list_dictionaries(k.pool()).await.unwrap();
         assert_eq!(all[0].role, Role::Master);
         assert_eq!(all[1].role, Role::Reference, "the old master steps down");
+    }
+
+    #[tokio::test]
+    async fn a_set_without_the_configured_master_still_gets_one() {
+        // A stranger installs Jitendex and nothing else. Segmentation and the
+        // vocabulary scale both need a master, so the smallest dictionary
+        // present takes the role rather than the set having none.
+        let k = with_dicts(&[("Jitendex", "/x/jitendex-yomitan.zip")]).await;
+        assert!(ensure_master(k.pool(), DEFAULT_MASTER).await.unwrap().is_some());
+        assert_eq!(master(k.pool()).await.unwrap().unwrap().title, "Jitendex");
+    }
+
+    #[tokio::test]
+    async fn a_standard_monolingual_outranks_a_bigger_dictionary_as_fallback() {
+        let k = with_dicts(&[
+            ("Jitendex", "/x/jitendex-yomitan.zip"),
+            ("明鏡国語辞典 第三版", "/x/明鏡国語辞典第三版.zip"),
+        ])
+        .await;
+        set_role(k.pool(), 2, Role::Standard).await.unwrap();
+        ensure_master(k.pool(), DEFAULT_MASTER).await.unwrap();
+        assert_eq!(
+            master(k.pool()).await.unwrap().unwrap().title,
+            "明鏡国語辞典 第三版"
+        );
     }
 
     #[tokio::test]
