@@ -542,6 +542,18 @@ qt6-webengine, layer-shell-qt, grim/spectacle/gnome-screenshot, python.
 
 ### T3.6 — `kotodex doctor`
 
+**Status:** done as `scripts/kotodex-doctor.sh`, which Phase 4's `kotodex
+doctor` will call rather than reimplement. Rows come from read-stats' capability
+probe; the ones that are about a missing command come from `platform.sh`, so
+each prints an install line for *this* distro. Exit 0 when the core works —
+curl, jq, SudachiDict, read-stats answering, and at least one definition
+dictionary. Everything else prints and is forgiven.
+
+Verified green against a dev instance, and in a stripped environment where it
+still reports rather than crashing: it resolves its own path through bash
+expansion instead of `readlink`, because it is the one script that has to
+survive a system missing what it is about to report as missing.
+
 One command, human-readable output, exit 0 if the core works. Sections: capture,
 dictionaries, Anki, overlay, optional extras. Every failing row prints the fix
 command from T3.5. The whisper row says what it would add and that it is not
