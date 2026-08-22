@@ -7,9 +7,10 @@ Run it beside a fullscreen test target (`mpv --gpu-context=x11 --fs <file>`,
 works. Clicking the transparent margin should reach the window underneath.
 """
 
+import signal
 import sys
 
-from PySide6.QtCore import Qt, QRect
+from PySide6.QtCore import Qt, QRect, QTimer
 from PySide6.QtGui import QRegion, QPainter, QColor
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -37,8 +38,20 @@ class Probe(QWidget):
     def mousePressEvent(self, _):
         print("click landed on the overlay")
 
+    def keyPressEvent(self, e):
+        if e.key() == Qt.Key_Escape:
+            QApplication.quit()
+
 
 app = QApplication(sys.argv)
+
+# Qt's event loop never returns to Python, so Ctrl-C is only delivered if the
+# default handler is restored and a timer keeps giving the interpreter a slice.
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+tick = QTimer()
+tick.start(200)
+tick.timeout.connect(lambda: None)
+
 w = Probe()
 w.show()
 print(f"platform: {app.platformName()}")
