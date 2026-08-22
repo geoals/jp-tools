@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Kotodex">
+  <rect width="256" height="256" rx="56" fill="#1b1f2a"/>
+  <!-- The reading strip: a line of text over a game, which is the whole product. -->
+  <rect x="40" y="96" width="176" height="64" rx="14" fill="#f4f1ea"/>
+  <rect x="60" y="116" width="92" height="10" rx="5" fill="#1b1f2a"/>
+  <rect x="60" y="136" width="60" height="10" rx="5" fill="#8a93a8"/>
+  <!-- One word marked, which is the other half. -->
+  <rect x="160" y="116" width="36" height="10" rx="5" fill="#e0803a"/>
+  <rect x="160" y="136" width="24" height="10" rx="5" fill="#e0803a" opacity="0.5"/>
+</svg>

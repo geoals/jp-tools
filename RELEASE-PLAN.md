@@ -624,6 +624,18 @@ survives a crashed supervisor. Recommendation: supervisor child, with
 
 ### T4.3 — The supervisor
 
+**Status:** written, unverified on a live desktop. `kotodex/kotodex.py`:
+adopt-or-start each of capture, read-stats and overlay; start in that order,
+waiting for `/api/reader/state`; stop in reverse; restart a child that exits
+non-zero with a backoff and give up after three, naming it.
+
+**Decided against the plan's recommendation on one point:** the Qt process is
+the *launcher*, not the overlay. The overlay is a QML layer surface and the tray
+needs widgets; merging them buys nothing and risks a piece that already works.
+The overlay stays a child.
+
+`kotodex status` and `kotodex doctor` run headless and work.
+
 New `kotodex` launcher. Responsibilities:
 
 - **adopt-or-start** each component: if something is already listening on the
@@ -647,6 +659,11 @@ already running from `start-all.sh` it adopts it and says so.
 
 ### T4.4 — Single instance
 
+**Status:** written, unverified. `QLocalServer` on `kotodex`, second launch
+sends `show` and exits 0 with no error. A socket left by a SIGKILLed process is
+removed only after the probe connect fails, which is the one moment it is safe
+to remove.
+
 `QLocalServer` socket in `$XDG_RUNTIME_DIR/kotodex.sock`. Second launch connects,
 sends `show`, and exits 0 without printing an error. A stale socket from a
 crashed process is detected and replaced.
@@ -656,6 +673,12 @@ overlay and starts nothing. Kill -9 the first, launch again — no stale-socket
 failure. **Commit:** `kotodex: single instance`.
 
 ### T4.5 — Tray icon
+
+**Status:** written, unverified. Menu: show/hide overlay, open reading stats,
+pause capture, doctor, quit. When `isSystemTrayAvailable()` is false it says so
+once and leaves the overlay on screen rather than hiding it — the GNOME case.
+The tooltip names anything that was adopted, since those are what quitting
+deliberately leaves running.
 
 `QSystemTrayIcon` owned by the Qt process, so it outlives the overlay window
 being hidden. Menu: Show/Hide overlay, Open reading stats (opens
@@ -670,6 +693,17 @@ path leaves the overlay reachable. **Commit:** `kotodex: tray icon`.
 
 ### T4.6 — Close and minimise buttons in the overlay
 
+**Status:** written, unverified. Two buttons at the end of the bar, both
+hidden in an ordinary browser where there is no surface to hide and no process
+to stop. They call `shell.minimise()` and `shell.quit()`, new generic slots on
+`layer-overlay` — a page over a layer surface may want either, and neither
+mentions Kotodex.
+
+**Close is an exit code, not a new channel.** `quit()` exits 0; the launcher
+reads a clean exit as deliberate and stops everything it started, while a
+non-zero exit is a crash and gets restarted. Adopted components are left
+running, which is what the tray tooltip says before it happens.
+
 Two new controls in the overlay's button bar (design in T5.1): minimise to tray,
 and close. Close asks the supervisor to stop everything and exits; it does not
 merely hide the window.
@@ -680,6 +714,15 @@ That distinction is deliberate and gets a line in the tray menu tooltip.
 **Commit:** `overlay: close and minimise`.
 
 ### T4.7 — Desktop entry and icon
+
+**Status:** written, not installed. `kotodex/kotodex.svg` exported to 48–512
+PNG, `kotodex.desktop` (validated by `desktop-file-validate`), and
+`kotodex/install-entry.sh` to put both under `~/.local` along with symlinks for
+`kotodex` and `kotodex-capture`. `--uninstall` removes exactly those and says
+the databases were untouched.
+
+Not run: installing puts an entry in your menu and launching it opens a window,
+so that is yours to do. One command: `kotodex/install-entry.sh`.
 
 Icon: a simple SVG, exported to 48/64/128/256/512 PNG into hicolor. Desktop
 entry with `Name`, `Comment`, `Icon=kotodex`, `Exec=kotodex`, `Categories=Education;Languages;`,

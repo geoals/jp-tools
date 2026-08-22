@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# The Kotodex launcher. Everything is in the Python beside this file; this
+# exists so the desktop entry and ~/.local/bin have one name to call.
+exec python3 "$(dirname "$(readlink -f "$0")")/kotodex.py" "$@"

@@ -38,6 +38,11 @@ Cargo workspace for Japanese language learning tools.
     the only one Yomitan is over
   - `overlay/` — the same feed and its own dictionary drawn *over* the game,
     fullscreen included, launched by `overlay/vn-overlay.sh`
+- `kotodex/` — the launcher: one Qt process that owns the capture daemon,
+  read-stats and the overlay, plus the tray, the single-instance socket, the
+  icon and the desktop entry. **Adopt, never duplicate**: each component is
+  probed before it is started, so this coexists with `start-all.sh` and with a
+  systemd-managed capture daemon, and quitting stops only what it started
 - `layer-overlay/` — the Qt shell that puts a web page above fullscreen windows
   and makes it clickable only where the page has drawn. Knows nothing about
   Japanese, reading or read-stats; `read-stats/overlay/` is its one caller.

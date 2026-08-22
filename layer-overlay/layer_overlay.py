@@ -69,6 +69,9 @@ class Overlay(QObject):
         super().__init__()
         self._window = None
         self.interactive = False
+        #: Minimised: off screen but still running, and kept across the window
+        #: rebuilds that an output change causes.
+        self.hidden = False
         self._hits = []
         self._name = ""
         self._rect = None
@@ -134,6 +137,8 @@ class Overlay(QObject):
         return (fields["X"], fields["Y"], fields["WIDTH"], fields["HEIGHT"])
 
     def attach(self, window) -> None:
+        if self.hidden:
+            window.setVisible(False)
         self._window = window
         # The compositor configures a layer surface after the window is
         # created, and a Plasma panel's exclusive zone shrinks it further, so
@@ -155,6 +160,30 @@ class Overlay(QObject):
     def toggle(self) -> None:
         self.interactive = not self.interactive
         self.apply()
+
+    @Slot()
+    def minimise(self) -> None:
+        """Off screen, still running. The window is rebuilt on output changes,
+        so hiding it is a flag the rebuild honours rather than a one-off."""
+        self.hidden = True
+        if self._window is not None:
+            self._window.setVisible(False)
+
+    @Slot()
+    def restore(self) -> None:
+        self.hidden = False
+        if self._window is not None:
+            self._window.setVisible(True)
+
+    @Slot()
+    def quit(self) -> None:
+        """The page asking to be closed. Exit 0 says *deliberate*, which is how
+        whatever started this tells a close apart from a crash."""
+        from PySide6.QtGui import QGuiApplication
+
+        app = QGuiApplication.instance()
+        if app is not None:
+            app.exit(0)
 
     def apply(self) -> None:
         if self._window is None or self._window.height() <= 0:

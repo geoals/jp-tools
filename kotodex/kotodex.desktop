@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Kotodex
+Comment=Read Japanese visual novels with a dictionary over the game
+Exec=kotodex
+Icon=kotodex
+Terminal=false
+Categories=Education;Languages;
+Keywords=japanese;visual novel;dictionary;anki;
+# The launcher's own Qt window class, so the tray and the taskbar associate
+# with this entry rather than showing a second nameless python entry.
+StartupWMClass=kotodex

@@ -962,6 +962,17 @@ function onGeometry(x, y, w, h) {
 // marks over nothing is worse than no marks — and never on a phone, where the
 // line is being read off the screen rather than fitted over anything.
 const GHOST = "vn-overlay-ghost";
+// Minimise and close. Both need the shell — in an ordinary browser there is no
+// surface to hide and no process to stop, so the two buttons are not drawn.
+const minBtnEl = document.getElementById("min-btn");
+const closeBtnEl = document.getElementById("close-btn");
+minBtnEl.hidden = true;
+closeBtnEl.hidden = true;
+minBtnEl.addEventListener("click", () => shell?.minimise());
+// Close, not hide: the shell exits 0, and the launcher reads that as
+// deliberate and stops everything it started.
+closeBtnEl.addEventListener("click", () => shell?.quit());
+
 const ghostBtnEl = document.getElementById("ghost-btn");
 let ghost = localStorage.getItem(GHOST) === "1";
 
@@ -998,6 +1009,8 @@ if (window.qt?.webChannelTransport) {
     shell.userToggled.connect(toggleGhost);
     // The status event that carried it has usually already been and gone.
     if (windowName) shell.setWindowName(windowName);
+    minBtnEl.hidden = false;
+    closeBtnEl.hidden = false;
     report();
   });
 }
