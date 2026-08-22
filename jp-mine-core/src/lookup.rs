@@ -8,7 +8,7 @@ pub struct WordLookupResult {
     pub reading: String,
     pub pitch_num: Option<String>,
     /// How common the word is in fiction, by
-    /// [`jp_core::knowledge::dictionaries::READER_FREQUENCY`] — 2000 is the
+    /// [`jp_core::knowledge::dictionaries::reader_frequency`] — 2000 is the
     /// 2000th most common word.
     pub frequency: Option<i64>,
 }
@@ -70,7 +70,9 @@ pub async fn lookup_word(k: &Knowledge, word: &str, reading: Option<&str>) -> Wo
                 .collect::<Vec<_>>()
                 .join(",")
         }),
-        frequency: found.jiten,
+        // The reader's own list leads `frequencies`, so the card's rank agrees
+        // with the underline on the page it was mined from.
+        frequency: found.frequencies.first().and_then(|f| f.rank),
     }
 }
 

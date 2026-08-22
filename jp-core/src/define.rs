@@ -26,13 +26,6 @@ use crate::knowledge::Knowledge;
 use crate::knowledge::dictionaries;
 use crate::knowledge::vocabulary::{self, Status, Term};
 
-/// The frequency list that ranks a *spelling with a reading*. Reader-facing
-/// ranks come from the reader's frequency dictionary; this one is shown beside
-/// it because
-/// the two disagree loudly and the difference is informative — 船舶 is 3,843 in
-/// newspaper prose against 32,370 in fiction.
-const CORPUS_FREQUENCY: &str = "BCCWJ";
-
 /// The dictionary that follows the master in the popup. Named rather than
 /// derived: install order is the order zips were first seen, which says nothing
 /// about which definition is worth reading first.
@@ -55,6 +48,17 @@ pub struct Source {
     pub senses: Vec<Sense>,
 }
 
+/// One frequency dictionary's answer for this term, named so the number means
+/// something: a corpus list and a fiction list disagree by an order of
+/// magnitude on ordinary words, and a bare rank cannot say which one it is.
+#[derive(Serialize)]
+pub struct FrequencyRank {
+    pub dictionary: String,
+    /// `None` where the list does not rank this term — the pill keeps its place
+    /// and shows a dash, so the pills do not move between words.
+    pub rank: Option<i64>,
+}
+
 #[derive(Serialize)]
 pub struct Pitch {
     pub reading: String,
@@ -65,12 +69,11 @@ pub struct Pitch {
 #[derive(Serialize)]
 pub struct Definition {
     pub term: String,
-    /// Ranked by the reader's frequency dictionary — how common the word is in
-    /// fiction.
-    pub jiten: Option<i64>,
-    /// Ranked by [`CORPUS_FREQUENCY`]. Taken over the spelling alone, so where
-    /// a spelling has several readings this is the commonest of them.
-    pub bccwj: Option<i64>,
+    /// Every frequency dictionary's rank, lowest id first — so the reader's own
+    /// list leads. Empty where none is installed, and the popup then draws no
+    /// pill row at all. Taken over the spelling alone, so where a spelling has
+    /// several readings this is the commonest of them.
+    pub frequencies: Vec<FrequencyRank>,
     /// Master dictionary first, then the rest in install order. A dictionary
     /// holding nothing for this term is absent rather than empty.
     pub sources: Vec<Source>,
@@ -99,16 +102,18 @@ pub async fn define(
 ) -> Result<Definition, sqlx::Error> {
     let dicts = dictionaries::list_dictionaries(pool).await?;
 
-    let rank_from = async |d: Option<&dictionaries::Dictionary>| match d {
-        Some(d) => dictionaries::lookup_frequency(pool, d.id, term)
-            .await
-            .unwrap_or(None),
-        None => None,
-    };
-    let reader_freq = dicts
+    let mut frequencies = Vec::new();
+    for dict in dicts
         .iter()
         .filter(|d| d.role == dictionaries::Role::Frequency)
-        .min_by_key(|d| d.id);
+    {
+        frequencies.push(FrequencyRank {
+            dictionary: dict.title.clone(),
+            rank: dictionaries::lookup_frequency(pool, dict.id, term)
+                .await
+                .unwrap_or(None),
+        });
+    }
 
     let mut sources = Vec::new();
     for dict in &dicts {
@@ -173,8 +178,7 @@ pub async fn define(
 
     Ok(Definition {
         term: term.to_string(),
-        jiten: rank_from(reader_freq).await,
-        bccwj: rank_from(dicts.iter().find(|d| d.title == CORPUS_FREQUENCY)).await,
+        frequencies,
         sources,
         pitch,
         lookup_id: None,

@@ -188,7 +188,8 @@ export function createPopup(opts) {
     // that difference is the conjugation the tokenizer saw through.
     if (surface !== data.term)
       head.append(el("span", "reading", `— ${surface}`));
-    head.append(ranks(data));
+    const rankRow = ranks(data);
+    if (rankRow) head.append(rankRow);
     // Built hidden and kept, rather than added when the answer arrives: the
     // answer can arrive from two directions — Anki's duplicate check, or a mine
     // made while this popup is open — and both then have one thing to raise.
@@ -408,20 +409,19 @@ export function createPopup(opts) {
   };
 }
 
-/** One pill per list, the name filled and the number not — Yomitan's shape.
+/** One pill per frequency dictionary, the name filled and the number not —
+ * Yomitan's shape. Null where none is installed, and the head draws no row.
  *
- * Two lists, two answers: jiten ranks the word in the fiction being read,
- * BCCWJ in newspaper and government prose. They disagree by an order of
- * magnitude on ordinary words, so the number is worth nothing without the name
- * attached to it. */
+ * The name is the dictionary's own, because two lists give two answers: a
+ * fiction list and a newspaper corpus disagree by an order of magnitude on
+ * ordinary words, so the number is worth nothing without the name attached. */
 function ranks(data) {
+  const lists = data.frequencies || [];
+  if (!lists.length) return null;
   const out = el("div", "rank");
-  for (const [name, rank] of [
-    ["jiten", data.jiten],
-    ["BCCWJ", data.bccwj],
-  ]) {
+  for (const { dictionary, rank } of lists) {
     const pill = el("span", "freq");
-    pill.append(el("span", "freq-name", name));
+    pill.append(el("span", "freq-name", dictionary));
     pill.append(
       el("span", "freq-value", rank == null ? "—" : rank.toLocaleString("en")),
     );
