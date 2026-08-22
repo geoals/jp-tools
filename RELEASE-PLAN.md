@@ -119,14 +119,18 @@ layer-shell vs X11 backend, Textractor WebSocket source vs clipboard.
 
 ### T0.4 — Compositor spike (blocks the "90%" claim)
 
-**Status:** done — `docs/compositors.md`. GNOME Wayland **fails** the stacking
-test: the always-on-top probe drops behind a fullscreen window as soon as that
-window is clicked, and mutter implements no layer-shell, so there is no fix.
-xdotool geometry works there. The narrowed claim is written and stands.
+**Status:** done — `docs/compositors.md`. GNOME Wayland **passes**: an
+always-on-top X11 window stays above a fullscreen XWayland one, and xdotool
+returns its geometry. The catch is that Qt must run under `QT_QPA_PLATFORM=xcb`
+— on a native Wayland surface the on-top hint is silently a no-op, which is
+what a first run of the probe measured and wrongly read as a GNOME failure.
 
 GNOME Xorg does not exist any more and KDE Xorg is not installed here, so those
 two rows are untestable rather than failing. Hyprland is still untested; it is
-wlroots, so layer-shell is expected to work.
+wlroots, so layer-shell is expected to work. Click-through on GNOME is still
+unverified.
+
+The 90% claim stands and is not narrowed.
 
 Cheapest first: install `gnome-shell` alongside the current session on the real
 machine, log into GNOME Wayland, and test whether an X11 `_NET_WM_STATE_ABOVE`
@@ -527,11 +531,13 @@ entry with `Name`, `Comment`, `Icon=kotodex`, `Exec=kotodex`, `Categories=Educat
 
 ### T4.8 — X11 overlay backend
 
-**Status:** dropped by T0.4. The backend existed for GNOME, and on GNOME an
-always-on-top X11 window does not stay above a fullscreen one — so it is not
-viable where it was needed. The remaining X11 sessions all have a layer-shell
-Wayland session beside them. Reopen only if a real user turns up on X11-only
-hardware.
+**Status:** required, per T0.4 — this is what makes GNOME work, so it is on the
+critical path rather than a maybe. The backend must force `QT_QPA_PLATFORM=xcb`
+for itself: inheriting the session default gives a native Wayland surface where
+`WindowStaysOnTopHint` does nothing.
+
+Verify click-through with XShape on GNOME as part of this task; T0.4 left it
+unchecked.
 
 Only if T0.4 says it is needed and viable. `layer-overlay/` gains a second
 backend selected at startup: layer-shell where available, X11
@@ -861,8 +867,8 @@ Phase 4; T7.3 (media) as soon as Phase 5 looks final.
 # Open decisions
 
 1. ~~**Product name** (T0.1)~~ — decided: Kotodex / コトデックス.
-2. ~~**Compositor support statement** (T0.4)~~ — decided: layer-shell
-   compositors for the fullscreen overlay, windowed browser reading on GNOME.
+2. ~~**Compositor support statement** (T0.4)~~ — decided: layer-shell where the
+   compositor has it, X11 always-on-top otherwise. GNOME included.
 3. **Systemd unit or supervisor child** for the capture daemon (T4.2).
 4. **Vendor the Lapis note type or link to it** (T2.5).
 5. **Prebuilt binaries in the tarball or build on install** (T7.1).
