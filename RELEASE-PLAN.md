@@ -226,6 +226,15 @@ from the dictionary title instead.
 
 ### T1.4 — Popup ordering without a name list
 
+**Status:** done — `SECOND_PAGE` is gone, the sort keys on the role.
+
+**The live popup order changes**, which the task's own verify line did not
+expect: Jitendex used to be page two by name, and under roles the standard
+monolinguals take that place. It is now 三省堂 → 明鏡 → 小学館 → Jitendex. That
+is the ordering the role model implies — a bilingual dictionary after the
+monolinguals — but say so if you want Jitendex back at two, since the only way
+to get it there now is a role change.
+
 `jp-core/src/define.rs:38` — delete `SECOND_PAGE`. Order becomes: master first,
 then `Standard`, then everything else in install order. The `entries.is_empty()`
 filter at `define.rs:111` already excludes frequency and pitch dictionaries and

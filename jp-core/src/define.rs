@@ -26,11 +26,6 @@ use crate::knowledge::Knowledge;
 use crate::knowledge::dictionaries;
 use crate::knowledge::vocabulary::{self, Status, Term};
 
-/// The dictionary that follows the master in the popup. Named rather than
-/// derived: install order is the order zips were first seen, which says nothing
-/// about which definition is worth reading first.
-pub const SECOND_PAGE: [&str; 1] = ["Jitendex"];
-
 #[derive(Serialize)]
 pub struct Sense {
     pub reading: String,
@@ -144,18 +139,19 @@ pub async fn define(
                 .collect(),
         });
     }
-    // The master, then Jitendex, then everything else in install order — a
-    // stable sort, so the last tier keeps it.
+    // The master, then the standard monolinguals, then everything else in
+    // install order — a stable sort, so the last tier keeps it. By role rather
+    // than by name: install order is the order zips were first seen, which says
+    // nothing about which definition is worth reading first.
     sources.sort_by_key(|s| {
-        if dicts
+        match dicts
             .iter()
-            .any(|d| d.title == s.dictionary && d.role == dictionaries::Role::Master)
+            .find(|d| d.title == s.dictionary)
+            .map(|d| d.role)
         {
-            0
-        } else if SECOND_PAGE.contains(&s.dictionary.as_str()) {
-            1
-        } else {
-            2
+            Some(dictionaries::Role::Master) => 0,
+            Some(dictionaries::Role::Standard) => 1,
+            _ => 2,
         }
     });
 
