@@ -119,8 +119,14 @@ layer-shell vs X11 backend, Textractor WebSocket source vs clipboard.
 
 ### T0.4 — Compositor spike (blocks the "90%" claim)
 
-**Status:** blocked — needs installing gnome-shell and logging in and out of each
-session on the real machine. Nothing in Phase 1 waits on it.
+**Status:** done — `docs/compositors.md`. GNOME Wayland **fails** the stacking
+test: the always-on-top probe drops behind a fullscreen window as soon as that
+window is clicked, and mutter implements no layer-shell, so there is no fix.
+xdotool geometry works there. The narrowed claim is written and stands.
+
+GNOME Xorg does not exist any more and KDE Xorg is not installed here, so those
+two rows are untestable rather than failing. Hyprland is still untested; it is
+wlroots, so layer-shell is expected to work.
 
 Cheapest first: install `gnome-shell` alongside the current session on the real
 machine, log into GNOME Wayland, and test whether an X11 `_NET_WM_STATE_ABOVE`
@@ -849,8 +855,8 @@ Phase 4; T7.3 (media) as soon as Phase 5 looks final.
 # Open decisions
 
 1. ~~**Product name** (T0.1)~~ — decided: Kotodex / コトデックス.
-2. **Compositor support statement** (T0.4) — decided by the spike, not by
-   preference.
+2. ~~**Compositor support statement** (T0.4)~~ — decided: layer-shell
+   compositors for the fullscreen overlay, windowed browser reading on GNOME.
 3. **Systemd unit or supervisor child** for the capture daemon (T4.2).
 4. **Vendor the Lapis note type or link to it** (T2.5).
 5. **Prebuilt binaries in the tarball or build on install** (T7.1).
