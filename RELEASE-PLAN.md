@@ -303,6 +303,17 @@ Depends on Phase 1 (role-based dictionary selection).
 
 ### T2.1 — Kill the card dictionary allowlist
 
+**Status:** done, folded into T2.2 — the two could not be separated. Dropping
+the allowlist outright rewrites the live card's markup, because the class name
+is deliberately *not* the title's slug: the legacy note type's CSS is written
+against `.dict-jitendex-body`, and Jitendex's title carries a release date. So
+the allowlist survives as the **legacy style's** table, which is what "legacy"
+means, and the Lapis style takes every dictionary holding a definition.
+
+The silent failure is fixed where it can be: under Lapis, 明鏡 now reaches the
+card. Under legacy it still cannot — its CSS has no rules to render it with,
+which is the reason for T2.7.
+
 `jp-mine-core/src/card.rs:32` — delete `CARD_DICTIONARIES`. `card_class`
 becomes `jp_core::dictionary::css_slug(title)`. The filter for which
 dictionaries reach the card becomes the same `entries.is_empty()` rule the
@@ -318,6 +329,10 @@ and Jitendex. Then set a third dictionary to a definition role and confirm it
 appears. **Commit:** `card: every definition dictionary reaches the card`.
 
 ### T2.2 — Card style profiles
+
+**Status:** done. `JP_TOOLS_ANKI_STYLE=legacy` is set in `.env`, which is
+gitignored — the local, opt-in pin, so nothing about the live setup moves while
+the default for everyone else is Lapis.
 
 Add `JP_TOOLS_ANKI_STYLE` = `lapis` (default) | `legacy`.
 

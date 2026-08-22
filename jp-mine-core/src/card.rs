@@ -15,30 +15,62 @@ use jp_core::dictionary::html::html_escape;
 use jp_core::knowledge::dictionaries;
 use sqlx::SqlitePool;
 
-/// The dictionaries that go on the card: a title prefix, and the class name the
-/// note type's CSS lists for it.
+/// Which markup `VocabDefFull` is written in.
 ///
-/// The note type styles `.dict-<class>-title` and `.dict-<class>-body` for these
-/// two and no others, so a third would land on the card as an unstyled block.
-/// The popup is where a dictionary goes to be read; this field is what the card
-/// keeps, and the two lists are allowed to differ.
+/// Two note types want two different things and neither is wrong: Lapis styles
+/// Yomitan's `.yomitan-glossary` directly, so a wrapper is noise; the older note
+/// type styles per dictionary and reaches *through* the wrapper, so removing it
+/// renders the card unstyled. `JP_TOOLS_ANKI_STYLE` picks one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Style {
+    /// Yomitan's glossary block alone, one per dictionary that has the term.
+    Lapis,
+    /// Per-dictionary title and body wrappers, and only the two dictionaries
+    /// the note type has rules for.
+    Legacy,
+}
+
+impl Style {
+    pub fn from_env() -> Style {
+        match std::env::var("JP_TOOLS_ANKI_STYLE").as_deref() {
+            Ok("legacy") => Style::Legacy,
+            _ => Style::Lapis,
+        }
+    }
+}
+
+/// The dictionaries the legacy note type has rules for: a title prefix, and the
+/// class name its CSS lists.
 ///
-/// The class name is not derived from the title. Yomitan's own Jitendex is
-/// titled `Jitendex.org [2026-02-05]`, so a slug built from a title changes on
-/// every release and stops matching, and the rules that hide Jitendex's star
-/// and its ① ② numbering are written against `.dict-jitendex-body` alone. The
-/// match is on prefix for the same reason: the version moves, the dictionary
-/// does not.
-const CARD_DICTIONARIES: [(&str, &str); 2] =
+/// It styles `.dict-<class>-title` and `.dict-<class>-body` for these two and no
+/// others, so a third would land on the card as an unstyled block. The class
+/// name is not derived from the title: Yomitan's own Jitendex is titled
+/// `Jitendex.org [2026-02-05]`, so a slug built from a title changes on every
+/// release and stops matching. The match is on prefix for the same reason — the
+/// version moves, the dictionary does not.
+const LEGACY_DICTIONARIES: [(&str, &str); 2] =
     [("三省堂国語辞典", "sanseido"), ("Jitendex", "jitendex")];
 
-/// The class name the note type styles this dictionary under, if the card
-/// carries it at all.
-pub fn card_class(title: &str) -> Option<&'static str> {
-    CARD_DICTIONARIES
+/// The class name the legacy note type styles this dictionary under, if it
+/// carries the dictionary at all.
+fn legacy_class(title: &str) -> Option<&'static str> {
+    LEGACY_DICTIONARIES
         .iter()
         .find(|(prefix, _)| title.starts_with(prefix))
         .map(|(_, class)| *class)
+}
+
+/// Yomitan's glossary block for one dictionary, with no wrapper — what Lapis
+/// styles directly.
+pub fn glossary_block(title: &str, definitions: &[&str]) -> String {
+    let title = html_escape(title);
+    let mut out =
+        String::from("<div style=\"text-align: left;\" class=\"yomitan-glossary\"><ol>");
+    for def in definitions {
+        out.push_str(&format!("<li data-dictionary=\"{title}\">{def}</li>"));
+    }
+    out.push_str("</ol></div>");
+    out
 }
 
 /// One dictionary's block of `VocabDefFull`, in Yomitan's markup.
@@ -61,19 +93,30 @@ pub fn dict_block(class: &str, title: &str, definitions: &[&str]) -> String {
     out
 }
 
-/// `VocabDefFull`: one block per card dictionary that has the term.
+/// `VocabDefFull`: one block per dictionary that has the term, in the popup's
+/// own order.
 ///
-/// Sankoku then Jitendex, in install order, which is the order Yomitan writes
-/// them in. The wrapper divs are its markup, reproduced exactly, because the
-/// note type styles them per dictionary — `.dict-jitendex-body` is what hides
-/// Jitendex's star and its ① ② numbering, and it only matches through the
-/// `body` div wrapping the glossary.
+/// Which dictionaries reach the card is the style's decision. Lapis takes every
+/// one that holds a definition — a frequency or pitch dictionary excludes itself
+/// by having no term entries, the same rule the popup uses — so a dictionary
+/// added later appears without a code change. Legacy takes the two its CSS has
+/// rules for and drops the rest, which is what its CSS can render.
 pub async fn glossary(pool: &SqlitePool, term: &str, reading: &str) -> Result<String, sqlx::Error> {
+    glossary_in(pool, term, reading, Style::from_env()).await
+}
+
+pub async fn glossary_in(
+    pool: &SqlitePool,
+    term: &str,
+    reading: &str,
+    style: Style,
+) -> Result<String, sqlx::Error> {
     let mut glossary = String::new();
     for dict in dictionaries::list_dictionaries(pool).await? {
-        let Some(class) = card_class(&dict.title) else {
+        let class = legacy_class(&dict.title);
+        if style == Style::Legacy && class.is_none() {
             continue;
-        };
+        }
         let entries = dictionaries::lookup_dictionary_entries(pool, dict.id, term).await?;
         // Same rule as the popup: keep the asked-for reading where the
         // dictionary lists it, and where it does not, every reading beats
@@ -91,7 +134,11 @@ pub async fn glossary(pool: &SqlitePool, term: &str, reading: &str) -> Result<St
         if definitions.is_empty() {
             continue;
         }
-        glossary.push_str(&dict_block(class, &dict.title, &definitions));
+        glossary.push_str(&match style {
+            Style::Lapis => glossary_block(&dict.title, &definitions),
+            // `class` is Some here: legacy skipped everything else above.
+            Style::Legacy => dict_block(class.unwrap_or_default(), &dict.title, &definitions),
+        });
     }
     Ok(glossary)
 }
@@ -249,10 +296,10 @@ mod tests {
     /// Sankoku's edition, Jitendex's date — and the class name must not.
     #[test]
     fn a_versioned_title_still_finds_its_class() {
-        assert_eq!(card_class("三省堂国語辞典　第八版"), Some("sanseido"));
-        assert_eq!(card_class("Jitendex"), Some("jitendex"));
-        assert_eq!(card_class("Jitendex.org [2026-02-05]"), Some("jitendex"));
-        assert_eq!(card_class("明鏡国語辞典 第三版"), None);
+        assert_eq!(legacy_class("三省堂国語辞典　第八版"), Some("sanseido"));
+        assert_eq!(legacy_class("Jitendex"), Some("jitendex"));
+        assert_eq!(legacy_class("Jitendex.org [2026-02-05]"), Some("jitendex"));
+        assert_eq!(legacy_class("明鏡国語辞典 第三版"), None);
     }
 
     /// Byte-for-byte against the wrapper on a card Yomitan itself wrote. The
@@ -277,5 +324,16 @@ mod tests {
         let block = dict_block("jitendex", "Jitendex.org [2026-02-05]", &["GLOSS"]);
         assert!(block.contains("class=\"dict-jitendex-body\""));
         assert!(block.contains(">Jitendex.org [2026-02-05]<"));
+    }
+
+    #[test]
+    fn lapis_drops_the_wrappers_the_legacy_note_type_reaches_through() {
+        let lapis = glossary_block("Jitendex.org [2026-02-05]", &["GLOSS"]);
+        assert!(lapis.starts_with("<div style=\"text-align: left;\" class=\"yomitan-glossary\">"));
+        assert!(!lapis.contains("dict-"));
+        assert!(lapis.contains(">GLOSS<"));
+
+        let legacy = dict_block("jitendex", "Jitendex.org [2026-02-05]", &["GLOSS"]);
+        assert!(legacy.contains("class=\"dict-jitendex-body\"><div style="));
     }
 }
