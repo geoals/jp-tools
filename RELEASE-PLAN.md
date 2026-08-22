@@ -283,6 +283,16 @@ it as master and tokenizing a test line returns sensible tokens.
 
 ### T1.7 — Roles assigned at import
 
+**Status:** done. The guess reads what the zip turned out to hold: term entries
+→ `reference`, frequency rows only → `frequency`, accent rows only → `pitch`.
+`--role` overrides and is rejected on a typo. Only a *new* row is guessed at, so
+a `set-role` decision survives every later sync. Master is left to
+`ensure_master` rather than guessed a second time.
+
+Verified by importing Jitendex, a frequency zip and a pitch zip into an empty
+database with no flags: `reference` / `frequency` / `pitch`, and Jitendex takes
+master through T1.6's fallback.
+
 `jp-dict import` guesses a role from what the zip contains: term entries →
 `Reference` (or `Master` if it is the first monolingual), frequency rows only →
 `Frequency`, accent rows only → `Pitch`. `--role` overrides.

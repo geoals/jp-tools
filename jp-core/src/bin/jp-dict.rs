@@ -33,6 +33,7 @@ usage:
                                   id and the role (use after a parser fix)
   jp-dict remove <id>             forget a cached dictionary and its entries
                                   (the zip on disk is left alone)
+  jp-dict import <zip>...         --role <role> overrides the guess
   jp-dict set-role <id> <role>    role is master, standard, name, frequency,
                                   pitch or reference
                                   (standard: decides segmentation beside the
@@ -66,6 +67,10 @@ async fn run() -> Result<(), String> {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let dir = take_option(&mut args, "--dir");
     let db_path = take_option(&mut args, "--db");
+    let forced_role = match take_option(&mut args, "--role") {
+        Some(r) => Some(parse_role(&r)?),
+        None => None,
+    };
 
     let (command, rest) = args
         .split_first()
@@ -84,7 +89,7 @@ async fn run() -> Result<(), String> {
                 println!("no .zip dictionaries in {}", dir.display());
                 return Ok(());
             }
-            import_all(pool, &zips).await?;
+            import_all(pool, &zips, forced_role).await?;
             ensure_master(pool).await?;
             list(pool).await
         }
@@ -98,7 +103,7 @@ async fn run() -> Result<(), String> {
                     return Err(format!("no such file: {}", zip.display()));
                 }
             }
-            import_all(pool, &zips).await?;
+            import_all(pool, &zips, forced_role).await?;
             ensure_master(pool).await?;
             list(pool).await
         }
@@ -158,21 +163,7 @@ async fn run() -> Result<(), String> {
                 return Err(format!("set-role needs an id and a role\n\n{USAGE}"));
             };
             let id: i64 = id.parse().map_err(|_| format!("not an id: {id}"))?;
-            // `Role::parse` treats anything unknown as `reference`, which would
-            // silently demote a dictionary on a typo.
-            let parsed = match role.as_str() {
-                "master" => Role::Master,
-                "standard" => Role::Standard,
-                "name" => Role::Name,
-                "frequency" => Role::Frequency,
-                "pitch" => Role::Pitch,
-                "reference" => Role::Reference,
-                other => {
-                    return Err(format!(
-                        "unknown role: {other} (master, standard, name, frequency, pitch, reference)"
-                    ));
-                }
-            };
+            let parsed = parse_role(role)?;
             let cached = db::list_dictionaries(pool)
                 .await
                 .map_err(|e| format!("cannot read the dictionary list: {e}"))?;
@@ -208,7 +199,38 @@ async fn run() -> Result<(), String> {
 
 /// Import every zip that is not cached yet, and repoint any whose file has
 /// moved. Both are keyed on `source_path`, which is the cache key.
-async fn import_all(pool: &sqlx::SqlitePool, zips: &[PathBuf]) -> Result<(), String> {
+/// What a freshly imported zip is for, from what it turned out to contain.
+///
+/// A frequency list and a pitch dictionary hold no term entries at all, which
+/// is the same signal the popup already uses to keep them off the page. A zip
+/// with definitions gets `reference` and stays there until someone decides
+/// otherwise — `ensure_master` is what promotes one to master.
+async fn guess_role(pool: &sqlx::SqlitePool, id: i64) -> Result<Role, sqlx::Error> {
+    let count = async |table: &str| -> Result<i64, sqlx::Error> {
+        sqlx::query_scalar(&format!(
+            "SELECT EXISTS(SELECT 1 FROM {table} WHERE dictionary_id = ?)"
+        ))
+        .bind(id)
+        .fetch_one(pool)
+        .await
+    };
+    if count("dictionary_entries").await? > 0 {
+        return Ok(Role::Reference);
+    }
+    if count("dictionary_frequency").await? > 0 {
+        return Ok(Role::Frequency);
+    }
+    if count("dictionary_pitch").await? > 0 {
+        return Ok(Role::Pitch);
+    }
+    Ok(Role::Reference)
+}
+
+async fn import_all(
+    pool: &sqlx::SqlitePool,
+    zips: &[PathBuf],
+    forced_role: Option<Role>,
+) -> Result<(), String> {
     let cached = db::list_dictionaries(pool)
         .await
         .map_err(|e| format!("cannot read the dictionary list: {e}"))?;
@@ -240,10 +262,40 @@ async fn import_all(pool: &sqlx::SqlitePool, zips: &[PathBuf]) -> Result<(), Str
             }
         }
 
+        let fresh = !cached.iter().any(|d| d.source_path == path_str);
         match Dictionary::load_or_import(pool, &path).await {
             // Both the cached and freshly-imported cases log through `tracing`,
             // which is not initialised here; say what happened either way.
-            Ok(dict) => println!("{}  ok", dict.title()),
+            Ok(dict) => {
+                // A guess only on a new row: a role is a decision, and
+                // re-asserting one over `set-role` on every sync would
+                // silently undo it. `--role` is that decision, so it always
+                // applies.
+                let id = db::list_dictionaries(pool)
+                    .await
+                    .map_err(|e| format!("cannot read the dictionary list: {e}"))?
+                    .into_iter()
+                    .find(|d| d.source_path == path_str)
+                    .map(|d| d.id);
+                let role = match (forced_role, fresh, id) {
+                    (Some(r), _, Some(_)) => Some(r),
+                    (None, true, Some(id)) => Some(
+                        guess_role(pool, id)
+                            .await
+                            .map_err(|e| format!("cannot inspect {}: {e}", dict.title()))?,
+                    ),
+                    _ => None,
+                };
+                match (role, id) {
+                    (Some(role), Some(id)) => {
+                        db::set_role(pool, id, role)
+                            .await
+                            .map_err(|e| format!("cannot set the role of {}: {e}", dict.title()))?;
+                        println!("{}  ok ({})", dict.title(), role.as_str());
+                    }
+                    _ => println!("{}  ok", dict.title()),
+                }
+            }
             Err(e) => return Err(format!("cannot import {}: {e}", path.display())),
         }
     }
@@ -350,6 +402,22 @@ fn resolve_db_path(flag: Option<String>) -> String {
             let home = std::env::var("HOME").expect("HOME not set");
             format!("{home}/.local/share/jp-tools/knowledge.db")
         })
+}
+
+/// `Role::parse` treats anything unknown as `reference`, which would silently
+/// demote a dictionary on a typo.
+fn parse_role(role: &str) -> Result<Role, String> {
+    match role {
+        "master" => Ok(Role::Master),
+        "standard" => Ok(Role::Standard),
+        "name" => Ok(Role::Name),
+        "frequency" => Ok(Role::Frequency),
+        "pitch" => Ok(Role::Pitch),
+        "reference" => Ok(Role::Reference),
+        other => Err(format!(
+            "unknown role: {other} (master, standard, name, frequency, pitch, reference)"
+        )),
+    }
 }
 
 fn take_option(args: &mut Vec<String>, name: &str) -> Option<String> {
