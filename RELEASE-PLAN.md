@@ -525,6 +525,12 @@ every tab. **Commit:** `read-stats: empty states`.
 
 ### T3.5 — Distro and package-manager detection
 
+**Status:** done — `scripts/lib/platform.sh`, with
+`scripts/lib/platform-test.sh` running it against a faked `/etc/os-release` for
+nine distro families. Unrecognised ones fall back to whichever manager is on
+`PATH`. Package names are a table, not a guess: `pyside6` is `python-pyside6`
+here and `python3-pyside6.qtwebengine` on Debian.
+
 Small shared shell library `scripts/lib/platform.sh`: reads `/etc/os-release`
 `ID` and `ID_LIKE`, maps to pacman / apt / dnf / zypper / apk / xbps / nix, and
 exposes `pkg_install_cmd <generic-name>` returning a paste-able command. Carries
