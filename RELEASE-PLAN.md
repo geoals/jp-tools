@@ -527,6 +527,12 @@ entry with `Name`, `Comment`, `Icon=kotodex`, `Exec=kotodex`, `Categories=Educat
 
 ### T4.8 — X11 overlay backend
 
+**Status:** dropped by T0.4. The backend existed for GNOME, and on GNOME an
+always-on-top X11 window does not stay above a fullscreen one — so it is not
+viable where it was needed. The remaining X11 sessions all have a layer-shell
+Wayland session beside them. Reopen only if a real user turns up on X11-only
+hardware.
+
 Only if T0.4 says it is needed and viable. `layer-overlay/` gains a second
 backend selected at startup: layer-shell where available, X11
 `_NET_WM_STATE_ABOVE` + XShape input region otherwise. The Qt/QML/WebEngine
