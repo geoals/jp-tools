@@ -888,28 +888,39 @@ pub async fn master(pool: &SqlitePool) -> Result<Option<Dictionary>, sqlx::Error
 
 /// The frequency list every *reader-facing* rank comes from — the underline in
 /// read-stats' feed, both halves of its frequency triage, the popup, and the
-/// rank on a mined card. jpdb's list, not BCCWJ.
+/// rank on a mined card. Whichever dictionary holds [`Role::Frequency`], lowest
+/// id first where several do.
 ///
-/// **Two frequency dictionaries on purpose, and they answer different
-/// questions.** BCCWJ arbitrates *between spellings of one reading* inside the
-/// tokenizer ([`frequency_ranks`], [`preferred_readings`]), which needs a rank
-/// per `(spelling, reading)` and nothing else. These features ask "how common
-/// is this word, at all", and BCCWJ is the wrong list for it twice over:
+/// **Not loaded is not an error.** No frequency dictionary means no underline,
+/// no rank pill and no by-frequency ordering — never a failure.
+///
+/// **Two frequency dictionaries answer different questions.** BCCWJ arbitrates
+/// *between spellings of one reading* inside the tokenizer ([`frequency_ranks`],
+/// [`preferred_readings`]), which needs a rank per `(spelling, reading)` and
+/// asks for BCCWJ by name. These features ask "how common is this word, at
+/// all", and BCCWJ is the wrong list for it twice over:
 ///
 /// - It files a word only under the corpus's orthography, with no kana row —
 ///   いただく is present as 頂く/いただく alone, so a line that writes it in kana
-///   gets no rank and no underline. 2,872 of 16,003 ledger rows were unrankable
-///   that way, against 849 under Jiten.
-/// - Its corpus is newspapers and government prose. 船舶 ranks 3,843 and
-///   心掛ける 3,106 there, against 32,370 and 24,006 in Jiten. "Common in
-///   Japanese" has to mean common in the fiction being read, or the underline
-///   marks the wrong gaps.
-///
-/// The two lists are the same size at the head — about 6,200 terms inside rank
-/// 5,000 each — so the thresholds carry over unchanged.
+///   gets no rank and no underline.
+/// - Its corpus is newspapers and government prose, and "common in Japanese"
+///   has to mean common in the fiction being read, or the underline marks the
+///   wrong gaps.
 ///
 /// It lives here rather than in whichever tool asked first because it is one
-/// claim about which words are common, made in four places across two binaries.
+/// claim about which words are common, made in several places across two
+/// binaries.
+pub async fn reader_frequency(pool: &SqlitePool) -> Result<Option<Dictionary>, sqlx::Error> {
+    Ok(list_dictionaries(pool)
+        .await?
+        .into_iter()
+        .filter(|d| d.role == Role::Frequency)
+        .min_by_key(|d| d.id))
+}
+
+/// What the installer assigns [`Role::Frequency`] to when it downloads the
+/// free dictionaries. A default for setup, never a runtime lookup — ask
+/// [`reader_frequency`] instead.
 pub const READER_FREQUENCY: &str = "Jiten";
 
 /// A loaded dictionary by exact title, for a source with no `role` of its own

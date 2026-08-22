@@ -96,7 +96,7 @@ async fn run() {
     // of. Left out of this dump for its first year, so what it printed was a
     // pipeline with one rule switched off — see `Pipeline`'s nine inputs.
     let reader_ranks: HashMap<String, i64> =
-        match dictionaries::by_title(pool, dictionaries::READER_FREQUENCY)
+        match dictionaries::reader_frequency(pool)
             .await
             .unwrap()
         {

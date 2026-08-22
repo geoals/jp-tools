@@ -191,7 +191,7 @@ pub struct TriageTerm {
 pub async fn triage_queue(
     k: &Knowledge,
     work: &str,
-    frequency_dictionary: i64,
+    frequency_dictionary: Option<i64>,
     limit: i64,
 ) -> Result<Vec<TriageTerm>, sqlx::Error> {
     let rows = sqlx::query(&format!(

@@ -73,8 +73,8 @@ async fn main() {
     let conjugatable = dictionaries::master_conjugatable(pool).await.unwrap();
 
     // The reader-facing rank, which is the one that says whether a spelling is
-    // one anybody writes — see `READER_FREQUENCY` in jp-core's CLAUDE.md.
-    let reader_freq = dictionaries::by_title(pool, dictionaries::READER_FREQUENCY)
+    // one anybody writes — see `reader_frequency` in `knowledge::dictionaries`.
+    let reader_freq = dictionaries::reader_frequency(pool)
         .await
         .unwrap()
         .unwrap();

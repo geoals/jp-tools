@@ -28,7 +28,6 @@ use serde_json::{Value, json};
 
 use crate::app::AppState;
 use crate::error::AppError;
-use crate::ingest::READER_FREQUENCY;
 
 /// The note type every mined card uses. Not a setting because the field names
 /// below are not either — they are one shape, and half of it configurable
@@ -60,7 +59,7 @@ pub async fn mine(
 
     // The rank the reader's own underline uses, so the card agrees with the
     // page it was mined from.
-    let frequency = match dictionaries::by_title(pool, READER_FREQUENCY).await? {
+    let frequency = match dictionaries::reader_frequency(pool).await? {
         Some(d) => dictionaries::lookup_frequency(pool, d.id, &req.term).await?,
         None => None,
     };

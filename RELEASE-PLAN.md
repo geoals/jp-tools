@@ -177,6 +177,13 @@ exactly as `Reference` does today.
 
 ### T1.2 — Reader frequency by role
 
+**Status:** done. `dictionaries::reader_frequency` is the resolver; the constant
+survives only as the installer's default. Live: Jiten is now `frequency`. The
+golden gate and the whole workspace test suite are green, and a dev instance
+with no frequency dictionary answers `"jiten": null` with nothing in the log —
+`read-stats/src/routes/vocab.rs` falls back to encounter ordering rather than
+erroring, which it used to do.
+
 Replace `READER_FREQUENCY` lookups with "the dictionary holding `Role::Frequency`,
 preferring the lowest id when several do". Call sites:
 `jp-core/src/highlight.rs:203`, `jp-core/src/define.rs:170`,

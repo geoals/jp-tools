@@ -7,7 +7,7 @@ use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
-use jp_core::knowledge::dictionaries::{self, READER_FREQUENCY};
+use jp_core::knowledge::dictionaries;
 use jp_core::knowledge::vocabulary::{self, Status, Term};
 use jp_mine_core::card;
 use jp_mine_core::lookup::{bold_target_in_sentence, target_surface};
@@ -697,7 +697,7 @@ fn clip_source(job: &Job) -> Option<&String> {
 
 /// How common the word is in fiction — the rank the reader's own tools use.
 async fn reader_rank(pool: &sqlx::SqlitePool, term: &str) -> Option<i64> {
-    match dictionaries::by_title(pool, READER_FREQUENCY).await {
+    match dictionaries::reader_frequency(pool).await {
         Ok(Some(d)) => dictionaries::lookup_frequency(pool, d.id, term)
             .await
             .unwrap_or(None),

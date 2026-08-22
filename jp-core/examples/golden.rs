@@ -123,10 +123,7 @@ async fn main() {
     // Narrowed to `lexicon` and no further: the short-kana guard reads an absent
     // term as rare, so a fixture missing a ranked headword would answer
     // differently from production rather than merely less often.
-    let reader = dictionaries::by_title(pool, dictionaries::READER_FREQUENCY)
-        .await
-        .unwrap()
-        .unwrap();
+    let reader = dictionaries::reader_frequency(pool).await.unwrap().unwrap();
     let reader_ranks: HashMap<String, i64> = sqlx::query_as::<_, (String, i64)>(
         "SELECT term, MIN(frequency) FROM dictionary_frequency
          WHERE dictionary_id = ? GROUP BY term",

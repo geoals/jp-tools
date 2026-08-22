@@ -23,11 +23,12 @@ use sqlx::SqlitePool;
 
 use crate::highlight::Highlighter;
 use crate::knowledge::Knowledge;
-use crate::knowledge::dictionaries::{self, READER_FREQUENCY};
+use crate::knowledge::dictionaries;
 use crate::knowledge::vocabulary::{self, Status, Term};
 
 /// The frequency list that ranks a *spelling with a reading*. Reader-facing
-/// ranks come from [`READER_FREQUENCY`]; this one is shown beside it because
+/// ranks come from the reader's frequency dictionary; this one is shown beside
+/// it because
 /// the two disagree loudly and the difference is informative — 船舶 is 3,843 in
 /// newspaper prose against 32,370 in fiction.
 const CORPUS_FREQUENCY: &str = "BCCWJ";
@@ -64,7 +65,8 @@ pub struct Pitch {
 #[derive(Serialize)]
 pub struct Definition {
     pub term: String,
-    /// Ranked by [`READER_FREQUENCY`] — how common the word is in fiction.
+    /// Ranked by the reader's frequency dictionary — how common the word is in
+    /// fiction.
     pub jiten: Option<i64>,
     /// Ranked by [`CORPUS_FREQUENCY`]. Taken over the spelling alone, so where
     /// a spelling has several readings this is the commonest of them.
@@ -97,12 +99,16 @@ pub async fn define(
 ) -> Result<Definition, sqlx::Error> {
     let dicts = dictionaries::list_dictionaries(pool).await?;
 
-    let rank_from = async |title: &str| match dicts.iter().find(|d| d.title == title) {
+    let rank_from = async |d: Option<&dictionaries::Dictionary>| match d {
         Some(d) => dictionaries::lookup_frequency(pool, d.id, term)
             .await
             .unwrap_or(None),
         None => None,
     };
+    let reader_freq = dicts
+        .iter()
+        .filter(|d| d.role == dictionaries::Role::Frequency)
+        .min_by_key(|d| d.id);
 
     let mut sources = Vec::new();
     for dict in &dicts {
@@ -167,8 +173,8 @@ pub async fn define(
 
     Ok(Definition {
         term: term.to_string(),
-        jiten: rank_from(READER_FREQUENCY).await,
-        bccwj: rank_from(CORPUS_FREQUENCY).await,
+        jiten: rank_from(reader_freq).await,
+        bccwj: rank_from(dicts.iter().find(|d| d.title == CORPUS_FREQUENCY)).await,
         sources,
         pitch,
         lookup_id: None,

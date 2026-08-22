@@ -11,7 +11,7 @@ use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
-use jp_core::knowledge::dictionaries::{self, READER_FREQUENCY};
+use jp_core::knowledge::dictionaries;
 use jp_core::knowledge::vocabulary::Term;
 use jp_core::tokenize::is_content_word;
 use jp_mine_core::card;
@@ -692,7 +692,7 @@ mod tests;
 
 /// How common the word is in fiction — the rank the reader's own tools use.
 async fn reader_rank(pool: &sqlx::SqlitePool, term: &str) -> Option<i64> {
-    match dictionaries::by_title(pool, READER_FREQUENCY).await {
+    match dictionaries::reader_frequency(pool).await {
         Ok(Some(d)) => dictionaries::lookup_frequency(pool, d.id, term)
             .await
             .unwrap_or(None),

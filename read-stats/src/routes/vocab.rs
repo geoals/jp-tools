@@ -181,13 +181,15 @@ pub async fn vocab_queue(
 
     // The ordering picks which end of the same batch is on screen, so the
     // pending counts below hold for both.
-    let by_frequency = params.order.as_deref() == Some("frequency");
-    let order = if by_frequency {
-        let freq = reader_frequency(&state).await?;
-        vocabulary::QueueOrder::Frequency { freq_id: freq }
-    } else {
-        vocabulary::QueueOrder::Encounters
+    // Asking for frequency order without a frequency dictionary falls back to
+    // encounters rather than failing the request.
+    let order = match reader_frequency(&state).await? {
+        Some(freq_id) if params.order.as_deref() == Some("frequency") => {
+            vocabulary::QueueOrder::Frequency { freq_id }
+        }
+        _ => vocabulary::QueueOrder::Encounters,
     };
+    let by_frequency = matches!(order, vocabulary::QueueOrder::Frequency { .. });
 
     let rows = vocabulary::triage_queue(&state.knowledge, min, since, order, QUEUE_LIMIT).await?;
     let (pending, pending_preselected) =
@@ -573,24 +575,18 @@ pub async fn vocab_repair_empty_readings(
 }
 
 /// The frequency list triage ranks against, by title since it carries no role.
-/// It loads at startup, so a missing one is a deployment problem, not a
-/// retryable request error.
+/// `None` where no dictionary holds the frequency role: the sweep then orders
+/// by encounters and a per-work list carries no rank, which is a smaller
+/// product rather than an error.
 ///
 /// The sweep's ordering and the reader's underline must rank off the *same*
 /// list — they are one claim about which words are common, made in two places —
-/// and it is not the tokenizer's BCCWJ. `ingest::READER_FREQUENCY` says why.
-pub(crate) async fn reader_frequency(state: &AppState) -> Result<i64, AppError> {
-    Ok(
-        dictionaries::by_title(state.knowledge.pool(), crate::ingest::READER_FREQUENCY)
-            .await?
-            .ok_or_else(|| {
-                AppError::Upstream(format!(
-                    "{} frequency dictionary not loaded",
-                    crate::ingest::READER_FREQUENCY
-                ))
-            })?
-            .id,
-    )
+/// and it is not the tokenizer's BCCWJ. `dictionaries::reader_frequency` says
+/// why.
+pub(crate) async fn reader_frequency(state: &AppState) -> Result<Option<i64>, AppError> {
+    Ok(dictionaries::reader_frequency(state.knowledge.pool())
+        .await?
+        .map(|d| d.id))
 }
 
 /// Rebuild the ledger's counts from the whole reading history.

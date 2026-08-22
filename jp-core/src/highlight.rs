@@ -194,20 +194,21 @@ async fn ambiguous_ranks(
 
 /// The reader-facing rank per spelling, for the tokenizer's short-kana guard.
 ///
-/// **Jiten, not BCCWJ**, for the reason `READER_FREQUENCY` exists: the question
-/// is whether a spelling is one the fiction being read actually uses, and a
-/// newspaper corpus ranks 船舶 eight times commoner than a novel does. Not being
-/// loaded is not an error — the guard is then simply off.
+/// The reader's frequency dictionary, not the tokenizer's BCCWJ, for the reason
+/// [`reader_frequency`](crate::knowledge::dictionaries::reader_frequency)
+/// exists: the question is whether a spelling is one the fiction being read
+/// actually uses, and a newspaper corpus ranks 船舶 eight times commoner than a
+/// novel does. Not being loaded is not an error — the guard is then simply off.
 async fn reader_ranks(pool: &sqlx::SqlitePool) -> Result<HashMap<String, i64>, sqlx::Error> {
     use crate::knowledge::dictionaries as d;
-    let Some(jiten) = d::by_title(pool, d::READER_FREQUENCY).await? else {
+    let Some(reader) = d::reader_frequency(pool).await? else {
         return Ok(HashMap::new());
     };
     let rows: Vec<(String, i64)> = sqlx::query_as(
         "SELECT term, MIN(frequency) FROM dictionary_frequency
          WHERE dictionary_id = ? GROUP BY term",
     )
-    .bind(jiten.id)
+    .bind(reader.id)
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().collect())
