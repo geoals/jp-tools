@@ -31,6 +31,25 @@ use sudachi::dic::word_id::WordId;
 use sudachi::prelude::Morpheme;
 
 pub mod trace;
+
+/// Kana headwords the master dictionary lists that are grammar rather than
+/// vocabulary — see `data/segmentation-deny.txt`.
+const SEGMENTATION_DENY: &str = include_str!("../data/segmentation-deny.txt");
+
+static DENIED_SEGMENTS: std::sync::LazyLock<HashSet<&'static str>> =
+    std::sync::LazyLock::new(|| {
+        SEGMENTATION_DENY
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .collect()
+    });
+
+/// Whether a headword is barred from the segmentation authority. It stays in
+/// the dictionary and stays lookupable; it just cannot hold a span together.
+fn segment_denied(term: &str) -> bool {
+    DENIED_SEGMENTS.contains(term)
+}
 use crate::text::kana::morae;
 use trace::{Step, Trace, Verdict};
 
@@ -214,7 +233,8 @@ impl SudachiTokenizer {
     /// Teach it which words the master dictionary actually lists — the set that
     /// decides whether a compound is a word.
     pub fn with_lexicon(mut self, lexicon: HashSet<String>) -> Self {
-        self.segments.extend(lexicon.iter().cloned());
+        self.segments
+            .extend(lexicon.iter().filter(|t| !segment_denied(t)).cloned());
         self.lexicon = lexicon;
         self
     }
@@ -226,7 +246,7 @@ impl SudachiTokenizer {
     /// the master alone says how a word is spelt.
     pub fn with_standard(mut self, entries: &[(String, String)]) -> Self {
         for (term, reading) in entries {
-            if reading.is_empty() {
+            if reading.is_empty() || segment_denied(term) {
                 continue;
             }
             let reading = crate::text::kana::to_hiragana(reading);
@@ -260,13 +280,15 @@ impl SudachiTokenizer {
             }
             let reading = crate::text::kana::to_hiragana(reading);
             self.pairs.insert((term.clone(), reading.clone()));
-            self.segment_pairs.insert((term.clone(), reading.clone()));
             self.term_reading
                 .entry(term.clone())
                 .or_insert_with(|| reading.clone());
-            self.segment_reading
-                .entry(term.clone())
-                .or_insert_with(|| reading.clone());
+            if !segment_denied(term) {
+                self.segment_pairs.insert((term.clone(), reading.clone()));
+                self.segment_reading
+                    .entry(term.clone())
+                    .or_insert_with(|| reading.clone());
+            }
             let readings = self.readings_of.entry(term.clone()).or_default();
             if !readings.contains(&reading) {
                 readings.push(reading.clone());
