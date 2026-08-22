@@ -386,6 +386,16 @@ config exactly (unit test); with a clean env it produces Lapis.
 
 ### T2.4 — vn-capture.sh reads the field map
 
+**Status:** done. The four names come from `JP_TOOLS_ANKI_FIELD_*` with Lapis
+defaults, and `ANKI_CONNECT_URL` from `JP_TOOLS_ANKI_URL`. The script also reads
+`.env` itself: read-stats inherits its environment to the script, but a hotkey
+run has no parent to inherit from, and the two paths must not disagree about
+which field holds the sentence. Parsing the live `.env` yields VocabKanji /
+SentKanji / Image / SentAudio, unchanged.
+
+Not yet exercised against a real mine — no VN session has run since. That is
+T2.6's job.
+
 `vn-mine/vn-capture.sh:337,338,408,410` hardcode `VocabKanji`, `SentKanji`,
 `Image`, `SentAudio`. Read them from `JP_TOOLS_ANKI_FIELD_*` with the same
 defaults as the Rust side.

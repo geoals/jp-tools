@@ -44,9 +44,27 @@ MAX_LEN="${VN_MAX_LEN:-10}"
 # is the next line's.
 MIN_LEN="${VN_MIN_LEN:-0.6}"
 MIN_PEAK_DB="${VN_MIN_PEAK_DB:--25}"
-ANKI_CONNECT_URL="http://127.0.0.1:8765"
-WHISPER_URL="${VN_WHISPER_URL:-http://localhost:8100}"
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+# The field names live in the repo's .env, which the services load through
+# dotenvy and inherit to this script. Run from a hotkey there is no parent to
+# inherit from, so read it here too — same file, so one answer either way.
+REPO_ENV="$SCRIPT_DIR/../.env"
+if [ -f "$REPO_ENV" ]; then
+  while IFS= read -r line; do
+    case "$line" in
+      JP_TOOLS_ANKI_*=*)
+        name="${line%%=*}"
+        [ -n "${!name+set}" ] && continue
+        value="${line#*=}"
+        value="${value%\"}"
+        value="${value#\"}"
+        export "$name=$value"
+        ;;
+    esac
+  done <"$REPO_ENV"
+fi
+ANKI_CONNECT_URL="${JP_TOOLS_ANKI_URL:-http://127.0.0.1:8765}"
+WHISPER_URL="${VN_WHISPER_URL:-http://localhost:8100}"
 VAD_PYTHON="$HOME/.local/share/vn-mine/venv/bin/python"
 VAD_SCRIPT="$SCRIPT_DIR/vn-vad.py"
 TRIM_SCRIPT="$SCRIPT_DIR/vn-trim.py"
@@ -93,6 +111,13 @@ fi
 
 NOW=$(date +%s.%N)
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+# The note type's field names, the same variables the Rust side reads so one
+# note type is described in one place. The defaults are Lapis's.
+FIELD_VOCAB="${JP_TOOLS_ANKI_FIELD_VOCAB:-Expression}"
+FIELD_SENTENCE="${JP_TOOLS_ANKI_FIELD_SENTENCE:-Sentence}"
+FIELD_IMAGE="${JP_TOOLS_ANKI_FIELD_IMAGE:-Picture}"
+FIELD_AUDIO="${JP_TOOLS_ANKI_FIELD_AUDIO:-SentenceAudio}"
 
 # === LOCATE THE VOICELINE START (before the screenshot — anchor the line at
 # the press so advancing to the next line immediately after can't re-anchor) ===
@@ -334,8 +359,8 @@ if [ -z "$VN_DRY" ]; then
       \"version\": 6,
       \"params\": { \"notes\": [$NOTE_ID] }
   }" | jq -r '.result[0].fields')
-  TARGET_WORD=$(echo "$NOTE_FIELDS" | jq -r '.VocabKanji.value // ""')
-  SENTENCE=$(echo "$NOTE_FIELDS" | jq -r '.SentKanji.value // ""')
+  TARGET_WORD=$(echo "$NOTE_FIELDS" | jq -r --arg f "$FIELD_VOCAB" '.[$f].value // ""')
+  SENTENCE=$(echo "$NOTE_FIELDS" | jq -r --arg f "$FIELD_SENTENCE" '.[$f].value // ""')
   if [ -z "$NO_AUDIO" ] && [ -n "$TARGET_WORD" ] && [ -n "$SENTENCE" ] && [ -x "$VAD_PYTHON" ] && [ -f "$TRIM_SCRIPT" ]; then
     ffmpeg -nostdin -loglevel error -f s16le -ar 48000 -ac 2 -i "$TMP/clip.raw" \
       -ac 1 -ar 16000 -c:a pcm_s16le "$TMP/trim.wav" -y
@@ -403,11 +428,12 @@ upload_media "$SCREENSHOT_FILE" "$TMP/$SCREENSHOT_FILE"
 [ -z "$NO_AUDIO" ] && upload_media "$AUDIO_FILE" "$TMP/$AUDIO_FILE"
 
 # === UPDATE NOTE ===
-# SentAudio is left out entirely when there was no speech, rather than set to
-# an empty string: whatever the note already holds is better than nothing.
+# The audio field is left out entirely when there was no speech, rather than set
+# to an empty string: whatever the note already holds is better than nothing.
 FIELDS=$(jq -nc --arg img "<img src='$SCREENSHOT_FILE'>" \
   --arg audio "${AUDIO_FILE:+[sound:$AUDIO_FILE]}" \
-  '{Image: $img} + (if $audio == "" then {} else {SentAudio: $audio} end)')
+  --arg fimg "$FIELD_IMAGE" --arg faud "$FIELD_AUDIO" \
+  '{($fimg): $img} + (if $audio == "" then {} else {($faud): $audio} end)')
 UPDATE_RESULT=$(curl -s -X POST "$ANKI_CONNECT_URL" -d "{
     \"action\": \"updateNoteFields\",
     \"version\": 6,
