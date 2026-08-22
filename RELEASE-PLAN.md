@@ -753,6 +753,9 @@ Print which backend was chosen at startup and in the doctor.
 **Verify:** the T0.4 test matrix, re-run against the real overlay.
 **Commit:** `layer-overlay: X11 backend`.
 
+**Next up.** Nothing else in Phase 4 blocks it, and it is the only task left
+in the phase.
+
 ---
 
 # Phase 5 — Overlay UX
