@@ -455,6 +455,15 @@ and is deleted in a follow-up.
 
 ### T3.1 — One capability probe
 
+**Status:** done — `read-stats/src/routes/reader/capabilities.rs`, served under
+`capabilities` on `/api/reader/state` and cached for ten seconds. Every row is
+`{ok, detail, fix}`: `detail` is for the surfaces, `fix` is the sentence from
+`docs/degradation.md` for the doctor. The old `trim_available` now reads off the
+whisper row rather than probing twice.
+
+Verified against the dev instance with Anki and whisper down: both report off
+with their fix line, nothing errors.
+
 Extend `read-stats/src/routes/reader/state.rs` from 6 keys to the full
 degradation matrix. One struct, one JSON object, probed with short timeouts and
 cached briefly. Keys at least:

@@ -26,6 +26,7 @@
 //! | [`state`] | what the page can do, in one round trip on open |
 
 pub mod audio;
+pub mod capabilities;
 pub mod capture;
 pub mod define;
 pub mod explain;
