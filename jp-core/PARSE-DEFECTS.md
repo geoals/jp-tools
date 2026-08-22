@@ -1198,3 +1198,25 @@ One line each; the argument that settled it is in the code, next to the rule.
   name-tagged morpheme cannot sit inside a word. The rule to weigh is letting an
   exact master-headword spelling overrule the name tag, which reaches the whole
   corpus.
+- **いたって read 至って** — 「子供がいたって、…」 is いる + concessive たって
+  ("even if there are children"), and Sudachi returns the adverb 至って as one
+  token in Mode C, B and A alike, tagged `副詞`, `oov=false`. No stage of ours
+  chose this: the gate keeps it because the master lists いたって, and the
+  identity ladder takes it at *Exact match*. Nothing over the finished tokens
+  can reach it, because the split い + たって is never offered.
+  Both parses are real Japanese — 子供が至って元気だ is the adverb — so only
+  context separates them. The one local signal is the comma: an adverb directly
+  followed by 、 with nothing to modify is the concessive reading. That is a
+  rule about what follows the token, which no existing stage expresses, and it
+  would have to be narrow enough not to touch 至って before a genuine pause.
+- **この前渡辺と → この + 前渡 + 辺** — 「この前渡辺といった居酒屋」 is この前
+  ("the other day") plus the surname 渡辺, and Sudachi puts the boundary one
+  character early: Mode C returns 前渡 + 辺. Both pieces then pass every later
+  stage cleanly — the master lists 前渡し, so the gate keeps 前渡 and the
+  identity ladder takes it at *Exact match* as まえわたし, and 辺 is a headword
+  of its own. Nothing over the finished tokens can reach it; the boundary family
+  again, so `CUT_BEFORE_AND_AFTER` is the only lever, and the string to hand
+  Sudachi is この前. The cast list would also settle it — 渡辺 kept whole leaves
+  この前 with nowhere else to go — but the surname belongs to no work here, and
+  a per-work list is the wrong home for one of the commonest surnames in
+  Japanese.

@@ -208,7 +208,8 @@ entries behind — invisible to `list`, and still answering the wordhood gate.
 re-imported — re-importing costs a 400k-row pass and leaves a duplicate row.
 
 Four jobs need the dictionaries, and they apply *different* thresholds, which is
-why `dictionaries.role` exists (`master` / `standard` / `name` / `reference`)
+why `dictionaries.role` exists (`master` / `standard` / `name` / `frequency` /
+`pitch` / `reference`)
 and why the ledger stores which dictionaries hold a term rather than one
 boolean:
 

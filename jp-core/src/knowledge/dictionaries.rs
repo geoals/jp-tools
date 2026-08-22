@@ -759,8 +759,14 @@ pub enum Role {
     /// A name dictionary: a term in here but not in the master is a name, not
     /// vocabulary. (None loaded yet; the schema is ready for one.)
     Name,
-    /// Everything else — bilingual dictionaries, pitch, frequency. Counts for
-    /// the wordhood gate, never toward the vocabulary total.
+    /// A frequency list. It answers how common a word is — the reader's
+    /// underline, the rank pill, the sweep's ordering — and nothing else.
+    Frequency,
+    /// A pitch-accent dictionary: where the downstep is, for the popup and the
+    /// card.
+    Pitch,
+    /// Everything else — bilingual dictionaries, and anything not yet given a
+    /// role. Counts for the wordhood gate, never toward the vocabulary total.
     Reference,
 }
 
@@ -770,6 +776,8 @@ impl Role {
             Role::Master => "master",
             Role::Standard => "standard",
             Role::Name => "name",
+            Role::Frequency => "frequency",
+            Role::Pitch => "pitch",
             Role::Reference => "reference",
         }
     }
@@ -779,6 +787,8 @@ impl Role {
             "master" => Role::Master,
             "standard" => Role::Standard,
             "name" => Role::Name,
+            "frequency" => Role::Frequency,
+            "pitch" => Role::Pitch,
             _ => Role::Reference,
         }
     }

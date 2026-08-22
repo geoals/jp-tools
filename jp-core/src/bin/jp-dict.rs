@@ -13,7 +13,8 @@
 //!     jp-dict import <zip>...      import named zips
 //!     jp-dict list                 what is cached, and what each is for
 //!     jp-dict reimport <id>        re-parse a cached zip after a parser fix
-//!     jp-dict set-role <id> <role> master | standard | name | reference
+//!     jp-dict set-role <id> <role> master | standard | name | frequency |
+//!                                  pitch | reference
 
 use std::path::{Path, PathBuf};
 
@@ -32,7 +33,8 @@ usage:
                                   id and the role (use after a parser fix)
   jp-dict remove <id>             forget a cached dictionary and its entries
                                   (the zip on disk is left alone)
-  jp-dict set-role <id> <role>    role is master, standard, name or reference
+  jp-dict set-role <id> <role>    role is master, standard, name, frequency,
+                                  pitch or reference
                                   (standard: decides segmentation beside the
                                   master, never spelling or the word count)
 
@@ -162,10 +164,12 @@ async fn run() -> Result<(), String> {
                 "master" => Role::Master,
                 "standard" => Role::Standard,
                 "name" => Role::Name,
+                "frequency" => Role::Frequency,
+                "pitch" => Role::Pitch,
                 "reference" => Role::Reference,
                 other => {
                     return Err(format!(
-                        "unknown role: {other} (master, standard, name, reference)"
+                        "unknown role: {other} (master, standard, name, frequency, pitch, reference)"
                     ));
                 }
             };
