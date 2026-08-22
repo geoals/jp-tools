@@ -72,7 +72,9 @@ pub struct Definition {
     /// Master dictionary first, then the rest in install order. A dictionary
     /// holding nothing for this term is absent rather than empty.
     pub sources: Vec<Source>,
-    /// From whichever installed dictionary carries pitch — NHK here. Narrowed
+    /// From the pitch dictionary, or any dictionary carrying accent rows where
+    /// none has the role. Empty draws no accent at all rather than a gap.
+    /// Narrowed
     /// to the asked-for reading when it lists it, since the accent is a
     /// property of the reading and 空/そら's is not 空/から's.
     pub pitch: Vec<Pitch>,
@@ -155,8 +157,15 @@ pub async fn define(
         }
     });
 
+    // The pitch dictionaries first, then anything else carrying accent rows —
+    // so a dictionary given the role answers even where an older one happens to
+    // be earlier in install order, and a set with no pitch dictionary at all
+    // still finds accents rather than showing none.
+    let mut pitch_order: Vec<&dictionaries::Dictionary> = dicts.iter().collect();
+    pitch_order.sort_by_key(|d| d.role != dictionaries::Role::Pitch);
+
     let mut pitch = Vec::new();
-    for dict in &dicts {
+    for dict in pitch_order {
         let entries = dictionaries::lookup_pitch_entries(pool, dict.id, term).await?;
         if entries.is_empty() {
             continue;

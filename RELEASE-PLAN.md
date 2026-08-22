@@ -245,6 +245,11 @@ it was before for the live set. **Commit:** `define: order by role, not by name`
 
 ### T1.5 — Pitch by role
 
+**Status:** done. Pitch dictionaries are tried first, then anything else
+carrying accent rows, and no accent renders nothing rather than an empty slot.
+Live: NHK and the three `[Pitch]` zips now hold the role, and the popup's
+accents are byte-identical before and after.
+
 `jp-core/src/define.rs` currently takes pitch from whichever dictionary has
 accent rows. Make it explicit: prefer `Role::Pitch`, fall back to any dictionary
 with accent data, else `None` — and `None` renders no ♪ and no downstep rather
