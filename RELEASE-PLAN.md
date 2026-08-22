@@ -405,6 +405,10 @@ attach as before. **Commit:** `vn-capture: field names from the environment`.
 
 ### T2.5 — Note type check and creation
 
+**Status:** blocked. It hangs off a `kotodex` binary that Phase 4 creates, and
+on open decision 4 — vendor the Lapis note type or link to its release deck.
+Verifying it needs a fresh Anki profile.
+
 New: `kotodex anki check` (also called by the doctor and the installer). Probes
 AnkiConnect, then `modelNames` / `modelFieldNames`, and reports one of:
 
@@ -423,6 +427,9 @@ it, second run reports ok. **Commit:** `anki: note type check and setup`.
 
 ### T2.6 — Live card round-trip
 
+**Status:** blocked — manual, and needs a reading session and a fresh profile.
+This is where T2.4's field map gets its first real mine.
+
 Mine one card in each style into a scratch deck on a fresh profile, and look at
 it: glossary renders, definitions page, pitch shows, image and audio attach,
 frequency sorts.
@@ -430,6 +437,10 @@ frequency sorts.
 **Verify:** manual, screenshots into `docs/`. **Commit:** none (validation).
 
 ### T2.7 — Convert the user's own note type
+
+**Status:** waiting on you. Everything it depends on is in place: `.env` pins
+the current names and `JP_TOOLS_ANKI_STYLE=legacy`, so the conversion is a
+rename in Anki followed by deleting those lines.
 
 Separate from everything above, on the user's schedule: move the personal note
 type to Lapis-compatible field names, then delete `JP_TOOLS_ANKI_STYLE=legacy`
