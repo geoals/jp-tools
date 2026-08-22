@@ -481,6 +481,16 @@ with pieces disabled one at a time. **Commit:** `reader: one capability probe`.
 
 ### T3.2 — The overlay honours capabilities
 
+**Status:** done. The overlay reads `capabilities` on open: no ℹ without an API
+key, no ＋ in the popup without AnkiConnect, no underline without a frequency
+dictionary, and `#warn` names a missing line source. `popup.js` gained
+`setMining(on)` and draws no ＋ when a host passes no `mine` — the same shape
+`mined` and `audio` already had, so yt-mine is unaffected.
+
+The ♪ is not gated: nothing probes the Local Audio Server yet. It already
+hides itself when no clip is found, so it is a button that disappears rather
+than one that fails.
+
 `read-stats/overlay/overlay.js` — a control that cannot work is not drawn:
 no ℹ without an API key, no mine without AnkiConnect, no ♪ without a pitch or
 audio source, no status tints without a ledger, no underline without a
@@ -491,6 +501,11 @@ is invisible; extend it to name a missing capture source.
 off; no dead buttons, no console errors. **Commit:** `overlay: draw only what works`.
 
 ### T3.3 — Status painting is opt-in
+
+**Status:** done, as a setting plus a fact. `highlight_status` defaults on, and
+an empty ledger paints nothing regardless — so a fresh install reads as plain
+text without being told to, and the setting is the explicit switch. Spans stay
+in place either way; they are the click targets.
 
 A setting (server-side, see T5.7) `highlight_status` defaulting **off** for a
 fresh install and **on** where the ledger already has rows. Off means spans are

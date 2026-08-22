@@ -54,6 +54,11 @@ pub struct Settings {
     /// the source beats the old interval log, which left the raw stream full of
     /// text the reader had said was not reading.
     pub capture_paused: bool,
+    /// Paint each word with what the ledger says about it. Off means the spans
+    /// are still there — they are the click targets — and simply carry no
+    /// status class. An empty ledger paints nothing either way, so a fresh
+    /// install reads plain text without having to be told to.
+    pub highlight_status: bool,
 }
 
 impl Default for Settings {
@@ -79,6 +84,7 @@ impl Default for Settings {
             reader_common_max_freq_rank: 5000,
             reader_common_max_bccwj_rank: 10000,
             capture_paused: false,
+            highlight_status: true,
         }
     }
 }
@@ -97,10 +103,11 @@ pub const SETTING_KEYS: &[&str] = &[
     "reader_common_max_freq_rank",
     "reader_common_max_bccwj_rank",
     "capture_paused",
+    "highlight_status",
 ];
 
 /// Settings whose stored value is `"1"`/`"0"` rather than a number or free text.
-pub const BOOL_SETTING_KEYS: &[&str] = &["capture_paused"];
+pub const BOOL_SETTING_KEYS: &[&str] = &["capture_paused", "highlight_status"];
 
 pub async fn load_settings(pool: &SqlitePool) -> Result<Settings, sqlx::Error> {
     let mut settings = Settings::default();
@@ -145,6 +152,7 @@ pub async fn load_settings(pool: &SqlitePool) -> Result<Settings, sqlx::Error> {
                     .unwrap_or(settings.reader_common_max_bccwj_rank)
             }
             "capture_paused" => settings.capture_paused = value == "1",
+            "highlight_status" => settings.highlight_status = value == "1",
             _ => {}
         }
     }

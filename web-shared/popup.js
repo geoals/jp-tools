@@ -20,7 +20,8 @@
  *  @param {(target) => string} opts.scanText  the raw line from the word's
  *     first character on — what the expansion scan reads
  *  @param {(target, status) => Promise<boolean>} opts.judge
- *  @param {(target) => Promise<number|null|undefined>} opts.mine  the new note id
+ *  @param {(target) => Promise<number|null|undefined>} [opts.mine]  the new note
+ *      id. Null draws no ＋ — a host with nowhere to add a card.
  *  @param {(anchor) => void} opts.place   host positioning, called on open
  *  @param {Object} [opts.api]      url builders; see API_DEFAULTS
  *  @param {(data, target) => void} [opts.onOpen]
@@ -30,6 +31,9 @@
 export function createPopup(opts) {
   const api = { ...API_DEFAULTS, ...(opts.api ?? {}) };
   const { el: popupEl, scanText, judge, mine, place } = opts;
+  // A host can lose the ability to add a card while the page is open — Anki
+  // quits — so this is a switch rather than only the presence of `mine`.
+  let mining = true;
   const onOpen = opts.onOpen ?? (() => {});
   const onJudged = opts.onJudged ?? (() => {});
   const onLayout = opts.onLayout ?? (() => {});
@@ -365,6 +369,9 @@ export function createPopup(opts) {
       b.addEventListener("click", () => mark(status));
       out.append(b);
     }
+    // A host with nowhere to send a card passes no `mine`, and the button is
+    // simply not there — the same shape as `mined` and `audio`.
+    if (!mine || !mining) return out;
     const add = el("button", "", "＋");
     add.title = "Mine";
     // A mine cuts an audio clip and a screenshot before Anki is asked, which
@@ -401,6 +408,10 @@ export function createPopup(opts) {
     show,
     close,
     markMined,
+    /** Draw the ＋ or not — whether there is anywhere to add a card right now. */
+    setMining: (on) => {
+      mining = !!on;
+    },
     /** Page the dictionaries. No-op unless the open popup has more than one. */
     step: (by) => stepSource && stepSource(by),
     isOpen: () => !popupEl.hidden,

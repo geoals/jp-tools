@@ -96,6 +96,9 @@ let openLookup = null;
 // frequency list and tested independently. Fetched once; the same settings the
 // reading view underlines by, so both agree.
 let commonRanks = { freq: 0, bccwj: 0 };
+// Paint the ledger's verdict on each word. Off leaves the spans in place —
+// they are the click targets — carrying no status class.
+let paintStatus = true;
 fetch("/api/settings")
   .then((r) => r.json())
   .then((s) => {
@@ -103,8 +106,32 @@ fetch("/api/settings")
       freq: s.reader_common_max_freq_rank || 0,
       bccwj: s.reader_common_max_bccwj_rank || 0,
     };
+    paintStatus = s.highlight_status !== false;
   })
   .catch(() => {});
+
+// What this installation can do. A control that cannot work is not drawn, so a
+// missing part is a smaller overlay rather than a button that fails. Assume
+// nothing until the answer arrives: a button appearing a moment late beats one
+// that was there and did nothing.
+let caps = {};
+const can = (name) => caps[name]?.ok === true;
+fetch("/api/reader/state")
+  .then((r) => r.json())
+  .then((s) => {
+    caps = s.capabilities ?? {};
+    applyCapabilities();
+  })
+  .catch(() => {});
+
+function applyCapabilities() {
+  // No key, no ℹ.
+  explainBoxEl.hidden = !can("explain");
+  // Nowhere to add a card, no ＋ in the popup.
+  popup.setMining(can("anki"));
+  // An empty ledger has no verdict to paint, whatever the setting says.
+  if (!can("vocabulary_ledger")) paintStatus = false;
+}
 
 // A rank at or under a threshold, with 0 meaning the threshold is off.
 const underRank = (rank, max) => max > 0 && rank && rank <= max;
@@ -128,7 +155,13 @@ stream.addEventListener("status", (e) => {
   // reports that. A capture fault outranks it — no line at all is the bigger
   // problem.
   warnEl.textContent =
-    capture !== "live" ? capture : vn_window ? "" : "no window name on this work";
+    capture !== "live"
+      ? capture
+      : !can("lines_source")
+        ? "no line source — run Textractor with its WebSocket plugin"
+        : vn_window
+          ? ""
+          : "no window name on this work";
   // Only the two states that say what the flag is. `down` and `stalled` are
   // faults in the logger, and neither means capture was switched off.
   if (capture === "paused" || capture === "live") showPaused(capture === "paused");
@@ -239,13 +272,15 @@ function draw(incoming) {
       const span = part.span;
       const word = document.createElement("span");
       // `known` gets no class, so it draws as plain text.
+      // No frequency dictionary means no answer to "is this word common", so
+      // nothing is underlined rather than everything reading as rare.
       const common =
+        can("dict_frequency") &&
         (underRank(span.freq_rank, commonRanks.freq) ||
           underRank(span.bccwj_rank, commonRanks.bccwj)) &&
         span.status !== "known";
-      word.className = ["w", span.status === "known" ? "" : span.status, common ? "common" : ""]
-        .filter(Boolean)
-        .join(" ");
+      const mark = paintStatus && span.status !== "known" ? span.status : "";
+      word.className = ["w", mark, common ? "common" : ""].filter(Boolean).join(" ");
       // The surface travels in a dataset field, not as textContent: a furigana
       // annotation inside the span would otherwise read back as 大事おおごと,
       // which is not a spelling anything is written in and is what the popup,
