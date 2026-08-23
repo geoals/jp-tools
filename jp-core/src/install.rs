@@ -6,14 +6,34 @@ use std::path::{Path, PathBuf};
 /// checkout, the unpacked tarball otherwise.
 ///
 /// Assets sit at fixed paths under it — the overlay page, the dashboard's
-/// static files, `backend.py`, `vn-capture.sh`. The binaries are relocatable
-/// and the path they were compiled in is not, so a release sets `KOTODEX_ROOT`.
-/// Without it the build's own workspace is the answer, which is what a checkout
-/// wants and what every test and dev run relies on.
+/// static files, `backend.py`, `vn-capture.sh`.
+///
+/// Three answers, in order. `KOTODEX_ROOT` wins, which is how the launcher
+/// tells its children where it was unpacked. Otherwise the binary's own
+/// location: it is installed at `<root>/target/release/<bin>`, and that holds
+/// for a tarball and a checkout alike. The compiled-in workspace is last,
+/// because it names the machine the binary was *built* on — for a release that
+/// is a CI container that does not exist here.
 pub fn install_root() -> PathBuf {
     if let Ok(root) = std::env::var("KOTODEX_ROOT") {
         return PathBuf::from(root);
     }
+    if let Some(root) = root_from_exe() {
+        return root;
+    }
+    build_workspace()
+}
+
+/// `<root>/target/release/jp-dict` → `<root>`, when that directory holds the
+/// assets. The layout check is what keeps a binary copied to `~/.local/bin`
+/// from claiming the home directory as the root.
+fn root_from_exe() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
+    let root = exe.parent()?.parent()?.parent()?;
+    root.join("read-stats/static").is_dir().then(|| root.to_path_buf())
+}
+
+fn build_workspace() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("jp-core always has a workspace parent")

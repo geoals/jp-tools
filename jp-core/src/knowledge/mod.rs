@@ -46,6 +46,19 @@ const MIGRATION_BOOKS: &str = include_str!("../../migrations/knowledge/014_books
 const MIGRATION_WORKS_PLANNED: &str =
     include_str!("../../migrations/knowledge/015_works_planned.sql");
 
+/// Create the directory a database file will live in.
+///
+/// `create_if_missing` creates the file, not the directory holding it, so a
+/// machine that has never run any of these tools fails to open.
+pub fn ensure_parent_dir(db_path: &str) -> Result<(), sqlx::Error> {
+    match std::path::Path::new(db_path).parent() {
+        Some(dir) if !dir.as_os_str().is_empty() => {
+            std::fs::create_dir_all(dir).map_err(sqlx::Error::Io)
+        }
+        _ => Ok(()),
+    }
+}
+
 /// A connection pool for `knowledge.db`.
 ///
 /// A newtype rather than a bare `SqlitePool` so that a program holding more
@@ -72,6 +85,8 @@ impl Knowledge {
         // of waiting the five seconds it was supposed to. (`journal_mode` is
         // persisted in the file, so that half survived either way — which is
         // what made this look like it worked.)
+        ensure_parent_dir(db_path)?;
+
         let opts = SqliteConnectOptions::new()
             .filename(db_path)
             .create_if_missing(true)

@@ -100,7 +100,12 @@ if [ "$UNINSTALL" = 1 ]; then
   if [ "$DRY_RUN" = 1 ]; then
     say "would ask before removing it"
   else
-    read -r -p "    Delete it? Type DELETE to confirm: " answer </dev/tty || answer=""
+    answer=""
+    if (exec 2>/dev/null; : </dev/tty); then
+      read -r -p "    Delete it? Type DELETE to confirm: " answer </dev/tty || answer=""
+    else
+      say "no terminal to confirm on — keeping it"
+    fi
     if [ "$answer" = "DELETE" ]; then
       rm -rf "$DATA"
       good "removed $DATA"
@@ -214,9 +219,16 @@ size_of() { [ -f "$1" ] && wc -c <"$1" || echo 0; }
 # Download to a temporary name, verify the size, then move it into place.
 fetch() {
   local url="$1" dest="$2" min="$3" label="$4" tmp
+  if [ "$DRY_RUN" = 1 ]; then
+    printf '    would download: %s\n' "$label"
+    return 0
+  fi
   tmp="$dest.part"
   say "downloading $label"
-  if ! curl -fL --progress-bar -o "$tmp" "$url"; then
+  # A progress bar redirected to a file is thousands of lines of hashes.
+  local progress=--progress-bar
+  [ -t 1 ] || progress=-sS
+  if ! curl -fL "$progress" -o "$tmp" "$url"; then
     rm -f "$tmp"
     fail "$label download failed — re-run setup.sh to try again"
     return 1
@@ -318,7 +330,6 @@ fi
 zips=("$HERE"/dictionaries/*.zip)
 if [ -e "${zips[0]}" ]; then
   run "$JP_DICT" sync
-  [ "$DRY_RUN" = 1 ] || "$JP_DICT" list
 else
   skip "dictionaries/ is empty — the popup will open with no definitions"
 fi
@@ -369,8 +380,12 @@ if grep -q '^JP_TOOLS_ANTHROPIC_API_KEY=.' "$ENV_FILE" 2>/dev/null; then
   good "Anthropic API key set — the ℹ explain button is on"
 elif [ "$DRY_RUN" = 1 ]; then
   say "would offer to store an Anthropic API key"
+elif ! (exec 2>/dev/null; : </dev/tty); then
+  skip "no terminal to type a key into — set JP_TOOLS_ANTHROPIC_API_KEY in $ENV_FILE"
 elif confirm "Add an Anthropic API key? It turns on the ℹ explain button."; then
-  read -r -s -p "    key (not echoed, blank to skip): " key </dev/tty; printf '\n'
+  key=""
+  read -r -s -p "    key (not echoed, blank to skip): " key </dev/tty || true
+  printf '\n'
   if [ -n "$key" ]; then
     set_env_var JP_TOOLS_ANTHROPIC_API_KEY "$key"
     good "stored in $ENV_FILE (600)"
@@ -404,6 +419,7 @@ printf '\n'
 if [ "$doctor" = 0 ]; then
   printf '%sReady.%s Launch Kotodex from the application menu, or run: kotodex\n' "$green" "$off"
 else
-  printf '%sSomething the core needs is still missing.%s The ✗ rows above say what.\n' "$yellow" "$off"
+  # The doctor has just named what is wrong; this says what to do about it.
+  printf '%sNot ready yet.%s Install what the ✗ rows name, then run ./setup.sh again.\n' "$yellow" "$off"
 fi
 exit "$doctor"

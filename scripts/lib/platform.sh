@@ -68,7 +68,7 @@ pkg_name() {
   local mgr="$1" generic="$2"
   case "$generic:$mgr" in
     pyside6:pacman) echo python-pyside6 ;;
-    pyside6:apt) echo python3-pyside6.qtwebengine ;;
+    pyside6:apt) echo python3-pyside6.qtwebenginequick ;;
     pyside6:dnf) echo python3-pyside6 ;;
     pyside6:zypper) echo python3-pyside6 ;;
 

@@ -26,6 +26,7 @@ pub async fn create_pool(db_path: &str) -> Result<SqlitePool, sqlx::Error> {
     // against the pool: `busy_timeout` is per connection, so running it once
     // sets it on one of the five and leaves the rest at zero. See
     // `jp_core::knowledge::Knowledge::open` for what that cost.
+    jp_core::knowledge::ensure_parent_dir(db_path)?;
     let opts = SqliteConnectOptions::new()
         .filename(db_path)
         .create_if_missing(true)
