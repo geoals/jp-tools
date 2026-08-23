@@ -51,11 +51,27 @@ def _qml_module_present() -> bool:
     chosen and too late to change.
     """
     roots = os.environ.get("QML2_IMPORT_PATH", "").split(":")
+    roots += _qt_qml_paths()
     roots += ["/usr/lib/qt6/qml", "/usr/lib64/qt6/qml", "/usr/lib/x86_64-linux-gnu/qt6/qml"]
     return any(
         root and os.path.isdir(os.path.join(root, "org", "kde", "layershell"))
         for root in roots
     )
+
+
+def _qt_qml_paths() -> list[str]:
+    """Where *this* interpreter's Qt looks for QML modules.
+
+    The distribution's directory is the wrong answer for a pip PySide6: it
+    ships its own Qt, which does not read /usr/lib/qt6/qml, so a system
+    layer-shell-qt beside it is not loadable. Asking Qt itself is the only way
+    to tell the two apart.
+    """
+    try:
+        from PySide6.QtCore import QLibraryInfo
+    except ImportError:
+        return []
+    return [QLibraryInfo.path(QLibraryInfo.LibraryPath.QmlImportsPath)]
 
 
 def choose() -> tuple[str, str]:

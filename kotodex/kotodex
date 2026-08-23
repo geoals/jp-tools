@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
 # The Kotodex launcher. Everything is in the Python beside this file; this
 # exists so the desktop entry and ~/.local/bin have one name to call.
-exec python3 "$(dirname "$(readlink -f "$0")")/kotodex.py" "$@"
+#
+# The interpreter comes from platform.sh: where the distribution packages no
+# PySide6, setup.sh puts one in a venv and that is the only python that can
+# draw the tray.
+HERE="$(dirname "$(readlink -f "$0")")"
+source "$HERE/../scripts/lib/platform.sh"
+exec "$(kotodex_python)" "$HERE/kotodex.py" "$@"

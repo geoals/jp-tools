@@ -151,11 +151,53 @@ require pactl pactl
 
 # A pip/venv PySide6 has no org.kde.layershell, so this asks the system python
 # specifically rather than whatever the current environment resolves to.
-if python3 -c "import PySide6.QtWebEngineQuick" >/dev/null 2>&1; then
+# A pip PySide6 has no `org.kde.layershell`, so the packaged one is what the
+# layer-shell backend needs. Where the distribution has none — Ubuntu 24.04 LTS
+# and Debian 12 carry PySide2 only — pip in a venv is the only way to run at
+# all, and those are X11-backend machines anyway.
+PYSIDE_PIP=0
+if [ "$(kotodex_python)" != python3 ]; then
+  good "PySide6 with Qt WebEngine (pip, in $KOTODEX_VENV)"
+elif python3 -c "import PySide6.QtWebEngineQuick" >/dev/null 2>&1; then
   good "PySide6 with Qt WebEngine"
-else
+elif distro_packages_pyside6; then
   fail "PySide6 with Qt WebEngine"
   REQUIRED_MISSING+=(pyside6 qt6-webengine)
+else
+  fail "PySide6 with Qt WebEngine — $(pkg_manager || echo this system) has no package for it"
+  say "the overlay can run on a pip PySide6 instead, in its own venv"
+  say "it has no layer-shell plugin, so the overlay uses the X11 backend —"
+  say "which is what this machine's desktop would pick anyway"
+  if confirm "Install PySide6 with pip into $KOTODEX_VENV? (~200 MB)"; then
+    PYSIDE_PIP=1
+  else
+    skip "no PySide6 — the overlay cannot start; the dashboard still works"
+  fi
+fi
+
+if [ "$PYSIDE_PIP" = 1 ]; then
+  if [ "$DRY_RUN" = 1 ]; then
+    say "would create $KOTODEX_VENV and pip install PySide6"
+  else
+    run python3 -m venv --system-site-packages "$KOTODEX_VENV" \
+      && run "$KOTODEX_VENV/bin/pip" install --quiet --upgrade pip \
+      && run "$KOTODEX_VENV/bin/pip" install --quiet PySide6
+    import_error="$("$KOTODEX_VENV/bin/python" -c "import PySide6.QtWebEngineQuick" 2>&1)"
+    if [ -z "$import_error" ]; then
+      good "PySide6 installed into $KOTODEX_VENV"
+    else
+      fail "the pip PySide6 still cannot be imported"
+      # Its own message names the missing piece — usually a shared library the
+      # wheel expects the system to have, or python3-venv where the venv itself
+      # was never made.
+      printf '%s\n' "$import_error" | tail -3 | sed 's/^/      /'
+      # The wheel carries its own Qt but not the graphics libraries under it.
+      # A desktop has these; a minimal or server install does not.
+      say "a missing lib*.so comes with the system Qt: $(pkg_install_cmd webengine-runtime)"
+      say "install that, then run setup.sh again"
+      exit 1
+    fi
+  fi
 fi
 
 if python3 -c "import onnxruntime" >/dev/null 2>&1; then

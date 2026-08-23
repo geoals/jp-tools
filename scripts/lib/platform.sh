@@ -67,7 +67,7 @@ pkg_manager() {
 pkg_name() {
   local mgr="$1" generic="$2"
   case "$generic:$mgr" in
-    pyside6:pacman) echo python-pyside6 ;;
+    pyside6:pacman) echo pyside6 ;;
     pyside6:apt) echo python3-pyside6.qtwebenginequick ;;
     pyside6:dnf) echo python3-pyside6 ;;
     pyside6:zypper) echo python3-pyside6 ;;
@@ -76,6 +76,15 @@ pkg_name() {
     qt6-webengine:apt) echo libqt6webenginecore6 ;;
     qt6-webengine:dnf) echo qt6-qtwebengine ;;
     qt6-webengine:zypper) echo qt6-webengine ;;
+
+    # What a pip PySide6 needs from the system: the wheel carries Qt but not
+    # the libraries under it. The distribution's own Qt WebEngine pulls that
+    # whole set as its dependencies, which is why it is named here rather than
+    # a list of lib packages that would drift.
+    webengine-runtime:apt) echo "libqt6webenginecore6 libasound2t64" ;;
+    webengine-runtime:dnf) echo "qt6-qtwebengine alsa-lib" ;;
+    webengine-runtime:zypper) echo "qt6-webengine libasound2" ;;
+    webengine-runtime:pacman) echo "qt6-webengine alsa-lib" ;;
 
     layer-shell-qt:pacman) echo layer-shell-qt ;;
     layer-shell-qt:apt) echo qt6-wayland ;;
@@ -87,6 +96,10 @@ pkg_name() {
     pactl:dnf) echo pulseaudio-utils ;;
     pactl:zypper) echo pulseaudio-utils ;;
     pactl:apk) echo pulseaudio-utils ;;
+
+    # Fedora's own build; plain `ffmpeg` is RPM Fusion, which a fresh install
+    # does not have enabled.
+    ffmpeg:dnf) echo ffmpeg-free ;;
 
     python:pacman) echo python ;;
     python:*) echo python3 ;;
@@ -118,5 +131,43 @@ pkg_install_cmd() {
     xbps) echo "sudo xbps-install -S ${names[*]}" ;;
     nix) echo "nix-env -iA ${names[*]/#/nixpkgs.}" ;;
     *) echo "install: ${names[*]}" ;;
+  esac
+}
+
+# --------------------------------------------------------------- python --
+
+# Where a pip PySide6 goes when the distribution does not package one.
+# `--system-site-packages`, so everything else python needs here still comes
+# from the distribution and only PySide6 is pip's.
+KOTODEX_VENV="${KOTODEX_VENV:-$HOME/.local/share/kotodex/venv}"
+
+# The interpreter that can import PySide6: the venv when it has it, else the
+# system one. Everything drawing Qt — the launcher, the overlay — resolves
+# through this, so a machine with a pip PySide6 and one with a packaged PySide6
+# run the same code.
+kotodex_python() {
+  if [ -x "$KOTODEX_VENV/bin/python" ] \
+     && "$KOTODEX_VENV/bin/python" -c "import PySide6.QtWebEngineQuick" >/dev/null 2>&1; then
+    echo "$KOTODEX_VENV/bin/python"
+  else
+    echo python3
+  fi
+}
+
+# Whether this distribution packages PySide6 at all. Ubuntu 24.04 LTS and
+# Debian 12 do not — they carry PySide2 only — so the pip venv is the only way
+# to run there, and offering it needs to be a decision made from a fact.
+distro_packages_pyside6() {
+  local mgr name
+  mgr="$(pkg_manager || echo unknown)"
+  name="$(pkg_name "$mgr" pyside6)"
+  case "$mgr" in
+    apt) apt-cache show "$name" >/dev/null 2>&1 ;;
+    dnf) dnf -q info "$name" >/dev/null 2>&1 ;;
+    zypper) zypper -q info "$name" >/dev/null 2>&1 ;;
+    pacman) pacman -Si "$name" >/dev/null 2>&1 ;;
+    # Unknown package manager: assume it does, so nothing is pushed at pip on a
+    # distribution nobody has checked.
+    *) return 0 ;;
   esac
 }

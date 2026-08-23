@@ -162,6 +162,25 @@ fn xdotool() -> Capability {
     }
 }
 
+/// The interpreter the overlay runs under: the venv setup.sh makes where the
+/// distribution packages no PySide6, else the system one. It has to be the same
+/// one, because which Qt is installed decides whether layer-shell is loadable.
+/// Kept in step with `kotodex_python` in `scripts/lib/platform.sh`.
+fn overlay_python() -> std::path::PathBuf {
+    let venv = dirs_home()
+        .join(".local/share/kotodex/venv/bin/python");
+    if venv.is_file() {
+        return venv;
+    }
+    std::path::PathBuf::from("python3")
+}
+
+fn dirs_home() -> std::path::PathBuf {
+    std::env::var("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default()
+}
+
 /// Which backend the overlay will pick. Asks `layer-overlay/backend.py` rather
 /// than repeating its rules: the choice decides the Qt platform plugin, and two
 /// implementations of it would disagree exactly when one of them is wrong.
@@ -170,7 +189,9 @@ fn xdotool() -> Capability {
 /// fullscreen window by protocol, X11 by `_NET_WM_STATE_ABOVE`.
 fn overlay_backend() -> Capability {
     let backend_py = jp_core::install::install_root().join("layer-overlay/backend.py");
-    let out = std::process::Command::new("python3").arg(&backend_py).output();
+    let out = std::process::Command::new(overlay_python())
+        .arg(&backend_py)
+        .output();
     match out {
         Ok(out) if out.status.success() => {
             let text = String::from_utf8_lossy(&out.stdout);

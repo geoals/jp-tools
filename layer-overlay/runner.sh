@@ -10,6 +10,7 @@
 # after the command through to the script. `-h`/`--help` is the caller's, so it
 # can document its own flags — handle it before calling this.
 #
+#   OVERLAY_PYTHON    interpreter to run it  (default python3)
 #   OVERLAY_RUN_DIR   pid and log live here  (default $XDG_RUNTIME_DIR/$OVERLAY_NAME)
 #   OVERLAY_LOG       where output goes      (default $OVERLAY_RUN_DIR/overlay.log)
 #   WAYLAND_DISPLAY   compositor socket      (default: the only one running)
@@ -24,6 +25,9 @@ export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 # and the X11 backend needs xcb, and only layer_overlay.py knows which it
 # picked. Anything already exported here still wins.
 
+# The caller's, because a distribution without a PySide6 package leaves it in a
+# venv and only the caller knows where.
+OVERLAY_PYTHON="${OVERLAY_PYTHON:-python3}"
 OVERLAY_RUN_DIR="${OVERLAY_RUN_DIR:-$XDG_RUNTIME_DIR/$OVERLAY_NAME}"
 OVERLAY_LOG="${OVERLAY_LOG:-$OVERLAY_RUN_DIR/overlay.log}"
 _OVERLAY_PID_FILE="$OVERLAY_RUN_DIR/overlay.pid"
@@ -119,7 +123,7 @@ layer_overlay_main() {
   # setsid so it leaves the ssh session's process group, and every descriptor
   # redirected so nothing of it is left pointing at a terminal that is about to
   # close. Without both, logging out takes the overlay with it.
-  setsid python3 "$OVERLAY_SCRIPT" "$@" </dev/null >"$OVERLAY_LOG" 2>&1 &
+  setsid "$OVERLAY_PYTHON" "$OVERLAY_SCRIPT" "$@" </dev/null >"$OVERLAY_LOG" 2>&1 &
   local pid=$!
   echo "$pid" >"$_OVERLAY_PID_FILE"
 

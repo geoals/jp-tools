@@ -121,6 +121,17 @@ cap anki_note_type "note type"
 cap screenshot_tool "screenshot tool"
 
 section "Overlay"
+py="$(kotodex_python)"
+if [ "$py" != python3 ]; then
+  row true "PySide6" "pip, in $KOTODEX_VENV" ""
+elif python3 -c "import PySide6.QtWebEngineQuick" >/dev/null 2>&1; then
+  row true "PySide6" "installed" ""
+elif distro_packages_pyside6; then
+  row false "PySide6" "not installed" "$(pkg_install_cmd pyside6 qt6-webengine)" critical
+else
+  row false "PySide6" "not installed, and $(pkg_manager || echo this system) has no package for it" \
+    "re-run setup.sh — it can install one with pip into a venv" critical
+fi
 cap overlay_backend "backend"
 cap xdotool "window tracking"
 

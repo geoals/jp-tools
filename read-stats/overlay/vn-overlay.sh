@@ -28,6 +28,10 @@ fi
 
 export VN_OVERLAY_FONT="${VN_OVERLAY_FONT:-DNP Shuei Mincho Pr6}"
 
+# Where the distribution packages no PySide6, setup.sh leaves one in a venv.
+source "$HERE/../../scripts/lib/platform.sh"
+OVERLAY_PYTHON="$(kotodex_python)"
+
 OVERLAY_NAME="vn-overlay"
 OVERLAY_SCRIPT="$HERE/vn-overlay.py"
 OVERLAY_LOG="${VN_OVERLAY_LOG:-}"
