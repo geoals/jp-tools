@@ -8,7 +8,7 @@
 //! off — so a missing part is a smaller working product with one sentence
 //! saying why, never an error.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -152,19 +152,28 @@ fn xdotool() -> Capability {
     }
 }
 
-/// Which backend the overlay will pick. Layer-shell needs the QML module as a
-/// *system* package; a pip build of PySide6 carries no `org.kde.layershell`.
+/// Which backend the overlay will pick. Asks `layer-overlay/backend.py` rather
+/// than repeating its rules: the choice decides the Qt platform plugin, and two
+/// implementations of it would disagree exactly when one of them is wrong.
+///
+/// Both backends work, so neither answer is a fault — layer-shell is above a
+/// fullscreen window by protocol, X11 by `_NET_WM_STATE_ABOVE`.
 fn overlay_backend() -> Capability {
-    let present = ["/usr/lib/qt6/qml/org/kde/layershell", "/usr/lib64/qt6/qml/org/kde/layershell"]
-        .iter()
-        .any(|p| Path::new(p).is_dir());
-    if present {
-        on("layer-shell")
-    } else {
-        off(
-            "x11",
-            "install layer-shell-qt for the overlay above a fullscreen game",
-        )
+    const BACKEND_PY: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../layer-overlay/backend.py");
+    let out = std::process::Command::new("python3").arg(BACKEND_PY).output();
+    match out {
+        Ok(out) if out.status.success() => {
+            let text = String::from_utf8_lossy(&out.stdout);
+            let (name, why) = text.trim().split_once('\t').unwrap_or((text.trim(), ""));
+            if name.is_empty() {
+                off("unknown", "layer-overlay/backend.py answered nothing")
+            } else if why.is_empty() {
+                on(name)
+            } else {
+                on(&format!("{name} — {why}"))
+            }
+        }
+        _ => off("unknown", "could not run layer-overlay/backend.py"),
     }
 }
 

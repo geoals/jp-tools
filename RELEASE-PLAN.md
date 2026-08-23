@@ -744,27 +744,36 @@ entry with `Name`, `Comment`, `Icon=kotodex`, `Exec=kotodex`, `Categories=Educat
 
 ### T4.8 — X11 overlay backend
 
-**Status:** required, per T0.4 — this is what makes GNOME work, so it is on the
-critical path rather than a maybe. The backend must force `QT_QPA_PLATFORM=xcb`
-for itself: inheriting the session default gives a native Wayland surface where
-`WindowStaysOnTopHint` does nothing.
+**Status:** done on this machine, **unverified on GNOME**.
+`layer-overlay/backend.py` picks the backend before Qt starts — it has to, since
+the choice is the platform plugin — and prints which and why.
+`LAYER_OVERLAY_BACKEND` forces either. `kotodex doctor` runs that same code
+rather than repeating its rules, and both backends now report as working.
 
-Verify click-through with XShape on GNOME as part of this task; T0.4 left it
-unchecked.
+Two things the layer-shell path got for free and the X11 one did not:
 
-Only if T0.4 says it is needed and viable. `layer-overlay/` gains a second
-backend selected at startup: layer-shell where available, X11
-`_NET_WM_STATE_ABOVE` + XShape input region otherwise. The Qt/QML/WebEngine
-half, the web channel and the xdotool geometry tracking are shared — they are
-already X11-based.
+- `QWindow.setMask` sets the **bounding** shape under X11, which clips what the
+  window draws rather than passing clicks through. `layer-overlay/xshape.py`
+  sets `ShapeInput` through libXext instead. Verified by querying the window:
+  the input shape holds exactly the reported hit rectangles and the bounding
+  shape is whole.
+- The surface does not start at the screen origin — a window manager shrinks it
+  to the work area, and neither fullscreen nor override-redirect wins it back
+  (override-redirect also maps at the bottom of the stack). The tracked window
+  is translated into surface coordinates, which is identity under layer-shell.
 
-Print which backend was chosen at startup and in the doctor.
+Forcing the X11 backend on KDE shows it **below** the game: KWin puts an active
+fullscreen window above keep-above ones. That is not a defect — KDE has
+layer-shell — but it means the stacking half cannot be verified here, only on
+GNOME, where T0.4 measured it working.
+
+**Left for you:** log into GNOME Wayland, run the overlay over a fullscreen
+game, and check it stays above and that clicks land through it.
 
 **Verify:** the T0.4 test matrix, re-run against the real overlay.
 **Commit:** `layer-overlay: X11 backend`.
 
-**Next up.** Nothing else in Phase 4 blocks it, and it is the only task left
-in the phase.
+
 
 ---
 

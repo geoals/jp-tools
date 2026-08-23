@@ -20,7 +20,9 @@
 # when the ssh session ends — a layer surface has no terminal to belong to.
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland}"
+# The Qt platform plugin is the backend's to set — layer-shell needs wayland
+# and the X11 backend needs xcb, and only layer_overlay.py knows which it
+# picked. Anything already exported here still wins.
 
 OVERLAY_RUN_DIR="${OVERLAY_RUN_DIR:-$XDG_RUNTIME_DIR/$OVERLAY_NAME}"
 OVERLAY_LOG="${OVERLAY_LOG:-$OVERLAY_RUN_DIR/overlay.log}"
@@ -68,9 +70,11 @@ _layer_overlay_wayland() {
   [[ -n "${WAYLAND_DISPLAY-}" ]] && return 0
   local sockets
   mapfile -t sockets < <(cd "$XDG_RUNTIME_DIR" && ls -1 wayland-[0-9]* 2>/dev/null | grep -v '\.lock$')
+  # No socket at all is not an error: an X11 session is where the X11 backend
+  # is the whole point, and saying which backend applies is its job, not this
+  # one's.
   if ((${#sockets[@]} == 0)); then
-    echo "no wayland socket in $XDG_RUNTIME_DIR — is the desktop session running?" >&2
-    return 1
+    return 0
   fi
   if ((${#sockets[@]} > 1)); then
     echo "several wayland sockets (${sockets[*]}) — set WAYLAND_DISPLAY" >&2
@@ -128,5 +132,6 @@ layer_overlay_main() {
     rm -f "$_OVERLAY_PID_FILE"
     return 1
   fi
-  echo "$OVERLAY_NAME: running (pid $pid) on $WAYLAND_DISPLAY, log $OVERLAY_LOG"
+  echo "$OVERLAY_NAME: running (pid $pid), log $OVERLAY_LOG"
+  grep -m1 '^backend:' "$OVERLAY_LOG" 2>/dev/null || true
 }

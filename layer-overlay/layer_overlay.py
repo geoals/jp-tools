@@ -1,10 +1,12 @@
-"""A web page as a `zwlr_layer_shell_v1` overlay surface, above fullscreen windows.
+"""A web page as an overlay surface, above fullscreen windows.
 
 Nothing here knows what the page is for. Give it a URL and it draws that page
 over everything, clickable only where the page says it has drawn something —
 every click elsewhere reaches the window underneath.
 
-Three pieces, and the page needs all three:
+Two backends put it there — layer-shell where the compositor offers it, an
+always-on-top XWayland window otherwise. [`backend`] picks between them and the
+page cannot tell which it got. Three pieces, and the page needs all three:
 
 - [`Overlay`] is the object the page talks to over a WebChannel. The page
   pushes the rectangles it has drawn; those become the input region.
@@ -36,9 +38,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Turns every window of this process into a layer surface. Must be set before
-# QGuiApplication resolves the platform plugin.
-os.environ.setdefault("QT_WAYLAND_SHELL_INTEGRATION", "layer-shell")
+import backend
+from xshape import InputRegion
+
+# Both the platform plugin and the shell integration are read once, when
+# QGuiApplication is constructed, so the backend has to be settled before any Qt
+# import that could pull one in.
+BACKEND, BACKEND_REASON = backend.choose()
+backend.apply_environment(BACKEND)
 
 from PySide6.QtCore import QFile, QIODevice, QObject, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication, QRegion
@@ -48,9 +55,14 @@ from PySide6.QtWebChannel import QWebChannel  # noqa: F401
 from PySide6.QtWebEngineCore import QWebEngineScript
 from PySide6.QtWebEngineQuick import QtWebEngineQuick
 
-QML = str(Path(__file__).resolve().parent / "Overlay.qml")
+_HERE = Path(__file__).resolve().parent
+QML = str(_HERE / ("Overlay.qml" if BACKEND == backend.LAYER_SHELL else "OverlayX11.qml"))
 
 GEOMETRY_POLL_MS = 300
+
+
+def _rects(region):
+    return [(r.x(), r.y(), r.width(), r.height()) for r in region]
 
 
 class Overlay(QObject):
@@ -76,6 +88,9 @@ class Overlay(QObject):
         self._name = ""
         self._rect = None
         self._xdotool = shutil.which("xdotool")
+        # Only the X11 backend needs one: under Wayland the mask already means
+        # the input region, and opening an X connection would be pointless.
+        self._input = InputRegion() if BACKEND == backend.X11 else None
         self._probe = QTimer()
         self._probe.setInterval(GEOMETRY_POLL_MS)
         self._probe.timeout.connect(self._poll_geometry)
@@ -108,7 +123,20 @@ class Overlay(QObject):
         if rect == self._rect:
             return
         self._rect = rect
-        self.geometry.emit(*(rect or (0, 0, 0, 0)))
+        self.geometry.emit(*(self._to_surface(rect) if rect else (0, 0, 0, 0)))
+
+    def _to_surface(self, rect):
+        """The tracked window in the page's own coordinates.
+
+        A layer surface covers the output, so this is identity there. A
+        window manager shrinks an X11 surface to the *work area* instead, and a
+        panel then offsets it — leaving the page to place everything against a
+        screen origin its surface does not start at.
+        """
+        x, y, w, h = rect
+        if self._window is None:
+            return (x, y, w, h)
+        return (x - self._window.x(), y - self._window.y(), w, h)
 
     def _window_rect(self):
         # XWayland windows stay addressable through X under a Wayland session,
@@ -188,9 +216,11 @@ class Overlay(QObject):
     def apply(self) -> None:
         if self._window is None or self._window.height() <= 0:
             return
-        # Qt maps a window mask onto wl_surface.set_input_region. Both branches
-        # pass a non-empty region on purpose: an empty mask means "the whole
-        # surface takes input", which is the opposite of passing clicks through.
+        # Qt maps a window mask onto wl_surface.set_input_region under Wayland
+        # and onto an XShape input region under X11, so one call covers both
+        # backends. Both branches pass a non-empty region on purpose: an empty
+        # mask means "the whole surface takes input", which is the opposite of
+        # passing clicks through.
         if self.interactive:
             region = QRegion(0, 0, self._window.width(), self._window.height())
         elif self._hits:
@@ -200,16 +230,20 @@ class Overlay(QObject):
         else:
             # One pixel, not nothing: an *empty* mask means the whole surface
             # takes input, which is the opposite of what a page reporting no
-            # clickable area should do.
+            # clickable area should do. The X11 input region reads an empty list
+            # the way it looks, so this costs it only one dead pixel.
             region = QRegion(0, 0, 1, 1)
-        self._window.setMask(region)
+        if self._input is not None and self._input.available:
+            self._input.apply(int(self._window.winId()), _rects(region))
+        else:
+            self._window.setMask(region)
         # The region reaches the compositor on the surface's next commit, and a
         # page that has finished painting schedules no further frame — so
         # without this a freshly drawn element can sit on screen taking no
         # clicks until something else happens to repaint.
         self._window.requestUpdate()
         if os.environ.get("LAYER_OVERLAY_DEBUG"):
-            rects = " ".join(f"{r.x()},{r.y()} {r.width()}x{r.height()}" for r in region)
+            rects = " ".join(f"{x},{y} {w}x{h}" for x, y, w, h in _rects(region))
             print(f"mask [{len(self._hits)}] {rects}", flush=True)
         self._window.setProperty("interactive", self.interactive)
 
@@ -308,6 +342,8 @@ def run(url: str, *, scope: str, storage, qt_args=()) -> int:
     # the process, and the terminal signals the whole group, so the WebEngine
     # helper processes go with it.
     signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+    print(f"backend: {BACKEND} ({BACKEND_REASON})", flush=True)
 
     QtWebEngineQuick.initialize()  # has to precede QGuiApplication
     app = QGuiApplication([sys.argv[0], *qt_args])
