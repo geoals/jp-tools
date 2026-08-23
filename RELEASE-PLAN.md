@@ -367,11 +367,13 @@ Left: the GitHub topics, once the repo is public —
 
 ### T7.5 — Release
 
-Tag, build, attach the tarball and checksum, write release notes from this plan.
-Optionally a CI workflow that builds the artifact on tag.
+**Status:** half. `docs/release-notes.md` is written, and
+`.github/workflows/release.yml` builds the tarball on a `v*` tag (or on
+demand) and uploads it to the release — on ubuntu-22.04, so the shipped
+binaries link a glibc old enough for the distros in `docs/compositors.md`.
 
-**Verify:** download the release on a clean machine and follow the README
-exactly. **Commit:** `ci: release workflow`.
+Left: tag it, and check the download on a clean machine against the README.
+That is T8.1's pass, on the release rather than the local build.
 
 ### T7.6 — The dashboard must not need a CDN
 
@@ -425,8 +427,9 @@ no second desktop entry, no second read-stats.
 
 # What is left
 
-**To build:** T5.6's settings export/import (deferred, not wanted yet), T7.3's
-screenshots and recording, T7.5's release. Nothing else on this plan is unbuilt.
+**To build:** T5.6's settings export/import (deferred, not wanted yet) and
+T7.3's screenshots and recording. Nothing else on this plan is unbuilt; T7.5 is
+down to pushing a tag.
 
 **To verify by hand** — the list is in the tasks above, gathered here:
 
