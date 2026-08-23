@@ -15,6 +15,10 @@ pub struct Config {
     /// `localhost` resolves to `::1` first here, so every request failed to
     /// connect while curl's own IPv4 fallback made Anki look reachable.
     pub anki_url: String,
+    /// The note type and its field names, from `AnkiConfig` so that every card
+    /// path spells them the same way. The three below are the ones enough code
+    /// reads to be worth naming; the rest are reached through `anki`.
+    pub anki: jp_mine_core::config::AnkiConfig,
     /// Deck holding mined cards and the field carrying the dictionary form.
     pub anki_deck: String,
     pub anki_vocab_field: String,
@@ -57,6 +61,14 @@ impl Config {
         });
         let listen_addr = std::env::var("JP_TOOLS_STATS_LISTEN_ADDR")
             .unwrap_or_else(|_| "0.0.0.0:3200".to_string());
+        // One field map for every card path. read-stats used to read the same
+        // env vars again with its own defaults, which meant a Lapis install had
+        // legacy names here and Lapis names in the exporter.
+        let anki = jp_mine_core::config::AnkiConfig::from_env();
+        fn field(name: &Option<String>) -> String {
+            name.clone().unwrap_or_default()
+        }
+
         let covers_dir = std::path::Path::new(&db_path)
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."))
@@ -68,14 +80,11 @@ impl Config {
             covers_dir,
             anki_url: std::env::var("JP_TOOLS_ANKI_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:8765".to_string()),
-            anki_deck: std::env::var("JP_TOOLS_ANKI_DECK")
-                .unwrap_or_else(|_| "Japanese".to_string()),
-            anki_vocab_field: std::env::var("JP_TOOLS_ANKI_FIELD_VOCAB")
-                .unwrap_or_else(|_| "VocabKanji".to_string()),
-            anki_sentence_field: std::env::var("JP_TOOLS_ANKI_FIELD_SENTENCE")
-                .unwrap_or_else(|_| "SentKanji".to_string()),
-            anki_compact_def_field: std::env::var("JP_TOOLS_ANKI_FIELD_COMPACT_DEF")
-                .unwrap_or_else(|_| "CompactDef".to_string()),
+            anki_deck: anki.deck_name.clone(),
+            anki_vocab_field: field(&anki.field_vocab),
+            anki_sentence_field: field(&anki.field_sentence),
+            anki_compact_def_field: field(&anki.field_compact_def),
+            anki,
             auto_capture_on_add: std::env::var("JP_TOOLS_AUTO_CAPTURE_ON_ADD")
                 .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
                 .unwrap_or(true),

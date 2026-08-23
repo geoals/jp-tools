@@ -637,6 +637,7 @@ mod tests {
             field_frequency: None,
             field_compact_def: None,
             field_reading: None,
+            field_vocab_audio: None,
             field_freq_sort: None,
             tags: vec![],
         };
@@ -696,6 +697,7 @@ mod tests {
             field_frequency: Some("FreqRank".into()),
             field_compact_def: Some("AIDef".into()),
             field_reading: None,
+            field_vocab_audio: None,
             field_freq_sort: None,
             tags: vec![],
         };

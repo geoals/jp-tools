@@ -22,6 +22,9 @@ pub struct AnkiConfig {
     pub field_frequency: Option<String>,
     pub field_compact_def: Option<String>,
     pub field_reading: Option<String>,
+    /// The word's own recording, from the local-audio add-on. Separate from
+    /// `field_audio`, which is the sentence read aloud.
+    pub field_vocab_audio: Option<String>,
     /// The reader-facing rank as a plain integer, for sorting a deck by how
     /// common the word is. Separate from `field_frequency`, which is the
     /// rendered pill.
@@ -47,6 +50,7 @@ impl Default for AnkiConfig {
             field_frequency: Some("Frequency".into()),
             field_compact_def: Some("MainDefinition".into()),
             field_reading: Some("ExpressionReading".into()),
+            field_vocab_audio: Some("ExpressionAudio".into()),
             field_freq_sort: Some("FreqSort".into()),
             tags: Vec::new(),
         }
@@ -120,6 +124,10 @@ impl AnkiConfig {
                 "JP_TOOLS_ANKI_FIELD_READING",
                 defaults.field_reading.as_deref().unwrap_or(""),
             ),
+            field_vocab_audio: anki_field(
+                "JP_TOOLS_ANKI_FIELD_VOCAB_AUDIO",
+                defaults.field_vocab_audio.as_deref().unwrap_or(""),
+            ),
             field_freq_sort: anki_field(
                 "JP_TOOLS_ANKI_FIELD_FREQ_SORT",
                 defaults.field_freq_sort.as_deref().unwrap_or(""),
@@ -142,6 +150,7 @@ impl AnkiConfig {
             ("source", &self.field_source),
             ("furigana", &self.field_furigana),
             ("reading", &self.field_reading),
+            ("word audio", &self.field_vocab_audio),
             ("pitch position", &self.field_pitch_num),
             ("pitch pattern", &self.field_pitch_pattern),
             ("frequency", &self.field_frequency),
@@ -157,8 +166,9 @@ impl AnkiConfig {
 mod tests {
     use super::*;
 
-    /// The defaults are what a fresh install gets, so they are Lapis's names.
-    /// An existing note type pins its own through `JP_TOOLS_ANKI_FIELD_*`.
+    /// The defaults are what a fresh install gets, so they are Lapis's names,
+    /// spelt as the note type in its own release spells them. An existing note
+    /// type pins its own through `JP_TOOLS_ANKI_FIELD_*`.
     #[test]
     fn the_defaults_are_the_lapis_note_type() {
         let c = AnkiConfig::default();
@@ -168,5 +178,6 @@ mod tests {
         assert_eq!(c.field_compact_def.as_deref(), Some("MainDefinition"));
         assert_eq!(c.field_reading.as_deref(), Some("ExpressionReading"));
         assert_eq!(c.field_freq_sort.as_deref(), Some("FreqSort"));
+        assert_eq!(c.field_vocab_audio.as_deref(), Some("ExpressionAudio"));
     }
 }

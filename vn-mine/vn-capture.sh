@@ -3,7 +3,7 @@
 # Cuts the last voiceline out of the kotodex-capture ring buffer (start = timestamp
 # of the last Japanese line Textractor hooked, end = silero-VAD end of speech,
 # never past the *next* hooked line), screenshots the active window, and
-# attaches both to the most recently added "Japanese sentences" Anki note.
+# attaches both to the most recently added note of the configured note type.
 # Requires: kotodex-capture running, curl, jq, spectacle, ffmpeg
 # Env: VN_DRY=1        build the clip + screenshot but skip Anki, keep files
 #                      (also skips the sentence trim — it needs the note)
@@ -114,6 +114,7 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 # The note type's field names, the same variables the Rust side reads so one
 # note type is described in one place. The defaults are Lapis's.
+ANKI_MODEL="${JP_TOOLS_ANKI_MODEL:-Lapis}"
 FIELD_VOCAB="${JP_TOOLS_ANKI_FIELD_VOCAB:-Expression}"
 FIELD_SENTENCE="${JP_TOOLS_ANKI_FIELD_SENTENCE:-Sentence}"
 FIELD_IMAGE="${JP_TOOLS_ANKI_FIELD_IMAGE:-Picture}"
@@ -360,11 +361,11 @@ if [ -z "$VN_DRY" ]; then
     CARD_IDS=$(curl -s -X POST "$ANKI_CONNECT_URL" -d '{
         "action": "findCards",
         "version": 6,
-        "params": { "query": "note:\"Japanese sentences\" added:1" }
+        "params": { "query": "note:\"'"$ANKI_MODEL"'\" added:1" }
     }') || die "AnkiConnect is not reachable. Is Anki running?"
     MOST_RECENT_CARD=$(echo "$CARD_IDS" | jq -r '.result[-1]')
     if [ "$MOST_RECENT_CARD" == "null" ] || [ -z "$MOST_RECENT_CARD" ]; then
-      die "No cards found with note type 'Japanese sentences'"
+      die "No cards found with note type '$ANKI_MODEL'"
     fi
 
     NOTE_ID=$(curl -s -X POST "$ANKI_CONNECT_URL" -d "{

@@ -71,6 +71,7 @@ async fn main() {
         http,
         anki_url: config.anki_url.clone(),
         anki_deck: config.anki_deck.clone(),
+        anki: config.anki.clone(),
         anki_vocab_field: config.anki_vocab_field.clone(),
         anki_sentence_field: config.anki_sentence_field.clone(),
         anki_compact_def_field: config.anki_compact_def_field.clone(),

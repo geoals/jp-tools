@@ -55,6 +55,10 @@ pub struct AppState {
     pub http: reqwest::Client,
     pub anki_url: String,
     pub anki_deck: String,
+    /// The note type and every field name on it. `mine` builds a card from
+    /// this; the named fields below are the same map, read often enough to be
+    /// worth their own names.
+    pub anki: jp_mine_core::config::AnkiConfig,
     pub anki_vocab_field: String,
     pub anki_sentence_field: String,
     pub anki_compact_def_field: String,

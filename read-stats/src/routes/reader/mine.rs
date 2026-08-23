@@ -8,15 +8,19 @@
 //! one function, so an overlay card and a Yomitan card are the same thing
 //! downstream rather than a second implementation kept in step by hand.
 //!
+//! The note type and its field names come from [`jp_mine_core::config::AnkiConfig`],
+//! the same map the exporter uses, so this card fits whichever of the two
+//! supported note types is configured.
+//!
 //! The pitch fields are rebuilt here rather than left empty, because the card
 //! template needs them: `markPitch()` colours the target word by the first
-//! digit it finds in `VocabPitchNum`, so an empty field silently costs the
-//! colour. The markup is Yomitan's own, reproduced span for span.
+//! digit it finds in the pitch-position field, so an empty one silently costs
+//! the colour. The markup is Yomitan's own, reproduced span for span.
 //!
-//! `VocabAudio` is a native recording from the local-audio add-on, which is
+//! The word audio is a native recording from the local-audio add-on, which is
 //! also where Yomitan's audio sources point, so both surfaces attach the same
-//! file. `SentAudio` and `Image` come from vn-capture, exactly as they do for a
-//! Yomitan card.
+//! file. The sentence audio and picture come from vn-capture, exactly as they
+//! do for a Yomitan card.
 
 use axum::Json;
 use axum::body::Bytes;
@@ -28,11 +32,6 @@ use serde_json::{Value, json};
 
 use crate::app::AppState;
 use crate::error::AppError;
-
-/// The note type every mined card uses. Not a setting because the field names
-/// below are not either — they are one shape, and half of it configurable
-/// would only let the two halves disagree.
-const MODEL: &str = "Japanese sentences";
 
 /// Marks the card as coming from the sentence-mining flow, matching what
 /// Yomitan tags its own with, so a search for one finds both.
@@ -76,25 +75,53 @@ pub async fn mine(
     )
     .await;
 
+    // The note type and its field names come from `AnkiConfig`, so this card is
+    // the shape the configured note type actually has. A field the note type
+    // does not carry is `None` there and is left out rather than sent and
+    // refused.
+    let anki = &state.anki;
+    let mut fields = serde_json::Map::new();
+    let mut put = |name: &Option<String>, value: String| {
+        if let Some(name) = name {
+            fields.insert(name.clone(), Value::String(value));
+        }
+    };
+    put(&anki.field_vocab, req.term.clone());
+    put(&anki.field_reading, req.reading.clone());
+    put(&anki.field_furigana, furigana(&req.term, &req.reading));
+    put(&anki.field_definition, glossary);
+    put(
+        &anki.field_sentence,
+        bold_surface(&req.sentence, &req.surface),
+    );
+    put(&anki.field_source, settings.current_work.clone());
+    put(
+        &anki.field_frequency,
+        frequency.map(|f| f.to_string()).unwrap_or_default(),
+    );
+    put(
+        &anki.field_freq_sort,
+        frequency.map(|f| f.to_string()).unwrap_or_default(),
+    );
+    put(&anki.field_vocab_audio, vocab_audio);
+    put(
+        &anki.field_pitch_num,
+        accent.map(pitch_num).unwrap_or_default(),
+    );
+    put(
+        &anki.field_pitch_pattern,
+        accent
+            .map(|a| pitch_pattern(&req.reading, a))
+            .unwrap_or_default(),
+    );
+
     let note = json!({
         "action": "addNote",
         "version": 6,
         "params": { "note": {
-            "deckName": state.anki_deck,
-            "modelName": MODEL,
-            "fields": {
-                state.anki_vocab_field.clone(): req.term,
-                "VocabFurigana": furigana(&req.term, &req.reading),
-                "VocabDefFull": glossary,
-                state.anki_sentence_field.clone(): bold_surface(&req.sentence, &req.surface),
-                "Document": settings.current_work,
-                "Frequency": frequency.map(|f| f.to_string()).unwrap_or_default(),
-                "VocabAudio": vocab_audio,
-                "VocabPitchNum": accent.map(pitch_num).unwrap_or_default(),
-                "VocabPitchPattern": accent
-                    .map(|a| pitch_pattern(&req.reading, a))
-                    .unwrap_or_default(),
-            },
+            "deckName": anki.deck_name,
+            "modelName": anki.model_name,
+            "fields": fields,
             "tags": [TAG],
             "options": { "allowDuplicate": false },
         }},

@@ -235,10 +235,36 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_t
             state.anthropic_api_key.as_deref()
         };
 
-    // No definition to fetch: the capture is the whole of the enrichment, so it
-    // alone decides whether this card came out complete.
+    // No key, but the dictionaries are right here: the note type shows the
+    // gloss field as the card's headline, so it gets the first sense rather
+    // than being left blank.
     let Some(api_key) = api_key else {
-        if capture.await {
+        let fallback = if state.anki_compact_def_field.is_empty() || word.is_empty() {
+            None
+        } else {
+            jp_mine_core::card::first_sense(state.knowledge.pool(), &word, "")
+                .await
+                .unwrap_or_else(|e| {
+                    warn!(note_id, error = %e, "enrich: first sense lookup failed");
+                    None
+                })
+        };
+        let defined = match fallback {
+            Some(sense) => crate::services::anki::update_note_field_verified(
+                &state.http,
+                &state.anki_url,
+                note_id,
+                &state.anki_compact_def_field,
+                &sense,
+            )
+            .await
+            .inspect_err(|e| warn!(note_id, error = %e, "first-sense write failed"))
+            .is_ok(),
+            // No dictionary holds the word: the card is as complete as it can
+            // be made, so this is not a failure to report.
+            None => true,
+        };
+        if capture.await && defined {
             crate::services::notify::mine_complete(&word);
         }
         return;

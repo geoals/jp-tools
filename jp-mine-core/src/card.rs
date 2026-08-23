@@ -143,6 +143,63 @@ pub async fn glossary_in(
     Ok(glossary)
 }
 
+/// The first sense a dictionary gives, as plain text.
+///
+/// What fills the gloss field when there is no API key to write a better one:
+/// the note type shows that field as the card's headline, and an empty one
+/// reads as a card with no definition even though the full glossary is there.
+/// The master dictionary answers when it has the term, since that is the one
+/// whose senses are the vocabulary scale.
+pub async fn first_sense(
+    pool: &SqlitePool,
+    term: &str,
+    reading: &str,
+) -> Result<Option<String>, sqlx::Error> {
+    let dicts = dictionaries::list_dictionaries(pool).await?;
+    let ordered = dicts
+        .iter()
+        .filter(|d| d.role == dictionaries::Role::Master)
+        .chain(dicts.iter().filter(|d| d.role != dictionaries::Role::Master));
+
+    for dict in ordered {
+        let entries = dictionaries::lookup_dictionary_entries(pool, dict.id, term).await?;
+        // The reading narrows the entries only when it matches one, the same
+        // rule `glossary_in` uses: a Sudachi reading the dictionary spells
+        // differently must not leave the card with nothing.
+        let matched = entries.iter().any(|e| e.reading == reading);
+        let sense = entries
+            .iter()
+            .filter(|e| !matched || e.reading == reading)
+            .flat_map(|e| e.definitions.iter())
+            .map(|d| plain_text(d))
+            .find(|d| !d.is_empty());
+        if let Some(sense) = sense {
+            return Ok(Some(sense));
+        }
+    }
+    Ok(None)
+}
+
+/// Yomitan definitions are HTML fragments; the gloss field is one line of text.
+fn plain_text(html: &str) -> String {
+    let mut out = String::new();
+    let mut in_tag = false;
+    for c in html.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            c if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    let collapsed = out.split_whitespace().collect::<Vec<_>>().join(" ");
+    // Long enough for a real sense, short enough to stay one headline.
+    match collapsed.char_indices().nth(200) {
+        Some((cut, _)) => format!("{}…", &collapsed[..cut].trim_end()),
+        None => collapsed,
+    }
+}
+
 /// The first pitch accent any installed dictionary lists for this reading.
 ///
 /// One accent, because `markPitch()` reads a single digit and a card claiming
@@ -255,6 +312,22 @@ fn morae(reading: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn plain_text_strips_markup_and_collapses_space() {
+        assert_eq!(
+            super::plain_text("<span class=\"x\">to eat</span>;\n  <i>to drink</i>"),
+            "to eat; to drink"
+        );
+    }
+
+    #[test]
+    fn plain_text_cuts_on_a_character_boundary() {
+        let long = "日".repeat(300);
+        let cut = super::plain_text(&long);
+        assert!(cut.ends_with('…'));
+        assert_eq!(cut.chars().count(), 201);
+    }
+
     use super::*;
 
     /// Byte-for-byte against the `聡い` card Yomitan itself wrote: さ low, と
