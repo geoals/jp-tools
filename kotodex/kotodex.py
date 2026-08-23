@@ -82,12 +82,16 @@ class Child:
     """
 
     def __init__(
-        self, name, probe, start_cmd, stop_cmd=None, detaches=False, supervised=True
+        self, name, probe, start_cmd, stop_cmd=None, restart_cmd=None,
+        detaches=False, supervised=True
     ):
         self.name = name
         self.probe = probe
         self.start_cmd = start_cmd
         self.stop_cmd = stop_cmd
+        # How to make an *adopted* one pick up new code. Stopping it is what
+        # adoption promises not to do, so this asks it to restart itself.
+        self.restart_cmd = restart_cmd or start_cmd
         # Whether start_cmd *is* the component or merely launches it.
         # start-all.sh and vn-overlay.sh background the real process and return
         # 0, so for those the exit status says nothing and the probe is the
@@ -175,11 +179,21 @@ def children():
     capture = shutil.which("kotodex-capture") or str(REPO / "vn-mine" / "kotodex-capture")
     overlay = str(REPO / "read-stats" / "overlay" / "vn-overlay.sh")
     return [
-        Child("capture", capture_up, [capture, "run"]),
+        Child(
+            "capture",
+            capture_up,
+            [capture, "run"],
+            restart_cmd=[capture, "restart"],
+        ),
         Child(
             "read-stats",
             read_stats_up,
             [str(REPO / "scripts" / "start-all.sh"), "read-stats"],
+            # The wrapper it is started through exits at once, so there is no
+            # process here to terminate — stopping it has to go back through
+            # start-all.sh, or quitting the launcher would leave it running.
+            stop_cmd=[str(REPO / "scripts" / "start-all.sh"), "stop", "read-stats"],
+            restart_cmd=[str(REPO / "scripts" / "start-all.sh"), "restart", "read-stats"],
             detaches=True,
         ),
         Child(
@@ -187,6 +201,7 @@ def children():
             overlay_up,
             [overlay, "start"],
             stop_cmd=[overlay, "stop"],
+            restart_cmd=[overlay, "restart"],
             detaches=True,
             supervised=False,
         ),
@@ -308,16 +323,30 @@ def main() -> int:
     restarting = {"until": 0.0}
 
     def restart_here():
+        """Stop what this launcher owns, restart what it does not, start again.
+
+        Not `restart_components`: a component this launcher started must come
+        back as its child, or the restart would quietly convert it into
+        something adopted — running, but no longer stopped on the way out.
+        """
         log("restarting everything")
-        restarting["until"] = time.time() + 60
-        restart_components()
-        # Adopted again on the way back: these are new processes, and the ones
-        # this launcher started are gone.
+        restarting["until"] = time.time() + 120
+        for child in reversed(kids):
+            if child.adopted:
+                # Someone else's — a systemd unit, a start-all.sh run. Told to
+                # restart itself rather than stopped, since stopping it is
+                # exactly what adoption promises not to do.
+                subprocess.run(child.restart_cmd, cwd=REPO, capture_output=True)
+            else:
+                child.stop(log)
         for child in kids:
             child.proc = None
+            child.adopted = False
             child.restarts = 0
             child.failed = False
             child.ensure(log)
+            if child.name == "read-stats":
+                wait_for_read_stats(log)
         restarting["until"] = 0.0
         log("restarted")
 

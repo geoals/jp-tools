@@ -397,6 +397,7 @@
   #bar-handle,
   #explain-btn,
   #hide-btn,
+  #scrollback-btn,
   #settings-btn {
     flex: none;
     /* Square, and all one size: they sit in a row over the game, and a glyph
@@ -653,59 +654,89 @@
     color: #e6e6e6;
   }
 
-  /* Earlier lines, over the whole surface. Full-screen because it is read
-     rather than glanced at, and because the input region has to grow to cover
-     it anyway — see report(): a panel the compositor does not know about takes
-     no clicks, and the game would advance under it. */
+  /* Earlier lines, under the button that opens them.
+     
+     Inside #explain-box, so it is placed against the bar, moves with the drag,
+     and is already inside the rectangle report() hands the shell — a panel the
+     compositor does not know about takes no clicks, and the game would advance
+     under the line being read.
+
+     Set like the line, because it *is* the line a minute ago: the same face,
+     the same size, the same spacing. Only the shadow is dropped — that exists
+     to lift a glyph off the game's artwork, and here there is a solid panel
+     behind it. */
   #scrollback {
-    position: fixed;
-    inset: 0;
-    z-index: 40;
-    display: flex;
-    flex-direction: column;
-    background: rgba(0, 0, 0, 0.94);
-    color: #f2f2f2;
+    box-sizing: border-box;
+    /* The column the line is drawn in, so a line that fitted on screen fits
+       here without rewrapping. Measured off #box rather than derived: the box
+       is sized two different ways — the character count when it is aligned to
+       the game, viewport insets when it is not — and only one of those can be
+       written here. See sizeScrollback(). */
+    width: var(--sb-width, calc(var(--text-chars) * (1em + var(--line-tracking)) + 1.4em));
+    max-width: 78vw;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.92);
+    font-family: var(--line-font);
+    font-size: calc(clamp(1.35rem, calc(1.82vw * var(--scale)), 2.25rem) * var(--line-scale));
+    font-weight: var(--line-weight);
+    line-height: var(--line-leading);
+    color: var(--line-color);
+    letter-spacing: var(--line-tracking);
+  }
+  html[data-aligned] #scrollback {
+    font-size: calc(var(--text-size) * var(--game-h) * var(--line-scale));
   }
   #scrollback[hidden] {
     display: none;
   }
   #scrollback-lines {
-    flex: 1;
+    /* About fourteen lines, and scroll inside for the rest. Measured in the
+       panel's own line-height so it holds the same number of lines whatever
+       the type is set to. */
+    max-height: calc(14 * var(--line-leading) * 1em);
     overflow-y: auto;
     scrollbar-width: thin;
-    padding: 1.4rem 2rem;
-    font-family: var(--line-font);
-    font-size: calc(1.15rem * var(--line-scale));
-    line-height: 1.9;
+    scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+    padding: 0.5em 0.7em;
+    overscroll-behavior: contain;
   }
-  /* Each line is a block, and the word spans inside it are the live line's own
-     — same classes, same handlers, so a lookup here is a lookup there. */
+  /* The game's own soft breaks arrive as newlines, the same as in #line. */
   #scrollback-lines .sb {
-    max-width: 46rem;
-    margin: 0 auto 0.7rem;
-    padding: 0.25rem 0.6rem;
-    border-radius: 6px;
+    margin: 0 0 0.35em;
+    padding: 0 0.2em;
+    border-radius: 4px;
     white-space: pre-wrap;
   }
-  #scrollback-lines .sb.current {
-    background: rgba(154, 140, 255, 0.14);
+  #scrollback-lines .sb:last-child {
+    margin-bottom: 0;
   }
+  /* The line that is on screen right now, so scrolling back has somewhere to
+     come home to. */
+  #scrollback-lines .sb.current {
+    background: rgba(154, 140, 255, 0.16);
+  }
+  /* Chrome, not content: sized in rem so it stays small when the line is set
+     large. */
   #scrollback-foot {
     display: flex;
     gap: 0.6rem;
     align-items: center;
-    padding: 0.7rem 2rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.14);
-    font-size: 0.85rem;
+    padding: 0.35rem 0.7rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    font-family: system-ui, sans-serif;
+    font-size: 0.75rem;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: 1.4;
   }
   #scrollback-count {
     flex: 1;
     color: #9a9a9a;
   }
   #scrollback-foot button {
-    padding: 0.3rem 0.7rem;
+    padding: 0.15rem 0.5rem;
     border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 6px;
+    border-radius: 5px;
     background: rgba(255, 255, 255, 0.06);
     color: #e6e6e6;
     font: inherit;
@@ -859,15 +890,14 @@
       <button id="pause-btn" data-tip="Pause capture">⏸ Pause capture</button>
     </div>
   </div>
-  <div id="explain-panel" hidden></div>
-</div>
-<div id="scrollback" hidden>
-  <div id="scrollback-lines"></div>
-  <div id="scrollback-foot">
-    <span id="scrollback-count"></span>
-    <button id="scrollback-latest">Jump to latest</button>
-    <button id="scrollback-close">Close</button>
+  <div id="scrollback" hidden>
+    <div id="scrollback-lines"></div>
+    <div id="scrollback-foot">
+      <span id="scrollback-count"></span>
+      <button id="scrollback-latest">Latest</button>
+    </div>
   </div>
+  <div id="explain-panel" hidden></div>
 </div>
 <div id="warn"></div>
 <script type="module" src="/overlay/overlay.js"></script>

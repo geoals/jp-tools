@@ -41,7 +41,11 @@ stop | restart)
   pkill -f "$(basename "$0") run"
   [ "$1" = stop ] && exit 0
   sleep 1
-  exec "$0" run
+  # Detached, and *not* exec: `run` never returns, so a caller waiting on this
+  # would wait for the whole session. The launcher does not come through here —
+  # it stops its own child and starts a new one, so that the daemon stays
+  # something it owns and stops on the way out.
+  setsid "$0" run >/dev/null 2>&1 < /dev/null &
   ;;
 
 status)

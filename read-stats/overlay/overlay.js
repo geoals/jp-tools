@@ -689,8 +689,14 @@ function appendScrollback(row) {
   const el = scrollbackRow(row);
   el.classList.add("current");
   scrollbackLinesEl.append(el);
-  if (atBottom) el.scrollIntoView({ block: "end" });
+  if (atBottom) toLatest();
   countScrollback();
+}
+
+/** The newest line, which is the bottom. Not `scrollIntoView`: that scrolls
+ *  every scrollable ancestor, and the panel is inside the surface now. */
+function toLatest() {
+  scrollbackLinesEl.scrollTop = scrollbackLinesEl.scrollHeight;
 }
 
 function countScrollback() {
@@ -728,8 +734,20 @@ async function pageBack() {
   }
 }
 
+/** Match the line's column exactly, whichever way #box is being sized.
+ *
+ * Read rather than derived: aligned to the game it is a character count, and
+ * free-floating it is a pair of viewport insets. A hidden or ghosted line has
+ * no width to copy, so the CSS fallback stands. */
+function sizeScrollback() {
+  const width = boxEl.getBoundingClientRect().width;
+  if (width > 100) root.setProperty("--sb-width", `${Math.round(width)}px`);
+  else root.removeProperty("--sb-width");
+}
+
 function openScrollback() {
   scrollbackEl.hidden = false;
+  sizeScrollback();
   scrollbackBtnEl.classList.remove("off");
   if (!scrollbackLinesEl.children.length) {
     // Seeded from the line on screen, which is the only id this page is sure
@@ -742,7 +760,7 @@ function openScrollback() {
     pageBack();
   }
   countScrollback();
-  scrollbackLinesEl.lastElementChild?.scrollIntoView({ block: "end" });
+  toLatest();
   report();
 }
 
@@ -758,20 +776,19 @@ scrollbackBtnEl.addEventListener("click", (e) => {
   e.stopPropagation();
   scrollbackOpen() ? closeScrollback() : openScrollback();
 });
-document.getElementById("scrollback-close").addEventListener("click", closeScrollback);
-document.getElementById("scrollback-latest").addEventListener("click", () => {
-  scrollbackLinesEl.lastElementChild?.scrollIntoView({ block: "end", behavior: "smooth" });
-});
+document.getElementById("scrollback-latest").addEventListener("click", () => toLatest());
 
 scrollbackLinesEl.addEventListener("scroll", () => {
   if (scrollbackLinesEl.scrollTop < 200) pageBack();
 });
 
-// Click-away on the backdrop only. Not on a line: a miss between two words
-// inside the scrollback is a miss, not a request to close what is being read.
-scrollbackEl.addEventListener("click", (e) => {
-  if (e.target === scrollbackEl || e.target === scrollbackLinesEl) closeScrollback();
-});
+// Its own clicks stay inside it: it sits under the bar, and the document-level
+// dismiss below would otherwise close the popup a word in here has just opened.
+scrollbackEl.addEventListener("click", (e) => e.stopPropagation());
+
+// The wheel inside it scrolls it rather than reaching the game, and
+// `overscroll-behavior` keeps a scroll that hits the end from leaving.
+scrollbackEl.addEventListener("wheel", (e) => e.stopPropagation(), { passive: false });
 
 // The live line and the scrollback carry the same word spans, so they carry the
 // same handlers — not copies. A word is a word wherever it is drawn, and the
@@ -1319,15 +1336,12 @@ function report() {
   // words advances the VN from under an open popup. It is also far steadier —
   // one rect that changes when the line does, rather than a dozen that shift
   // by a pixel as the text reflows.
-  // Scrollback first, and on its own: it covers the screen, so while it is open
-  // the surface takes every click — which is the point. A panel the compositor
-  // does not know is there would let the game advance under the line being
-  // read.
-  if (scrollbackOpen()) {
-    shell.setHits([0, 0, window.innerWidth, window.innerHeight]);
-    return;
-  }
   const rects = [explainBoxEl.getBoundingClientRect()];
+  // Its own rectangle even though it is inside #explain-box: it is as wide as
+  // the line's column, which is wider than the box's max-width, and the part
+  // sticking out would take no clicks — they would land on the game and
+  // advance it under the panel being read.
+  if (scrollbackOpen()) rects.push(scrollbackEl.getBoundingClientRect());
   if (!boxEl.hidden) rects.push(lineEl.getBoundingClientRect());
   if (!popupEl.hidden) rects.push(popupEl.getBoundingClientRect());
   // Flat `x, y, w, h, ...` rather than nested: an array of arrays reaches Qt
@@ -1357,6 +1371,8 @@ window.addEventListener("resize", report);
  * sat before any of this. */
 function onGeometry(x, y, w, h) {
   game = w > 0 && h > 0 && !mobile ? { x, y, w, h } : null;
+  // The line's column moves with the game, and the panel is that column.
+  if (scrollbackOpen()) queueMicrotask(sizeScrollback);
   if (game) {
     root.setProperty("--game-x", `${x}px`);
     root.setProperty("--game-y", `${y}px`);
