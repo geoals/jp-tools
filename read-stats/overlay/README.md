@@ -86,8 +86,9 @@ opens and shuts it — nothing closes it on its own, so a
 button is never taken out from under the pointer reaching for it. Paused tints
 the handle, since that is the one state worth seeing while the bar is shut.
 
-**⚙ is three tabs**, because the questions are different. *Text* — size, line
-height, spacing, weight, backdrop, shadow strength and spread, colour, font.
+**⚙ is three tabs**, because the questions are different. *Text* — font size,
+line height, spacing, weight, backdrop, shadow strength and spread, colour,
+font.
 *Placement* — column width, phone size and the scale it uses. *Marks* — whether
 a status is painted and which, how strongly, the common-word threshold, and
 ghost mode. Pausing capture is under the tabs: it is the one action in the
@@ -95,13 +96,17 @@ panel rather than a setting.
 
 The shadow is centred on the glyphs rather than dropped below them — what it is
 for here is lifting the character off the artwork, not casting it in a
-direction.
+direction. Its strength is how many times it is drawn, not how opaque it is: a
+single blurred shadow spreads what it has over its whole radius, so full opacity
+is still faint and stacking is what darkens it.
 
 **The colour and the font are both in-page.** A layer surface has nowhere to
 open a native window, so neither the browser's colour picker nor a `<select>`
-would appear at all: the colour is hue, saturation and lightness sliders, and
-the font list is every Japanese-capable family `fc-list` reports, from
-`GET /api/reader/fonts`, each name drawn in its own face.
+would appear at all: the colour is hue, saturation and lightness sliders in
+one box, and the font list is every Japanese-capable family `fc-list` reports,
+from `GET /api/reader/fonts` — the name in the panel's own face, since a display
+font renders its own name too fine to pick out of a list, with あア亜 beside it
+as the sample.
 
 Most of it is stored in this browser, because it is about this screen — a phone
 reading the same overlay wants its own. The two every reading surface has to

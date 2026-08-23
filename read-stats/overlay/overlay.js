@@ -692,7 +692,7 @@ const TYPE_DEFAULTS = {
   tracking: 0,
   weight: 400,
   backdrop: Number(params.get("bg") ?? 0.82),
-  shadow: 0.9,
+  shadow: 2,
   shadowBlur: 3,
   // Empty means the launcher's `?font=`, left where overlay.js put it above.
   font: "",
@@ -727,9 +727,9 @@ const CONTROLS = {
   tracking: { id: "set-tracking", out: "out-tracking", fmt: (v) => `${v.toFixed(3)}em` },
   weight: { id: "set-weight", out: "out-weight", fmt: (v) => `${v}` },
   backdrop: { id: "set-backdrop", out: "out-backdrop", fmt: (v) => v.toFixed(2) },
-  shadow: { id: "set-shadow", out: "out-shadow", fmt: (v) => v.toFixed(2) },
+  shadow: { id: "set-shadow", out: "out-shadow", fmt: (v) => (v ? `${v}x` : "off") },
   shadowBlur: { id: "set-shadow-blur", out: "out-shadow-blur", fmt: (v) => `${v}px` },
-  hue: { id: "set-hue", out: null },
+  hue: { id: "set-hue", out: "out-hue", fmt: (v) => `${v}°` },
   sat: { id: "set-sat", out: "out-sat", fmt: (v) => `${v}%` },
   light: { id: "set-light", out: "out-light", fmt: (v) => `${v}%` },
   chars: { id: "set-chars", out: "out-chars", fmt: (v) => `${v}` },
@@ -775,9 +775,17 @@ function addFonts(families) {
   for (const family of ["", ...families]) {
     const btn = document.createElement("button");
     btn.value = family;
-    btn.textContent = family || "As launched";
-    // Each name set in its own face, so the list is the sample.
-    if (family) btn.style.fontFamily = `"${family}", sans-serif`;
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = family || "As launched";
+    btn.append(name);
+    if (family) {
+      const sample = document.createElement("span");
+      sample.className = "sample";
+      sample.textContent = "あア亜";
+      sample.style.fontFamily = `"${family}", sans-serif`;
+      btn.append(sample);
+    }
     fontBoxEl.append(btn);
     btn.addEventListener("click", () => {
       type = { ...type, font: family };
@@ -795,9 +803,18 @@ function applyType() {
   // Centred on the glyphs rather than dropped below them: this sits over
   // artwork, and what the shadow is for is lifting the character off whatever
   // is behind it, not casting it in a direction.
+  //
+  // Strength is how many times the same shadow is drawn, not how opaque it is.
+  // A single blurred shadow at full opacity is still faint — the blur spreads
+  // what it has over its whole radius — so opacity is the wrong knob and stacked
+  // copies are what actually darkens it.
+  const shade = `0 0 ${type.shadowBlur}px rgba(0, 0, 0, 1)`;
+  // Rounded: a value stored when this was an opacity is a fraction, and
+  // `Array` throws on one.
+  const layers = Math.max(0, Math.round(type.shadow));
   root.setProperty(
     "--line-shadow",
-    type.shadow > 0 ? `0 0 ${type.shadowBlur}px rgba(0, 0, 0, ${type.shadow})` : "none",
+    layers > 0 ? Array(layers).fill(shade).join(", ") : "none",
   );
   for (const [key, value] of Object.entries(type)) {
     const asVar = TYPE_VARS[key];
