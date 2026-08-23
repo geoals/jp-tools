@@ -212,6 +212,48 @@ def status_report():
         print(f"{'running' if probe() else 'stopped':>8}  {name}")
 
 
+def restart_command() -> int:
+    """`kotodex restart` from a terminal.
+
+    Handed to a running launcher when there is one: it supervises read-stats,
+    and a restart done behind its back looks like a crash for the three seconds
+    the port is closed — which it answers by starting a second one.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    from single_instance import SingleInstance
+
+    app = QApplication(sys.argv)  # noqa: F841 — QLocalSocket needs an app
+    instance = SingleInstance(SOCKET_NAME)
+    if instance.already_running():
+        instance.send("restart")
+        print("kotodex: asked the running launcher to restart everything")
+        return 0
+    return restart_components()
+
+
+def restart_components() -> int:
+    """Pick up new code in everything, whoever started it.
+
+    The launcher cannot do this by adopting: a component it adopted is one it
+    deliberately never touches, and the capture daemon is usually systemd's. So
+    an update has no way to become live short of knowing which of three things
+    started each piece — which is exactly what this hides.
+    """
+    steps = [
+        ("capture", [str(REPO / "vn-mine" / "kotodex-capture"), "restart"]),
+        ("read-stats", [str(REPO / "scripts" / "start-all.sh"), "restart", "read-stats"]),
+        ("overlay", [str(REPO / "read-stats" / "overlay" / "vn-overlay.sh"), "restart"]),
+    ]
+    failed = 0
+    for name, cmd in steps:
+        print(f"restarting {name}")
+        if subprocess.run(cmd, cwd=REPO).returncode != 0:
+            print(f"  {name} did not restart cleanly")
+            failed += 1
+    return 1 if failed else 0
+
+
 def main() -> int:
     args = sys.argv[1:]
     if args and args[0] == "status":
@@ -219,6 +261,8 @@ def main() -> int:
         return 0
     if args and args[0] == "doctor":
         return subprocess.run([str(REPO / "scripts" / "kotodex-doctor.sh")]).returncode
+    if args and args[0] == "restart":
+        return restart_command()
     if args and args[0] == "anki":
         # The field map lives in AnkiConfig, so the check is a Rust binary
         # rather than a second list of field names here.
@@ -258,9 +302,37 @@ def main() -> int:
             wait_for_read_stats(log)
 
     tray = Tray(app, kids, READ_STATS_URL, log)
-    instance.on_message(lambda msg: tray.show_overlay() if msg == "show" else None)
+
+    # Set while a restart is in flight, so the watchdog does not read the gap
+    # where read-stats' port is closed as a crash and start a second one.
+    restarting = {"until": 0.0}
+
+    def restart_here():
+        log("restarting everything")
+        restarting["until"] = time.time() + 60
+        restart_components()
+        # Adopted again on the way back: these are new processes, and the ones
+        # this launcher started are gone.
+        for child in kids:
+            child.proc = None
+            child.restarts = 0
+            child.failed = False
+            child.ensure(log)
+        restarting["until"] = 0.0
+        log("restarted")
+
+    def on_message(msg):
+        if msg == "restart":
+            restart_here()
+        else:
+            tray.show_overlay()
+
+    instance.on_message(on_message)
+    tray.restart_here = restart_here
 
     def tick():
+        if time.time() < restarting["until"]:
+            return
         if any(child.check(log) for child in kids):
             app.quit()
 

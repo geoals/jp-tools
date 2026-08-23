@@ -27,6 +27,9 @@ class Tray:
         self.url = read_stats_url
         self.log = log
         self.available = QSystemTrayIcon.isSystemTrayAvailable()
+        # Set by kotodex.main: the restart has to happen in the process that
+        # supervises the children, not beside it.
+        self.restart_here = None
         self.icon = None
         if not self.available:
             log("no system tray here — the overlay stays on screen; Ctrl-C to quit")
@@ -41,6 +44,7 @@ class Tray:
             ("Hide overlay", self.hide_overlay),
             ("Open reading stats", self.open_stats),
             ("Pause capture", self.toggle_capture),
+            ("Restart everything", self.restart),
             ("Doctor", self.doctor),
             ("Quit", self.app.quit),
         ):
@@ -100,6 +104,22 @@ class Tray:
     def _set_pause_label(self, paused: bool):
         if self.pause_action is not None:
             self.pause_action.setText("Resume capture" if paused else "Pause capture")
+
+    def restart(self):
+        """Pick up new code, whoever started each piece.
+
+        Adopting is the launcher's whole design and the reason this cannot be
+        done by quitting and reopening: a component it adopted is one it never
+        touches, and the capture daemon is usually systemd's.
+
+        Done in this process, not as a child: it is the one that supervises
+        read-stats, and the gap where the port is closed must not read as a
+        crash. `kotodex.main` sets the callback.
+        """
+        if self.restart_here is None:
+            self.log("nothing wired up to restart with")
+            return
+        self.restart_here()
 
     def doctor(self):
         script = REPO / "scripts" / "kotodex-doctor.sh"
