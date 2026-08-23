@@ -613,26 +613,34 @@
     overflow-y: auto;
     scrollbar-width: thin;
   }
-  #set-font button {
+  /* Rows are divs, not buttons: a button stays inline-level whatever `display`
+     says, and the list came out two names to a line. */
+  #set-font .row {
     overflow: hidden;
-    padding: 0.2rem 0.5rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    border: none;
+    padding: 0.25rem 0.5rem;
     border-radius: 5px;
-    background: none;
     color: #b9b9b9;
-    font: inherit;
-    font-size: 0.9rem;
-    text-align: left;
+    font-size: 0.95rem;
+    white-space: nowrap;
+    text-overflow: ellipsis;
     cursor: pointer;
+    user-select: none;
   }
-  #set-font button:hover {
+  #set-font .row:hover {
     background: rgba(255, 255, 255, 0.1);
   }
-  #set-font button.on {
+  #set-font .row.on {
     background: rgba(154, 140, 255, 0.55);
     color: #fff;
+  }
+  /* The name is read, so it is set in the panel's own face — a display font
+     renders its own name too fine to pick out of a list. The sample beside it
+     is what shows the face, at one width so the names line up. */
+  #set-font .sample {
+    display: inline-block;
+    width: 4rem;
+    font-size: 1.1rem;
+    color: #e6e6e6;
   }
 
   #explain-panel {
@@ -689,16 +697,16 @@
       <label for="set-leading">Line height</label>
       <input id="set-leading" type="range" min="1" max="3" step="0.02" />
       <output id="out-leading"></output>
-      <label for="set-tracking">Spacing</label>
+      <label for="set-tracking">Horizontal spacing</label>
       <input id="set-tracking" type="range" min="-0.05" max="0.3" step="0.005" />
       <output id="out-tracking"></output>
-      <label for="set-weight">Weight</label>
+      <label for="set-weight">Font weight</label>
       <input id="set-weight" type="range" min="200" max="900" step="100" />
       <output id="out-weight"></output>
       <label for="set-backdrop">Backdrop</label>
       <input id="set-backdrop" type="range" min="0" max="1" step="0.02" />
       <output id="out-backdrop"></output>
-      <label for="set-shadow">Shadow</label>
+      <label for="set-shadow">Shadow strength</label>
       <input id="set-shadow" type="range" min="0" max="6" step="1" />
       <output id="out-shadow"></output>
       <label for="set-shadow-blur">Shadow spread</label>
