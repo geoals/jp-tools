@@ -1,0 +1,40 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version for the tarball name
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  artifact:
+    # The tarball ships binaries, so it must be built against a glibc old
+    # enough for the distros in docs/compositors.md.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build the tarball
+        run: |
+          version="${{ inputs.version }}"
+          [ -n "$version" ] || version="${GITHUB_REF_NAME#v}"
+          scripts/build-release.sh "$version"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kotodex-tarball
+          path: target/release-artifact/*.tar.gz*
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" target/release-artifact/*.tar.gz target/release-artifact/*.sha256 --clobber
