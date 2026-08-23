@@ -66,5 +66,7 @@ find "$STAGE" -name '*.pyc' -delete
 
 say "packing"
 tar -C "$OUT" -czf "$OUT/$NAME.tar.gz" "$NAME"
-sha256sum "$OUT/$NAME.tar.gz" | tee "$OUT/$NAME.tar.gz.sha256"
+# From $OUT, so the file names the tarball and not this machine's paths:
+# `sha256sum -c` runs next to the download.
+(cd "$OUT" && sha256sum "$NAME.tar.gz" | tee "$NAME.tar.gz.sha256")
 printf '%s  %s\n' "$(du -h "$OUT/$NAME.tar.gz" | cut -f1)" "$OUT/$NAME.tar.gz"
