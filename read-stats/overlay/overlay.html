@@ -399,8 +399,11 @@
   #hide-btn,
   #settings-btn {
     flex: none;
-    min-width: 3rem;
-    padding: 0.45rem 0.9rem;
+    /* Square, and all one size: they sit in a row over the game, and a glyph
+       that happens to be wide must not make its button wider. */
+    width: 2.6rem;
+    height: 2.6rem;
+    padding: 0;
     border: none;
     border-radius: 8px;
     background: rgba(0, 0, 0, 0.82);

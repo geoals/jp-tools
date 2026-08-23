@@ -823,6 +823,15 @@ is what T5.1 was about, and none of the three is reached mid-line. Ghost mode
 itself is unchanged, `SIGUSR2` included. The handle is the size of a button and
 solid black where the buttons are translucent; the bar starts open.
 
+**A stored setting that changes shape is dropped, not merged.** The shell keeps
+localStorage across releases, and the shadow — a checkbox before, a strength now
+— came back as `true`, which threw the moment its readout was formatted. That
+took the whole module's setup with it, `report()` included, so the shell was
+never told where the page had drawn and *nothing on the overlay could be
+clicked*. Values are now taken key by key and only where the type still
+matches. The overlay's persistent profile is exactly why this is not a
+theoretical failure.
+
 **The toggle is the click, not the pointerup that ends the drag.** With the
 pointer captured a press does not reliably lift on the button it went down on,
 and the handle stopped answering; a drag that actually moved swallows the

@@ -742,9 +742,18 @@ const CONTROLS = {
 
 let type = { ...TYPE_DEFAULTS };
 try {
-  type = { ...type, ...JSON.parse(localStorage.getItem(TYPE) ?? "{}") };
+  const stored = JSON.parse(localStorage.getItem(TYPE) ?? "{}");
+  // Key by key, and only where the stored value is still the same kind of
+  // thing. The shell keeps localStorage across releases, so a setting that
+  // changes shape — the shadow was a checkbox and is a strength — arrives as
+  // the old kind and would throw the moment its readout is formatted, taking
+  // the rest of this file's setup with it: no input region, and an overlay
+  // nothing can be clicked on.
+  for (const [key, value] of Object.entries(stored)) {
+    if (key in TYPE_DEFAULTS && typeof value === typeof TYPE_DEFAULTS[key]) type[key] = value;
+  }
 } catch {
-  // Nothing stored, or stored by an older shape. Draw the line as measured.
+  // Nothing stored, or not JSON at all. Draw the line as measured.
 }
 
 const settingsBtnEl = document.getElementById("settings-btn");
