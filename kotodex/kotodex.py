@@ -215,6 +215,14 @@ def main() -> int:
         return 0
     if args and args[0] == "doctor":
         return subprocess.run([str(REPO / "scripts" / "kotodex-doctor.sh")]).returncode
+    if args and args[0] == "anki":
+        # The field map lives in AnkiConfig, so the check is a Rust binary
+        # rather than a second list of field names here.
+        binary = REPO / "target" / "release" / "anki-setup"
+        if not binary.is_file():
+            print(f"{binary} is missing — run setup.sh")
+            return 1
+        return subprocess.run([str(binary), *args[1:]]).returncode
 
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication

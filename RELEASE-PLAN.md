@@ -122,28 +122,27 @@ build on:
 
 ### T2.5 — Note type check and creation
 
-**Status:** blocked on open decision 1 (vendor Lapis or link to it) and on a
-fresh Anki profile to verify against.
+**Status:** done. `anki-setup` (in jp-mine-core, because that is where the field
+map is) reports one of: AnkiConnect not answering, note type absent, fields
+missing — naming which, listing what the note type does have, and the
+`JP_TOOLS_ANKI_FIELD_*` line to rename each — or ok. `kotodex anki check` and
+`setup.sh` both call it, and `setup.sh` offers `install-lapis` when the missing
+note type is Lapis.
 
-New: `kotodex anki check` (also called by the doctor and the installer). Probes
-AnkiConnect, then `modelNames` / `modelFieldNames`, and reports one of:
+**Lapis is downloaded, not vendored.** It is GPL-3.0, it moves, and
+AnkiConnect's `importPackage` takes an `.apkg` — so a copy here would be a
+second version to keep current for nothing. The release asset is resolved at
+run time.
 
-- note type present with every configured field → ok
-- present, fields missing → list exactly which, and the field map to fix
-- absent → offer creation from a bundled Lapis definition, or point at the
-  Lapis release deck
-
-Bundle the Lapis note type as `assets/lapis/` (templates + CSS) with its
-licence, or link to the upstream release deck. Vendoring is friendlier and needs
-an update path; linking is zero maintenance and one more manual step.
-
-**Verify:** against a fresh Anki profile with no Lapis: reports absent, creates
-it, second run reports ok. **Commit:** `anki: note type check and setup`.
+Verified: all three report paths, and the download half of `install-lapis`
+(release resolution, asset, 346 KB). **The `importPackage` call itself is
+unverified** — it writes to a live collection, so it wants a fresh profile.
 
 ### T2.6 — Live card round-trip
 
 **Status:** blocked — manual, needs a reading session and a fresh profile. This
-is where the `JP_TOOLS_ANKI_FIELD_*` map gets its first real mine.
+is where the `JP_TOOLS_ANKI_FIELD_*` map gets its first real mine, and where
+`anki-setup install-lapis` gets its only untested step exercised.
 
 Mine one card in each style into a scratch deck, and look at it: glossary
 renders, definitions page, pitch shows, image and audio attach, frequency sorts.
@@ -244,11 +243,8 @@ redistribution terms checked, and setup.sh says what is worth adding.
 
 ### T6.5 — Anki note type
 
-**Status:** half. `setup.sh` probes AnkiConnect and says plainly that mining is
-off until it answers. The note type check and Lapis creation wait on T2.5.
-
-**Verify:** all three cases (no Anki, Anki without Lapis, Anki with Lapis).
-**Commit:** `setup: anki note type`.
+**Status:** done with T2.5. `setup.sh` runs `anki-setup check`, prints its
+report, and offers the Lapis import when that is what is missing.
 
 ---
 
@@ -376,7 +372,7 @@ no second desktop entry, no second read-stats.
 
 # Task order
 
-T2.5 gates T6.5. T5.4 needs T5.5. Phase 7 needs 6; Phase 8 needs 7. T7.3
+T5.4 needs T5.5. Phase 7 needs 6; Phase 8 needs 7. T7.3
 (media) can start as soon as Phase 5 looks final.
 
 # Open decisions

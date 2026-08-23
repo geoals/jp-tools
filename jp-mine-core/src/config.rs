@@ -127,6 +127,30 @@ impl AnkiConfig {
             tags: Vec::new(),
         }
     }
+
+    /// Every field the exporter will write, as `(what it holds, its name on the
+    /// note type)`. A field left unset is not listed: an empty value means this
+    /// note type has no such field, and a check must not report it missing.
+    pub fn configured_fields(&self) -> Vec<(&'static str, &str)> {
+        [
+            ("headword", &self.field_vocab),
+            ("definition", &self.field_definition),
+            ("gloss", &self.field_compact_def),
+            ("sentence", &self.field_sentence),
+            ("image", &self.field_image),
+            ("audio", &self.field_audio),
+            ("source", &self.field_source),
+            ("furigana", &self.field_furigana),
+            ("reading", &self.field_reading),
+            ("pitch position", &self.field_pitch_num),
+            ("pitch pattern", &self.field_pitch_pattern),
+            ("frequency", &self.field_frequency),
+            ("frequency sort", &self.field_freq_sort),
+        ]
+        .into_iter()
+        .filter_map(|(what, name)| name.as_deref().map(|n| (what, n)))
+        .collect()
+    }
 }
 
 #[cfg(test)]

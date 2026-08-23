@@ -332,13 +332,20 @@ say "vocabulary scale, and a pitch-accent dictionary for the accent line."
 # -------------------------------------------------------------------- Anki --
 
 step "Anki"
-if curl -s --max-time 2 -X POST http://127.0.0.1:8765 \
-     -d '{"action":"version","version":6}' >/dev/null 2>&1; then
-  good "AnkiConnect is answering on 127.0.0.1:8765"
-  say "the note type check is not wired up yet — mine one card and look at it"
+ANKI_SETUP="$HERE/target/release/anki-setup"
+if [ "$DRY_RUN" = 1 ]; then
+  say "would run anki-setup check"
 else
-  skip "AnkiConnect is not answering — mining is off until it is"
-  say "install Anki, add the AnkiConnect add-on, leave Anki running, re-run setup.sh"
+  report="$("$ANKI_SETUP" check 2>&1)"; ok=$?
+  printf '%s\n' "$report" | sed 's/^/    /'
+  if [ "$ok" != 0 ]; then
+    if printf '%s' "$report" | grep -q "install-lapis" \
+       && confirm "Import the Lapis note type into Anki?"; then
+      "$ANKI_SETUP" install-lapis 2>&1 | sed 's/^/    /'
+    else
+      say "mining stays off until this is sorted; everything else works"
+    fi
+  fi
 fi
 
 # ------------------------------------------------------------------ extras --
