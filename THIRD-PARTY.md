@@ -7,11 +7,14 @@ terms. Three groups, because they arrive three different ways.
 
 | what | used for | licence |
 |---|---|---|
+| preact, htm, @preact/signals — `web-shared/vendor/` | the dashboards' front end | MIT |
 | KANJIDIC2 (via `davidluzgouveia/kanji-data`), reduced into `jp-core/src/text/kanji_data.rs` | school grade, stroke count and gloss per kanji | CC BY-SA 4.0 (Electronic Dictionary Research and Development Group) |
 | BCCWJ character-frequency list (NINJAL), reduced into `jp-core/src/text/bccwj_data.rs` | the kanji frequency yardstick | see NINJAL's terms for the frequency lists at <https://pj.ninjal.ac.jp/corpus_center/bccwj/freq-list.html> |
 
-Both are reductions, not copies: the generator script and the source URL are in
-the file header.
+The two tables are reductions, not copies: the generator script and the source
+URL are in each file's header. The vendored libraries are the npm ESM builds
+unmodified — see `web-shared/vendor/README.md` for versions and why they are
+not on a CDN.
 
 ## Downloaded by `setup.sh`
 
@@ -29,9 +32,6 @@ the file header.
 - **The Anki note type.** Cards are written into whichever note type is
   configured; Lapis is the default field map. Its templates and CSS are not
   vendored here.
-- **preact, htm and @preact/signals**, loaded from `esm.sh` by the dashboard's
-  import map (MIT). The overlay does not use them — it is vanilla DOM — so a
-  machine with no internet still reads.
 - **Rust crates**, resolved by Cargo; `cargo tree` and each crate's own
   metadata are the list. Almost all are MIT OR Apache-2.0.
 - **Python packages** for the optional services (`whisper-service`,
