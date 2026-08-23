@@ -292,21 +292,14 @@ vendored modules and the capability probe.
 
 ### T7.2 — README rewrite
 
-The root `README.md` opens with "Monorepo for Japanese language learning tools"
-and a project list, and is stale — it still places the overlay in `vn-mine/`.
+**Status:** done, apart from the media. Leads with what Kotodex is, what you
+get, the compositor requirement, three install lines, dictionaries, what
+degrades, and "also in this repository" for yt-mine and manga-mine, which are
+not in the release. The recording from T7.3 slots in under the first paragraph.
 
-New structure: what it is in one sentence → the recording → what you get
-(overlay, dictionary popup, Anki cards with the voiceline, optional reading
-stats) → requirements including the compositor sentence → install in three lines
-→ configuration → what degrades and how → "also in this repo" for yt-mine,
-manga-mine and the rest.
-
-Keep the repo named `jp-tools`; name the release after the product. Add GitHub
-topics: `japanese`, `visual-novel`, `anki`, `sentence-mining`, `texthooker`,
-`linux`, `wayland`.
-
-**Verify:** read it as someone who has never seen the project.
-**Commit:** `README: lead with the product`.
+Repository stays `jp-tools`; the release is named after the product. Still to
+do: GitHub topics — `japanese`, `visual-novel`, `anki`, `sentence-mining`,
+`texthooker`, `linux`, `wayland`.
 
 ### T7.3 — Screenshots and recording
 
