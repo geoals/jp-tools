@@ -1,7 +1,17 @@
 # Release plan — a shareable Linux VN reading overlay
 
-Product name: **Kotodex / コトデックス** (decided, T0.1). Everything below uses
-`kotodex` as the binary, desktop-entry id and tray name.
+Product name: **Kotodex / コトデックス**. `kotodex` is the binary, desktop-entry
+id and tray name. The crate, service and database names (`read-stats`,
+`read-stats.db`) do not change.
+
+| thing | value |
+|---|---|
+| launcher binary | `kotodex` |
+| desktop entry | `kotodex.desktop`, `Name=Kotodex` |
+| icon | `kotodex` in hicolor 48–512 + scalable SVG |
+| capture daemon | `kotodex-capture` |
+| install prefix | `~/.local/share/kotodex` (data), `~/.local/bin` (binaries) |
+| config file | `.env` in the install directory, mode 600 |
 
 ## What "done" means
 
@@ -12,19 +22,17 @@ On ~90% of current desktop Linux installs:
 3. Get an application entry with a name and an icon.
 4. Launch it → the capture daemon, the read-stats server and the overlay all
    come up. Launch it again → it detects the running instance and does nothing.
-5. The overlay has a close button (stops everything) and a minimise-to-tray
-   button.
+5. The tray owns show/hide and quit.
 6. Anything missing degrades to a smaller working product with one clear
    sentence saying what is off and the one command that turns it on.
 
 Non-goals for this release: whisper auto-setup, Windows/macOS, X11-only
-compositors older than the ones in T0.4, GNOME under Wayland if T0.4 says no.
+compositors older than the ones in `docs/compositors.md`.
 
 ## Ground rules
 
 - **Commit straight to `master`**, one commit per completed task, only when its
-  verification passes. Every task below is sized to be independently
-  committable without breaking the running setup.
+  verification passes.
 - **Never restart the live stack while a VN is being read.** Use
   `scripts/dev-instance.sh` (port 3299, copy of the data) for anything
   read-stats-side. Overlay/static changes need `vn-overlay.sh restart`.
@@ -36,891 +44,130 @@ compositors older than the ones in T0.4, GNOME under Wayland if T0.4 says no.
     cargo test -p jp-core --features test-support -- --ignored
   ```
 
-  It must stay green. The failure diff is the review — read it, and only then
-  regenerate with
+  The failure diff is the review — read it, and only then regenerate with
   `cargo run --release --example golden -p jp-core --features test-support -- <knowledge.db> jp-core/tests/golden/corpus.txt $PWD/system_full.dic`.
 - Prose in code and docs follows the repo's rules: plain English, say why not
   what, no history in comments.
 - A task that turns out bigger than its description gets split rather than
   stretched.
-- **This document is the live status, not a plan written once.** Every task
-  carries a status line — `**Status:** done (<commit>)`, `blocked (why)` or
-  nothing while it is untouched — updated in the same commit as the work.
-  A decision made, a fact learned or a task that turned out different is
-  written back here, and the open-decisions list at the end shrinks as they are
-  settled. If the document and the repo disagree, the document is wrong and
-  fixing it is part of the task.
+- **This document is the live status.** A task carries a status line only when
+  it is blocked or partly done; finished tasks leave this file and keep only
+  whatever fact the remaining work needs.
 
 ---
 
-# Phase 0 — Decisions and baselines
+# What is already in place
 
-No production code. Output is a decision record and two baselines that later
-phases diff against.
+Phases 0–3 are complete, along with the process model (Phase 4) and the overlay
+bar, settings panel and font list (T5.1–T5.3). What the remaining work has to
+build on:
 
-### T0.1 — Name, ids, paths
+- **Docs.** `docs/degradation.md` is the specification the installer and doctor
+  both implement. `docs/compositors.md` holds the compositor matrix.
+- **Compositors.** Layer-shell where the compositor has it, X11 always-on-top
+  otherwise, GNOME included. On GNOME the Qt process must run under
+  `QT_QPA_PLATFORM=xcb` — a native Wayland surface silently ignores the on-top
+  hint. `layer-overlay/backend.py` picks the backend before Qt starts;
+  `LAYER_OVERLAY_BACKEND` forces one.
+- **Dictionary roles.** No dictionary title appears in code except as an
+  installer default. `Frequency` and `Pitch` are roles; the master is optional
+  and falls back; `jp-dict import` guesses a role from what the zip holds and
+  `--role` overrides. Only a new row is guessed at, so a `set-role` survives a
+  sync.
+- **Cards.** `JP_TOOLS_ANKI_STYLE` = `lapis` (default) | `legacy`; both are
+  supported profiles, not a migration. `AnkiConfig::default()` is the Lapis
+  field map, and every name is overridable through `JP_TOOLS_ANKI_FIELD_*`,
+  which `vn-capture.sh` reads too. The live setup pins legacy in a gitignored
+  `.env`.
+- **Capabilities.** `read-stats/src/routes/reader/capabilities.rs` is the one
+  probe, served under `capabilities` on `/api/reader/state`; every row is
+  `{ok, detail, fix}`. The overlay draws only controls that can work.
+- **Platform.** `scripts/lib/platform.sh` maps distro → package manager and
+  carries per-distro package names. `scripts/kotodex-doctor.sh` is the doctor,
+  and the installer's closing summary must call it rather than reimplement it.
+- **Installer.** `setup.sh` — re-runnable, `--dry-run`, `--yes`, `--uninstall`.
+  It checks dependencies against `platform.sh`, downloads SudachiDict and the
+  silero VAD model, imports whatever is in `dictionaries/`, probes AnkiConnect,
+  stores an Anthropic key, calls `kotodex/install-entry.sh` and ends by running
+  the doctor. **The API key goes in `.env`, not `config.toml`** — that is the
+  file every crate already loads through dotenvy, and a second config format
+  would need plumbing in five places to buy nothing.
+- **Launcher.** `kotodex/kotodex.py` adopts-or-starts capture, read-stats and
+  the overlay, single-instances on a `QLocalServer` socket and owns the tray.
+  The overlay is a child and is deliberately unsupervised — the tray's Quit is
+  the only deliberate stop. `kotodex/install-entry.sh` installs the desktop
+  entry, icons and `~/.local/bin` symlinks, and `--uninstall` removes exactly
+  those.
+- **Overlay UI.** The bar is `☰ ℹ 👁 ⚙`, dragged by the handle; everything else
+  moved into a three-tab settings panel. Two constraints for anything new drawn
+  there:
+  - **A stored setting that changes shape is dropped, not merged.** The shell
+    keeps localStorage across releases, and one mistyped value took the whole
+    module's setup down — including `report()`, which left the overlay
+    unclickable.
+  - **QtWebEngine is the surface, and it is not this machine's Chromium.**
+    A flex column shrinks its rows instead of scrolling there. Check anything
+    new in a real view, not only in a browser.
 
-**Status:** done (46b9cde).
+## Left over from finished phases
 
-Decide and write down:
-
-| thing | proposal |
-|---|---|
-| product name | Kotodex (コトデックス) |
-| launcher binary | `kotodex` |
-| desktop entry | `kotodex.desktop`, `Name=Kotodex` |
-| icon | `kotodex` in hicolor 256/512 + scalable SVG |
-| capture daemon | `kotodex-capture` (was `vn-buffer`) |
-| install prefix | `~/.local/share/kotodex` (data), `~/.local/bin` (binaries) |
-| config file | `~/.config/kotodex/config.toml` |
-
-The crate, service and database names (`read-stats`, `read-stats.db`) do **not**
-change — same rule already in CLAUDE.md for コトデックス.
-
-**Decided.** Kotodex it is; the table above is the record. The crate, service
-and database names (`read-stats`, `read-stats.db`) do not change.
-
-**Verify:** decisions written into this file. **Commit:** `RELEASE-PLAN: name and paths`.
-
-### T0.2 — Tokenizer and card baselines
-
-**Status:** done (46b9cde); the golden fixtures were stale and were regenerated first (4118339).
-
-**Done.** Captured into the session scratchpad's `baseline/`:
-
-- `tests-before.txt` — the golden gate, green after regenerating the fixtures
-  for d3bb637 (the tokenizer baseline is the fixture, not a dumped file).
-- `anki-notes.json` — the 20 most recent mined notes, the field-by-field
-  baseline for Phase 2.
-- `dictionaries.txt` — the 10 live dictionary rows.
-
-The live roles, for Phase 1 to move: 1 三省堂 `master`; 6 明鏡, 7 小学館
-`standard`; 2 Jitendex, 3 NHK, 4 BCCWJ, 5 Jiten and the three `[Pitch]` zips
-(8, 9, 10) all `reference`. Jiten becomes `frequency`, BCCWJ the second
-`frequency`, and 3/8/9/10 become `pitch`.
-
-**Verify:** all three files non-empty. **Commit:** none (scratch).
-
-### T0.3 — Degradation matrix
-
-**Status:** done (d816320) — `docs/degradation.md`.
-
-Write `docs/degradation.md`: every optional component, what it gives, what
-happens without it, and the one command that installs it. This is the
-specification that Phase 3's capability probe and Phase 6's installer both
-implement, and the source text for the doctor's output.
-
-Rows to cover: pactl/ffmpeg, silero VAD model, SudachiDict, master dictionary,
-any definition dictionary, frequency dictionary, pitch dictionary, AnkiConnect,
-Anki note type + fields, screenshot tool, whisper, Anthropic key, xdotool,
-layer-shell vs X11 backend, Textractor WebSocket source vs clipboard.
-
-**Verify:** every row has all four columns filled. **Commit:** `docs: degradation matrix`.
-
-### T0.4 — Compositor spike (blocks the "90%" claim)
-
-**Status:** done — `docs/compositors.md`. GNOME Wayland **passes**: an
-always-on-top X11 window stays above a fullscreen XWayland one, and xdotool
-returns its geometry. The catch is that Qt must run under `QT_QPA_PLATFORM=xcb`
-— on a native Wayland surface the on-top hint is silently a no-op, which is
-what a first run of the probe measured and wrongly read as a GNOME failure.
-
-GNOME Xorg does not exist any more and KDE Xorg is not installed here, so those
-two rows are untestable rather than failing. Hyprland is still untested; it is
-wlroots, so layer-shell is expected to work. Click-through on GNOME is still
-unverified.
-
-The 90% claim stands and is not narrowed.
-
-Cheapest first: install `gnome-shell` alongside the current session on the real
-machine, log into GNOME Wayland, and test whether an X11 `_NET_WM_STATE_ABOVE`
-window stacks above a **fullscreen XWayland** window.
-
-Test target needs no VN: `mpv --gpu-context=x11 --fs`, `glxgears -fullscreen`,
-or any SDL app forced to x11. Test overlay: a 200x100 Qt window with
-`Qt.WindowStaysOnTopHint` and `setMask` for click-through.
-
-Record for each of GNOME Wayland, GNOME Xorg, KDE Wayland, KDE Xorg, Hyprland:
-
-- does the overlay stay above a fullscreen XWayland window?
-- does click-through via XShape work?
-- does `xdotool search --name … getwindowgeometry` return the game rectangle?
-
-**Decision gate:** if GNOME Wayland fails on stacking, the README says
-"KDE/wlroots for fullscreen, GNOME for windowed" and the 90% claim narrows to
-"90% of distros install and run; fullscreen overlay needs a layer-shell
-compositor". Do not soften this later — write whichever sentence the test
-supports.
-
-**Verify:** results table in `docs/compositors.md`. **Commit:** `docs: compositor support matrix`.
+- **T4.8 — X11 backend on GNOME.** Working here, unverified there. Log into
+  GNOME Wayland, run the overlay over a fullscreen game, and check it stays
+  above and that clicks land through it. KDE cannot test the stacking half:
+  KWin puts an active fullscreen window above keep-above ones.
 
 ---
 
-# Phase 1 — De-hardcode the dictionary set
-
-Goal: no dictionary title appears in code except as an installer default. Every
-consumer asks for a **role** and handles `None`.
-
-Order matters — T1.1 first, then each consumer, then the fallbacks.
-
-### T1.1 — Two new roles
-
-**Status:** done (c02cd8a).
-
-`jp-core/src/knowledge/dictionaries.rs`: add `Role::Frequency` and `Role::Pitch`
-to the enum, its `as_str`/`FromStr`, and `jp-dict set-role`'s accepted values.
-Neither counts toward the vocabulary scale; both count for the wordhood gate
-exactly as `Reference` does today.
-
-**Verify:** `cargo test -p jp-core`; `jp-dict list` prints the new roles;
-`jp-dict set-role <id> frequency` round-trips. **Commit:** `dictionaries: frequency and pitch roles`.
-
-### T1.2 — Reader frequency by role
-
-**Status:** done. `dictionaries::reader_frequency` is the resolver; the constant
-survives only as the installer's default. Live: Jiten is now `frequency`. The
-golden gate and the whole workspace test suite are green, and a dev instance
-with no frequency dictionary answers `"jiten": null` with nothing in the log —
-`read-stats/src/routes/vocab.rs` falls back to encounter ordering rather than
-erroring, which it used to do.
-
-Replace `READER_FREQUENCY` lookups with "the dictionary holding `Role::Frequency`,
-preferring the lowest id when several do". Call sites:
-`jp-core/src/highlight.rs:203`, `jp-core/src/define.rs:170`,
-`jp-core/examples/golden.rs:126`, `yt-mine/src/routes/api/mod.rs:700`,
-`manga-mine/src/routes/api.rs:695`, `read-stats/src/ingest.rs:262`.
-
-Keep the constant as the **installer's default assignment**, not a runtime
-lookup. `None` means: no underline in the overlay, no rank pill, no
-by-frequency ordering in the sweep — never an error.
-
-**Verify:** `jp-dict set-role 5 frequency` on the live set, `golden` diff empty
-against T0.2; then temporarily `set-role 5 reference` and confirm the overlay
-draws lines with no underlines and no crash, then set it back.
-**Commit:** `highlight, define: reader frequency by role`.
-
-### T1.3 — Corpus frequency pill by role
-
-**Status:** done. `Definition.jiten`/`.bccwj` are
-gone; the popup gets `frequencies: [{dictionary, rank}]`, one entry per
-`Role::Frequency` dictionary in id order, and draws no pill row when it is
-empty. The label is the dictionary's own title.
-
-Both pills are live, Jiten first, because `dictionaries.priority` decides who
-answers first — see the note under T1.4.
-
-`jp-core/src/define.rs:33` — `CORPUS_FREQUENCY` becomes "a second dictionary
-with `Role::Frequency`, if there is one". With one frequency dictionary the
-popup shows one pill; with none it shows no pill row at all.
-
-`web-shared/popup.js:402` currently hardcodes the two labels — take the label
-from the dictionary title instead.
-
-**Verify:** popup on a live word shows both pills unchanged; with BCCWJ set to
-`reference` it shows one. **Commit:** `define: second frequency pill by role`.
-
-### T1.4 — Popup ordering without a name list
-
-**Status:** done — `SECOND_PAGE` is gone, the sort keys on the role.
-
-**The live popup order changes**, which the task's own verify line did not
-expect: Jitendex used to be page two by name, and under roles the standard
-monolinguals take that place. It is now 三省堂 → 明鏡 → 小学館 → Jitendex. That
-is the ordering the role model implies — a bilingual dictionary after the
-monolinguals — but say so if you want Jitendex back at two, since the only way
-to get it there now is a role change.
-
-`jp-core/src/define.rs:38` — delete `SECOND_PAGE`. Order becomes: master first,
-then `Standard`, then everything else in install order. The `entries.is_empty()`
-filter at `define.rs:111` already excludes frequency and pitch dictionaries and
-stays as it is.
-
-**Verify:** popup page order on a word present in 3+ dictionaries matches what
-it was before for the live set. **Commit:** `define: order by role, not by name`.
-
-### T1.5 — Pitch by role
-
-**Status:** done. Pitch dictionaries are tried first, then anything else
-carrying accent rows, and no accent renders nothing rather than an empty slot.
-Live: NHK and the three `[Pitch]` zips now hold the role, and the popup's
-accents are byte-identical before and after.
-
-`jp-core/src/define.rs` currently takes pitch from whichever dictionary has
-accent rows. Make it explicit: prefer `Role::Pitch`, fall back to any dictionary
-with accent data, else `None` — and `None` renders no ♪ and no downstep rather
-than an empty slot.
-
-**Verify:** popup unchanged live; with NHK removed from the pitch role, the
-accent line disappears cleanly. **Commit:** `define: pitch by role`.
-
-### T1.6 — Master becomes optional
-
-**Status:** done. `ensure_master` falls back to the first `standard`
-monolingual, then the dictionary with the fewest headwords, then — before any
-entries have been counted — the first that could hold definitions at all. A
-config naming an uninstalled dictionary still leaves an existing master alone;
-the fallback is only for having none. Verified on a Jitendex-only copy of the
-database: it takes the master role and the whole corpus tokenizes sensibly.
-
-`ensure_master` keeps its marker argument. New fallback chain when the marker
-matches nothing: the highest-priority `Standard` present, else the dictionary
-with the fewest headwords (a monolingual is smaller than Jitendex), else no
-master at all.
-
-With no master: the vocabulary scale is not offered (Phase 3 hides it), the
-wordhood gate still answers from any dictionary, and segmentation uses whatever
-`Standard`/`Master` dictionaries exist — Jitendex over-joining included, which
-is the accepted behaviour per the design discussion.
-
-**Verify:** on a scratch `knowledge.db` with Jitendex only, `jp-dict list` shows
-it as master and tokenizing a test line returns sensible tokens.
-**Commit:** `dictionaries: master is optional`.
-
-### T1.7 — Roles assigned at import
-
-**Status:** done. The guess reads what the zip turned out to hold: term entries
-→ `reference`, frequency rows only → `frequency`, accent rows only → `pitch`.
-`--role` overrides and is rejected on a typo. Only a *new* row is guessed at, so
-a `set-role` decision survives every later sync. Master is left to
-`ensure_master` rather than guessed a second time.
-
-Verified by importing Jitendex, a frequency zip and a pitch zip into an empty
-database with no flags: `reference` / `frequency` / `pitch`, and Jitendex takes
-master through T1.6's fallback.
-
-`jp-dict import` guesses a role from what the zip contains: term entries →
-`Reference` (or `Master` if it is the first monolingual), frequency rows only →
-`Frequency`, accent rows only → `Pitch`. `--role` overrides.
-
-**Verify:** import Jitendex, a frequency zip and a pitch zip into a scratch db;
-all three land in the right role with no flags. **Commit:** `jp-dict: guess role at import`.
-
----
-
-# Phase 2 — Card authoring and Lapis
-
-Depends on Phase 1 (role-based dictionary selection).
-
-### T2.1 — Kill the card dictionary allowlist
-
-**Status:** done, folded into T2.2 — the two could not be separated. Dropping
-the allowlist outright rewrites the live card's markup, because the class name
-is deliberately *not* the title's slug: the legacy note type's CSS is written
-against `.dict-jitendex-body`, and Jitendex's title carries a release date. So
-the allowlist survives as the **legacy style's** table, which is what "legacy"
-means, and the Lapis style takes every dictionary holding a definition.
-
-The silent failure is fixed where it can be: under Lapis, 明鏡 now reaches the
-card. Under legacy it still cannot — its CSS has no rules to render it with,
-which is the reason for T2.7.
-
-`jp-mine-core/src/card.rs:32` — delete `CARD_DICTIONARIES`. `card_class`
-becomes `jp_core::dictionary::css_slug(title)`. The filter for which
-dictionaries reach the card becomes the same `entries.is_empty()` rule the
-popup uses at `define.rs:111`, so frequency and pitch dictionaries exclude
-themselves.
-
-**This is a silent-failure bug fix**, not only a refactor: today any dictionary
-outside the two-entry list is dropped from `VocabDefFull` with no error.
-
-**Verify:** export one card with the live dictionary set and diff its
-`VocabDefFull` against the T0.2 baseline — must be byte-identical for Sankoku
-and Jitendex. Then set a third dictionary to a definition role and confirm it
-appears. **Commit:** `card: every definition dictionary reaches the card`.
-
-### T2.2 — Card style profiles
-
-**Status:** done. `JP_TOOLS_ANKI_STYLE=legacy` is set in `.env`, which is
-gitignored — the local, opt-in pin, so nothing about the live setup moves while
-the default for everyone else is Lapis.
-
-Add `JP_TOOLS_ANKI_STYLE` = `lapis` (default) | `legacy`.
-
-- `legacy` — today's `dict_block`: `.dict-{slug}-title` / `.dict-{slug}-body`
-  wrappers around `.yomitan-glossary`. The nesting is load-bearing for the
-  existing note type's CSS and must not change.
-- `lapis` — the `.yomitan-glossary` block alone, no wrappers, one per
-  dictionary in popup order. Lapis styles Yomitan's markup directly.
-
-Set `JP_TOOLS_ANKI_STYLE=legacy` in the user's own environment in the same
-commit, so live behaviour is unchanged.
-
-**Verify:** unit test asserting both shapes; live export still legacy and
-identical to baseline. **Commit:** `card: lapis and legacy glossary styles`.
-
-### T2.3 — Lapis field defaults
-
-**Status:** done. `AnkiConfig::default()` is Lapis; `field_reading` and
-`field_freq_sort` are new and are written by `export`, the reading taken out of
-the furigana's brackets rather than plumbed through a second time. The existing
-note type's names are pinned in `.env` — every field, including the five that
-used to rely on the defaults — so nothing about the live export moves. An empty
-value means "this note type has no such field", which is how `ExpressionReading`
-and `FreqSort` stay off it.
-
-`jp-mine-core/src/config.rs` — `AnkiConfig::default()` becomes the Lapis map:
-
-| field | Lapis |
-|---|---|
-| model / deck | `Lapis` / `Japanese` |
-| vocab | `Expression` |
-| definition | `Glossary` |
-| compact_def | `MainDefinition` |
-| sentence | `Sentence` |
-| image | `Picture` |
-| audio | `SentenceAudio` |
-| source | `MiscInfo` |
-| furigana | `ExpressionFurigana` |
-| pitch_num / pitch_pattern | `PitchPosition` / `PitchCategories` |
-| frequency | `Frequency` |
-
-Add two fields: `field_reading` → `ExpressionReading`, `field_freq_sort` →
-`FreqSort` (the reader-frequency rank as a plain integer). All four
-`Is…Card` selectors stay empty — blank gives plain word-front vocab cards.
-
-Write the user's current names into their environment in the same commit.
-
-**Verify:** `AnkiConfig::from_env()` with the user's env reproduces the old
-config exactly (unit test); with a clean env it produces Lapis.
-**Commit:** `anki: lapis field defaults`.
-
-### T2.4 — vn-capture.sh reads the field map
-
-**Status:** done. The four names come from `JP_TOOLS_ANKI_FIELD_*` with Lapis
-defaults, and `ANKI_CONNECT_URL` from `JP_TOOLS_ANKI_URL`. The script also reads
-`.env` itself: read-stats inherits its environment to the script, but a hotkey
-run has no parent to inherit from, and the two paths must not disagree about
-which field holds the sentence. Parsing the live `.env` yields VocabKanji /
-SentKanji / Image / SentAudio, unchanged.
-
-Not yet exercised against a real mine — no VN session has run since. That is
-T2.6's job.
-
-`vn-mine/vn-capture.sh:337,338,408,410` hardcode `VocabKanji`, `SentKanji`,
-`Image`, `SentAudio`. Read them from `JP_TOOLS_ANKI_FIELD_*` with the same
-defaults as the Rust side.
-
-**Verify:** mine one card from the overlay with legacy env — image and audio
-attach as before. **Commit:** `vn-capture: field names from the environment`.
+# Phase 2 remainder — Anki setup
 
 ### T2.5 — Note type check and creation
 
-**Status:** blocked. It hangs off a `kotodex` binary that Phase 4 creates, and
-on open decision 4 — vendor the Lapis note type or link to its release deck.
-Verifying it needs a fresh Anki profile.
+**Status:** blocked on open decision 1 (vendor Lapis or link to it) and on a
+fresh Anki profile to verify against.
 
 New: `kotodex anki check` (also called by the doctor and the installer). Probes
 AnkiConnect, then `modelNames` / `modelFieldNames`, and reports one of:
 
 - note type present with every configured field → ok
 - present, fields missing → list exactly which, and the field map to fix
-- absent → offer `modelNames`-based creation from a bundled Lapis definition,
-  or point at the Lapis release deck
+- absent → offer creation from a bundled Lapis definition, or point at the
+  Lapis release deck
 
 Bundle the Lapis note type as `assets/lapis/` (templates + CSS) with its
-licence, or — decide in this task — link to the upstream release deck instead
-of vendoring. Vendoring is friendlier and needs an update path; linking is
-zero maintenance and one more manual step.
+licence, or link to the upstream release deck. Vendoring is friendlier and needs
+an update path; linking is zero maintenance and one more manual step.
 
 **Verify:** against a fresh Anki profile with no Lapis: reports absent, creates
 it, second run reports ok. **Commit:** `anki: note type check and setup`.
 
 ### T2.6 — Live card round-trip
 
-**Status:** blocked — manual, and needs a reading session and a fresh profile.
-This is where T2.4's field map gets its first real mine.
+**Status:** blocked — manual, needs a reading session and a fresh profile. This
+is where the `JP_TOOLS_ANKI_FIELD_*` map gets its first real mine.
 
-Mine one card in each style into a scratch deck on a fresh profile, and look at
-it: glossary renders, definitions page, pitch shows, image and audio attach,
-frequency sorts.
+Mine one card in each style into a scratch deck, and look at it: glossary
+renders, definitions page, pitch shows, image and audio attach, frequency sorts.
 
 **Verify:** manual, screenshots into `docs/`. **Commit:** none (validation).
 
-### T2.7 — Legacy is a supported style, not a migration
-
-**Status:** decided, no code change. The task was written expecting the personal
-note type to be converted to Lapis field names. It is not being converted: the
-note type stays, and `JP_TOOLS_ANKI_FIELD_*` is what makes any naming work, so
-renaming the fields to match Lapis would buy nothing and cost a reconfiguration
-of Yomitan's own field mapping — which is where the VN cards are authored.
-
-`JP_TOOLS_ANKI_STYLE=legacy` is about markup, not names, and stays for the same
-reason: the note type's CSS descends through `.dict-{slug}-title` /
-`.dict-{slug}-body`, exactly the wrappers the Lapis style strips.
-
-**So the `legacy` branch in `card.rs` is not deleted.** Both styles are
-supported profiles selected by the environment, which is what a shareable
-release needs anyway — Lapis for a new user, legacy for a note type that
-already has CSS written against it.
-
-Optional, and the only thing this task can still gain: `field_reading` and
-`field_freq_sort` are outputs the exporter writes that the personal note type
-has no field for. `FreqSort` is the reader-frequency rank as a plain integer,
-which is what makes new-card ordering by frequency possible in Anki. Adding two
-fields under any names and pointing `JP_TOOLS_ANKI_FIELD_READING` and
-`JP_TOOLS_ANKI_FIELD_FREQ_SORT` at them is all it takes.
-
-**Verify:** none needed. **Commit:** none.
-
 ---
 
-# Phase 3 — Capabilities, degradation, doctor
-
-### T3.1 — One capability probe
-
-**Status:** done — `read-stats/src/routes/reader/capabilities.rs`, served under
-`capabilities` on `/api/reader/state` and cached for ten seconds. Every row is
-`{ok, detail, fix}`: `detail` is for the surfaces, `fix` is the sentence from
-`docs/degradation.md` for the doctor. The old `trim_available` now reads off the
-whisper row rather than probing twice.
-
-Verified against the dev instance with Anki and whisper down: both report off
-with their fix line, nothing errors.
-
-Extend `read-stats/src/routes/reader/state.rs` from 6 keys to the full
-degradation matrix. One struct, one JSON object, probed with short timeouts and
-cached briefly. Keys at least:
-
-`capture_running`, `lines_source` (ws | clipboard | db), `vad_model`,
-`screenshot_tool`, `anki`, `anki_note_type`, `whisper`, `explain`,
-`dict_definitions` (count), `dict_frequency`, `dict_pitch`, `dict_master`,
-`vocabulary_ledger` (row count), `xdotool`, `overlay_backend`.
-
-Each value is enough for the client to decide whether to draw a control, and
-carries the fix sentence from `docs/degradation.md` for the doctor to print.
-
-**Verify:** `curl localhost:3299/api/reader/state | jq` against the dev instance
-with pieces disabled one at a time. **Commit:** `reader: one capability probe`.
-
-### T3.2 — The overlay honours capabilities
-
-**Status:** done. The overlay reads `capabilities` on open: no ℹ without an API
-key, no ＋ in the popup without AnkiConnect, no underline without a frequency
-dictionary, and `#warn` names a missing line source. `popup.js` gained
-`setMining(on)` and draws no ＋ when a host passes no `mine` — the same shape
-`mined` and `audio` already had, so yt-mine is unaffected.
-
-The ♪ is not gated: nothing probes the Local Audio Server yet. It already
-hides itself when no clip is found, so it is a button that disappears rather
-than one that fails.
-
-`read-stats/overlay/overlay.js` — a control that cannot work is not drawn:
-no ℹ without an API key, no mine without AnkiConnect, no ♪ without a pitch or
-audio source, no status tints without a ledger, no underline without a
-frequency dictionary. The `#warn` line already exists for the one failure that
-is invisible; extend it to name a missing capture source.
-
-**Verify:** load the overlay against a dev instance with each capability forced
-off; no dead buttons, no console errors. **Commit:** `overlay: draw only what works`.
-
-### T3.3 — Status painting is opt-in
-
-**Status:** done, as a setting plus a fact. `highlight_status` defaults on, and
-an empty ledger paints nothing regardless — so a fresh install reads as plain
-text without being told to, and the setting is the explicit switch. Spans stay
-in place either way; they are the click targets.
-
-A setting (server-side, see T5.7) `highlight_status` defaulting **off** for a
-fresh install and **on** where the ledger already has rows. Off means spans are
-still computed — they are the click targets — but carry no status class.
-
-**Verify:** toggle it on the dev instance; spans stay clickable both ways.
-**Commit:** `overlay: status highlighting is opt-in`.
-
-### T3.4 — Empty-database states
-
-**Status:** done, and it was mostly already there. Against empty copies of both
-databases every endpoint answers 200 with nothing in the log, and the kanji
-grid, vocabulary curve, library, work triage, mined list and both trend charts
-each say what would fill them.
-
-One real gap, now fixed: Trends' day-by-day table drew a fortnight of dashes —
-the shape of a table with nothing in it. It says "No reading recorded yet."
-instead.
-
-Two stale assertions in `dev-instance.sh browser` were fixed on the way: it
-looked for kanji text that has since been reworded, and for "pause capture"
-when the frozen copy had capture already paused, so the button read "resume
-capture".
-
-Every dashboard surface that assumes data: kanji grid, vocabulary curve, work
-triage, mined list, timeline. Each gets an empty state saying what would fill
-it. Nothing renders a zeroed chart.
-
-**Verify:** point a dev instance at an empty copy of the databases and click
-every tab. **Commit:** `read-stats: empty states`.
-
-### T3.5 — Distro and package-manager detection
-
-**Status:** done — `scripts/lib/platform.sh`, with
-`scripts/lib/platform-test.sh` running it against a faked `/etc/os-release` for
-nine distro families. Unrecognised ones fall back to whichever manager is on
-`PATH`. Package names are a table, not a guess: `pyside6` is `python-pyside6`
-here and `python3-pyside6.qtwebengine` on Debian.
-
-Small shared shell library `scripts/lib/platform.sh`: reads `/etc/os-release`
-`ID` and `ID_LIKE`, maps to pacman / apt / dnf / zypper / apk / xbps / nix, and
-exposes `pkg_install_cmd <generic-name>` returning a paste-able command. Carries
-the per-distro package names for: ffmpeg, jq, curl, xdotool, PySide6,
-qt6-webengine, layer-shell-qt, grim/spectacle/gnome-screenshot, python.
-
-**Verify:** unit-ish test with faked `/etc/os-release` for each distro.
-**Commit:** `scripts: distro and package manager detection`.
-
-### T3.6 — `kotodex doctor`
-
-**Status:** done as `scripts/kotodex-doctor.sh`, which Phase 4's `kotodex
-doctor` will call rather than reimplement. Rows come from read-stats' capability
-probe; the ones that are about a missing command come from `platform.sh`, so
-each prints an install line for *this* distro. Exit 0 when the core works —
-curl, jq, SudachiDict, read-stats answering, and at least one definition
-dictionary. Everything else prints and is forgiven.
-
-Verified green against a dev instance, and in a stripped environment where it
-still reports rather than crashing: it resolves its own path through bash
-expansion instead of `readlink`, because it is the one script that has to
-survive a system missing what it is about to report as missing.
-
-One command, human-readable output, exit 0 if the core works. Sections: capture,
-dictionaries, Anki, overlay, optional extras. Every failing row prints the fix
-command from T3.5. The whisper row says what it would add and that it is not
-set up automatically in this release.
-
-The installer's closing summary is this same code path — one implementation.
-
-**Verify:** run on the live machine (everything green) and inside a container
-with nothing installed (everything red, no crash, useful text).
-**Commit:** `kotodex: doctor`.
-
----
-
-# Phase 4 — Process model, launcher, tray
-
-### T4.1 — Rename the capture daemon
-
-**Status:** done. `vn-mine/kotodex-capture` and `kotodex-capture.service`;
-`vn-buffer.sh` stays as a one-line shim that execs the new name, so an installed
-`vn-buffer.service` naming the old path keeps working. Docs swept: both READMEs,
-`vn-capture.sh`'s messages, `vn-ws-logger.py`'s comment and root `CLAUDE.md`.
-
-`vn-mine/vn-buffer.sh` → `kotodex-capture`, `vn-buffer.service` →
-`kotodex-capture.service`. Keep a `vn-buffer.sh` shim that execs the new name
-for one release. Update `vn-mine/README.md`, root `CLAUDE.md`, and the memory
-note about restarting via vn-buffer.
-
-**Verify:** `kotodex-capture restart` works; lines still arrive.
-**Commit:** `vn-mine: rename vn-buffer to kotodex-capture`.
-
-### T4.2 — Remove hardcoded paths from the unit
-
-**Status:** done. **Decided: both, not either.** `ExecStart` is
-`%h/.local/bin/kotodex-capture run` — no checkout path in it — and the unit
-stays supported, because a systemd-managed daemon is what an existing install
-already has and it survives a crashed supervisor. T4.3's adopt-or-start is what
-makes the two coexist: the supervisor starts a daemon only when nothing is
-already recording.
-
-Running from a checkout is one symlink, which the README now names.
-
-`vn-mine/vn-buffer.service:6` is `ExecStart=%h/git/jp-tools/vn-mine/vn-buffer.sh run`
-— an absolute assumption about where the repo is cloned. The unit is generated
-by the installer from a template, or dropped entirely in favour of the
-supervisor (T4.3) owning the daemon.
-
-**Decide in this task:** systemd unit or supervisor child. Supervisor child is
-simpler to reason about and makes "close stops everything" exact; the unit
-survives a crashed supervisor. Recommendation: supervisor child, with
-`Restart=on-failure` behaviour reimplemented in the supervisor.
-
-**Verify:** fresh checkout in a different directory starts correctly.
-**Commit:** `kotodex-capture: no hardcoded install path`.
-
-### T4.3 — The supervisor
-
-**Status:** done, verified on a live desktop. Two defects were found by
-running it. `start-all.sh` and `vn-overlay.sh` launch the real process and
-return 0, so a child now knows whether its start command *is* the component or
-merely starts it — for the latter, liveness is the probe and the exit status
-says nothing. And the overlay is no longer supervised at all: the tray shows and
-hides it, so it being gone is a state the user chose. `kotodex/kotodex.py`:
-adopt-or-start each of capture, read-stats and overlay; start in that order,
-waiting for `/api/reader/state`; stop in reverse; restart a child that exits
-non-zero with a backoff and give up after three, naming it.
-
-**Decided against the plan's recommendation on one point:** the Qt process is
-the *launcher*, not the overlay. The overlay is a QML layer surface and the tray
-needs widgets; merging them buys nothing and risks a piece that already works.
-The overlay stays a child.
-
-`kotodex status` and `kotodex doctor` run headless and work.
-
-New `kotodex` launcher. Responsibilities:
-
-- **adopt-or-start** each component: if something is already listening on the
-  read-stats port, adopt it and do not start a second; same for the capture
-  daemon and the overlay. This is what makes it coexist with `start-all.sh`
-  and with the user's existing setup.
-- start order: capture daemon → read-stats (wait for `/api/reader/state`) →
-  overlay.
-- stop order: reverse, with a grace period, then SIGKILL.
-- restart a child that exits unexpectedly, with backoff; give up loudly after
-  three failures and say which component.
-
-Language: Python, same process as the Qt shell (T4.4/T4.5 need Qt anyway), or a
-bash supervisor with the Qt shell as a child. **Recommendation: the Qt process
-is the app** — it owns the tray, the single-instance socket and the children,
-so "close" is one process exiting.
-
-**Verify:** `kotodex` from a clean state starts all three; with read-stats
-already running from `start-all.sh` it adopts it and says so.
-**Commit:** `kotodex: supervisor`.
-
-### T4.4 — Single instance
-
-**Status:** done, verified. `QLocalServer` on `kotodex`, second launch
-sends `show` and exits 0 with no error. A socket left by a SIGKILLed process is
-removed only after the probe connect fails, which is the one moment it is safe
-to remove.
-
-`QLocalServer` socket in `$XDG_RUNTIME_DIR/kotodex.sock`. Second launch connects,
-sends `show`, and exits 0 without printing an error. A stale socket from a
-crashed process is detected and replaced.
-
-**Verify:** launch from the desktop entry twice — second launch raises the
-overlay and starts nothing. Kill -9 the first, launch again — no stale-socket
-failure. **Commit:** `kotodex: single instance`.
-
-### T4.5 — Tray icon
-
-**Status:** done, verified. "Pause capture" flips to "Resume capture", read
-back from `/api/settings` each time the menu opens — the overlay's own ⏸ changes
-the same setting behind the tray's back. Menu: show/hide overlay, open reading stats,
-pause capture, doctor, quit. When `isSystemTrayAvailable()` is false it says so
-once and leaves the overlay on screen rather than hiding it — the GNOME case.
-The tooltip names anything that was adopted, since those are what quitting
-deliberately leaves running.
-
-`QSystemTrayIcon` owned by the Qt process, so it outlives the overlay window
-being hidden. Menu: Show/Hide overlay, Open reading stats (opens
-`http://localhost:3200` in the browser), Pause capture, Doctor, Quit.
-
-Note the failure mode: GNOME has no tray by default (needs the AppIndicator
-extension). Detect and, when there is no tray, say so once at startup and keep
-a visible minimise-to-corner state in the overlay instead of hiding entirely.
-
-**Verify:** tray appears on KDE; on GNOME without the extension the fallback
-path leaves the overlay reachable. **Commit:** `kotodex: tray icon`.
-
-### T4.6 — Close and minimise buttons in the overlay
-
-**Status:** withdrawn. The buttons were built and then removed: with a tray
-icon, a close and a minimise in the overlay are a second way to do what the
-tray already does, and the two looked identical in use because an adopted
-overlay is deliberately never read as a quit signal.
-
-`shell.minimise()` and `shell.quit()` stay on `layer-overlay` — they are
-generic slots a page over a layer surface may want, and nothing in the overlay
-calls them now.
-
-**Consequence for T4.3:** close-is-an-exit-code is gone as a mechanism. The
-tray's Quit is the only deliberate stop, and the overlay is unsupervised.
-**Consequence for T5.1:** the expanded bar loses two buttons, seven not nine.
-
-### T4.7 — Desktop entry and icon
-
-**Status:** done, installed and launched. `kotodex/kotodex.svg` exported to 48–512
-PNG, `kotodex.desktop` (validated by `desktop-file-validate`), and
-`kotodex/install-entry.sh` to put both under `~/.local` along with symlinks for
-`kotodex` and `kotodex-capture`. `--uninstall` removes exactly those and says
-the databases were untouched.
-
-Icon: a simple SVG, exported to 48/64/128/256/512 PNG into hicolor. Desktop
-entry with `Name`, `Comment`, `Icon=kotodex`, `Exec=kotodex`, `Categories=Education;Languages;`,
-`StartupWMClass` set so the tray/window associates correctly.
-
-**Verify:** entry appears in the application menu after
-`update-desktop-database`; launching from it works with no terminal.
-**Commit:** `kotodex: desktop entry and icon`.
-
-### T4.8 — X11 overlay backend
-
-**Status:** done on this machine, **unverified on GNOME**.
-`layer-overlay/backend.py` picks the backend before Qt starts — it has to, since
-the choice is the platform plugin — and prints which and why.
-`LAYER_OVERLAY_BACKEND` forces either. `kotodex doctor` runs that same code
-rather than repeating its rules, and both backends now report as working.
-
-Two things the layer-shell path got for free and the X11 one did not:
-
-- `QWindow.setMask` sets the **bounding** shape under X11, which clips what the
-  window draws rather than passing clicks through. `layer-overlay/xshape.py`
-  sets `ShapeInput` through libXext instead. Verified by querying the window:
-  the input shape holds exactly the reported hit rectangles and the bounding
-  shape is whole.
-- The surface does not start at the screen origin — a window manager shrinks it
-  to the work area, and neither fullscreen nor override-redirect wins it back
-  (override-redirect also maps at the bottom of the stack). The tracked window
-  is translated into surface coordinates, which is identity under layer-shell.
-
-Forcing the X11 backend on KDE shows it **below** the game: KWin puts an active
-fullscreen window above keep-above ones. That is not a defect — KDE has
-layer-shell — but it means the stacking half cannot be verified here, only on
-GNOME, where T0.4 measured it working.
-
-**Left for you:** log into GNOME Wayland, run the overlay over a fullscreen
-game, and check it stays above and that clicks land through it.
-
-**Verify:** the T0.4 test matrix, re-run against the real overlay.
-**Commit:** `layer-overlay: X11 backend`.
-
-
-
----
-
-# Phase 5 — Overlay UX
-
-### T5.1 — Button bar rework
-
-**Status:** done. ☰ is the whole bar shut, and it is what the widget is dragged
-by — the drag moved off the explain button, which is now an ordinary button. The
-buttons open in a row to its right. Paused tints the handle.
-
-**Nothing shuts the bar but the handle.** The plan's click-away and timeout were
-built and taken back out: a bar that closes itself takes the button out from
-under the pointer reaching for it.
-
-**No keyboard shortcuts.** They were built and removed — not wanted yet. Worth
-knowing when they come back: the layer surface takes the keyboard `OnDemand`, so
-the game keeps every key until the overlay is clicked, and a global hotkey is
-not available from this page at all.
-
-Two defects found on the way: `applyCapabilities` hid the whole `#explain-box`
-without an API key, which now takes the bar with it — it hides the ℹ button
-instead; and the QWebChannel callback still set `minBtnEl`/`closeBtnEl`, removed
-with T4.6, which threw before `report()`.
-
-Today: six always-visible buttons (`ℹ 👁 あ ⤢ ⚙ ⏸`) in one row at top-left.
-Six is already too many over a game, and the scrollback panel adds a seventh.
-
-The bar's tooltips are drawn by the page (`[data-tip]` in `overlay.html`), not
-by `title`: QtWebEngine's native tooltip is a separate surface the layer shell
-does not place, and it wraps to a width nothing in the page can set.
-
-Design: one small draggable handle. Click expands the bar; it collapses on
-click-away or after a timeout. Grouping:
-
-- always visible when collapsed: the handle, and the pause state if paused
-- expanded: explain, hide line, ghost, scrollback, settings, pause, mobile
-
-**Verify:** every existing action still reachable; the bar does not cover the
-line at any scale. **Commit:** `overlay: collapsible button bar`.
-
-### T5.2 — Settings panel: tabs and new settings
-
-**Status:** done, three tabs rather than four. **The bar is down to ☰ ℹ 👁 ⚙**:
-ghost, phone size and pause all moved into the panel — six buttons over a game
-is what T5.1 was about, and none of the three is reached mid-line. Ghost mode
-itself is unchanged, `SIGUSR2` included. The handle is the size of a button and
-solid black where the buttons are translucent; the bar starts open.
-
-**A stored setting that changes shape is dropped, not merged.** The shell keeps
-localStorage across releases, and the shadow — a checkbox before, a strength now
-— came back as `true`, which threw the moment its readout was formatted. That
-took the whole module's setup with it, `report()` included, so the shell was
-never told where the page had drawn and *nothing on the overlay could be
-clicked*. Values are now taken key by key and only where the type still
-matches. The overlay's persistent profile is exactly why this is not a
-theoretical failure.
-
-**The toggle is the click, not the pointerup that ends the drag.** With the
-pointer captured a press does not reliably lift on the button it went down on,
-and the handle stopped answering; a drag that actually moved swallows the
-click that follows it.
-
-Text: size, line height, spacing, weight, backdrop, shadow strength and spread,
-colour, font. Placement: column width, phone size and its scale. Marks: status
-painting on/off, which of the three statuses, tint strength, the common-word
-threshold, ghost. Pausing capture sits under the tabs, being the one action
-rather than a setting.
-
-**The shadow is centred on the glyphs**, not offset — over artwork it is there
-to lift the character off what is behind it.
-
-**Both pickers are in-page.** A layer surface has nowhere to open a native
-window, so the colour is hue/saturation/lightness sliders rather than the
-browser's picker, for the same reason the font list is not a `<select>`.
-
-**No reset button.** Every control shows its own value and moves back.
-
-**QtWebEngine is the surface, and it is not the Chromium on this machine.**
-`layer-overlay/`'s view rendered the font list as thirty slivers a few pixels
-tall: a flex column shrinks its rows to the box's height instead of scrolling,
-which a shorter list never shows. Rows are plain block divs now — a `<button>`
-stays inline-level there whatever `display` says. Anything drawn in the panel is
-worth checking in a real QtWebEngine view, not only in a browser.
-
-Status painting and the underline rank are written back to read-stats through
-`PUT /api/settings` — they are claims `#read` makes too. Everything else is
-about this screen and stays in `localStorage`.
-
-Not built, and why:
-
-- **Alignment fractions and the strip height have a drag already.**
-  `--text-x`/`--text-y` are what dragging the line sets, and the strip is where
-  the line is dropped; only the column width needed a control.
-- **Popup scale needs `web-shared/popup.css`, not this page.** The popup is
-  sized in `rem` off the root font size, so scaling it from here would scale the
-  line with it. It belongs with the shared file.
-- **The Behaviour tab is deferred.** Scrollback size waits on T5.4; lookup
-  recording on/off and click-vs-hover are changes to `reader/define` and to the
-  input model, not settings over what exists.
-
-Today: size, line height, spacing, backdrop, font, reset. Restructure into tabs
-and add what is currently env-only or not configurable at all:
-
-- **Type** — size, line height, spacing, font, weight, colour, shadow on/off
-- **Placement** — strip height (`VN_OVERLAY_HEIGHT`), alignment fractions
-  (`--text-x`, `--text-y`, `--text-size`, `--text-chars`) with a live drag
-  mode, mobile scale, popup scale
-- **Marks** — status highlighting on/off (T3.3), which statuses are painted,
-  the common-word underline threshold, tint strength, ghost mode default
-- **Behaviour** — explain on/off, lookup recording on/off, click vs hover to
-  define, side-button actions (`SIDE_ACTIONS`), scrollback size
-- **Reset** per tab and for everything
-
-**Verify:** each setting changes the overlay live and survives a reload.
-**Commit:** `overlay: settings tabs and new controls`.
-
-### T5.3 — Font list from the system
-
-**Status:** done, with T5.2 — the panel had to have a list to draw.
-`GET /api/reader/fonts` is `fc-list :lang=ja family`, first name per line,
-sorted and deduplicated; no fontconfig answers an empty list rather than an
-error, and the panel then offers only what the shell was launched with. Each
-name is drawn in its own face, so the list is the sample.
-
-`overlay.html` hardcoded eight font chips including `DNP Shuei Mincho Pr6`,
-`HGSMinchoB` and `kaikoku PM` — fonts on one machine. A stranger sees chips that
-do nothing.
-
-Enumerate Japanese-capable installed fonts (`fc-list :lang=ja family`) via a new
-read-stats endpoint, show those, and keep "As launched" first.
-
-**Verify:** chips match `fc-list` output; selecting each changes the line.
-**Commit:** `overlay: font list from installed fonts`.
+# Phase 5 remainder — Overlay UX
 
 ### T5.4 — Scrollback panel
 
 New panel over the layer surface: the last N lines, scrollable, each line
 clickable for definitions exactly as the live line is. Data source already
-exists — `GET /api/lines/before` (`read-stats/src/routes/reader/lines.rs`) —
-so this is client work plus paging.
+exists — `GET /api/lines/before` (`read-stats/src/routes/reader/lines.rs`) — so
+this is client work plus paging.
 
 Requirements: opens over the whole screen (input region must expand, see T5.5),
-closes on Escape and on click-away, remembers scroll position while open,
-does **not** record a lookup differently from the live line, and shows the same
+closes on Escape and on click-away, remembers scroll position while open, does
+**not** record a lookup differently from the live line, and shows the same
 status marks. Jump-to-latest control. Optional: a search box over the session's
 lines.
+
+Its size control is the one setting the deferred Behaviour tab is waiting on.
 
 **Verify:** open mid-session, scroll back 200 lines, click a word, mine from it,
 close — live feed resumes with no missed lines. **Commit:** `overlay: line scrollback`.
@@ -938,11 +185,10 @@ they do again. **Commit:** `overlay: input region follows open panels`.
 
 ### T5.6 — Settings storage
 
-Today: `localStorage` keys `vn-overlay-type`, `vn-overlay-ghost`,
-`vn-overlay-offset*`. Placement stays local (it is per screen). Everything the
-installer, doctor or `#read` needs to agree on — status highlighting, explain
-on/off, capture source — moves to read-stats `settings`, with an export/import
-of the whole set for moving machines.
+Placement stays in `localStorage` (it is per screen). Everything the installer,
+doctor or `#read` needs to agree on — status highlighting, explain on/off,
+capture source — moves to read-stats `settings`, with an export/import of the
+whole set for moving machines.
 
 **Verify:** change a shared setting in the overlay, reload `#read`, it agrees.
 **Commit:** `overlay: shared settings server-side`.
@@ -965,89 +211,30 @@ does not duplicate rows. **Commit:** `capture: clipboard and websocket sources`.
 
 # Phase 6 — Installer
 
-### T6.1 — `setup.sh` skeleton
-
-Idempotent, re-runnable, no-op when everything is already set up. Structure:
-detect platform → check dependencies → download models → dictionaries → Anki →
-optional extras → install entry → print doctor output.
-
-Every step prints what it is about to do and can be skipped. `--yes` accepts
-defaults, `--dry-run` prints without acting.
-
-**Verify:** `--dry-run` on the live machine changes nothing.
-**Commit:** `setup: skeleton and platform detection`.
-
-### T6.2 — Dependency check
-
-Uses T3.5. Required: `curl`, `jq`, `ffmpeg`, `pactl`, `python3`, and the Qt
-stack (`PySide6`, `qt6-webengine`, `layer-shell-qt` as **system** packages — a
-venv build of PySide6 has no `org.kde.layershell`). Optional: `xdotool`, a
-screenshot tool, `docker`.
-
-Missing required → print one paste-able install command and stop. Missing
-optional → note it and continue.
-
-**Verify:** in a container with nothing installed, the printed command is
-correct for that distro. **Commit:** `setup: dependency check`.
-
-### T6.3 — Models
-
-- SudachiDict **full** (`sudachi-dictionary-latest-full.zip`, ~127 MB,
-  Apache-2.0) from the WorksApplications S3.
-- silero VAD (`silero_vad.onnx`, 2.2 MB, MIT) from the silero-vad repo.
-
-Both are dependencies, not prompts. Show progress, verify size, skip if present.
-
-**Verify:** on a machine with neither, both land in the right place and
-`kotodex doctor` goes green for them. **Commit:** `setup: sudachi and vad models`.
+`setup.sh` covers the skeleton, dependency check, models, extras, application
+entry and uninstall. What is left:
 
 ### T6.4 — Dictionaries
 
-One prompt: *download the free dictionaries?* — Jitendex (CC-BY-SA, GitHub
-releases, resolve the latest tag via the API), a frequency list, and a free
-pitch dictionary. Import each with `jp-dict import`, assign roles via T1.7.
+**Status:** blocked on which dictionaries to ship. `setup.sh` imports whatever
+is in `dictionaries/` and prints how to add more, but downloads nothing —
+Jitendex publishes no GitHub release assets, so its zip needs a URL that is not
+derivable from the API, and the frequency and pitch picks are a licensing and
+taste call.
 
-Then print, always: how to add a copyrighted dictionary (drop the zip in
-`dictionaries/` and re-run), naming the ones that improve the experience most.
+Decide the three, then: download each, `jp-dict import` it (roles are guessed),
+and keep the printed advice for the copyrighted ones that cannot be shipped.
 
 **Verify:** on an empty `knowledge.db`, accepting gives a working popup with
 definitions, one frequency pill and pitch. **Commit:** `setup: free dictionary download`.
 
-### T6.5 — Anki
+### T6.5 — Anki note type
 
-Probe AnkiConnect. Present → run T2.5's note type check and offer to create
-Lapis. Absent → explain that cards are off until Anki with AnkiConnect is
-running, and that re-running `setup.sh` will pick it up.
+**Status:** half. `setup.sh` probes AnkiConnect and says plainly that mining is
+off until it answers. The note type check and Lapis creation wait on T2.5.
 
 **Verify:** all three cases (no Anki, Anki without Lapis, Anki with Lapis).
-**Commit:** `setup: anki configuration`.
-
-### T6.6 — Optional extras
-
-Anthropic key prompt (explain), written to the config file with 600
-permissions. Whisper: **not configured in this release** — one line saying what
-it would add and pointing at `whisper-service/README.md`.
-
-**Verify:** key accepted → explain button appears; skipped → it does not.
-**Commit:** `setup: optional extras`.
-
-### T6.7 — Application entry
-
-Install the binaries into `~/.local/bin`, the icon into hicolor, the desktop
-entry, and run `update-desktop-database`. Warn if `~/.local/bin` is not on
-`PATH` and print the line to add.
-
-**Verify:** on a clean VM, the entry appears and launches.
-**Commit:** `setup: install application entry`.
-
-### T6.8 — Uninstall
-
-`setup.sh --uninstall`: removes the entry, icons, binaries, systemd unit if any,
-and **asks separately** before touching `~/.local/share/jp-tools` — the
-databases hold the reading history and must never go without an explicit yes.
-
-**Verify:** uninstall then reinstall; data survives.
-**Commit:** `setup: uninstall`.
+**Commit:** `setup: anki note type`.
 
 ---
 
@@ -1068,15 +255,14 @@ run `setup.sh`. **Commit:** `scripts: release artifact`.
 
 ### T7.2 — README rewrite
 
-The root `README.md` currently opens with "Monorepo for Japanese language
-learning tools" and a project list, and is stale (it places the overlay in
-`vn-mine/`; it has been `read-stats/overlay/` since the layer-overlay split).
+The root `README.md` opens with "Monorepo for Japanese language learning tools"
+and a project list, and is stale — it still places the overlay in `vn-mine/`.
 
 New structure: what it is in one sentence → the recording → what you get
 (overlay, dictionary popup, Anki cards with the voiceline, optional reading
-stats) → requirements including the compositor sentence from T0.4 → install in
-three lines → configuration → what degrades and how → "also in this repo" for
-yt-mine, manga-mine and the rest.
+stats) → requirements including the compositor sentence → install in three lines
+→ configuration → what degrades and how → "also in this repo" for yt-mine,
+manga-mine and the rest.
 
 Keep the repo named `jp-tools`; name the release after the product. Add GitHub
 topics: `japanese`, `visual-novel`, `anki`, `sentence-mining`, `texthooker`,
@@ -1128,8 +314,8 @@ Run **after** Phase 7, on the actual artifact, not the repo.
 
 Fresh Ubuntu (current LTS), GNOME Wayland. Download the tarball, run `setup.sh`,
 accept defaults. Expect: dependency command correct for apt, models download,
-dictionaries import, entry appears, overlay launches with whichever backend
-T0.4 chose, doctor accurate about what is missing.
+dictionaries import, entry appears, overlay launches on the X11 backend, doctor
+accurate about what is missing. This also settles T4.8.
 
 **Record every place the script was unclear** — that list is the next round of
 work.
@@ -1161,26 +347,16 @@ no second desktop entry, no second read-stats.
 
 ---
 
-# Task order summary
+# Task order
 
-Phase 0 blocks everything (T0.4 blocks the GNOME promise and T4.8).
-Phase 1 blocks Phase 2. Phase 3 needs Phase 1 for the dictionary rows.
-Phase 4 blocks the installer's entry step. Phase 6 needs 1–5. Phase 7 needs 6. Phase 8 needs 7.
-
-Parallelisable: T0.3 and T0.4 alongside Phase 1; T5.4 (scrollback) alongside
-Phase 4; T7.3 (media) as soon as Phase 5 looks final.
+T2.5 gates T6.5. T5.4 needs T5.5. Phase 7 needs 6; Phase 8 needs 7. T7.3
+(media) can start as soon as Phase 5 looks final.
 
 # Open decisions
 
-1. ~~**Product name** (T0.1)~~ — decided: Kotodex / コトデックス.
-2. ~~**Compositor support statement** (T0.4)~~ — decided: layer-shell where the
-   compositor has it, X11 always-on-top otherwise. GNOME included.
-3. ~~**Systemd unit or supervisor child**~~ (T4.2) — decided: both. The unit
-   stays; the supervisor adopts a running daemon and starts one only if there
-   is none.
-4. **Vendor the Lapis note type or link to it** (T2.5).
-5. **Prebuilt binaries in the tarball or build on install** (T7.1).
-6. **Licence** (T7.4).
-7. **Which VN to record** for the README (T7.3).
-8. ~~**Which frequency dictionary is the reader's**~~ (T1.3) — decided: the
-   first by `dictionaries.priority`.
+1. **Vendor the Lapis note type or link to it** (T2.5).
+2. **Prebuilt binaries in the tarball or build on install** (T7.1).
+3. **Licence** (T7.4).
+4. **Which VN to record** for the README (T7.3).
+5. **Which dictionaries `setup.sh` downloads** (T6.4) — a bilingual, a frequency
+   list and a pitch dictionary, all freely redistributable.

@@ -1,0 +1,342 @@
+#!/usr/bin/env bash
+# Set Kotodex up on this machine, and say what is still missing when it ends.
+#
+#   ./setup.sh [--yes] [--dry-run] [--uninstall] [--help]
+#
+# Re-runnable: every step checks before it acts, so a second run is a no-op and
+# a run after installing something picks that up. Nothing needs root — the
+# binaries, icon and desktop entry all go under ~/.local.
+set -uo pipefail
+
+# Bash's own expansion rather than dirname: a machine missing the basics is
+# exactly the one this script exists for, and it must reach its own error
+# message rather than die resolving its path.
+HERE="${BASH_SOURCE[0]%/*}"
+[ "$HERE" = "${BASH_SOURCE[0]}" ] && HERE="."
+if [ -r "$HERE/scripts/lib/platform.sh" ]; then
+  source "$HERE/scripts/lib/platform.sh"
+else
+  echo "setup.sh must be run from inside the Kotodex directory" >&2
+  exit 1
+fi
+
+ASSUME_YES=0
+DRY_RUN=0
+UNINSTALL=0
+
+DATA="$HOME/.local/share/jp-tools"
+VN_DATA="$HOME/.local/share/vn-mine"
+ENV_FILE="$HERE/.env"
+
+SUDACHI_URL="http://sudachi.s3-website-ap-northeast-1.amazonaws.com/sudachidict/sudachi-dictionary-latest-full.zip"
+SUDACHI_MIN_BYTES=100000000
+VAD_URL="https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx"
+VAD_MIN_BYTES=1000000
+
+bold=$'\033[1m'; red=$'\033[31m'; yellow=$'\033[33m'; green=$'\033[32m'; off=$'\033[0m'
+[ -t 1 ] || { bold=""; red=""; yellow=""; green=""; off=""; }
+
+step()  { printf '\n%s==> %s%s\n' "$bold" "$1" "$off"; }
+say()   { printf '    %s\n' "$1"; }
+good()  { printf '    %s✓%s %s\n' "$green" "$off" "$1"; }
+skip()  { printf '    %s—%s %s\n' "$yellow" "$off" "$1"; }
+fail()  { printf '    %s✗%s %s\n' "$red" "$off" "$1"; }
+have()  { command -v "$1" >/dev/null 2>&1; }
+
+usage() {
+  sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'
+  exit 0
+}
+
+# Yes/no, defaulting to yes. `--yes` takes the default without asking; under
+# `--dry-run` nothing is done either way, so the prompt is pointless.
+confirm() {
+  local prompt="$1" answer
+  [ "$DRY_RUN" = 1 ] && return 0
+  [ "$ASSUME_YES" = 1 ] && { say "$prompt — yes (--yes)"; return 0; }
+  read -r -p "    $prompt [Y/n] " answer </dev/tty || return 1
+  case "$answer" in [nN]*) return 1 ;; *) return 0 ;; esac
+}
+
+# Everything that changes the machine goes through this, so --dry-run is one
+# check rather than one per step.
+run() {
+  if [ "$DRY_RUN" = 1 ]; then
+    printf '    would run: %s\n' "$*"
+    return 0
+  fi
+  "$@"
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --yes|-y) ASSUME_YES=1 ;;
+    --dry-run|-n) DRY_RUN=1 ;;
+    --uninstall) UNINSTALL=1 ;;
+    --help|-h) usage ;;
+    *) fail "unknown option: $1"; exit 2 ;;
+  esac
+  shift
+done
+
+# ------------------------------------------------------------- uninstall --
+
+if [ "$UNINSTALL" = 1 ]; then
+  step "Uninstall"
+  run "$HERE/kotodex/install-entry.sh" --uninstall
+
+  unit="$HOME/.config/systemd/user/kotodex-capture.service"
+  if [ -f "$unit" ]; then
+    run systemctl --user disable --now kotodex-capture.service
+    run rm -f "$unit"
+    run systemctl --user daemon-reload
+    good "removed the capture unit"
+  fi
+
+  # Asked separately and never with --yes: these hold every line ever read and
+  # the whole vocabulary ledger, and there is no undo.
+  step "Reading history"
+  say "$DATA holds your reading history, lookups and vocabulary ledger."
+  if [ "$DRY_RUN" = 1 ]; then
+    say "would ask before removing it"
+  else
+    read -r -p "    Delete it? Type DELETE to confirm: " answer </dev/tty || answer=""
+    if [ "$answer" = "DELETE" ]; then
+      rm -rf "$DATA"
+      good "removed $DATA"
+    else
+      good "kept $DATA"
+    fi
+  fi
+  printf '\n'
+  exit 0
+fi
+
+# -------------------------------------------------------------- platform --
+
+step "This machine"
+say "$(_os_release_field PRETTY_NAME 2>/dev/null || echo "unknown system")"
+MGR="$(pkg_manager || echo unknown)"
+if [ "$MGR" = unknown ]; then
+  skip "no package manager recognised — install commands below are generic"
+else
+  good "package manager: $MGR"
+fi
+
+# ----------------------------------------------------------- dependencies --
+
+step "Dependencies"
+
+REQUIRED_MISSING=()
+require() {
+  local bin="$1" generic="$2"
+  if have "$bin"; then good "$bin"; else fail "$bin"; REQUIRED_MISSING+=("$generic"); fi
+}
+optional() {
+  local bin="$1" generic="$2" what="$3"
+  if have "$bin"; then good "$bin"; else skip "$bin — $what ($(pkg_install_cmd "$generic"))"; fi
+}
+
+require curl curl
+require jq jq
+require unzip unzip
+require python3 python
+require ffmpeg ffmpeg
+require pactl pactl
+
+# A pip/venv PySide6 has no org.kde.layershell, so this asks the system python
+# specifically rather than whatever the current environment resolves to.
+if python3 -c "import PySide6.QtWebEngineQuick" >/dev/null 2>&1; then
+  good "PySide6 with Qt WebEngine"
+else
+  fail "PySide6 with Qt WebEngine"
+  REQUIRED_MISSING+=(pyside6 qt6-webengine)
+fi
+
+if python3 -c "import onnxruntime" >/dev/null 2>&1; then
+  good "onnxruntime"
+else
+  skip "onnxruntime — without it the clip is not trimmed to the line (pip install onnxruntime)"
+fi
+
+optional xdotool xdotool "the screenshot takes whatever has focus, and the strip does not follow the game"
+if first="$(for b in spectacle grim gnome-screenshot import; do have "$b" && echo "$b" && break; done)" \
+   && [ -n "$first" ]; then
+  good "screenshot tool: $first"
+else
+  skip "no screenshot tool — cards get no picture ($(pkg_install_cmd screenshot))"
+fi
+
+# layer-shell is what puts the overlay over a fullscreen game; the X11 backend
+# is the fallback and picks itself, so a missing plugin is not fatal.
+if python3 "$HERE/layer-overlay/backend.py" >/dev/null 2>&1; then
+  good "overlay backend: $(python3 "$HERE/layer-overlay/backend.py" | cut -f1)"
+else
+  skip "overlay backend undecided — layer-overlay/backend.py did not answer"
+fi
+
+if [ ${#REQUIRED_MISSING[@]} -gt 0 ]; then
+  printf '\n'
+  fail "Install these first, then run setup.sh again:"
+  printf '\n      %s\n\n' "$(pkg_install_cmd "${REQUIRED_MISSING[@]}")"
+  exit 1
+fi
+
+# ---------------------------------------------------------------- binaries --
+
+step "Binaries"
+if [ -x "$HERE/target/release/read-stats" ] && [ -x "$HERE/target/release/jp-dict" ]; then
+  good "already built"
+elif have cargo; then
+  say "building — first time takes a few minutes"
+  run bash -c "cd '$HERE' && cargo build --release"
+  run bash -c "cd '$HERE' && cargo build --release -p jp-core --bin jp-dict"
+else
+  fail "no binaries and no cargo to build them"
+  say "install Rust (https://rustup.rs) or use a release tarball that ships them"
+  exit 1
+fi
+
+# ------------------------------------------------------------------ models --
+
+step "Models"
+
+# size <path> — bytes, or 0.
+size_of() { [ -f "$1" ] && wc -c <"$1" || echo 0; }
+
+# A partial download is worse than none: it looks present to every later check.
+# Download to a temporary name, verify the size, then move it into place.
+fetch() {
+  local url="$1" dest="$2" min="$3" label="$4" tmp
+  tmp="$dest.part"
+  say "downloading $label"
+  if ! curl -fL --progress-bar -o "$tmp" "$url"; then
+    rm -f "$tmp"
+    fail "$label download failed — re-run setup.sh to try again"
+    return 1
+  fi
+  if [ "$(size_of "$tmp")" -lt "$min" ]; then
+    rm -f "$tmp"
+    fail "$label came back too small to be the real file"
+    return 1
+  fi
+  mv "$tmp" "$dest"
+  good "$label"
+}
+
+if [ -f "$HERE/system_full.dic" ]; then
+  good "SudachiDict (system_full.dic)"
+elif [ "$DRY_RUN" = 1 ]; then
+  say "would download SudachiDict full (~127 MB, Apache-2.0)"
+else
+  mkdir -p "$HERE"
+  zip="$HERE/sudachi-dict.zip"
+  if fetch "$SUDACHI_URL" "$zip" "$SUDACHI_MIN_BYTES" "SudachiDict full (~127 MB, Apache-2.0)"; then
+    # The zip nests the dictionary under a dated directory, so -j flattens it
+    # rather than the path being guessed at.
+    unzip -o -j "$zip" '*/system_full.dic' -d "$HERE" >/dev/null \
+      || unzip -o -j "$zip" 'system_full.dic' -d "$HERE" >/dev/null
+    rm -f "$zip"
+    [ -f "$HERE/system_full.dic" ] && good "SudachiDict unpacked" || fail "no system_full.dic in the zip"
+  fi
+fi
+
+VAD="$VN_DATA/silero_vad.onnx"
+if [ -f "$VAD" ]; then
+  good "silero VAD model"
+elif [ "$DRY_RUN" = 1 ]; then
+  say "would download silero_vad.onnx (2.2 MB, MIT)"
+else
+  mkdir -p "$VN_DATA"
+  fetch "$VAD_URL" "$VAD" "$VAD_MIN_BYTES" "silero VAD model (2.2 MB, MIT)"
+fi
+
+# ------------------------------------------------------------ dictionaries --
+
+step "Dictionaries"
+mkdir -p "$HERE/dictionaries"
+zips=("$HERE"/dictionaries/*.zip)
+if [ -e "${zips[0]}" ]; then
+  say "importing what is in dictionaries/"
+  run "$HERE/target/release/jp-dict" sync
+  run "$HERE/target/release/jp-dict" list
+else
+  skip "dictionaries/ is empty — the popup will open with no definitions"
+fi
+say ""
+say "To add one: drop its Yomitan zip in $HERE/dictionaries/ and run setup.sh again."
+say "Worth having, in order: a monolingual master (三省堂 or 明鏡), a bilingual"
+say "(Jitendex, CC-BY-SA, https://jitendex.org), a jpdb-style frequency list, and"
+say "a pitch-accent dictionary. jp-dict guesses each one's role from what it holds."
+
+# -------------------------------------------------------------------- Anki --
+
+step "Anki"
+if curl -s --max-time 2 -X POST http://127.0.0.1:8765 \
+     -d '{"action":"version","version":6}' >/dev/null 2>&1; then
+  good "AnkiConnect is answering on 127.0.0.1:8765"
+  say "the note type check is not wired up yet — mine one card and look at it"
+else
+  skip "AnkiConnect is not answering — mining is off until it is"
+  say "install Anki, add the AnkiConnect add-on, leave Anki running, re-run setup.sh"
+fi
+
+# ------------------------------------------------------------------ extras --
+
+step "Extras"
+
+# The key lives in .env because that is the file every crate already loads
+# (dotenvy, from the install directory). 600 because it is a credential.
+set_env_var() {
+  local key="$1" value="$2"
+  run touch "$ENV_FILE"
+  run chmod 600 "$ENV_FILE"
+  [ "$DRY_RUN" = 1 ] && { printf '    would set %s in %s\n' "$key" "$ENV_FILE"; return 0; }
+  grep -v "^$key=" "$ENV_FILE" >"$ENV_FILE.new" 2>/dev/null || true
+  printf '%s=%s\n' "$key" "$value" >>"$ENV_FILE.new"
+  mv "$ENV_FILE.new" "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
+}
+
+if grep -q '^JP_TOOLS_ANTHROPIC_API_KEY=.' "$ENV_FILE" 2>/dev/null; then
+  good "Anthropic API key set — the ℹ explain button is on"
+elif [ "$DRY_RUN" = 1 ]; then
+  say "would offer to store an Anthropic API key"
+elif confirm "Add an Anthropic API key? It turns on the ℹ explain button."; then
+  read -r -s -p "    key (not echoed, blank to skip): " key </dev/tty; printf '\n'
+  if [ -n "$key" ]; then
+    set_env_var JP_TOOLS_ANTHROPIC_API_KEY "$key"
+    good "stored in $ENV_FILE (600)"
+  else
+    skip "no key — the explain button will not be drawn"
+  fi
+else
+  skip "no key — the explain button will not be drawn"
+fi
+
+skip "whisper is not set up automatically in this release"
+say "it narrows a card's clip to the mined sentence; see whisper-service/README.md"
+
+# ----------------------------------------------------------- application --
+
+step "Application entry"
+run "$HERE/kotodex/install-entry.sh"
+
+# ------------------------------------------------------------------ doctor --
+
+step "What works now"
+if [ "$DRY_RUN" = 1 ]; then
+  say "would run scripts/kotodex-doctor.sh"
+  printf '\n'
+  exit 0
+fi
+"$HERE/scripts/kotodex-doctor.sh"
+doctor=$?
+
+printf '\n'
+if [ "$doctor" = 0 ]; then
+  printf '%sReady.%s Launch Kotodex from the application menu, or run: kotodex\n' "$green" "$off"
+else
+  printf '%sSomething the core needs is still missing.%s The ✗ rows above say what.\n' "$yellow" "$off"
+fi
+exit "$doctor"
