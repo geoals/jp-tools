@@ -625,6 +625,7 @@ function showBar(open) {
   if (!open) {
     settingsPanelEl.hidden = true;
     settingsBtnEl.classList.add("off");
+    closeScrollback();
   }
   report();
 }
@@ -775,6 +776,15 @@ function closeScrollback() {
 scrollbackBtnEl.addEventListener("click", (e) => {
   e.stopPropagation();
   scrollbackOpen() ? closeScrollback() : openScrollback();
+});
+
+// The bar is a row of alternatives: opening the settings, hiding the line or
+// shutting the bar all mean the history is not what is being looked at, and
+// leaving it hanging under a panel that has replaced it is just clutter over
+// the game. Its own button is the exception — that one toggles.
+document.getElementById("bar").addEventListener("click", (e) => {
+  const button = e.target.closest("button");
+  if (button && button !== scrollbackBtnEl) closeScrollback();
 });
 document.getElementById("scrollback-latest").addEventListener("click", () => toLatest());
 
