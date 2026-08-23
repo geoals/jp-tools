@@ -604,10 +604,10 @@
 
   /* Every Japanese font on the machine, so the list is as long as the machine
      makes it — scrolled, not wrapped across the game. */
+  /* Block, not a flex column: as a column the rows shrink to fit the box —
+     thirty families came out as slivers a few pixels tall with the text gone,
+     and nothing overflowed, so it never scrolled either. */
   #set-font {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
     max-width: 21rem;
     max-height: 14rem;
     overflow-y: auto;
@@ -672,7 +672,7 @@
     <div id="buttons">
       <button id="explain-btn" data-tip="Explain the last line (select a word first to focus on it)">ℹ</button>
       <button id="hide-btn" data-tip="Hide the line">👁</button>
-      <button id="settings-btn" class="off" data-tip="Type settings">⚙</button>
+      <button id="settings-btn" class="off" data-tip="Settings">⚙</button>
     </div>
   </div>
   <div id="settings-panel" hidden>

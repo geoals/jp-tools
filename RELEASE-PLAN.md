@@ -852,6 +852,13 @@ browser's picker, for the same reason the font list is not a `<select>`.
 
 **No reset button.** Every control shows its own value and moves back.
 
+**QtWebEngine is the surface, and it is not the Chromium on this machine.**
+`layer-overlay/`'s view rendered the font list as thirty slivers a few pixels
+tall: a flex column shrinks its rows to the box's height instead of scrolling,
+which a shorter list never shows. Rows are plain block divs now — a `<button>`
+stays inline-level there whatever `display` says. Anything drawn in the panel is
+worth checking in a real QtWebEngine view, not only in a browser.
+
 Status painting and the underline rank are written back to read-stats through
 `PUT /api/settings` — they are claims `#read` makes too. Everything else is
 about this screen and stays in `localStorage`.

@@ -732,7 +732,9 @@ const CONTROLS = {
   hue: { id: "set-hue", out: "out-hue", fmt: (v) => `${v}°` },
   sat: { id: "set-sat", out: "out-sat", fmt: (v) => `${v}%` },
   light: { id: "set-light", out: "out-light", fmt: (v) => `${v}%` },
-  chars: { id: "set-chars", out: "out-chars", fmt: (v) => `${v}` },
+  // Redrawn as it moves: the width is where the line breaks, and the break is
+  // the thing being set.
+  chars: { id: "set-chars", out: "out-chars", fmt: (v) => `${v}`, repaints: true },
   mobileScale: { id: "set-mobile-scale", out: "out-mobile-scale", fmt: (v) => `${v.toFixed(2)}x` },
   tint: { id: "set-tint", out: "out-tint", fmt: (v) => v.toFixed(2) },
   markNew: { id: "set-mark-new", check: true, repaints: true },
@@ -773,31 +775,29 @@ fetch("/api/reader/fonts")
 function addFonts(families) {
   fontBoxEl.replaceChildren();
   for (const family of ["", ...families]) {
-    const btn = document.createElement("button");
-    btn.value = family;
-    const name = document.createElement("span");
-    name.className = "name";
-    name.textContent = family || "As launched";
-    btn.append(name);
+    const row = document.createElement("div");
+    row.className = "row";
+    row.dataset.family = family;
     if (family) {
       const sample = document.createElement("span");
       sample.className = "sample";
       sample.textContent = "あア亜";
       sample.style.fontFamily = `"${family}", sans-serif`;
-      btn.append(sample);
+      row.append(sample);
     }
-    fontBoxEl.append(btn);
-    btn.addEventListener("click", () => {
+    row.append(family || "As launched");
+    fontBoxEl.append(row);
+    row.addEventListener("click", () => {
       type = { ...type, font: family };
       applyType();
     });
   }
   fontBtnEls = [...fontBoxEl.children];
-  for (const btn of fontBtnEls) btn.classList.toggle("on", btn.value === type.font);
+  for (const row of fontBtnEls) row.classList.toggle("on", row.dataset.family === type.font);
 }
 
 function applyType() {
-  for (const btn of fontBtnEls) btn.classList.toggle("on", btn.value === type.font);
+  for (const row of fontBtnEls) row.classList.toggle("on", row.dataset.family === type.font);
   root.setProperty("--line-font", `"${type.font || font || "Noto Sans CJK JP"}", sans-serif`);
   root.setProperty("--line-color", `hsl(${type.hue} ${type.sat}% ${type.light}%)`);
   // Centred on the glyphs rather than dropped below them: this sits over
