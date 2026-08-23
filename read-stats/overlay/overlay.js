@@ -564,12 +564,16 @@ explainPanelEl.addEventListener("click", () => {
 // game's own text, and a scene worth looking at is worth looking at whole. The
 // stream keeps running, so the line back is whatever is current, not the one
 // that was showing when it went.
+// The button row's tooltip is drawn by the page — see `[data-tip]` in
+// overlay.html — so `title` must stay unset or the native one draws too.
+const tip = (el, text) => el.setAttribute("data-tip", text);
+
 const hideBtnEl = document.getElementById("hide-btn");
 hideBtnEl.addEventListener("click", () => {
   boxEl.hidden = !boxEl.hidden;
   warnEl.hidden = boxEl.hidden;
   hideBtnEl.classList.toggle("off", boxEl.hidden);
-  hideBtnEl.title = boxEl.hidden ? "Show the line" : "Hide the line";
+  tip(hideBtnEl, boxEl.hidden ? "Show the line" : "Hide the line");
   if (boxEl.hidden) closePopup();
   report();
 });
@@ -583,7 +587,7 @@ hideBtnEl.addEventListener("click", () => {
 const MOBILE_SCALE = 1.75;
 const mobileBtnEl = document.getElementById("mobile-btn");
 mobileBtnEl.classList.toggle("off", !mobile);
-mobileBtnEl.title = mobile ? "Switch to overlay size" : "Switch to phone size";
+tip(mobileBtnEl, mobile ? "Switch to overlay size" : "Switch to phone size");
 mobileBtnEl.addEventListener("click", () => {
   const next = new URLSearchParams(location.search);
   // Scaled off what is there rather than set to a constant: `VN_OVERLAY_HEIGHT`
@@ -609,7 +613,7 @@ const pauseBtnEl = document.getElementById("pause-btn");
 function showPaused(paused) {
   pauseBtnEl.classList.toggle("paused", paused);
   pauseBtnEl.textContent = paused ? "▶" : "⏸";
-  pauseBtnEl.title = paused ? "Resume capture" : "Pause capture";
+  tip(pauseBtnEl, paused ? "Resume capture" : "Pause capture");
 }
 
 pauseBtnEl.addEventListener("click", async () => {
@@ -962,17 +966,6 @@ function onGeometry(x, y, w, h) {
 // marks over nothing is worse than no marks — and never on a phone, where the
 // line is being read off the screen rather than fitted over anything.
 const GHOST = "vn-overlay-ghost";
-// Minimise and close. Both need the shell — in an ordinary browser there is no
-// surface to hide and no process to stop, so the two buttons are not drawn.
-const minBtnEl = document.getElementById("min-btn");
-const closeBtnEl = document.getElementById("close-btn");
-minBtnEl.hidden = true;
-closeBtnEl.hidden = true;
-minBtnEl.addEventListener("click", () => shell?.minimise());
-// Close, not hide: the shell exits 0, and the launcher reads that as
-// deliberate and stops everything it started.
-closeBtnEl.addEventListener("click", () => shell?.quit());
-
 const ghostBtnEl = document.getElementById("ghost-btn");
 let ghost = localStorage.getItem(GHOST) === "1";
 
@@ -984,9 +977,12 @@ function applyGhost() {
   // then the only way to turn it back off, and a game that has quit or has not
   // started yet is the ordinary case rather than a fault.
   ghostBtnEl.disabled = !game && !ghost;
-  ghostBtnEl.title = game
-    ? "Read the game's own text, marked"
-    : "Needs the game window — no window name on this work, or it is not running";
+  tip(
+    ghostBtnEl,
+    game
+      ? "Read the game's own text, marked"
+      : "Needs the game window — no window name on this work, or it is not running",
+  );
   report();
 }
 

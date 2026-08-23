@@ -5,7 +5,10 @@ minimises into one would vanish. When the system says there is no tray, say so
 once and keep the overlay on screen instead of hiding it.
 """
 
+import json
 import subprocess
+import urllib.error
+import urllib.request
 import webbrowser
 from pathlib import Path
 
@@ -26,23 +29,29 @@ class Tray:
         self.available = QSystemTrayIcon.isSystemTrayAvailable()
         self.icon = None
         if not self.available:
-            log("no system tray here — the overlay stays on screen; close it to quit")
+            log("no system tray here — the overlay stays on screen; Ctrl-C to quit")
             return
 
         self.icon = QSystemTrayIcon(QIcon(str(ICON)), app)
         self.icon.setToolTip(self._tooltip())
         menu = QMenu()
+        self.pause_action = None
         for label, slot in (
             ("Show overlay", self.show_overlay),
             ("Hide overlay", self.hide_overlay),
             ("Open reading stats", self.open_stats),
-            ("Pause capture", self.pause_capture),
+            ("Pause capture", self.toggle_capture),
             ("Doctor", self.doctor),
             ("Quit", self.app.quit),
         ):
             action = QAction(label, menu)
             action.triggered.connect(slot)
             menu.addAction(action)
+            if slot == self.toggle_capture:
+                self.pause_action = action
+        # The overlay has the same toggle, so the label is refreshed on open
+        # rather than only after this menu was the one that flipped it.
+        menu.aboutToShow.connect(self.refresh_pause_label)
         self.icon.setContextMenu(menu)
         self.icon.activated.connect(
             lambda reason: self.show_overlay()
@@ -68,11 +77,29 @@ class Tray:
     def open_stats(self):
         webbrowser.open(self.url)
 
-    def pause_capture(self):
-        subprocess.run(
-            ["curl", "-s", "-X", "POST", f"{self.url}/api/capture/pause"],
-            capture_output=True,
-        )
+    def _api(self, path, method="GET"):
+        req = urllib.request.Request(f"{self.url}{path}", method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=2) as r:
+                return json.load(r)
+        except (urllib.error.URLError, OSError, ValueError):
+            return None
+
+    def toggle_capture(self):
+        result = self._api("/api/capture/pause", method="POST")
+        if result is None:
+            self.log("capture: read-stats did not answer the pause toggle")
+            return
+        self._set_pause_label(result.get("paused", False))
+
+    def refresh_pause_label(self):
+        settings = self._api("/api/settings")
+        if settings is not None:
+            self._set_pause_label(settings.get("capture_paused", False))
+
+    def _set_pause_label(self, paused: bool):
+        if self.pause_action is not None:
+            self.pause_action.setText("Resume capture" if paused else "Pause capture")
 
     def doctor(self):
         script = REPO / "scripts" / "kotodex-doctor.sh"

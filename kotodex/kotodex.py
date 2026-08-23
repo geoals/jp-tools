@@ -33,6 +33,8 @@ SOCKET_NAME = "kotodex"
 # How long read-stats gets to answer before the overlay is started anyway. It
 # builds on first run, which is slow and not a failure.
 READY_TIMEOUT = 90.0
+# A detaching child gets this long to appear before the probe is trusted.
+SPAWN_GRACE = 10.0
 # Restart a child this many times before giving up and saying which one.
 MAX_RESTARTS = 3
 
@@ -75,15 +77,27 @@ class Child:
     not start would take out the user's own setup.
     """
 
-    def __init__(self, name, probe, start_cmd, stop_cmd=None):
+    def __init__(
+        self, name, probe, start_cmd, stop_cmd=None, detaches=False, supervised=True
+    ):
         self.name = name
         self.probe = probe
         self.start_cmd = start_cmd
         self.stop_cmd = stop_cmd
+        # Whether start_cmd *is* the component or merely launches it.
+        # start-all.sh and vn-overlay.sh background the real process and return
+        # 0, so for those the exit status says nothing and the probe is the
+        # only thing that knows whether the component is alive.
+        self.detaches = detaches
+        # Whether the launcher keeps this one alive. The overlay is not
+        # supervised: the tray shows and hides it, so it being gone is a state
+        # the user chose, not a crash to restart or a reason to quit.
+        self.supervised = supervised
         self.proc = None
         self.adopted = False
         self.restarts = 0
         self.failed = False
+        self.started_at = 0.0
 
     def ensure(self, log):
         if self.probe():
@@ -94,6 +108,7 @@ class Child:
 
     def spawn(self, log):
         log(f"{self.name}: starting")
+        self.started_at = time.time()
         self.proc = subprocess.Popen(
             self.start_cmd,
             cwd=REPO,
@@ -104,20 +119,28 @@ class Child:
 
     def check(self, log) -> bool:
         """Restart a child that exited on its own, with a backoff, and give up
-        loudly rather than spinning.
-
-        Returns True when the child exited *deliberately* — status 0, which the
-        overlay's close button produces. That is a request to stop everything,
-        not something to restart.
+        loudly rather than spinning. Returns True when everything should stop.
         """
-        if self.adopted or self.proc is None or self.failed:
+        if self.adopted or self.proc is None or self.failed or not self.supervised:
             return False
+        if self.detaches:
+            # The wrapper returns before the process it launched is visible, so
+            # the probe cannot be believed until the component has had time to
+            # come up.
+            if time.time() - self.started_at < SPAWN_GRACE:
+                return False
+            if self.proc.poll() is None or self.probe():
+                return False
+            return self._restart(log)
         code = self.proc.poll()
         if code is None:
             return False
         if code == 0:
             log(f"{self.name}: closed")
             return True
+        return self._restart(log)
+
+    def _restart(self, log) -> bool:
         self.restarts += 1
         if self.restarts > MAX_RESTARTS:
             self.failed = True
@@ -153,8 +176,16 @@ def children():
             "read-stats",
             read_stats_up,
             [str(REPO / "scripts" / "start-all.sh"), "read-stats"],
+            detaches=True,
         ),
-        Child("overlay", overlay_up, [overlay, "start"], stop_cmd=[overlay, "stop"]),
+        Child(
+            "overlay",
+            overlay_up,
+            [overlay, "start"],
+            stop_cmd=[overlay, "stop"],
+            detaches=True,
+            supervised=False,
+        ),
     ]
 
 

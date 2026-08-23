@@ -436,18 +436,31 @@ frequency sorts.
 
 **Verify:** manual, screenshots into `docs/`. **Commit:** none (validation).
 
-### T2.7 — Convert the user's own note type
+### T2.7 — Legacy is a supported style, not a migration
 
-**Status:** waiting on you. Everything it depends on is in place: `.env` pins
-the current names and `JP_TOOLS_ANKI_STYLE=legacy`, so the conversion is a
-rename in Anki followed by deleting those lines.
+**Status:** decided, no code change. The task was written expecting the personal
+note type to be converted to Lapis field names. It is not being converted: the
+note type stays, and `JP_TOOLS_ANKI_FIELD_*` is what makes any naming work, so
+renaming the fields to match Lapis would buy nothing and cost a reconfiguration
+of Yomitan's own field mapping — which is where the VN cards are authored.
 
-Separate from everything above, on the user's schedule: move the personal note
-type to Lapis-compatible field names, then delete `JP_TOOLS_ANKI_STYLE=legacy`
-from the environment. The `legacy` branch stays in the code until this is done
-and is deleted in a follow-up.
+`JP_TOOLS_ANKI_STYLE=legacy` is about markup, not names, and stays for the same
+reason: the note type's CSS descends through `.dict-{slug}-title` /
+`.dict-{slug}-body`, exactly the wrappers the Lapis style strips.
 
-**Verify:** existing cards still render. **Commit:** `card: drop the legacy style` (later).
+**So the `legacy` branch in `card.rs` is not deleted.** Both styles are
+supported profiles selected by the environment, which is what a shareable
+release needs anyway — Lapis for a new user, legacy for a note type that
+already has CSS written against it.
+
+Optional, and the only thing this task can still gain: `field_reading` and
+`field_freq_sort` are outputs the exporter writes that the personal note type
+has no field for. `FreqSort` is the reader-frequency rank as a plain integer,
+which is what makes new-card ordering by frequency possible in Anki. Adding two
+fields under any names and pointing `JP_TOOLS_ANKI_FIELD_READING` and
+`JP_TOOLS_ANKI_FIELD_FREQ_SORT` at them is all it takes.
+
+**Verify:** none needed. **Commit:** none.
 
 ---
 
@@ -624,7 +637,12 @@ survives a crashed supervisor. Recommendation: supervisor child, with
 
 ### T4.3 — The supervisor
 
-**Status:** written, unverified on a live desktop. `kotodex/kotodex.py`:
+**Status:** done, verified on a live desktop. Two defects were found by
+running it. `start-all.sh` and `vn-overlay.sh` launch the real process and
+return 0, so a child now knows whether its start command *is* the component or
+merely starts it — for the latter, liveness is the probe and the exit status
+says nothing. And the overlay is no longer supervised at all: the tray shows and
+hides it, so it being gone is a state the user chose. `kotodex/kotodex.py`:
 adopt-or-start each of capture, read-stats and overlay; start in that order,
 waiting for `/api/reader/state`; stop in reverse; restart a child that exits
 non-zero with a backoff and give up after three, naming it.
@@ -659,7 +677,7 @@ already running from `start-all.sh` it adopts it and says so.
 
 ### T4.4 — Single instance
 
-**Status:** written, unverified. `QLocalServer` on `kotodex`, second launch
+**Status:** done, verified. `QLocalServer` on `kotodex`, second launch
 sends `show` and exits 0 with no error. A socket left by a SIGKILLed process is
 removed only after the probe connect fails, which is the one moment it is safe
 to remove.
@@ -674,7 +692,9 @@ failure. **Commit:** `kotodex: single instance`.
 
 ### T4.5 — Tray icon
 
-**Status:** written, unverified. Menu: show/hide overlay, open reading stats,
+**Status:** done, verified. "Pause capture" flips to "Resume capture", read
+back from `/api/settings` each time the menu opens — the overlay's own ⏸ changes
+the same setting behind the tray's back. Menu: show/hide overlay, open reading stats,
 pause capture, doctor, quit. When `isSystemTrayAvailable()` is false it says so
 once and leaves the overlay on screen rather than hiding it — the GNOME case.
 The tooltip names anything that was adopted, since those are what quitting
@@ -693,36 +713,26 @@ path leaves the overlay reachable. **Commit:** `kotodex: tray icon`.
 
 ### T4.6 — Close and minimise buttons in the overlay
 
-**Status:** written, unverified. Two buttons at the end of the bar, both
-hidden in an ordinary browser where there is no surface to hide and no process
-to stop. They call `shell.minimise()` and `shell.quit()`, new generic slots on
-`layer-overlay` — a page over a layer surface may want either, and neither
-mentions Kotodex.
+**Status:** withdrawn. The buttons were built and then removed: with a tray
+icon, a close and a minimise in the overlay are a second way to do what the
+tray already does, and the two looked identical in use because an adopted
+overlay is deliberately never read as a quit signal.
 
-**Close is an exit code, not a new channel.** `quit()` exits 0; the launcher
-reads a clean exit as deliberate and stops everything it started, while a
-non-zero exit is a crash and gets restarted. Adopted components are left
-running, which is what the tray tooltip says before it happens.
+`shell.minimise()` and `shell.quit()` stay on `layer-overlay` — they are
+generic slots a page over a layer surface may want, and nothing in the overlay
+calls them now.
 
-Two new controls in the overlay's button bar (design in T5.1): minimise to tray,
-and close. Close asks the supervisor to stop everything and exits; it does not
-merely hide the window.
-
-**Verify:** close leaves no `kotodex`, no capture daemon, no read-stats — unless
-read-stats was adopted rather than started, in which case it is left running.
-That distinction is deliberate and gets a line in the tray menu tooltip.
-**Commit:** `overlay: close and minimise`.
+**Consequence for T4.3:** close-is-an-exit-code is gone as a mechanism. The
+tray's Quit is the only deliberate stop, and the overlay is unsupervised.
+**Consequence for T5.1:** the expanded bar loses two buttons, seven not nine.
 
 ### T4.7 — Desktop entry and icon
 
-**Status:** written, not installed. `kotodex/kotodex.svg` exported to 48–512
+**Status:** done, installed and launched. `kotodex/kotodex.svg` exported to 48–512
 PNG, `kotodex.desktop` (validated by `desktop-file-validate`), and
 `kotodex/install-entry.sh` to put both under `~/.local` along with symlinks for
 `kotodex` and `kotodex-capture`. `--uninstall` removes exactly those and says
 the databases were untouched.
-
-Not run: installing puts an entry in your menu and launching it opens a window,
-so that is yours to do. One command: `kotodex/install-entry.sh`.
 
 Icon: a simple SVG, exported to 48/64/128/256/512 PNG into hicolor. Desktop
 entry with `Name`, `Comment`, `Icon=kotodex`, `Exec=kotodex`, `Categories=Education;Languages;`,
@@ -762,16 +772,18 @@ in the phase.
 
 ### T5.1 — Button bar rework
 
-Today: six always-visible buttons (`ℹ 👁 あ ⤢ ⚙ ⏸`) in one row at top-left,
-with close and minimise still to add. Nine buttons in a row is too many over a
-game.
+Today: six always-visible buttons (`ℹ 👁 あ ⤢ ⚙ ⏸`) in one row at top-left.
+Six is already too many over a game, and the scrollback panel adds a seventh.
+
+The bar's tooltips are drawn by the page (`[data-tip]` in `overlay.html`), not
+by `title`: QtWebEngine's native tooltip is a separate surface the layer shell
+does not place, and it wraps to a width nothing in the page can set.
 
 Design: one small draggable handle. Click expands the bar; it collapses on
 click-away or after a timeout. Grouping:
 
 - always visible when collapsed: the handle, and the pause state if paused
-- expanded: explain, hide line, ghost, scrollback, settings, pause, mobile,
-  minimise, close
+- expanded: explain, hide line, ghost, scrollback, settings, pause, mobile
 
 Keyboard shortcuts for the frequent ones, listed in settings.
 
@@ -1064,8 +1076,7 @@ no second desktop entry, no second read-stats.
 
 Phase 0 blocks everything (T0.4 blocks the GNOME promise and T4.8).
 Phase 1 blocks Phase 2. Phase 3 needs Phase 1 for the dictionary rows.
-Phase 4 blocks T4.6 and the installer's entry step. Phase 5 needs Phase 4 for
-close/minimise. Phase 6 needs 1–5. Phase 7 needs 6. Phase 8 needs 7.
+Phase 4 blocks the installer's entry step. Phase 6 needs 1–5. Phase 7 needs 6. Phase 8 needs 7.
 
 Parallelisable: T0.3 and T0.4 alongside Phase 1; T5.4 (scrollback) alongside
 Phase 4; T7.3 (media) as soon as Phase 5 looks final.
