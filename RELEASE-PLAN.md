@@ -169,61 +169,58 @@ renders, definitions page, pitch shows, image and audio attach, frequency sorts.
 
 ### T5.4 — Scrollback panel
 
-New panel over the layer surface: the last N lines, scrollable, each line
-clickable for definitions exactly as the live line is. Data source already
-exists — `GET /api/lines/before` (`read-stats/src/routes/reader/lines.rs`) — so
-this is client work plus paging.
+**Status:** done. ▤ opens the last lines over the whole surface, paged back a
+hundred at a time from the oldest id held — an offset would slide, since lines
+keep arriving while it is open. Escape closes the popup first and then the
+panel; a click on the backdrop closes it; a new line is appended only when the
+view is already at the bottom.
 
-Requirements: opens over the whole screen (input region must expand, see T5.5),
-closes on Escape and on click-away, remembers scroll position while open, does
-**not** record a lookup differently from the live line, and shows the same
-status marks. Jump-to-latest control. Optional: a search box over the session's
-lines.
+The rows are built by `renderLine`, which is `draw`'s body extracted, and they
+carry the *same* click, side-button and wheel handlers rather than copies. A
+lookup from the scrollback is a lookup.
 
-Its size control is the one setting the deferred Behaviour tab is waiting on.
-
-**Verify:** open mid-session, scroll back 200 lines, click a word, mine from it,
-close — live feed resumes with no missed lines. **Commit:** `overlay: line scrollback`.
+`/api/lines/before` gained `ruby`: a reading that appeared only while a line was
+current would make the two surfaces disagree about what the game wrote.
 
 ### T5.5 — Input region for full-screen panels
 
-**Status:** already true for the settings panel, which is drawn inside
-`#explain-box` and so is in `report()`'s rectangle list already. What is left is
-whatever T5.4 draws — if the scrollback is a sibling of those boxes it needs its
-own rect, and this task is that one line plus the verify below.
-
-The layer surface only takes clicks where the page has drawn. Scrollback and an
-expanded settings panel cover most of the screen, so the input region has to
-grow while they are open and shrink again after — otherwise the game stops
-receiving clicks.
-
-**Verify:** with scrollback closed, clicks pass through everywhere except the
-line box and the bar; with it open, they do not reach the game; after closing,
-they do again. **Commit:** `overlay: input region follows open panels`.
+**Status:** done. `report()` hands the shell the whole screen while the
+scrollback is open and the measured rectangles otherwise. The settings panel
+never needed it — it is drawn inside `#explain-box`, which is already in the
+list.
 
 ### T5.6 — Settings storage
 
-Placement stays in `localStorage` (it is per screen). Everything the installer,
-doctor or `#read` needs to agree on — status highlighting, explain on/off,
-capture source — moves to read-stats `settings`, with an export/import of the
-whole set for moving machines.
-
-**Verify:** change a shared setting in the overlay, reload `#read`, it agrees.
-**Commit:** `overlay: shared settings server-side`.
+**Status:** deferred, and mostly overtaken. Everything two surfaces have to
+agree on is server-side already — status painting, the underline rank, and now
+the line source and its address. What is left is an export/import of the whole
+set for moving machines, which is not wanted yet.
 
 ### T5.7 — Line source selection
 
-Add clipboard and direct-WebSocket producers beside `vn-ws-logger.py`, all
-writing the same `lines` rows. Selected in settings and reported by the
-capability probe. The existing WS logger stays the default and keeps its
-`clean_line()` filtering and dedup; the clipboard watcher reuses the same
-filters.
+**Status:** done, **untested against a live switch** — the daemon was left alone
+because a session was being read. It needs `systemctl --user restart
+vn-buffer.service` (the unit still carries the old name, by design) before the
+new logger is running at all.
 
-Textractor's WS plugin crashes on abortive disconnect, so the direct-WS option
-carries a warning and a clean-close implementation.
+`settings.line_source` is `ws` or `clipboard`, `settings.line_source_ws_url` is
+the address — Textractor's port is configurable there and was hardcoded here.
+`vn-ws-logger.py` polls both, so a switch takes effect without a restart, the
+same way pausing does; `VN_WS_URL` still wins, so a hand-started logger is not
+moved by whatever the panel last saved.
 
-**Verify:** each source in turn produces lines in the overlay; switching sources
-does not duplicate rows. **Commit:** `capture: clipboard and websocket sources`.
+**One producer, not two.** The clipboard is another source feeding the same
+`emit()`, which is `read_lines`' body extracted. Everything after the source —
+`clean_line`, the ruby split, the continuation join, the dedup, both sinks — is
+what makes a captured string a line. Whatever is on the clipboard when the
+watch starts is the previous value, never a line, or every switch would log the
+last thing copied.
+
+The clipboard reader is `wl-paste`, else `xclip`, else `xsel`, polled four
+times a second. Nothing installed says so rather than failing quietly.
+
+The direct-WebSocket producer from the original task is not built and is not
+needed: pointing `line_source_ws_url` at another hooker is the same thing.
 
 ---
 
@@ -388,7 +385,7 @@ no second desktop entry, no second read-stats.
 
 # Task order
 
-T5.4 needs T5.5. Phase 7 needs 6; Phase 8 needs 7. T7.3
+Phase 7 needs 6; Phase 8 needs 7. T7.3
 (media) can start as soon as Phase 5 looks final.
 
 # Open decisions
