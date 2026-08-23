@@ -622,11 +622,7 @@ handleEl.addEventListener("click", () => {
 // is also what the widget is dragged by. Only the handle opens and shuts it.
 function showBar(open) {
   buttonsEl.hidden = !open;
-  if (!open) {
-    settingsPanelEl.hidden = true;
-    settingsBtnEl.classList.add("off");
-    closeScrollback();
-  }
+  if (!open) closeBarPanels(null);
   report();
 }
 
@@ -773,18 +769,43 @@ function closeScrollback() {
   report();
 }
 
-scrollbackBtnEl.addEventListener("click", (e) => {
-  e.stopPropagation();
+scrollbackBtnEl.addEventListener("click", () => {
   scrollbackOpen() ? closeScrollback() : openScrollback();
 });
 
-// The bar is a row of alternatives: opening the settings, hiding the line or
-// shutting the bar all mean the history is not what is being looked at, and
-// leaving it hanging under a panel that has replaced it is just clutter over
-// the game. Its own button is the exception — that one toggles.
+/** The three things that hang under the bar are alternatives, not a stack.
+ *
+ * Each is the answer to a different question — what was said before this, what
+ * does this line mean, how should the line look — and none of them is read
+ * while another is. Left open together they are three panels of clutter over
+ * the game, and the lower ones are unreachable behind the taller ones anyway.
+ */
+function closeBarPanels(keep) {
+  if (keep !== scrollbackEl) closeScrollback();
+  if (keep !== explainPanelEl) explainPanelEl.hidden = true;
+  if (keep !== settingsPanelEl) {
+    settingsPanelEl.hidden = true;
+    settingsBtnEl.classList.add("off");
+  }
+}
+
+// Which button owns which panel, by id — the elements are not all declared
+// yet here. A button in neither column, the hide and the handle, owns nothing
+// and closes all three.
+const BAR_PANELS = new Map([
+  ["scrollback-btn", "scrollback"],
+  ["explain-btn", "explain-panel"],
+  ["settings-btn", "settings-panel"],
+]);
+
+// After the buttons' own handlers, which run at the target and are what open
+// the panel this then keeps.
 document.getElementById("bar").addEventListener("click", (e) => {
   const button = e.target.closest("button");
-  if (button && button !== scrollbackBtnEl) closeScrollback();
+  if (!button) return;
+  const keep = BAR_PANELS.get(button.id);
+  closeBarPanels(keep ? document.getElementById(keep) : null);
+  report();
 });
 document.getElementById("scrollback-latest").addEventListener("click", () => toLatest());
 
