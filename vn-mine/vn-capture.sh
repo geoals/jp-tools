@@ -160,20 +160,45 @@ NEXT_TS=$(LC_ALL=C awk -F'\t' -v t="$LINE_TS" '$1 > t { print $1; exit }' "$LINE
 # wrong screenshot is recoverable, a lost voiceline is not.
 SCREENSHOT_FILE="screenshot_${TIMESTAMP}.png"
 VN_WID=""
+# Which X display the game is on, rather than whichever one this process
+# inherited: a service started before the session, or from another session, gets
+# a stale DISPLAY and then finds no window at all. Search each one and keep the
+# display the window was actually found on.
+# Prints "<display> <window id>". Both, because the display is the finding: an
+# `export` inside the command substitution that reads this would not reach the
+# caller, and grabbing the window needs the display it was found on.
+find_vn_window() {
+  local d wid
+  for d in "${DISPLAY:-}" :0 :1 :2; do
+    [ -n "$d" ] || continue
+    wid=$(DISPLAY="$d" xdotool search --name "$VN_WINDOW" 2>/dev/null | head -n 1)
+    [ -n "$wid" ] && { echo "$d $wid"; return 0; }
+  done
+  return 1
+}
+
 if [ -n "$VN_WINDOW" ]; then
   if command -v xdotool &>/dev/null && command -v import &>/dev/null; then
-    VN_WID=$(xdotool search --name "$VN_WINDOW" 2>/dev/null | head -n 1)
+    read -r VN_DISPLAY VN_WID <<<"$(find_vn_window)"
+    [ -n "$VN_DISPLAY" ] && export DISPLAY="$VN_DISPLAY"
     # -silent: import rings the X bell around every capture, which Plasma turns
     # into an audible system beep — one per mine, while reading.
     [ -n "$VN_WID" ] && import -silent -window "$VN_WID" "$TMP/$SCREENSHOT_FILE" 2>/dev/null
     if [ ! -s "$TMP/$SCREENSHOT_FILE" ]; then
-      SHOT_NOTE=" (⚠ no window matching '$VN_WINDOW' — captured the focused window)"
+      SHOT_NOTE=" (⚠ no window matching '$VN_WINDOW' — captured the whole screen)"
     fi
   else
     SHOT_NOTE=" (⚠ VN_WINDOW set but xdotool/import missing — captured the focused window)"
   fi
 else
   SHOT_NOTE=" (⚠ no window name on this work — captured the focused window)"
+fi
+# The X root before spectacle. The overlay is a Wayland layer surface, so an X
+# grab cannot see it while spectacle's "active window" *is* it whenever the mine
+# came from the overlay — the fallback would capture the reader, never the game.
+if [ ! -s "$TMP/$SCREENSHOT_FILE" ] && command -v import &>/dev/null; then
+  rm -f "$TMP/$SCREENSHOT_FILE"
+  import -silent -window root "$TMP/$SCREENSHOT_FILE" 2>/dev/null
 fi
 if [ ! -s "$TMP/$SCREENSHOT_FILE" ]; then
   rm -f "$TMP/$SCREENSHOT_FILE"
