@@ -185,12 +185,18 @@ fi
 # ---------------------------------------------------------------- binaries --
 
 step "Binaries"
-if [ -x "$HERE/target/release/read-stats" ] && [ -x "$HERE/target/release/jp-dict" ]; then
-  good "already built"
-elif have cargo; then
-  say "building — first time takes a few minutes"
-  run bash -c "cd '$HERE' && cargo build --release"
-  run bash -c "cd '$HERE' && cargo build --release -p jp-core --bin jp-dict"
+# Built whenever cargo is here, not only when they are missing: a checkout that
+# has moved on leaves binaries that still run and answer with stale behaviour,
+# which is far harder to see than a missing one. Cargo is a no-op when they are
+# current. A tarball ships them and has no cargo, and takes the branch below.
+if have cargo; then
+  say "building — the first time takes a few minutes"
+  run bash -c "cd '$HERE' && cargo build --release" || { fail "build failed"; exit 1; }
+  run bash -c "cd '$HERE' && cargo build --release -p jp-core --bin jp-dict" \
+    || { fail "build failed"; exit 1; }
+  good "built"
+elif [ -x "$HERE/target/release/read-stats" ] && [ -x "$HERE/target/release/jp-dict" ]; then
+  good "shipped binaries"
 else
   fail "no binaries and no cargo to build them"
   say "install Rust (https://rustup.rs) or use a release tarball that ships them"
