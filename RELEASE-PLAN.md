@@ -174,6 +174,11 @@ close — live feed resumes with no missed lines. **Commit:** `overlay: line scr
 
 ### T5.5 — Input region for full-screen panels
 
+**Status:** already true for the settings panel, which is drawn inside
+`#explain-box` and so is in `report()`'s rectangle list already. What is left is
+whatever T5.4 draws — if the scrollback is a sibling of those boxes it needs its
+own rect, and this task is that one line plus the verify below.
+
 The layer surface only takes clicks where the page has drawn. Scrollback and an
 expanded settings panel cover most of the screen, so the input region has to
 grow while they are open and shrink again after — otherwise the game stops
