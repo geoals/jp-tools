@@ -109,6 +109,10 @@ let commonRanks = { freq: 0, bccwj: 0 };
 // Paint the ledger's verdict on each word. Off leaves the spans in place —
 // they are the click targets — carrying no status class.
 let paintStatus = true;
+// The gap that ends a sitting, the same one `stats::derive_sessions` and
+// `#read` split on — so a divider here marks the same sitting the dashboard
+// counts. Ten minutes until the server says otherwise.
+let sessionGapSecs = 600;
 // Which hooker the capture daemon listens to, and where. Written here and
 // polled there — the daemon switches source without being restarted, the same
 // way pausing works.
@@ -122,6 +126,7 @@ fetch("/api/settings")
       bccwj: s.reader_common_max_bccwj_rank || 0,
     };
     paintStatus = s.highlight_status !== false;
+    sessionGapSecs = s.session_gap_secs || sessionGapSecs;
     lineSource = s.line_source || "ws";
     wsUrl = s.line_source_ws_url || "";
     showServerSettings();
@@ -672,8 +677,54 @@ function scrollbackRow(row) {
   const el = document.createElement("div");
   el.className = "sb";
   el.dataset.id = String(row.id ?? "");
+  el.dataset.ts = String(row.ts ?? 0);
   el.append(renderLine(row));
   return el;
+}
+
+/** "14:32". en-GB like the sittings table, since the default locale adds an
+ *  AM/PM and this sits in a narrow column over a game. */
+function clock(ts) {
+  return new Date(ts * 1000).toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** Rule the dividers off the rows: a gap over `sessionGapSecs` starts a new
+ *  sitting, which is what the server and `#read` both split on, so a divider
+ *  here marks the same sitting the dashboard counts.
+ *
+ *  Redone from scratch on every change rather than patched. A line arriving can
+ *  close the sitting before it — turning its "started 22:26" into a finished
+ *  range — and a page loaded above can reveal that what looked like the top of
+ *  a sitting is the middle of one. Walking a few hundred rows costs nothing
+ *  next to getting either of those wrong.
+ *
+ *  The oldest sitting held gets no header until there is nothing older, since
+ *  until then its first line is only the first line *loaded*. */
+function markSessions() {
+  for (const old of scrollbackLinesEl.querySelectorAll(".sb-session")) old.remove();
+  const rows = [...scrollbackLinesEl.querySelectorAll(".sb")];
+  const groups = [];
+  for (const row of rows) {
+    const ts = Number(row.dataset.ts) || 0;
+    const group = groups[groups.length - 1];
+    if (!group || ts - group.end > sessionGapSecs) groups.push({ first: row, start: ts, end: ts });
+    else group.end = ts;
+  }
+  groups.forEach((group, i) => {
+    if (i === 0 && !exhausted) return;
+    const header = document.createElement("div");
+    header.className = "sb-session";
+    // The last one is still being read: there is no closed flag, only the
+    // absence of a next line so far.
+    header.textContent =
+      i === groups.length - 1
+        ? `started ${clock(group.start)}`
+        : `${clock(group.start)}–${clock(group.end)}`;
+    group.first.before(header);
+  });
 }
 
 function appendScrollback(row) {
@@ -686,6 +737,7 @@ function appendScrollback(row) {
   const el = scrollbackRow(row);
   el.classList.add("current");
   scrollbackLinesEl.append(el);
+  markSessions();
   if (atBottom) toLatest();
   countScrollback();
 }
@@ -697,7 +749,8 @@ function toLatest() {
 }
 
 function countScrollback() {
-  const n = scrollbackLinesEl.children.length;
+  // The rows, not the children: the session dividers are children too.
+  const n = scrollbackLinesEl.querySelectorAll(".sb").length;
   const more = exhausted ? "" : ", scroll up for more";
   scrollbackCountEl.textContent = n ? `${n} lines${more}` : "Nothing read yet";
 }
@@ -721,12 +774,16 @@ async function pageBack() {
     const frag = document.createDocumentFragment();
     for (const row of older) frag.append(scrollbackRow(row));
     scrollbackLinesEl.prepend(frag);
+    markSessions();
     scrollbackLinesEl.scrollTop = scrollbackLinesEl.scrollHeight - before;
   } catch {
     // Offline or the server restarted. Leave what is held and let the next
     // scroll try again.
   } finally {
     paging = false;
+    // Again, because exhausting the history is what lets the oldest sitting
+    // have a header at all.
+    markSessions();
     countScrollback();
   }
 }
@@ -756,6 +813,7 @@ function openScrollback() {
     }
     pageBack();
   }
+  markSessions();
   countScrollback();
   toLatest();
   report();

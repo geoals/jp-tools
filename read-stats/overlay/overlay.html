@@ -723,6 +723,28 @@
   #scrollback-lines .sb.current {
     background: rgba(154, 140, 255, 0.16);
   }
+  /* Where one sitting ends and the next begins, on the gap the server splits
+     sessions on — so this divider marks the same sitting the dashboard counts.
+     Chrome rather than content, so it is sized in rem and set in the UI face,
+     the same as `#read`'s. */
+  #scrollback-lines .sb-session {
+    margin: 1.1em 0 0.6em;
+    padding-top: 0.5em;
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
+    font-family: system-ui, sans-serif;
+    font-size: 0.72rem;
+    font-weight: 400;
+    letter-spacing: 0.06em;
+    line-height: 1.4;
+    text-transform: uppercase;
+    color: #8d8d8d;
+  }
+  #scrollback-lines .sb-session:first-child {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+  }
+
   /* Chrome, not content: sized in rem so it stays small when the line is set
      large. */
   #scrollback-foot {
