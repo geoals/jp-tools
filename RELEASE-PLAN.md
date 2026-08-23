@@ -288,13 +288,15 @@ or open-licensed VN and say which it is.
 
 ### T7.4 — Repository hygiene
 
-`LICENSE` (choose one), `CONTRIBUTING.md`, issue templates that ask for
-`kotodex doctor` output, `THIRD-PARTY.md` listing SudachiDict, silero-vad,
-Jitendex, Lapis and their licences, and a `SECURITY`/scope note that the
-AnkiConnect proxy binds locally.
+**Status:** half. `THIRD-PARTY.md` and `.github/ISSUE_TEMPLATE/` (the bug
+template asks for `kotodex doctor` output) are in. The scope note about
+loopback binding is the last section of `THIRD-PARTY.md`.
+
+Left: `LICENSE` (open decision 3) and `CONTRIBUTING.md`, which depends on what
+kind of contribution you want.
 
 **Verify:** licence headers consistent; every bundled asset attributed.
-**Commit:** `docs: licences and contribution guide`.
+**Commit:** `docs: licence and contribution guide`.
 
 ### T7.5 — Release
 
@@ -303,6 +305,18 @@ Optionally a CI workflow that builds the artifact on tag.
 
 **Verify:** download the release on a clean machine and follow the README
 exactly. **Commit:** `ci: release workflow`.
+
+### T7.6 — The dashboard must not need a CDN
+
+`read-stats/templates/spa.html` resolves preact, htm and `@preact/signals`
+through an import map pointing at `esm.sh`. A reader with no internet gets an
+overlay that works and a dashboard that does not load at all — and reading
+offline is a normal thing to do.
+
+Vendor the three into `read-stats/static/vendor/` and point the import map
+there. yt-mine and manga-mine have the same import map and the same problem.
+
+**Verify:** load the dashboard with the network down. **Commit:** `read-stats: vendor the front-end libraries`.
 
 ---
 
