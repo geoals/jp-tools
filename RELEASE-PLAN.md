@@ -782,14 +782,17 @@ game, and check it stays above and that clicks land through it.
 ### T5.1 — Button bar rework
 
 **Status:** done. ☰ is the whole bar shut, and it is what the widget is dragged
-by — the drag moved off the explain button, which is now an ordinary button. It
-opens on click, shuts on a click elsewhere on the overlay or after six seconds
-untouched, and stays open while a panel is open. Paused tints the handle.
+by — the drag moved off the explain button, which is now an ordinary button. The
+buttons open in a row to its right. Paused tints the handle.
 
-**Keyboard shortcuts are bar-local, not global.** The layer surface takes the
-keyboard `OnDemand`, so the game keeps every key until the overlay is clicked —
-a global hotkey is not available from this page at all. `E H G M P` act while
-the bar is open, `Esc` closes popup, panel and bar; the settings panel says so.
+**Nothing shuts the bar but the handle.** The plan's click-away and timeout were
+built and taken back out: a bar that closes itself takes the button out from
+under the pointer reaching for it.
+
+**No keyboard shortcuts.** They were built and removed — not wanted yet. Worth
+knowing when they come back: the layer surface takes the keyboard `OnDemand`, so
+the game keeps every key until the overlay is clicked, and a global hotkey is
+not available from this page at all.
 
 Two defects found on the way: `applyCapabilities` hid the whole `#explain-box`
 without an API key, which now takes the bar with it — it hides the ℹ button
@@ -808,8 +811,6 @@ click-away or after a timeout. Grouping:
 
 - always visible when collapsed: the handle, and the pause state if paused
 - expanded: explain, hide line, ghost, scrollback, settings, pause, mobile
-
-Keyboard shortcuts for the frequent ones, listed in settings.
 
 **Verify:** every existing action still reachable; the bar does not cover the
 line at any scale. **Commit:** `overlay: collapsible button bar`.

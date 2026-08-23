@@ -81,13 +81,10 @@ way to judge a word without asking what it means.
 
 **The controls live behind one handle.** ☰ at the top left is the bar shut:
 drag it to move the widget, click it to open explain, hide the line, ghost,
-phone size, type settings and pause. It shuts again on a click elsewhere on the
-overlay or after a few seconds untouched, and it stays open while a panel is
-being read. Paused tints the handle, since that is the one state worth seeing
-while the bar is shut. With the bar open the same actions have keys — `E` `H`
-`G` `M` `P`, `Esc` to close — and those reach the page only once the surface has
-been clicked: the layer shell leaves the keyboard with the game until then, so
-there are no global hotkeys here.
+phone size, type settings and pause, which sit in a row to its right. Only the
+handle opens and shuts it — nothing closes it on its own, so a button is never
+taken out from under the pointer reaching for it. Paused tints the handle, since
+that is the one state worth seeing while the bar is shut.
 
 `--mobile` draws the overlay at 1.75x with the line on the bottom edge, for
 reading the screen off a phone. The 📱 button at the top left switches between

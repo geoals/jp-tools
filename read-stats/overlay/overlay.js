@@ -554,12 +554,7 @@ for (const type of ["pointerup", "pointercancel"]) {
 
 // The bar is shut while the game is being read: every button on it is something
 // in the way of the art, and the handle is the one thing that has to stay — it
-// is also what the widget is dragged by. It shuts again on its own, because
-// the gesture that would otherwise shut it is a click on the game, which the
-// overlay never sees.
-const BAR_TIMEOUT_MS = 6000;
-let barTimer = null;
-
+// is also what the widget is dragged by. Only the handle opens and shuts it.
 function showBar(open) {
   buttonsEl.hidden = !open;
   handleEl.classList.toggle("open", open);
@@ -567,53 +562,10 @@ function showBar(open) {
     settingsPanelEl.hidden = true;
     settingsBtnEl.classList.add("off");
   }
-  armBarTimeout();
   report();
 }
 
-/** Shut it after a while untouched — but never with a panel open, since a panel
- *  is being read rather than waited on. */
-function armBarTimeout() {
-  clearTimeout(barTimer);
-  if (buttonsEl.hidden) return;
-  if (!settingsPanelEl.hidden || !explainPanelEl.hidden) return;
-  barTimer = setTimeout(() => showBar(false), BAR_TIMEOUT_MS);
-}
-
-explainBoxEl.addEventListener("pointerenter", () => clearTimeout(barTimer));
-explainBoxEl.addEventListener("pointerleave", armBarTimeout);
-// Anything else on the surface that takes a click — the line, the popup — is
-// click-away as far as the bar is concerned. #explain-box stops its own.
-document.addEventListener("click", () => showBar(false));
-
 explainBtnEl.addEventListener("click", explainLine);
-
-// The layer surface only holds the keyboard once it has been clicked, so these
-// are shortcuts for a bar already in use, not global hotkeys — the game keeps
-// every key until the overlay is touched. Listed in the settings panel.
-const BAR_KEYS = {
-  e: () => explainBtnEl.click(),
-  h: () => hideBtnEl.click(),
-  g: () => ghostBtnEl.click(),
-  m: () => mobileBtnEl.click(),
-  p: () => pauseBtnEl.click(),
-};
-
-document.addEventListener("keydown", (e) => {
-  if (e.ctrlKey || e.altKey || e.metaKey) return;
-  if (e.key === "Escape") {
-    closePopup();
-    explainPanelEl.hidden = true;
-    showBar(false);
-    return;
-  }
-  if (buttonsEl.hidden) return;
-  const act = BAR_KEYS[e.key.toLowerCase()];
-  if (!act) return;
-  e.preventDefault();
-  act();
-  armBarTimeout();
-});
 
 // The widget is its own surface: a click on it must not reach the document
 // handler that closes the popup, and must not reach the VN either.
@@ -771,7 +723,6 @@ document.getElementById("settings-reset").addEventListener("click", () => {
 settingsBtnEl.addEventListener("click", () => {
   settingsPanelEl.hidden = !settingsPanelEl.hidden;
   settingsBtnEl.classList.toggle("off", settingsPanelEl.hidden);
-  armBarTimeout();
   report();
 });
 
