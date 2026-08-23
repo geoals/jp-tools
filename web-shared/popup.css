@@ -161,6 +161,13 @@
   }
 }
 
+/* Anki refused. Says only that it did — the reason is a sentence, and the host
+   has somewhere to put one. */
+.jp-popup .acts button.failed {
+  color: #fca5a5;
+  border-color: #7f1d1d;
+}
+
 /* The status the word is on now. */
 .jp-popup .acts button.on {
   border-color: #3f6ea8;

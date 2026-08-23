@@ -381,11 +381,22 @@ export function createPopup(opts) {
       if (add.disabled) return;
       add.disabled = true;
       add.replaceChildren(el("span", "spin"));
+      let noteId;
       try {
-        markMined(await mine(on));
+        noteId = await mine(on);
+        markMined(noteId);
       } finally {
         add.disabled = false;
-        add.textContent = "＋";
+        // A refusal leaves the button where it was, which reads exactly like a
+        // click that never landed. The host says *why* — it is the only side
+        // that has Anki's answer — and this says *that*, so the two are not
+        // both silent.
+        add.textContent = noteId ? "＋" : "✕";
+        add.classList.toggle("failed", !noteId);
+        if (!noteId) setTimeout(() => {
+          add.textContent = "＋";
+          add.classList.remove("failed");
+        }, 4000);
       }
     });
     addButton = add;

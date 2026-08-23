@@ -102,13 +102,28 @@ pub async fn mine(
 
     let body =
         Bytes::from(serde_json::to_vec(&note).map_err(|e| AppError::Upstream(e.to_string()))?);
-    let (status, replied) = crate::services::card::add_note(&state, body)
+    let (_status, replied) = crate::services::card::add_note(&state, body)
         .await
         .map_err(AppError::Upstream)?;
-    let ok = status.is_success();
     // The id comes back so the open popup can raise its mined badge without
     // asking Anki a second time — and a duplicate answers `null`, which is the
     // honest answer to "did this add a card".
     let note_id = crate::services::card::new_note_id(&replied);
-    Ok(Json(json!({ "ok": ok, "note_id": note_id })))
+    // AnkiConnect answers 200 with the refusal in the body, so the status code
+    // is not the outcome — a missing note type came back as a success with no
+    // card behind it, and the ＋ went quiet as if the click had been dropped.
+    // `ok` is whether a card exists now, and `error` is Anki's own sentence.
+    let error = anki_error(&replied);
+    Ok(Json(
+        json!({ "ok": note_id.is_some(), "note_id": note_id, "error": error }),
+    ))
+}
+
+/// Anki's refusal, in its own words. Empty and null both mean it did not
+/// refuse; an `.apkg` import returns an empty string for a real failure, but an
+/// `addNote` does not.
+fn anki_error(replied: &Bytes) -> Option<String> {
+    let json: Value = serde_json::from_slice(replied).ok()?;
+    let text = json.get("error")?.as_str()?;
+    (!text.is_empty()).then(|| text.to_string())
 }

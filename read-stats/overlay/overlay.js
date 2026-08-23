@@ -49,6 +49,16 @@ if (font) root.setProperty("--line-font", `"${font}", sans-serif`);
 
 const lineEl = document.getElementById("line");
 const warnEl = document.getElementById("warn");
+
+// The one line that says something is wrong. Status pushes rewrite it every two
+// seconds, so anything that has to be *read* — a mine Anki refused — holds it
+// for a while against them.
+let warnHeldUntil = 0;
+function warn(text, holdMs = 0) {
+  if (holdMs) warnHeldUntil = Date.now() + holdMs;
+  else if (Date.now() < warnHeldUntil) return;
+  warnEl.textContent = text;
+}
 const popupEl = document.getElementById("popup");
 
 // The popup itself is `web-shared/popup.js`, the same module yt-mine loads —
@@ -156,14 +166,15 @@ stream.addEventListener("status", (e) => {
   // then grabs the whole screen with the overlay on it, and nothing else here
   // reports that. A capture fault outranks it — no line at all is the bigger
   // problem.
-  warnEl.textContent =
+  warn(
     capture !== "live"
       ? capture
       : !can("lines_source")
         ? "no line source — run Textractor with its WebSocket plugin"
         : vn_window
           ? ""
-          : "no window name on this work";
+          : "no window name on this work",
+  );
   // Only the two states that say what the flag is. `down` and `stalled` are
   // faults in the logger, and neither means capture was switched off.
   if (capture === "paused" || capture === "live") showPaused(capture === "paused");
@@ -1089,7 +1100,13 @@ async function mine(word, target = null) {
   });
   // The add answers with the new note's id, so a popup open on this word gets
   // its badge now rather than the next time it is opened.
-  const { note_id } = await res.json().catch(() => ({}));
+  const { note_id, error } = await res.json().catch(() => ({}));
+  // Anki refuses in its own words and with a 200, so this is the only place the
+  // reason exists. Held on screen: a mine that quietly does nothing is
+  // indistinguishable from a click that missed, and the reason is usually
+  // something only the reader can fix — the wrong profile is open, the note
+  // type was renamed.
+  if (!note_id) warn(error ? `Anki: ${error}` : "Anki added no card", 12000);
   return note_id;
 }
 
