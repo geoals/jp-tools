@@ -221,17 +221,26 @@ entry and uninstall. What is left:
 
 ### T6.4 — Dictionaries
 
-**Status:** blocked on which dictionaries to ship. `setup.sh` imports whatever
-is in `dictionaries/` and prints how to add more, but downloads nothing —
-Jitendex publishes no GitHub release assets, so its zip needs a URL that is not
-derivable from the API, and the frequency and pitch picks are a licensing and
-taste call.
+**Status:** done. `setup.sh` offers two, both resolved rather than pinned and
+neither redistributed:
 
-Decide the three, then: download each, `jp-dict import` it (roles are guessed),
-and keep the printed advice for the copyrighted ones that cannot be shipped.
+- **Jitendex** (CC BY-SA 4.0), from the latest release of
+  `stephenmk/stephenmk.github.io` — not the `jitendex` repo, which publishes no
+  assets.
+- **the Jiten frequency list**, `GET https://api.jiten.moe/api/frequency-list/download`.
+  It ranks the media people read, which is what the underline and the sweep
+  order are supposed to mean. HEAD is refused there, so the size check on the
+  result is the only probe.
 
-**Verify:** on an empty `knowledge.db`, accepting gives a working popup with
-definitions, one frequency pill and pitch. **Commit:** `setup: free dictionary download`.
+Neither is offered when a dictionary of that kind is already imported — under
+any filename, since `source_path` is the cache key and a second copy is a
+duplicate row.
+
+Verified on an empty database: Jiten lands as `frequency`, Jitendex as
+`reference` and then takes `master` through T1.6's fallback.
+
+A pitch dictionary is still left to the reader — the free ones need their
+redistribution terms checked, and setup.sh says what is worth adding.
 
 ### T6.5 — Anki note type
 
@@ -301,8 +310,8 @@ or open-licensed VN and say which it is.
 template asks for `kotodex doctor` output) are in. The scope note about
 loopback binding is the last section of `THIRD-PARTY.md`.
 
-Left: `LICENSE` (open decision 3) and `CONTRIBUTING.md`, which depends on what
-kind of contribution you want.
+`LICENSE` is GPL-3.0. Left: `CONTRIBUTING.md`, which depends on what kind of
+contribution you want.
 
 **Verify:** licence headers consistent; every bundled asset attributed.
 **Commit:** `docs: licence and contribution guide`.
@@ -372,9 +381,12 @@ T2.5 gates T6.5. T5.4 needs T5.5. Phase 7 needs 6; Phase 8 needs 7. T7.3
 
 # Open decisions
 
-1. **Vendor the Lapis note type or link to it** (T2.5).
-2. **Prebuilt binaries in the tarball or build on install** (T7.1).
-3. **Licence** (T7.4).
+1. ~~**Vendor the Lapis note type or link to it**~~ (T2.5) — decided: neither.
+   Download `Lapis.apkg` from the upstream release and import it through
+   AnkiConnect's `importPackage`.
+2. ~~**Prebuilt binaries in the tarball or build on install**~~ (T7.1) —
+   decided: prebuilt.
+3. ~~**Licence**~~ (T7.4) — decided: GPL-3.0.
 4. **Which VN to record** for the README (T7.3).
-5. **Which dictionaries `setup.sh` downloads** (T6.4) — a bilingual, a frequency
-   list and a pitch dictionary, all freely redistributable.
+5. ~~**Which dictionaries `setup.sh` downloads**~~ (T6.4) — decided: Jitendex
+   and the Jiten frequency list.

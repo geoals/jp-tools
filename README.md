@@ -85,5 +85,7 @@ Not part of the release, but sharing the same language layer:
 - **[scripts/start-all.sh](scripts/start-all.sh)** — start, stop or restart the
   whole stack, or one service by name.
 
-[THIRD-PARTY.md](THIRD-PARTY.md) lists what other people wrote. Each directory's
-own `CLAUDE.md` or `README.md` is its documentation.
+## Licence
+
+GPL-3.0. [THIRD-PARTY.md](THIRD-PARTY.md) lists what other people wrote. Each directory's own
+`CLAUDE.md` or `README.md` is its documentation.

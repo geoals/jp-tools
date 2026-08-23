@@ -261,19 +261,73 @@ fi
 
 step "Dictionaries"
 mkdir -p "$HERE/dictionaries"
+
+JP_DICT="$HERE/target/release/jp-dict"
+
+# Nothing here is redistributed: each is fetched from whoever publishes it, at
+# the version they are publishing today. That is also why the URLs are resolved
+# rather than pinned — a stale pin is a dictionary that quietly stops existing.
+jitendex_url() {
+  curl -sL --max-time 30 https://api.github.com/repos/stephenmk/stephenmk.github.io/releases/latest \
+    | jq -r '.assets[] | select(.name == "jitendex-yomitan.zip") | .browser_download_url'
+}
+
+# What is already imported, so a dictionary that is present under another
+# filename is not downloaded a second time. `source_path` is the cache key, so a
+# second copy under a second name is a duplicate row, not a no-op.
+IMPORTED=""
+[ -x "$JP_DICT" ] && IMPORTED="$("$JP_DICT" list 2>/dev/null)"
+
+# want_dictionary <zip-name> <role-or-title match> <label> — false when it is
+# already imported, or already sitting in dictionaries/ waiting to be.
+want_dictionary() {
+  local zip="$HERE/dictionaries/$1" match="$2" label="$3"
+  if [ -f "$zip" ]; then good "$label — already in dictionaries/"; return 1; fi
+  if [ -n "$IMPORTED" ] && printf '%s' "$IMPORTED" | grep -qi -- "$match"; then
+    good "$label — already imported"
+    return 1
+  fi
+  return 0
+}
+
+if want_dictionary jitendex-yomitan.zip "jitendex" "Jitendex"; then
+  if confirm "Download Jitendex? A free Japanese-English dictionary (~39 MB, CC BY-SA 4.0)."; then
+    url="$(jitendex_url)"
+    if [ -n "$url" ] && [ "$url" != null ]; then
+      fetch "$url" "$HERE/dictionaries/jitendex-yomitan.zip" 10000000 "Jitendex"
+    else
+      fail "could not resolve the Jitendex release — get it from https://jitendex.org"
+    fi
+  else
+    skip "no Jitendex"
+  fi
+fi
+
+# jiten.moe ranks the media people actually read — its list is what the reader
+# underline and the sweep order are measured against. HEAD is refused there, so
+# fetch has nothing to probe with; the size check on the result is the check.
+if want_dictionary jiten-frequency.zip "frequency" "A frequency list"; then
+  if confirm "Download the Jiten frequency list? It ranks fiction, which is what the underline means (~8 MB)."; then
+    fetch "https://api.jiten.moe/api/frequency-list/download" \
+      "$HERE/dictionaries/jiten-frequency.zip" 3000000 "Jiten frequency list"
+  else
+    skip "no frequency list — no underline, no rank pill, unordered sweep"
+  fi
+fi
+
 zips=("$HERE"/dictionaries/*.zip)
 if [ -e "${zips[0]}" ]; then
-  say "importing what is in dictionaries/"
-  run "$HERE/target/release/jp-dict" sync
-  run "$HERE/target/release/jp-dict" list
+  run "$JP_DICT" sync
+  [ "$DRY_RUN" = 1 ] || "$JP_DICT" list
 else
   skip "dictionaries/ is empty — the popup will open with no definitions"
 fi
+
 say ""
-say "To add one: drop its Yomitan zip in $HERE/dictionaries/ and run setup.sh again."
-say "Worth having, in order: a monolingual master (三省堂 or 明鏡), a bilingual"
-say "(Jitendex, CC-BY-SA, https://jitendex.org), a jpdb-style frequency list, and"
-say "a pitch-accent dictionary. jp-dict guesses each one's role from what it holds."
+say "To add more: drop the Yomitan zip in $HERE/dictionaries/ and run setup.sh again."
+say "jp-dict reads what each one holds and gives it a role, so nothing else to set."
+say "Worth having and not free: a monolingual master (三省堂, 明鏡) for the"
+say "vocabulary scale, and a pitch-accent dictionary for the accent line."
 
 # -------------------------------------------------------------------- Anki --
 
