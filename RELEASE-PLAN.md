@@ -308,15 +308,10 @@ exactly. **Commit:** `ci: release workflow`.
 
 ### T7.6 — The dashboard must not need a CDN
 
-`read-stats/templates/spa.html` resolves preact, htm and `@preact/signals`
-through an import map pointing at `esm.sh`. A reader with no internet gets an
-overlay that works and a dashboard that does not load at all — and reading
-offline is a normal thing to do.
-
-Vendor the three into `read-stats/static/vendor/` and point the import map
-there. yt-mine and manga-mine have the same import map and the same problem.
-
-**Verify:** load the dashboard with the network down. **Commit:** `read-stats: vendor the front-end libraries`.
+**Status:** done. preact, htm and `@preact/signals` are in
+`web-shared/vendor/`, and all three `spa.html` import maps point there.
+manga-mine now serves `/shared` like the other two, so the vendored copy is one
+copy. Verified with `dev-instance.sh browser`: every view renders.
 
 ---
 

@@ -25,6 +25,7 @@ use crate::services::ocr::OcrEngine;
 
 const SPA_HTML: &str = include_str!("../templates/spa.html");
 const STATIC_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
+const SHARED_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../web-shared");
 
 #[derive(Clone)]
 pub struct AppState {
@@ -74,6 +75,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/sources", get(api::list_sources))
         .route("/api/export", post(api::export_card))
         .nest_service("/static", ServeDir::new(STATIC_DIR))
+        .nest_service("/shared", ServeDir::new(SHARED_DIR))
         // Phone photos can be large (12MP JPEG ≈ 5–10 MB)
         .layer(DefaultBodyLimit::max(50 * 1024 * 1024))
         // Frontend has no build step / cache busting — force revalidation so
