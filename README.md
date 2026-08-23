@@ -72,7 +72,7 @@ Kotodex is `kotodex/` (the launcher), `read-stats/` (the server, the dashboard
 and the overlay page), `layer-overlay/` (the Qt shell that puts a web page over
 a fullscreen window) and `vn-mine/` (the capture daemon and the line logger).
 
-Sharing the same language layer:
+Not part of the release, but sharing the same language layer:
 
 - **[yt-mine/](yt-mine/)** — YouTube sentence mining: a URL in, transcribed and
   tokenized sentences out, one-click Anki export.

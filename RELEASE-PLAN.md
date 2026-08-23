@@ -246,6 +246,10 @@ off until it answers. The note type check and Lapis creation wait on T2.5.
 Python and web assets, `setup.sh`, `docs/`, licences and third-party notices
 into `kotodex-<version>-linux-x86_64.tar.gz`. Prints the size and a checksum.
 
+**yt-mine and manga-mine are not in the release.** They share the language layer
+and live in the same repository, and that is all — the tarball ships the
+launcher, read-stats, layer-overlay, vn-mine and jp-dict.
+
 Decide here whether the tarball ships prebuilt binaries (bigger, no Rust
 toolchain needed — strongly preferred for the target user) or builds on the
 machine.
