@@ -781,6 +781,21 @@ game, and check it stays above and that clicks land through it.
 
 ### T5.1 — Button bar rework
 
+**Status:** done. ☰ is the whole bar shut, and it is what the widget is dragged
+by — the drag moved off the explain button, which is now an ordinary button. It
+opens on click, shuts on a click elsewhere on the overlay or after six seconds
+untouched, and stays open while a panel is open. Paused tints the handle.
+
+**Keyboard shortcuts are bar-local, not global.** The layer surface takes the
+keyboard `OnDemand`, so the game keeps every key until the overlay is clicked —
+a global hotkey is not available from this page at all. `E H G M P` act while
+the bar is open, `Esc` closes popup, panel and bar; the settings panel says so.
+
+Two defects found on the way: `applyCapabilities` hid the whole `#explain-box`
+without an API key, which now takes the bar with it — it hides the ℹ button
+instead; and the QWebChannel callback still set `minBtnEl`/`closeBtnEl`, removed
+with T4.6, which threw before `report()`.
+
 Today: six always-visible buttons (`ℹ 👁 あ ⤢ ⚙ ⏸`) in one row at top-left.
 Six is already too many over a game, and the scrollback panel adds a seventh.
 

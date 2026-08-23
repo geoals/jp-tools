@@ -332,6 +332,26 @@
     display: flex;
     gap: 0.4rem;
   }
+  /* Collapsed is the resting state: six buttons over a game are six things in
+     the way of the art, and the handle is the one that has to stay reachable
+     because it is also what the whole widget is dragged by. */
+  #buttons[hidden] {
+    display: none;
+  }
+
+  #bar-handle {
+    min-width: 2.2rem;
+    padding: 0.45rem 0.55rem;
+    color: #9a9a9a;
+  }
+  #bar-handle.open {
+    color: #e6e6e6;
+  }
+  /* Paused is the one state worth seeing while the bar is shut — nothing being
+     read is being counted. */
+  #bar-handle.paused {
+    color: hsl(28 92% 72%);
+  }
 
   /* Own tooltip rather than `title`. QtWebEngine's native one is a separate
      surface the layer shell does not place, and it wraps to a width nothing
@@ -358,6 +378,7 @@
     pointer-events: none;
   }
 
+  #bar-handle,
   #explain-btn,
   #hide-btn,
   #ghost-btn,
@@ -453,6 +474,14 @@
     background: rgba(154, 140, 255, 0.55);
     color: #fff;
   }
+  #settings-keys {
+    grid-column: 1 / -1;
+    max-width: 26rem;
+    margin: 0.2rem 0 0;
+    color: #9a9a9a;
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
   #settings-reset {
     grid-column: 1 / -1;
     justify-self: end;
@@ -498,7 +527,10 @@
 <div id="box"><div id="line"></div></div>
 <div id="popup" class="jp-popup" hidden></div>
 <div id="explain-box">
-  <div id="buttons">
+  <div id="bar">
+    <button id="bar-handle" data-tip="Overlay controls — drag to move">☰</button>
+  </div>
+  <div id="buttons" hidden>
     <button id="explain-btn" data-tip="Explain the last line (select a word first to focus on it)">ℹ</button>
     <button id="hide-btn" data-tip="Hide the line">👁</button>
     <button id="ghost-btn" data-tip="Read the game's own text, marked">あ</button>
@@ -530,6 +562,12 @@
       <button value="Noto Serif CJK JP">Noto Serif</button>
       <button value="Noto Sans CJK JP">Noto Sans</button>
     </div>
+    <p id="settings-keys">
+      Keys, while the bar is open: <b>E</b> explain, <b>H</b> hide the line,
+      <b>G</b> ghost, <b>M</b> phone size, <b>P</b> pause, <b>Esc</b> close.
+      They reach the page only once it has the keyboard — click the overlay
+      first; the game keeps every key until then.
+    </p>
     <button id="settings-reset">Reset</button>
   </div>
   <div id="explain-panel" hidden></div>

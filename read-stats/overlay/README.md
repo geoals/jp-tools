@@ -79,6 +79,16 @@ hands back the id `define` returned, so a retraction can only ever undo the one
 row that popup made. The side buttons still cost nothing at all and stay the
 way to judge a word without asking what it means.
 
+**The controls live behind one handle.** ☰ at the top left is the bar shut:
+drag it to move the widget, click it to open explain, hide the line, ghost,
+phone size, type settings and pause. It shuts again on a click elsewhere on the
+overlay or after a few seconds untouched, and it stays open while a panel is
+being read. Paused tints the handle, since that is the one state worth seeing
+while the bar is shut. With the bar open the same actions have keys — `E` `H`
+`G` `M` `P`, `Esc` to close — and those reach the page only once the surface has
+been clicked: the layer shell leaves the keyboard with the game until then, so
+there are no global hotkeys here.
+
 `--mobile` draws the overlay at 1.75x with the line on the bottom edge, for
 reading the screen off a phone. The 📱 button at the top left switches between
 the two without restarting the shell — it reloads the page with the layout's

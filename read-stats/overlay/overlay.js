@@ -125,8 +125,9 @@ fetch("/api/reader/state")
   .catch(() => {});
 
 function applyCapabilities() {
-  // No key, no ℹ.
-  explainBoxEl.hidden = !can("explain");
+  // No key, no ℹ. The button, not the box: the box is the whole control bar,
+  // and pause and the type settings work without a key.
+  explainBtnEl.hidden = !can("explain");
   // Nowhere to add a card, no ＋ in the popup.
   popup.setMining(can("anki"));
   // An empty ledger has no verdict to paint, whatever the setting says.
@@ -483,11 +484,13 @@ for (const type of ["pointerup", "pointercancel"]) {
 // fitted over the game's own text and this has to be able to sit clear of it.
 const explainBoxEl = document.getElementById("explain-box");
 const explainBtnEl = document.getElementById("explain-btn");
+const handleEl = document.getElementById("bar-handle");
+const buttonsEl = document.getElementById("buttons");
 const explainPanelEl = document.getElementById("explain-panel");
 // Versioned: the widget used to hang off the bottom edge, and an offset stored
 // against that anchor puts it somewhere else entirely against this one.
 const EXPLAIN_PLACE = "vn-overlay-explain-offset-top";
-let explainDrag = null;
+let barDrag = null;
 let explaining = false;
 let explainOffset = { x: 0, y: 0 };
 
@@ -518,36 +521,99 @@ function moveExplainTo(x, y) {
   applyExplainPlace();
 }
 
-explainBtnEl.addEventListener("pointerdown", (e) => {
+handleEl.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
-  explainDrag = {
+  barDrag = {
     id: e.pointerId,
     x: e.clientX - explainOffset.x,
     y: e.clientY - explainOffset.y,
     moved: false,
   };
-  explainBtnEl.setPointerCapture(e.pointerId);
+  handleEl.setPointerCapture(e.pointerId);
 });
 
-explainBtnEl.addEventListener("pointermove", (e) => {
-  if (!explainDrag || e.pointerId !== explainDrag.id) return;
+handleEl.addEventListener("pointermove", (e) => {
+  if (!barDrag || e.pointerId !== barDrag.id) return;
   // A press wanders a pixel or two before it lifts; only a real move is a drag,
-  // or the button would stop answering taps.
-  if (Math.abs(e.clientX - explainDrag.x - explainOffset.x) > 3) explainDrag.moved = true;
-  if (Math.abs(e.clientY - explainDrag.y - explainOffset.y) > 3) explainDrag.moved = true;
-  if (explainDrag.moved) moveExplainTo(e.clientX - explainDrag.x, e.clientY - explainDrag.y);
+  // or the handle would stop answering taps.
+  if (Math.abs(e.clientX - barDrag.x - explainOffset.x) > 3) barDrag.moved = true;
+  if (Math.abs(e.clientY - barDrag.y - explainOffset.y) > 3) barDrag.moved = true;
+  if (barDrag.moved) moveExplainTo(e.clientX - barDrag.x, e.clientY - barDrag.y);
 });
 
 for (const type of ["pointerup", "pointercancel"]) {
-  explainBtnEl.addEventListener(type, (e) => {
-    if (!explainDrag || e.pointerId !== explainDrag.id) return;
-    explainBtnEl.releasePointerCapture(e.pointerId);
-    const dragged = explainDrag.moved;
-    explainDrag = null;
+  handleEl.addEventListener(type, (e) => {
+    if (!barDrag || e.pointerId !== barDrag.id) return;
+    handleEl.releasePointerCapture(e.pointerId);
+    const dragged = barDrag.moved;
+    barDrag = null;
     localStorage.setItem(EXPLAIN_PLACE, JSON.stringify(explainOffset));
-    if (type === "pointerup" && !dragged) explainLine();
+    if (type === "pointerup" && !dragged) showBar(buttonsEl.hidden);
   });
 }
+
+// The bar is shut while the game is being read: every button on it is something
+// in the way of the art, and the handle is the one thing that has to stay — it
+// is also what the widget is dragged by. It shuts again on its own, because
+// the gesture that would otherwise shut it is a click on the game, which the
+// overlay never sees.
+const BAR_TIMEOUT_MS = 6000;
+let barTimer = null;
+
+function showBar(open) {
+  buttonsEl.hidden = !open;
+  handleEl.classList.toggle("open", open);
+  if (!open) {
+    settingsPanelEl.hidden = true;
+    settingsBtnEl.classList.add("off");
+  }
+  armBarTimeout();
+  report();
+}
+
+/** Shut it after a while untouched — but never with a panel open, since a panel
+ *  is being read rather than waited on. */
+function armBarTimeout() {
+  clearTimeout(barTimer);
+  if (buttonsEl.hidden) return;
+  if (!settingsPanelEl.hidden || !explainPanelEl.hidden) return;
+  barTimer = setTimeout(() => showBar(false), BAR_TIMEOUT_MS);
+}
+
+explainBoxEl.addEventListener("pointerenter", () => clearTimeout(barTimer));
+explainBoxEl.addEventListener("pointerleave", armBarTimeout);
+// Anything else on the surface that takes a click — the line, the popup — is
+// click-away as far as the bar is concerned. #explain-box stops its own.
+document.addEventListener("click", () => showBar(false));
+
+explainBtnEl.addEventListener("click", explainLine);
+
+// The layer surface only holds the keyboard once it has been clicked, so these
+// are shortcuts for a bar already in use, not global hotkeys — the game keeps
+// every key until the overlay is touched. Listed in the settings panel.
+const BAR_KEYS = {
+  e: () => explainBtnEl.click(),
+  h: () => hideBtnEl.click(),
+  g: () => ghostBtnEl.click(),
+  m: () => mobileBtnEl.click(),
+  p: () => pauseBtnEl.click(),
+};
+
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  if (e.key === "Escape") {
+    closePopup();
+    explainPanelEl.hidden = true;
+    showBar(false);
+    return;
+  }
+  if (buttonsEl.hidden) return;
+  const act = BAR_KEYS[e.key.toLowerCase()];
+  if (!act) return;
+  e.preventDefault();
+  act();
+  armBarTimeout();
+});
 
 // The widget is its own surface: a click on it must not reach the document
 // handler that closes the popup, and must not reach the VN either.
@@ -612,6 +678,8 @@ const pauseBtnEl = document.getElementById("pause-btn");
 
 function showPaused(paused) {
   pauseBtnEl.classList.toggle("paused", paused);
+  // The one state worth seeing with the bar shut.
+  handleEl.classList.toggle("paused", paused);
   pauseBtnEl.textContent = paused ? "▶" : "⏸";
   tip(pauseBtnEl, paused ? "Resume capture" : "Pause capture");
 }
@@ -703,6 +771,7 @@ document.getElementById("settings-reset").addEventListener("click", () => {
 settingsBtnEl.addEventListener("click", () => {
   settingsPanelEl.hidden = !settingsPanelEl.hidden;
   settingsBtnEl.classList.toggle("off", settingsPanelEl.hidden);
+  armBarTimeout();
   report();
 });
 
@@ -1005,8 +1074,6 @@ if (window.qt?.webChannelTransport) {
     shell.userToggled.connect(toggleGhost);
     // The status event that carried it has usually already been and gone.
     if (windowName) shell.setWindowName(windowName);
-    minBtnEl.hidden = false;
-    closeBtnEl.hidden = false;
     report();
   });
 }
