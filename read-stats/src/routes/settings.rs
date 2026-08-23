@@ -15,7 +15,13 @@ pub async fn get_settings(State(state): State<AppState>) -> Result<Json<Settings
 
 /// Settings whose value is free text rather than a number. Everything else must
 /// parse as one, which is what keeps a typo out of the derivation thresholds.
-const TEXT_KEYS: &[&str] = &["current_work", "pace_start_date", "vn_window"];
+const TEXT_KEYS: &[&str] = &[
+    "current_work",
+    "pace_start_date",
+    "vn_window",
+    "line_source",
+    "line_source_ws_url",
+];
 
 pub async fn put_settings(
     State(state): State<AppState>,
@@ -37,6 +43,13 @@ pub async fn put_settings(
             let s = s.trim();
             if key == "pace_start_date" && !s.is_empty() && s.parse::<NaiveDate>().is_err() {
                 return Err(AppError::BadRequest(format!("bad date: {s}")));
+            }
+            // A typo here stops every line arriving, and the producer polls
+            // this rather than being told, so nothing would report the mistake.
+            if key == "line_source" && !matches!(s, "ws" | "clipboard") {
+                return Err(AppError::BadRequest(format!(
+                    "line_source must be ws or clipboard, not {s}"
+                )));
             }
             s.to_string()
         } else {

@@ -6,9 +6,17 @@ texthooker-ui reads) and appends every hooked Japanese line to lines.log as
 "<epoch>\t<text>", one per line. vn-capture.sh anchors the last voiceline on
 the newest entry's timestamp.
 
-Replaces the old clipboard watcher: the WS stream carries only Textractor
-hooks, so copying a sentence for a lookup/card no longer pollutes the log and
-there is no startup clipboard replay to guard against.
+Two sources, one producer. `settings.line_source` picks between the WebSocket
+and a clipboard watcher, and switching it takes effect without a restart — the
+same way pausing does. It is a switch rather than a second script because
+everything after the source is the part that matters: `clean_line`, the ruby
+split, the dedup and both sinks. A second writer of `lines` would be a second
+copy of all of it.
+
+The WebSocket is the default. A clipboard hooker copies whatever the reader
+copies too, so a sentence copied for a lookup enters the log as if it were
+dialogue, and whatever was already on the clipboard at startup would replay —
+guarded below, but not fixable in general.
 
 Every logged line is also inserted into the shared knowledge SQLite DB
 (durable, unlike the tmpfs lines.log) so reading time and character counts can
@@ -29,7 +37,7 @@ plugin and takes Textractor with it.
 
 Env:
   VN_RUNDIR                   run dir (default: $XDG_RUNTIME_DIR/vn-mine or /run/user/$UID/...)
-  VN_WS_URL                   WebSocket URL (default: ws://localhost:6677)
+  VN_WS_URL                   WebSocket URL, overriding settings.line_source_ws_url
   JP_TOOLS_KNOWLEDGE_DB_PATH  shared knowledge DB (default: ~/.local/share/jp-tools/knowledge.db)
   JP_TOOLS_STATS_DB_PATH      read-stats DB (default: ~/.local/share/jp-tools/read-stats.db)
   JP_TOOLS_STATS_DISABLE      set to 1 to skip the stats sink entirely
@@ -38,8 +46,10 @@ import asyncio
 import json
 import os
 import re
+import shutil
 import signal
 import sqlite3
+import subprocess
 import sys
 import time
 
@@ -54,13 +64,21 @@ LINES_LOG = os.path.join(RUNDIR, "lines.log")
 # Written repr-escaped: whether a newline is in the stream is one of the questions
 # it exists to answer, and normalize() has already spent it by the time text flows.
 RAW_LOG = os.path.join(RUNDIR, "raw.log")
-WS_URL = os.environ.get("VN_WS_URL", "ws://localhost:6677")
+# The environment wins over the setting: a hand-started logger pointed somewhere
+# for a one-off should not be moved by whatever the panel last saved.
+WS_URL_ENV = os.environ.get("VN_WS_URL")
+WS_URL_FALLBACK = "ws://localhost:6677"
 
 # How often the capture-paused flag is re-read, and how long to wait before
 # retrying a connection that failed. Both are cheap: one indexed SQLite read
 # and one localhost socket.
 PAUSE_POLL_SECS = 2.0
 RECONNECT_SECS = 2.0
+
+# How often the clipboard is read. A clipboard hooker writes on line advance, so
+# this is the latency between the game's line and the overlay's — low enough not
+# to be felt, and one short-lived process per tick is the whole cost.
+CLIPBOARD_POLL_SECS = 0.25
 
 # Heartbeat cadence. `#read` calls the logger down at three missed beats, so
 # this also sets how fast a dead logger is noticed.
@@ -574,6 +592,26 @@ class StatsSink:
             log(f"pause flag unreadable ({e}) — continuing to capture")
             return False
 
+    def _setting(self, key, default=None):
+        if self.db is None:
+            return default
+        try:
+            row = self.db.execute(
+                "SELECT value FROM stats.settings WHERE key = ?", (key,)
+            ).fetchone()
+            return row[0] if row and row[0] else default
+        except sqlite3.Error:
+            return default
+
+    def line_source(self):
+        """`ws` or `clipboard`. Anything else is a setting written by hand and
+        is read as the default rather than as no source at all."""
+        source = self._setting("line_source", "ws")
+        return source if source in ("ws", "clipboard") else "ws"
+
+    def ws_url(self):
+        return WS_URL_ENV or self._setting("line_source_ws_url", WS_URL_FALLBACK)
+
     def current_work(self):
         """Title set via the dashboard's "now reading" field; read per line so a
         change applies immediately without restarting the daemon."""
@@ -653,67 +691,149 @@ def normalize(msg):
     return text[:4000]
 
 
-async def read_lines(ws, out, stats, last):
-    """Drain one connection into the log and the stats sink.
+def emit(raw, out, stats, last):
+    """One captured line, whatever produced it, through to both sinks.
 
     `last` is the line before, as (text, ruby) — the dedup needs its text and a
-    continuation needs both halves to rebuild the ruby offsets.
+    continuation needs both halves to rebuild the ruby offsets. Returns the new
+    `last`, unchanged when the line was dropped.
+
+    Shared by both sources on purpose: everything here — the cleaning, the ruby
+    split, the continuation join, the dedup — is what makes a captured string a
+    line, and it must not depend on which hooker sent it.
     """
     last_text, last_ruby = last
+    try:
+        with open(RAW_LOG, "a", encoding="utf-8") as rawlog:
+            rawlog.write(f"{time.time():.9f}\t{raw!r}\n")
+    except OSError:
+        pass
+    capture = normalize(raw)
+    continuation = continues_previous(capture)
+    text = clean_line(capture)
+    if not text:
+        return last
+    # The break the halves are rejoined on below, so it is not counted twice
+    # and every ruby offset stays measured from the first character.
+    if continuation:
+        text = text.lstrip("\n")
+    # The log and the dedup below both want the line as written: furigana
+    # is a separate layer from here on, and only the overlay draws it.
+    text, ruby = split_ruby(text)
+    if not text:
+        return last
+    if continuation and last_text is not None:
+        stats.retract_last()
+        shift = u16len(last_text) + 1
+        ruby = [[start + shift, length, r] for start, length, r in ruby]
+        text = f"{last_text}\n{text}"
+        ruby = last_ruby + ruby
+    # A re-hook of the line still on screen (Textractor double-fire,
+    # focus change) must not move the anchor. Only the immediately
+    # preceding line is suppressed, so a genuine later repeat of the
+    # same short line — separated by other dialogue — still logs.
+    elif text == last_text:
+        return last
+    ts = time.time()
+    out.write(f"{ts:.9f}\t{text}\n")
+    out.flush()
+    stats.add(ts, text, ruby)
+    return text, ruby
+
+
+async def read_lines(ws, out, stats, last):
+    """Drain one WebSocket connection into the log and the stats sink."""
     async for raw in ws:
         if isinstance(raw, bytes):
             raw = raw.decode("utf-8", "replace")
-        try:
-            with open(RAW_LOG, "a", encoding="utf-8") as rawlog:
-                rawlog.write(f"{time.time():.9f}\t{raw!r}\n")
-        except OSError:
-            pass
-        capture = normalize(raw)
-        continuation = continues_previous(capture)
-        text = clean_line(capture)
-        if not text:
-            continue
-        # The break the halves are rejoined on below, so it is not counted twice
-        # and every ruby offset stays measured from the first character.
-        if continuation:
-            text = text.lstrip("\n")
-        # The log and the dedup below both want the line as written: furigana
-        # is a separate layer from here on, and only the overlay draws it.
-        text, ruby = split_ruby(text)
-        if not text:
-            continue
-        if continuation and last_text is not None:
-            stats.retract_last()
-            shift = u16len(last_text) + 1
-            ruby = [[start + shift, length, r] for start, length, r in ruby]
-            text = f"{last_text}\n{text}"
-            ruby = last_ruby + ruby
-        # A re-hook of the line still on screen (Textractor double-fire,
-        # focus change) must not move the anchor. Only the immediately
-        # preceding line is suppressed, so a genuine later repeat of the
-        # same short line — separated by other dialogue — still logs.
-        elif text == last_text:
-            continue
-        ts = time.time()
-        out.write(f"{ts:.9f}\t{text}\n")
-        out.flush()
-        stats.add(ts, text, ruby)
-        last_text, last_ruby = text, ruby
-    return last_text, last_ruby
+        last = emit(raw, out, stats, last)
+    return last
 
 
 async def watch_pause(ws, stats):
-    """Close the connection cleanly once capture is paused.
+    """Close the connection cleanly once capture is paused, or once the reader
+    has switched to another source.
 
     A separate task because the read loop is parked in `async for`: this is what
     turns the flag into an actual disconnect rather than a filter.
     """
+    url = stats.ws_url()
     while True:
         await asyncio.sleep(PAUSE_POLL_SECS)
         if stats.capture_paused():
             log("capture paused — closing the Textractor connection")
-            await ws.close()
-            return
+        elif stats.line_source() != "ws":
+            log("line source changed — closing the Textractor connection")
+        elif stats.ws_url() != url:
+            log("WebSocket address changed — reconnecting")
+        else:
+            continue
+        await ws.close()
+        return
+
+
+def clipboard_reader():
+    """A command that prints the clipboard, or None when nothing can.
+
+    wl-paste first: it is the one that works on a Wayland session, which
+    includes reading an XWayland game. `-n` because a trailing newline is not
+    part of what was copied and would make every line look changed.
+    """
+    for cmd in (
+        ["wl-paste", "-n", "--no-newline"],
+        ["xclip", "-o", "-selection", "clipboard"],
+        ["xsel", "-b", "-o"],
+    ):
+        if shutil.which(cmd[0]):
+            return cmd
+    return None
+
+
+def read_clipboard(cmd):
+    """The clipboard's text, or None when it holds nothing readable.
+
+    An empty clipboard, an image, or a selection owner that has gone away all
+    make the tool fail or print nothing — none of which is a line, and none of
+    which is worth a log entry every quarter second.
+    """
+    try:
+        out = subprocess.run(cmd, capture_output=True, timeout=2)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    text = out.stdout.decode("utf-8", "replace")
+    return text or None
+
+
+async def pump_clipboard(out, stats, state, last):
+    """Poll the clipboard for as long as it is the chosen source.
+
+    Whatever is on the clipboard at the moment this starts is the *previous*
+    value, never a line: a switch to this source would otherwise log the last
+    thing the reader copied hours ago, and so would every restart.
+    """
+    cmd = clipboard_reader()
+    if cmd is None:
+        log("no clipboard tool — install wl-clipboard (Wayland) or xclip (X11)")
+        await asyncio.sleep(RECONNECT_SECS)
+        return last
+    log(f"watching the clipboard with {cmd[0]}")
+    seen = read_clipboard(cmd)
+    state["ws"] = True
+    try:
+        while True:
+            await asyncio.sleep(CLIPBOARD_POLL_SECS)
+            if stats.capture_paused() or stats.line_source() != "clipboard":
+                log("clipboard watch stopping")
+                return last
+            text = read_clipboard(cmd)
+            if text is None or text == seen:
+                continue
+            seen = text
+            last = emit(text, out, stats, last)
+    finally:
+        state["ws"] = None
 
 
 async def pump(out, stats, state):
@@ -721,16 +841,20 @@ async def pump(out, stats, state):
     # An explicit loop rather than `async for ws in websockets.connect(...)`:
     # that form reconnects on its own, which is exactly what a pause must not
     # do. Reconnecting is now a decision made here, once per iteration, after
-    # the flag has been checked.
+    # the flag and the chosen source have been checked.
     while True:
         if stats.capture_paused():
             await asyncio.sleep(PAUSE_POLL_SECS)
             continue
+        if stats.line_source() == "clipboard":
+            last = await pump_clipboard(out, stats, state, last)
+            continue
+        url = stats.ws_url()
         try:
             async with websockets.connect(
-                WS_URL, max_size=None, ping_interval=20, ping_timeout=20
+                url, max_size=None, ping_interval=20, ping_timeout=20
             ) as ws:
-                log(f"connected to {WS_URL}")
+                log(f"connected to {url}")
                 state["ws"] = ws
                 watcher = asyncio.create_task(watch_pause(ws, stats))
                 try:
@@ -741,7 +865,7 @@ async def pump(out, stats, state):
                     watcher.cancel()
                     state["ws"] = None
         except (OSError, websockets.WebSocketException) as e:
-            log(f"connect failed ({e}), retrying")
+            log(f"connect to {url} failed ({e}), retrying")
             await asyncio.sleep(RECONNECT_SECS)
 
 

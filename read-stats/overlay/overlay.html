@@ -497,7 +497,8 @@
     height: 1rem;
     accent-color: #9a8cff;
   }
-  .settings-body input[type="number"] {
+  .settings-body input[type="number"],
+  .settings-body input[type="text"] {
     width: 6rem;
     padding: 0.15rem 0.35rem;
     border: 1px solid rgba(255, 255, 255, 0.2);
@@ -506,6 +507,12 @@
     color: #e6e6e6;
     font: inherit;
     font-size: 0.9rem;
+  }
+  /* A URL, not a number: it needs the row rather than a box sized for four
+     digits. */
+  .settings-body input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
   }
   /* Tabular figures: the readout is beside a slider being dragged, and a
      proportional 1 makes the whole row twitch as the number changes. */
@@ -615,6 +622,7 @@
   }
   /* Rows are divs, not buttons: a button stays inline-level whatever `display`
      says, and the list came out two names to a line. */
+  #set-line-source .row,
   #set-font .row {
     overflow: hidden;
     padding: 0.25rem 0.5rem;
@@ -626,9 +634,11 @@
     cursor: pointer;
     user-select: none;
   }
+  #set-line-source .row:hover,
   #set-font .row:hover {
     background: rgba(255, 255, 255, 0.1);
   }
+  #set-line-source .row.on,
   #set-font .row.on {
     background: rgba(154, 140, 255, 0.55);
     color: #fff;
@@ -641,6 +651,68 @@
     width: 4rem;
     font-size: 1.1rem;
     color: #e6e6e6;
+  }
+
+  /* Earlier lines, over the whole surface. Full-screen because it is read
+     rather than glanced at, and because the input region has to grow to cover
+     it anyway — see report(): a panel the compositor does not know about takes
+     no clicks, and the game would advance under it. */
+  #scrollback {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    background: rgba(0, 0, 0, 0.94);
+    color: #f2f2f2;
+  }
+  #scrollback[hidden] {
+    display: none;
+  }
+  #scrollback-lines {
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    padding: 1.4rem 2rem;
+    font-family: var(--line-font);
+    font-size: calc(1.15rem * var(--line-scale));
+    line-height: 1.9;
+  }
+  /* Each line is a block, and the word spans inside it are the live line's own
+     — same classes, same handlers, so a lookup here is a lookup there. */
+  #scrollback-lines .sb {
+    max-width: 46rem;
+    margin: 0 auto 0.7rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 6px;
+    white-space: pre-wrap;
+  }
+  #scrollback-lines .sb.current {
+    background: rgba(154, 140, 255, 0.14);
+  }
+  #scrollback-foot {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    padding: 0.7rem 2rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+    font-size: 0.85rem;
+  }
+  #scrollback-count {
+    flex: 1;
+    color: #9a9a9a;
+  }
+  #scrollback-foot button {
+    padding: 0.3rem 0.7rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #e6e6e6;
+    font: inherit;
+    cursor: pointer;
+  }
+  #scrollback-foot button:hover {
+    background: rgba(255, 255, 255, 0.14);
   }
 
   #explain-panel {
@@ -680,6 +752,7 @@
     <div id="buttons">
       <button id="explain-btn" data-tip="Explain the last line (select a word first to focus on it)">ℹ</button>
       <button id="hide-btn" data-tip="Hide the line">👁</button>
+      <button id="scrollback-btn" class="off" data-tip="Earlier lines">▤</button>
       <button id="settings-btn" class="off" data-tip="Settings">⚙</button>
     </div>
   </div>
@@ -688,6 +761,7 @@
       <button value="text" class="on">Text</button>
       <button value="place">Placement</button>
       <button value="marks">Marks</button>
+      <button value="source">Source</button>
     </div>
 
     <div class="settings-body" data-tab="text">
@@ -766,11 +840,34 @@
       <span id="ghost-why"></span>
     </div>
 
+    <div class="settings-body" data-tab="source" hidden>
+      <label>Lines come from</label>
+      <div id="set-line-source" class="wide">
+        <div class="row" data-source="ws">Textractor WebSocket</div>
+        <div class="row" data-source="clipboard">The clipboard</div>
+      </div>
+      <span></span>
+      <label for="set-ws-url">WebSocket address</label>
+      <input id="set-ws-url" type="text" spellcheck="false" />
+      <span></span>
+      <label></label>
+      <div id="source-note" class="wide note"></div>
+      <span></span>
+    </div>
+
     <div id="settings-foot">
       <button id="pause-btn" data-tip="Pause capture">⏸ Pause capture</button>
     </div>
   </div>
   <div id="explain-panel" hidden></div>
+</div>
+<div id="scrollback" hidden>
+  <div id="scrollback-lines"></div>
+  <div id="scrollback-foot">
+    <span id="scrollback-count"></span>
+    <button id="scrollback-latest">Jump to latest</button>
+    <button id="scrollback-close">Close</button>
+  </div>
 </div>
 <div id="warn"></div>
 <script type="module" src="/overlay/overlay.js"></script>

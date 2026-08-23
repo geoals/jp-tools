@@ -109,6 +109,11 @@ let commonRanks = { freq: 0, bccwj: 0 };
 // Paint the ledger's verdict on each word. Off leaves the spans in place —
 // they are the click targets — carrying no status class.
 let paintStatus = true;
+// Which hooker the capture daemon listens to, and where. Written here and
+// polled there — the daemon switches source without being restarted, the same
+// way pausing works.
+let lineSource = "ws";
+let wsUrl = "";
 fetch("/api/settings")
   .then((r) => r.json())
   .then((s) => {
@@ -117,6 +122,8 @@ fetch("/api/settings")
       bccwj: s.reader_common_max_bccwj_rank || 0,
     };
     paintStatus = s.highlight_status !== false;
+    lineSource = s.line_source || "ws";
+    wsUrl = s.line_source_ws_url || "";
     showServerSettings();
   })
   .catch(() => {});
@@ -274,20 +281,20 @@ function redraw() {
   if (line) draw(line, true);
 }
 
-function draw(incoming, again = false) {
-  closePopup();
-  line = incoming;
-  if (!again) {
-    recent.push(incoming.text);
-    if (recent.length > EXPLAIN_CONTEXT_LINES) recent.shift();
-  }
-  selectedInLine = "";
-  const text = line.text;
-  const ruby = line.ruby ?? [];
+/** One line, built the way the live line is built: the same word spans, the
+ * same status marks, the same common-word underline, the same ruby.
+ *
+ * Shared with the scrollback, which is the reason it is a function rather than
+ * the body of `draw`. A line the reader scrolled back to is the same line it
+ * was a minute ago, and a second implementation would drift from this one
+ * exactly where it matters — what a word is worth knowing about. */
+function renderLine(row) {
+  const text = row.text;
+  const ruby = row.ruby ?? [];
   const frag = document.createDocumentFragment();
   // Offsets are UTF-16 code units, which is exactly what a JS string indexes
   // in, so they slice directly.
-  const parts = pieces(text, [...(line.tokens ?? [])].sort((a, b) => a.start - b.start));
+  const parts = pieces(text, [...(row.tokens ?? [])].sort((a, b) => a.start - b.start));
   const wide = wideRuby(ruby, parts);
   let group = null;
 
@@ -335,16 +342,28 @@ function draw(incoming, again = false) {
     }
   }
 
-  lineEl.replaceChildren(frag);
+  return frag;
+}
+
+function draw(incoming, again = false) {
+  closePopup();
+  line = incoming;
+  if (!again) {
+    recent.push(incoming.text);
+    if (recent.length > EXPLAIN_CONTEXT_LINES) recent.shift();
+  }
+  selectedInLine = "";
+  lineEl.replaceChildren(renderLine(line));
   // The game indents a quoted line's later rows under its first character, not
   // under the 「 — see #line.quoted. Reading it off the text rather than always
   // hanging the indent: a narration line starts at the margin and every row of
   // it does.
-  lineEl.classList.toggle("quoted", QUOTE_OPEN.test(text));
+  lineEl.classList.toggle("quoted", QUOTE_OPEN.test(line.text));
+  if (scrollbackOpen()) appendScrollback(line);
   report();
 }
 
-lineEl.addEventListener("click", (e) => {
+function onWordClick(e) {
   const word = e.target.closest(".w");
   if (!word) return;
   e.stopPropagation();
@@ -362,7 +381,7 @@ lineEl.addEventListener("click", (e) => {
     status: word.dataset.status,
     start: Number(word.dataset.start),
   });
-});
+}
 
 // Anywhere else on the surface dismisses. Not the popup itself, or scrolling a
 // long Jitendex entry would close what is being read.
@@ -373,6 +392,15 @@ lineEl.addEventListener("click", (e) => {
 // the click, which detaches the chip mid-dispatch, and the detached chip then
 // read as a click outside — so every pick closed the popup it had just opened.
 document.addEventListener("click", () => closePopup());
+
+// Escape closes the popup, then the scrollback. The layer surface only takes
+// the keyboard once it has been clicked, which by then it has been — opening
+// the scrollback is a click on it.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (popup.isOpen()) return closePopup();
+  closeScrollback();
+});
 
 /** The side buttons act on the word under the pointer, without a popup.
  *
@@ -390,30 +418,27 @@ const SIDE_ACTIONS = {
   4: (word) => mine(word),
 };
 
-lineEl.addEventListener("mousedown", (e) => {
+function onWordMousedown(e) {
   if (SIDE_ACTIONS[e.button]) e.preventDefault();
-});
+}
 
-lineEl.addEventListener("auxclick", (e) => {
+function onWordAuxclick(e) {
   const action = SIDE_ACTIONS[e.button];
   const word = e.target.closest(".w");
   if (!action || !word) return;
   e.preventDefault();
   action(word);
-});
+}
 
 // The wheel over the word the popup is open on pages its dictionaries — the
 // hand is already there, having just clicked it. Only over that word: anywhere
 // else the wheel still scrolls a line too long for the strip.
-lineEl.addEventListener(
-  "wheel",
-  (e) => {
-    if (!popup.isOpen() || e.target.closest(".w") !== popup.anchor()) return;
-    e.preventDefault();
-    popup.step(Math.sign(e.deltaY));
-  },
-  { passive: false },
-);
+function onWordWheel(e) {
+  if (!popup.isOpen() || e.target.closest(".w") !== popup.anchor()) return;
+  e.preventDefault();
+  popup.step(Math.sign(e.deltaY));
+}
+
 
 // Dragging the strip. Anywhere on the backdrop that is not a word: the words
 // are the only thing on it with an action of their own.
@@ -624,6 +649,140 @@ explainPanelEl.addEventListener("click", () => {
 // The button row's tooltip is drawn by the page — see `[data-tip]` in
 // overlay.html — so `title` must stay unset or the native one draws too.
 const tip = (el, text) => el.setAttribute("data-tip", text);
+
+/* Earlier lines, over the whole surface.
+ *
+ * A page of history is fetched only when the top is reached, so opening it
+ * costs one request and scrolling back a thousand lines costs one per page.
+ * The rows are built by `renderLine`, so every word in them clicks, judges and
+ * mines exactly as the live line's do — a lookup from here is a lookup, which
+ * is the point: a word met three lines ago is the commonest thing to want to
+ * look up, and reaching it used to mean not looking it up at all.
+ */
+const scrollbackEl = document.getElementById("scrollback");
+const scrollbackLinesEl = document.getElementById("scrollback-lines");
+const scrollbackCountEl = document.getElementById("scrollback-count");
+const scrollbackBtnEl = document.getElementById("scrollback-btn");
+
+// The oldest line held, and whether the server has said there is nothing older.
+let oldestId = null;
+let exhausted = false;
+let paging = false;
+
+const scrollbackOpen = () => !scrollbackEl.hidden;
+
+function scrollbackRow(row) {
+  const el = document.createElement("div");
+  el.className = "sb";
+  el.dataset.id = String(row.id ?? "");
+  el.append(renderLine(row));
+  return el;
+}
+
+function appendScrollback(row) {
+  // Only when it is already at the bottom: a reader who has scrolled up to read
+  // something is not asking to be dragged back down every time the game
+  // advances.
+  const atBottom =
+    scrollbackLinesEl.scrollHeight - scrollbackLinesEl.scrollTop - scrollbackLinesEl.clientHeight < 40;
+  for (const el of scrollbackLinesEl.querySelectorAll(".sb.current")) el.classList.remove("current");
+  const el = scrollbackRow(row);
+  el.classList.add("current");
+  scrollbackLinesEl.append(el);
+  if (atBottom) el.scrollIntoView({ block: "end" });
+  countScrollback();
+}
+
+function countScrollback() {
+  const n = scrollbackLinesEl.children.length;
+  const more = exhausted ? "" : ", scroll up for more";
+  scrollbackCountEl.textContent = n ? `${n} lines${more}` : "Nothing read yet";
+}
+
+/** One page older than what is held. Anchored on the oldest id rather than an
+ *  offset: lines keep arriving while this is open, and an offset would slide. */
+async function pageBack() {
+  if (paging || exhausted || oldestId === null) return;
+  paging = true;
+  // Held so the view can be put back where it was: prepending changes
+  // scrollHeight, and without this the reader is thrown to a random place.
+  const before = scrollbackLinesEl.scrollHeight - scrollbackLinesEl.scrollTop;
+  try {
+    const res = await fetch(`/api/lines/before?before=${oldestId}&limit=100`);
+    const { lines: older = [] } = await res.json();
+    if (!older.length) {
+      exhausted = true;
+      return;
+    }
+    oldestId = older[0].id;
+    const frag = document.createDocumentFragment();
+    for (const row of older) frag.append(scrollbackRow(row));
+    scrollbackLinesEl.prepend(frag);
+    scrollbackLinesEl.scrollTop = scrollbackLinesEl.scrollHeight - before;
+  } catch {
+    // Offline or the server restarted. Leave what is held and let the next
+    // scroll try again.
+  } finally {
+    paging = false;
+    countScrollback();
+  }
+}
+
+function openScrollback() {
+  scrollbackEl.hidden = false;
+  scrollbackBtnEl.classList.remove("off");
+  if (!scrollbackLinesEl.children.length) {
+    // Seeded from the line on screen, which is the only id this page is sure
+    // of. Everything older arrives by paging back from it.
+    if (line) {
+      oldestId = line.id ?? null;
+      scrollbackLinesEl.append(scrollbackRow(line));
+      scrollbackLinesEl.lastElementChild.classList.add("current");
+    }
+    pageBack();
+  }
+  countScrollback();
+  scrollbackLinesEl.lastElementChild?.scrollIntoView({ block: "end" });
+  report();
+}
+
+function closeScrollback() {
+  if (!scrollbackOpen()) return;
+  scrollbackEl.hidden = true;
+  scrollbackBtnEl.classList.add("off");
+  closePopup();
+  report();
+}
+
+scrollbackBtnEl.addEventListener("click", (e) => {
+  e.stopPropagation();
+  scrollbackOpen() ? closeScrollback() : openScrollback();
+});
+document.getElementById("scrollback-close").addEventListener("click", closeScrollback);
+document.getElementById("scrollback-latest").addEventListener("click", () => {
+  scrollbackLinesEl.lastElementChild?.scrollIntoView({ block: "end", behavior: "smooth" });
+});
+
+scrollbackLinesEl.addEventListener("scroll", () => {
+  if (scrollbackLinesEl.scrollTop < 200) pageBack();
+});
+
+// Click-away on the backdrop only. Not on a line: a miss between two words
+// inside the scrollback is a miss, not a request to close what is being read.
+scrollbackEl.addEventListener("click", (e) => {
+  if (e.target === scrollbackEl || e.target === scrollbackLinesEl) closeScrollback();
+});
+
+// The live line and the scrollback carry the same word spans, so they carry the
+// same handlers — not copies. A word is a word wherever it is drawn, and the
+// scrollback exists precisely so a line that has gone past can still be looked
+// up.
+for (const host of [lineEl, scrollbackLinesEl]) {
+  host.addEventListener("click", onWordClick);
+  host.addEventListener("mousedown", onWordMousedown);
+  host.addEventListener("auxclick", onWordAuxclick);
+  host.addEventListener("wheel", onWordWheel, { passive: false });
+}
 
 const hideBtnEl = document.getElementById("hide-btn");
 hideBtnEl.addEventListener("click", () => {
@@ -881,9 +1040,23 @@ applyType();
 const statusInputEl = document.getElementById("set-status");
 const commonInputEl = document.getElementById("set-common");
 
+const sourceBoxEl = document.getElementById("set-line-source");
+const sourceRowEls = [...sourceBoxEl.children];
+const wsUrlEl = document.getElementById("set-ws-url");
+const sourceNoteEl = document.getElementById("source-note");
+
 function showServerSettings() {
   statusInputEl.checked = paintStatus;
   commonInputEl.value = String(commonRanks.freq);
+  for (const row of sourceRowEls) row.classList.toggle("on", row.dataset.source === lineSource);
+  // Not while it is being typed in: rewriting the box under the cursor moves
+  // the caret to the end of whatever has been typed so far.
+  if (document.activeElement !== wsUrlEl) wsUrlEl.value = wsUrl;
+  wsUrlEl.disabled = lineSource !== "ws";
+  sourceNoteEl.textContent =
+    lineSource === "clipboard"
+      ? "Anything copied is read as a line, including a sentence copied for a lookup. Needs wl-clipboard or xclip."
+      : "Textractor's WebSocket plugin, which is the port set in Textractor itself.";
 }
 
 function saveSetting(key, value) {
@@ -910,6 +1083,23 @@ function setCommonRank(rank) {
   saveSetting("reader_common_max_freq_rank", rank);
   redraw();
 }
+
+function setLineSource(source) {
+  lineSource = source;
+  showServerSettings();
+  saveSetting("line_source", source);
+}
+
+for (const row of sourceRowEls) {
+  row.addEventListener("click", () => setLineSource(row.dataset.source));
+}
+
+// On change, not on input: the address is only valid once it has been typed
+// out, and saving each keystroke would point the daemon at ws://l for a moment.
+wsUrlEl.addEventListener("change", () => {
+  wsUrl = wsUrlEl.value.trim();
+  saveSetting("line_source_ws_url", wsUrl);
+});
 
 statusInputEl.addEventListener("change", () => setPaintStatus(statusInputEl.checked));
 commonInputEl.addEventListener("change", () => setCommonRank(Math.max(0, Number(commonInputEl.value) || 0)));
@@ -1129,6 +1319,14 @@ function report() {
   // words advances the VN from under an open popup. It is also far steadier —
   // one rect that changes when the line does, rather than a dozen that shift
   // by a pixel as the text reflows.
+  // Scrollback first, and on its own: it covers the screen, so while it is open
+  // the surface takes every click — which is the point. A panel the compositor
+  // does not know is there would let the game advance under the line being
+  // read.
+  if (scrollbackOpen()) {
+    shell.setHits([0, 0, window.innerWidth, window.innerHeight]);
+    return;
+  }
   const rects = [explainBoxEl.getBoundingClientRect()];
   if (!boxEl.hidden) rects.push(lineEl.getBoundingClientRect());
   if (!popupEl.hidden) rects.push(popupEl.getBoundingClientRect());

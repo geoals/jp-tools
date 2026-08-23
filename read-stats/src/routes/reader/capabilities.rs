@@ -101,18 +101,28 @@ fn capture_running() -> Capability {
     }
 }
 
-/// Where the lines being read come from. `ws` is Textractor through
-/// `vn-ws-logger.py`; `db` means rows are arriving from somewhere else, or not
-/// at all.
-fn lines_source() -> Capability {
-    let log = run_dir().join("lines.log");
-    if log.is_file() {
-        on("ws")
-    } else {
-        off(
-            "db",
+/// Where the lines being read come from, and whether the producer is writing.
+///
+/// The setting is which source was *chosen*; `lines.log` is whether one is
+/// actually running. Both are worth saying: a reader who has picked the
+/// clipboard and sees nothing needs to know which of the two is missing.
+async fn lines_source(state: &AppState) -> Capability {
+    let chosen = crate::db::load_settings(&state.local)
+        .await
+        .map(|s| s.line_source)
+        .unwrap_or_else(|_| "ws".into());
+    if run_dir().join("lines.log").is_file() {
+        return on(chosen);
+    }
+    match chosen.as_str() {
+        "clipboard" => off(
+            "clipboard, no producer",
+            "start the capture daemon — it is what watches the clipboard",
+        ),
+        _ => off(
+            "ws, no producer",
             "run Textractor with its WebSocket plugin pointed at vn-ws-logger.py",
-        )
+        ),
     }
 }
 
@@ -315,7 +325,7 @@ pub async fn probe(state: &AppState) -> Value {
     let (anki_up, note_type) = anki(state).await;
     let mut out = json!({
         "capture_running": capture_running(),
-        "lines_source": lines_source(),
+        "lines_source": lines_source(state).await,
         "vad_model": vad_model(),
         "screenshot_tool": screenshot_tool(),
         "xdotool": xdotool(),

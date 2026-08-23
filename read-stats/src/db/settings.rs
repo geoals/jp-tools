@@ -59,6 +59,15 @@ pub struct Settings {
     /// status class. An empty ledger paints nothing either way, so a fresh
     /// install reads plain text without having to be told to.
     pub highlight_status: bool,
+    /// Where lines come from: `ws` is Textractor through its WebSocket plugin,
+    /// `clipboard` is whatever a clipboard hooker copies. One producer either
+    /// way — `vn-ws-logger.py` switches source rather than a second writer
+    /// existing, so the filters, the dedup and the ruby split stay one
+    /// implementation.
+    pub line_source: String,
+    /// The WebSocket to hook. Textractor's plugin defaults to 6677, but it is
+    /// configurable there and a second hooker uses another port.
+    pub line_source_ws_url: String,
 }
 
 impl Default for Settings {
@@ -85,6 +94,8 @@ impl Default for Settings {
             reader_common_max_bccwj_rank: 10000,
             capture_paused: false,
             highlight_status: true,
+            line_source: "ws".into(),
+            line_source_ws_url: "ws://localhost:6677".into(),
         }
     }
 }
@@ -104,6 +115,8 @@ pub const SETTING_KEYS: &[&str] = &[
     "reader_common_max_bccwj_rank",
     "capture_paused",
     "highlight_status",
+    "line_source",
+    "line_source_ws_url",
 ];
 
 /// Settings whose stored value is `"1"`/`"0"` rather than a number or free text.
@@ -153,6 +166,16 @@ pub async fn load_settings(pool: &SqlitePool) -> Result<Settings, sqlx::Error> {
             }
             "capture_paused" => settings.capture_paused = value == "1",
             "highlight_status" => settings.highlight_status = value == "1",
+            "line_source" => {
+                if !value.is_empty() {
+                    settings.line_source = value
+                }
+            }
+            "line_source_ws_url" => {
+                if !value.is_empty() {
+                    settings.line_source_ws_url = value
+                }
+            }
             _ => {}
         }
     }

@@ -98,6 +98,10 @@ pub async fn lines_before(
             "ts": line.ts,
             "chars": line.chars,
             "text": line.text,
+            // Furigana too: the scrollback draws a line the same way the live
+            // one is drawn, and a reading that appears only while a line is
+            // current would make the two disagree about what the game wrote.
+            "ruby": line.ruby,
             "tokens": tokens,
         }));
     }
