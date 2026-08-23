@@ -13,13 +13,14 @@ permissions:
   contents: write
 
 jobs:
-  artifact:
-    # The tarball ships binaries, so it must be built against a glibc old
-    # enough for the distros in docs/compositors.md.
-    runs-on: ubuntu-22.04
+  build:
+    runs-on: ubuntu-latest
+    # The tarball ships binaries, so the glibc it links against is the oldest
+    # distro it will run on. Built in the container rather than on the runner
+    # image, whose glibc moves when GitHub retires a label.
+    container: rust:1-bookworm
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
       - name: Build the tarball
@@ -28,13 +29,35 @@ jobs:
           [ -n "$version" ] || version="${GITHUB_REF_NAME#v}"
           scripts/build-release.sh "$version"
 
+      - name: Check the glibc floor
+        # Raising this strands every LTS user, and the build itself gives no
+        # sign of it.
+        run: |
+          for bin in target/release-artifact/*/target/release/*; do
+            floor=$(objdump -T "$bin" | grep -o 'GLIBC_[0-9.]*' | sort -V | tail -1)
+            echo "$bin $floor"
+            case "$floor" in
+              GLIBC_2.3[0-5]) ;;
+              *) echo "::error::$bin needs $floor, above the 2.35 floor"; exit 1 ;;
+            esac
+          done
+
       - uses: actions/upload-artifact@v4
         with:
           name: kotodex-tarball
           path: target/release-artifact/*.tar.gz*
 
-      - name: Attach to the release
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
+  # Separate from the build because the build container has no gh.
+  attach:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: kotodex-tarball
+          path: dist
+      - env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" target/release-artifact/*.tar.gz target/release-artifact/*.sha256 --clobber
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/* --clobber
