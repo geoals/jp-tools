@@ -509,6 +509,7 @@ const explainPanelEl = document.getElementById("explain-panel");
 // against that anchor puts it somewhere else entirely against this one.
 const EXPLAIN_PLACE = "vn-overlay-explain-offset-top";
 let barDrag = null;
+let barDragged = false;
 let explaining = false;
 let explainOffset = { x: 0, y: 0 };
 
@@ -563,19 +564,28 @@ for (const type of ["pointerup", "pointercancel"]) {
   handleEl.addEventListener(type, (e) => {
     if (!barDrag || e.pointerId !== barDrag.id) return;
     handleEl.releasePointerCapture(e.pointerId);
-    const dragged = barDrag.moved;
+    barDragged = barDrag.moved;
     barDrag = null;
     localStorage.setItem(EXPLAIN_PLACE, JSON.stringify(explainOffset));
-    if (type === "pointerup" && !dragged) showBar(buttonsEl.hidden);
   });
 }
+
+// The toggle is the click, not the pointerup that ends the drag: a press with
+// the pointer captured does not always lift on the button it went down on, and
+// the bar then stopped answering. A drag that actually moved is not a click.
+handleEl.addEventListener("click", () => {
+  if (barDragged) {
+    barDragged = false;
+    return;
+  }
+  showBar(buttonsEl.hidden);
+});
 
 // The bar is shut while the game is being read: every button on it is something
 // in the way of the art, and the handle is the one thing that has to stay — it
 // is also what the widget is dragged by. Only the handle opens and shuts it.
 function showBar(open) {
   buttonsEl.hidden = !open;
-  handleEl.classList.toggle("open", open);
   if (!open) {
     settingsPanelEl.hidden = true;
     settingsBtnEl.classList.add("off");

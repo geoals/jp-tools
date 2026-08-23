@@ -821,7 +821,12 @@ line at any scale. **Commit:** `overlay: collapsible button bar`.
 ghost, phone size and pause all moved into the panel — six buttons over a game
 is what T5.1 was about, and none of the three is reached mid-line. Ghost mode
 itself is unchanged, `SIGUSR2` included. The handle is the size of a button and
-inverts while the bar is open, which it is by default.
+solid black where the buttons are translucent; the bar starts open.
+
+**The toggle is the click, not the pointerup that ends the drag.** With the
+pointer captured a press does not reliably lift on the button it went down on,
+and the handle stopped answering; a drag that actually moved swallows the
+click that follows it.
 
 Text: size, line height, spacing, weight, backdrop, shadow strength and spread,
 colour, font. Placement: column width, phone size and its scale. Marks: status

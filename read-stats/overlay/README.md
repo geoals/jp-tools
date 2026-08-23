@@ -81,8 +81,8 @@ way to judge a word without asking what it means.
 
 **The controls live behind one handle.** ☰ at the top left is the bar shut:
 drag it to move the widget, click it to shut explain, hide the line and
-settings, which sit in a row to its right. It starts open and inverts while it
-is, and only the handle opens and shuts it — nothing closes it on its own, so a
+settings, which sit in a row to its right. It starts open, and only the handle
+opens and shuts it — nothing closes it on its own, so a
 button is never taken out from under the pointer reaching for it. Paused tints
 the handle, since that is the one state worth seeing while the bar is shut.
 

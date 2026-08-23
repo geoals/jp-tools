@@ -339,7 +339,9 @@
 
   #bar {
     display: flex;
-    align-items: flex-start;
+    /* Stretch, so the handle is exactly as tall as the row of buttons beside
+       it whatever their glyphs do to the line box. */
+    align-items: stretch;
     gap: 0.4rem;
   }
 
@@ -356,9 +358,10 @@
     display: none;
   }
 
-  #bar-handle.open {
-    background: #e6e6e6;
-    color: #14161d;
+  /* Solid, where the buttons are translucent: it is the one control that is
+     always there, and it is what the widget is dragged by. */
+  #bar > #bar-handle {
+    background: #000;
   }
   /* Paused is the one state worth seeing while the bar is shut — nothing being
      read is being counted. */
@@ -402,8 +405,12 @@
     border-radius: 8px;
     background: rgba(0, 0, 0, 0.82);
     color: #e6e6e6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font: inherit;
     font-size: 1.3rem;
+    line-height: 1;
     cursor: pointer;
     /* The drag is the same gesture as the press, told apart by whether the
        pointer moved — so the browser's own text selection must not start. */
@@ -643,7 +650,7 @@
 <div id="popup" class="jp-popup" hidden></div>
 <div id="explain-box">
   <div id="bar">
-    <button id="bar-handle" class="open" data-tip="Overlay controls — drag to move">☰</button>
+    <button id="bar-handle" data-tip="Overlay controls — drag to move">☰</button>
     <div id="buttons">
       <button id="explain-btn" data-tip="Explain the last line (select a word first to focus on it)">ℹ</button>
       <button id="hide-btn" data-tip="Hide the line">👁</button>
