@@ -111,6 +111,21 @@ build on:
     A flex column shrinks its rows instead of scrolling there. Check anything
     new in a real view, not only in a browser.
 
+## This machine
+
+- **The launcher owns the capture daemon.** `vn-buffer.service` is stopped and
+  disabled. `kotodex restart` and the tray's "Restart everything" are what make
+  new code live — relaunching the app does not, because a component it adopted
+  is one it never touches.
+- Capture is currently *adopted* rather than owned, from being started by hand.
+  One clean quit-and-relaunch of Kotodex fixes that; nothing is wrong meanwhile.
+- **whisper-service is started by hand** (`scripts/start-all.sh whisper`). Its
+  container has no restart policy, so it does not survive a reboot. Decided
+  against automating it for now; the options are `restart: unless-stopped` in
+  the compose file, or a fourth launcher child.
+- **`.env` pins the personal note type**, so the live export is unchanged while
+  the defaults everyone else gets are Lapis.
+
 ## Left over from finished phases
 
 - **T4.8 — X11 backend on GNOME.** Working here, unverified there. Log into
@@ -169,8 +184,9 @@ renders, definitions page, pitch shows, image and audio attach, frequency sorts.
 
 ### T5.4 — Scrollback panel
 
-**Status:** done. ▤ opens the last lines over the whole surface, paged back a
-hundred at a time from the oldest id held — an offset would slide, since lines
+**Status:** done. ▤ opens the last lines in a panel hanging under the bar —
+inside `#explain-box`, so it is anchored to its own button and moves with the
+drag — paged back a hundred at a time from the oldest id held — an offset would slide, since lines
 keep arriving while it is open. Escape closes the popup first and then the
 panel; a click on the backdrop closes it; a new line is appended only when the
 view is already at the bottom.
@@ -181,6 +197,26 @@ lookup from the scrollback is a lookup.
 
 `/api/lines/before` gained `ruby`: a reading that appeared only while a line was
 current would make the two surfaces disagree about what the game wrote.
+
+Settled by use, after the first pass drew it fullscreen and set like the line:
+
+- **Fixed type, smaller than the line** (1.7rem). The line is sized to register
+  with the game's own text, which is larger than anything wants to read
+  fourteen of at once, and nothing in the panel sits over artwork.
+- **Width is read off `#box`**, not derived — the line box is sized by
+  character count when aligned to the game and by viewport insets when not, and
+  only one of those can be written in the stylesheet.
+- **Session dividers**, split on `settings.session_gap_secs` so they mark the
+  same sittings `#read` and `stats::derive_sessions` do. Recomputed from
+  scratch on every change: a new line closes the sitting above it, and a page
+  loaded above can reveal that the top of a sitting is the middle of one.
+- **The three panels under the bar are alternatives.** One table maps each
+  button to the panel it owns; a button owning none — hide, the handle — closes
+  all three.
+- **`place()` anchors to what was clicked.** It pinned every popup to the live
+  line box, so a history word opened its definition at the bottom of the
+  screen; and `#popup` precedes `#explain-box` with no z-index, so the panel
+  painted over it.
 
 ### T5.5 — Input region for full-screen panels
 
@@ -319,8 +355,12 @@ or open-licensed VN and say which it is.
 template asks for `kotodex doctor` output) are in. The scope note about
 loopback binding is the last section of `THIRD-PARTY.md`.
 
-`LICENSE` is GPL-3.0. Left: `CONTRIBUTING.md`, which depends on what kind of
-contribution you want.
+`LICENSE` is GPL-3.0. `CONTRIBUTING.md` is **not wanted** — it sets expectations
+with strangers sending patches, and GPL-3.0 plus the issue template covers what
+someone needs until PRs actually arrive.
+
+Left: the GitHub topics, once the repo is public —
+`gh repo edit --add-topic japanese,visual-novel,anki,sentence-mining,texthooker,linux,wayland`.
 
 **Verify:** licence headers consistent; every bundled asset attributed.
 **Commit:** `docs: licence and contribution guide`.
@@ -383,10 +423,28 @@ no second desktop entry, no second read-stats.
 
 ---
 
-# Task order
+# What is left
 
-Phase 7 needs 6; Phase 8 needs 7. T7.3
-(media) can start as soon as Phase 5 looks final.
+**To build:** T5.6's settings export/import (deferred, not wanted yet), T7.3's
+screenshots and recording, T7.5's release. Nothing else on this plan is unbuilt.
+
+**To verify by hand** — the list is in the tasks above, gathered here:
+
+1. **Mine a card into the real profile.** T2.6, and the last unverified step of
+   the whole card path. Switch Anki back to `User 1` first — the fresh
+   `kotodextest` profile has Lapis but not the pinned note type, and mining
+   against it is what the "Anki: model was not found" line now reports.
+2. **The overlay on GNOME Wayland** over a fullscreen game: does it stay above,
+   do clicks land through it. T4.8, and the last thing holding the "90% of
+   installs" claim. T8.1 settles it too.
+3. **`setup.sh` on a clean VM.** Three paths have never run here because
+   everything is already present: the SudachiDict download and unzip, the VAD
+   download, and the Jitendex/Jiten prompts. Each URL and the unzip path were
+   checked by hand, but not through the script's own flow.
+4. **`setup.sh --uninstall`**, never run — it asks for a typed `DELETE` before
+   touching the reading history, so it wants a machine that is not this one.
+5. **`anki-setup install-lapis` on an older Anki**, where `importPackage` still
+   works silently and the `guiImportFile` fallback is not the path taken.
 
 # Open decisions
 
