@@ -27,6 +27,10 @@ import urllib.request
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+# Where the assets are. The binaries are relocatable and the path they were
+# compiled in is not, so every child is told rather than left to guess — see
+# jp_core::install::install_root.
+os.environ.setdefault("KOTODEX_ROOT", str(REPO))
 READ_STATS_URL = os.environ.get("KOTODEX_READ_STATS_URL", "http://127.0.0.1:3200")
 SOCKET_NAME = "kotodex"
 

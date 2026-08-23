@@ -414,10 +414,7 @@ fn resolve_dictionary_dir(flag: Option<String>) -> PathBuf {
     if let Ok(dir) = std::env::var("JP_TOOLS_DICTIONARY_DIR") {
         return PathBuf::from(dir);
     }
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("jp-core always has a workspace parent")
-        .join("dictionaries")
+    jp_core::install::install_root().join("dictionaries")
 }
 
 fn resolve_db_path(flag: Option<String>) -> String {

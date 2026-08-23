@@ -159,8 +159,8 @@ fn xdotool() -> Capability {
 /// Both backends work, so neither answer is a fault — layer-shell is above a
 /// fullscreen window by protocol, X11 by `_NET_WM_STATE_ABOVE`.
 fn overlay_backend() -> Capability {
-    const BACKEND_PY: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../layer-overlay/backend.py");
-    let out = std::process::Command::new("python3").arg(BACKEND_PY).output();
+    let backend_py = jp_core::install::install_root().join("layer-overlay/backend.py");
+    let out = std::process::Command::new("python3").arg(&backend_py).output();
     match out {
         Ok(out) if out.status.success() => {
             let text = String::from_utf8_lossy(&out.stdout);

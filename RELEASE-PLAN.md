@@ -85,6 +85,8 @@ build on:
 - **Platform.** `scripts/lib/platform.sh` maps distro → package manager and
   carries per-distro package names. `scripts/kotodex-doctor.sh` is the doctor,
   and the installer's closing summary must call it rather than reimplement it.
+- **Relocation.** `jp_core::install::install_root()` — `KOTODEX_ROOT`, else the
+  workspace the binary was built in. Every asset path resolves through it.
 - **Installer.** `setup.sh` — re-runnable, `--dry-run`, `--yes`, `--uninstall`.
   It checks dependencies against `platform.sh`, downloads SudachiDict and the
   silero VAD model, imports whatever is in `dictionaries/`, probes AnkiConnect,
@@ -252,20 +254,29 @@ report, and offers the Lapis import when that is what is missing.
 
 ### T7.1 — Build the artifact
 
-`scripts/build-release.sh`: release-builds the Rust binaries, collects the
-Python and web assets, `setup.sh`, `docs/`, licences and third-party notices
-into `kotodex-<version>-linux-x86_64.tar.gz`. Prints the size and a checksum.
+**Status:** done. `scripts/build-release.sh [version]` →
+`target/release-artifact/kotodex-<version>-linux-x86_64.tar.gz`, 11 MB, with a
+sha256. **Prebuilt binaries**: the reader this is for runs visual novels, not
+rustup.
 
-**yt-mine and manga-mine are not in the release.** They share the language layer
-and live in the same repository, and that is all — the tarball ships the
-launcher, read-stats, layer-overlay, vn-mine and jp-dict.
+Two things had to change first, both because a compiled-in path does not
+survive being moved:
 
-Decide here whether the tarball ships prebuilt binaries (bigger, no Rust
-toolchain needed — strongly preferred for the target user) or builds on the
-machine.
+- **`jp_core::install::install_root()`** is where the assets are — the overlay
+  page, the dashboard's static files, `backend.py`, `vn-capture.sh`,
+  `dictionaries/`. `KOTODEX_ROOT` overrides it and `kotodex.py` sets it for
+  every child; without it the build's own workspace is the answer, which is what
+  a checkout wants.
+- **`start-all.sh` skips the build when there is no cargo**, and defaults to the
+  release profile then — a tarball has release binaries and no toolchain.
 
-**Verify:** extract into an empty directory on a machine without the repo and
-run `setup.sh`. **Commit:** `scripts: release artifact`.
+Binaries go in `target/release/` inside the tarball rather than `bin/`: it is
+where setup.sh, kotodex.py and the doctor already look, and one layout for both
+cases is one thing to be wrong about.
+
+Verified: extracted somewhere else, with cargo off `PATH`, setup.sh reports
+"shipped binaries" and read-stats serves the dashboard, the overlay page, the
+vendored modules and the capability probe.
 
 ### T7.2 — README rewrite
 

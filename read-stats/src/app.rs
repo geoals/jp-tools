@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use axum::Router;
 use axum::http::HeaderValue;
 use axum::http::header::CACHE_CONTROL;
@@ -15,7 +17,9 @@ use crate::routes::{
 };
 
 const SPA_HTML: &str = include_str!("../templates/spa.html");
-const STATIC_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
+fn static_dir() -> PathBuf {
+    jp_core::install::install_root().join("read-stats/static")
+}
 
 /// The VN overlay's page, and the launcher that shows it.
 ///
@@ -27,13 +31,17 @@ const STATIC_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
 ///
 /// The Qt shell that puts it over a fullscreen window is `layer-overlay`, which
 /// knows nothing about reading. See `overlay/vn-overlay.py`.
-const OVERLAY_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/overlay");
+fn overlay_dir() -> PathBuf {
+    jp_core::install::install_root().join("read-stats/overlay")
+}
 
 /// Front-end code shared by more than one app in the workspace: the dictionary
 /// popup, which the VN overlay and yt-mine both draw. Served from both, at the
 /// same path, because there is no build step to copy it with — the two pages
 /// load the identical file over HTTP.
-const SHARED_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../web-shared");
+fn shared_dir() -> PathBuf {
+    jp_core::install::install_root().join("web-shared")
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -177,9 +185,9 @@ pub fn build_router(state: AppState) -> Router {
             "/anki-proxy",
             axum::routing::post(ankiproxy::proxy).options(ankiproxy::preflight),
         )
-        .nest_service("/static", ServeDir::new(STATIC_DIR))
-        .nest_service("/overlay", ServeDir::new(OVERLAY_DIR))
-        .nest_service("/shared", ServeDir::new(SHARED_DIR))
+        .nest_service("/static", ServeDir::new(static_dir()))
+        .nest_service("/overlay", ServeDir::new(overlay_dir()))
+        .nest_service("/shared", ServeDir::new(shared_dir()))
         // Frontend has no build step / cache busting — force revalidation so
         // browsers never serve stale modules.
         .layer(SetResponseHeaderLayer::if_not_present(

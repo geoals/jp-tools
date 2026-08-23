@@ -82,13 +82,11 @@ impl Config {
             sudachi_dict_path: std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
                 .unwrap_or_else(|_| "system_full.dic".to_string())
                 .into(),
-            // Defaults to the sibling crate in this workspace, which is where
-            // it lives on the one machine that runs both.
             vn_capture_script: std::env::var("JP_TOOLS_VN_CAPTURE_SH")
+                .map(Into::into)
                 .unwrap_or_else(|_| {
-                    concat!(env!("CARGO_MANIFEST_DIR"), "/../vn-mine/vn-capture.sh").to_string()
-                })
-                .into(),
+                    jp_core::install::install_root().join("vn-mine/vn-capture.sh")
+                }),
             anthropic_api_key: std::env::var("JP_TOOLS_ANTHROPIC_API_KEY").ok(),
             whisper_url: std::env::var("JP_TOOLS_WHISPER_URL")
                 .unwrap_or_else(|_| "http://localhost:8100".to_string()),

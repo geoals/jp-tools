@@ -6,6 +6,7 @@ pub mod epub;
 #[cfg(any(test, feature = "test-support"))]
 pub mod golden;
 pub mod highlight;
+pub mod install;
 pub mod knowledge;
 pub mod text;
 pub mod tokenize;

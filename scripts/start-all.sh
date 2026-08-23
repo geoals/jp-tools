@@ -37,7 +37,9 @@ LOG_DIR="$REPO_ROOT/logs"
 # ---------------------------------------------------------------- settings --
 MODE="ask"          # ask | restart | keep
 WHISPER_FLAVOR="gpu"
-CARGO_PROFILE="debug"
+# A release tarball ships release binaries and no toolchain, so there is
+# nothing to build and nothing in target/debug to run.
+if command -v cargo >/dev/null; then CARGO_PROFILE="debug"; else CARGO_PROFILE="release"; fi
 COMMAND="start"
 SELECTED=()         # empty = all services
 
@@ -260,6 +262,10 @@ start_rust() { # name port binary
 
 build_rust() {
   local pkgs=() names=() name
+  if ! command -v cargo >/dev/null; then
+    info "no cargo — running the binaries as shipped"
+    return 0
+  fi
   for name in yt-mine manga-mine read-stats; do
     selected "$name" && { pkgs+=(-p "$name"); names+=("$name"); }
   done
