@@ -23,6 +23,7 @@
 //! | [`mine`] | making a card from the overlay, as Yomitan makes one |
 //! | [`mined`] | whether a word is already a card, and the way to it |
 //! | [`explain`] | "what does this line say", via the model |
+//! | [`fonts`] | which Japanese fonts this machine has, for the overlay |
 //! | [`state`] | what the page can do, in one round trip on open |
 
 pub mod audio;
@@ -30,6 +31,7 @@ pub mod capabilities;
 pub mod capture;
 pub mod define;
 pub mod explain;
+pub mod fonts;
 pub mod highlight;
 pub mod lines;
 pub mod mine;

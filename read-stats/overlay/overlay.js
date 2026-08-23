@@ -649,7 +649,7 @@ function showPaused(paused) {
   pauseBtnEl.classList.toggle("paused", paused);
   // The one state worth seeing with the bar shut.
   handleEl.classList.toggle("paused", paused);
-  pauseBtnEl.textContent = paused ? "▶" : "⏸";
+  pauseBtnEl.textContent = paused ? "▶ Resume capture" : "⏸ Pause capture";
   tip(pauseBtnEl, paused ? "Resume capture" : "Pause capture");
 }
 
@@ -682,11 +682,15 @@ const TYPE_DEFAULTS = {
   tracking: 0,
   weight: 400,
   backdrop: Number(params.get("bg") ?? 0.82),
-  shadow: true,
+  shadow: 0.9,
+  shadowBlur: 3,
   // Empty means the launcher's `?font=`, left where overlay.js put it above.
   font: "",
-  colour: "",
-  strip: Number(params.get("h") ?? 300),
+  // The ink, as HSL — no saturation at full lightness is white, which is what
+  // the line was measured in.
+  hue: 0,
+  sat: 0,
+  light: 100,
   chars: 40,
   mobileScale: 1.75,
   tint: 0.85,
@@ -695,20 +699,12 @@ const TYPE_DEFAULTS = {
   markUnknown: true,
 };
 
-// The line is read over artwork, so the choice is between inks that stay legible
-// on one — not a colour picker, which on a layer surface is a native window with
-// nowhere to open.
-const COLOURS = ["", "#ffe9c7", "#cfe4ff", "#ffd0d0", "#d6ffd8"];
-
 const TYPE_VARS = {
   scale: (v) => ["--line-scale", `${v}`],
   leading: (v) => ["--line-leading", `${v}`],
   tracking: (v) => ["--line-tracking", `${v}em`],
   weight: (v) => ["--line-weight", `${v}`],
   backdrop: (v) => ["--backdrop", `rgba(0, 0, 0, ${v})`],
-  shadow: (v) => ["--line-shadow", v ? "0 1px 3px rgba(0, 0, 0, 0.9)" : "none"],
-  colour: (v) => ["--line-color", v || "#fff"],
-  strip: (v) => ["--strip", `${v}px`],
   chars: (v) => ["--text-chars", `${v}`],
   tint: (v) => ["--tint", `${v}`],
 };
@@ -721,8 +717,11 @@ const CONTROLS = {
   tracking: { id: "set-tracking", out: "out-tracking", fmt: (v) => `${v.toFixed(3)}em` },
   weight: { id: "set-weight", out: "out-weight", fmt: (v) => `${v}` },
   backdrop: { id: "set-backdrop", out: "out-backdrop", fmt: (v) => v.toFixed(2) },
-  shadow: { id: "set-shadow", check: true },
-  strip: { id: "set-strip", out: "out-strip", fmt: (v) => `${v}px` },
+  shadow: { id: "set-shadow", out: "out-shadow", fmt: (v) => v.toFixed(2) },
+  shadowBlur: { id: "set-shadow-blur", out: "out-shadow-blur", fmt: (v) => `${v}px` },
+  hue: { id: "set-hue", out: null },
+  sat: { id: "set-sat", out: "out-sat", fmt: (v) => `${v}%` },
+  light: { id: "set-light", out: "out-light", fmt: (v) => `${v}%` },
   chars: { id: "set-chars", out: "out-chars", fmt: (v) => `${v}` },
   mobileScale: { id: "set-mobile-scale", out: "out-mobile-scale", fmt: (v) => `${v.toFixed(2)}x` },
   tint: { id: "set-tint", out: "out-tint", fmt: (v) => v.toFixed(2) },
@@ -740,24 +739,47 @@ try {
 
 const settingsBtnEl = document.getElementById("settings-btn");
 const settingsPanelEl = document.getElementById("settings-panel");
-const fontBtnEls = [...document.querySelectorAll("#set-font button")];
-const colourBoxEl = document.getElementById("set-colour");
+const fontBoxEl = document.getElementById("set-font");
+let fontBtnEls = [];
 
-for (const value of COLOURS) {
-  const btn = document.createElement("button");
-  btn.value = value;
-  // `currentColor` is what fills the swatch, so the empty value draws white —
-  // which is what "as measured" actually looks like.
-  btn.style.color = value || "#fff";
-  btn.setAttribute("data-tip", value ? value : "As measured");
-  colourBoxEl.append(btn);
+// Every Japanese-capable family fontconfig knows about, which only the server
+// can ask. Until it answers — or if it answers with nothing — the list is the
+// one entry that always works: whatever the shell was launched with.
+addFonts([]);
+fetch("/api/reader/fonts")
+  .then((r) => r.json())
+  .then((f) => addFonts(f.families ?? []))
+  .catch(() => {});
+
+function addFonts(families) {
+  fontBoxEl.replaceChildren();
+  for (const family of ["", ...families]) {
+    const btn = document.createElement("button");
+    btn.value = family;
+    btn.textContent = family || "As launched";
+    // Each name set in its own face, so the list is the sample.
+    if (family) btn.style.fontFamily = `"${family}", sans-serif`;
+    fontBoxEl.append(btn);
+    btn.addEventListener("click", () => {
+      type = { ...type, font: family };
+      applyType();
+    });
+  }
+  fontBtnEls = [...fontBoxEl.children];
+  for (const btn of fontBtnEls) btn.classList.toggle("on", btn.value === type.font);
 }
-const colourBtnEls = [...colourBoxEl.children];
 
 function applyType() {
   for (const btn of fontBtnEls) btn.classList.toggle("on", btn.value === type.font);
-  for (const btn of colourBtnEls) btn.classList.toggle("on", btn.value === type.colour);
   root.setProperty("--line-font", `"${type.font || font || "Noto Sans CJK JP"}", sans-serif`);
+  root.setProperty("--line-color", `hsl(${type.hue} ${type.sat}% ${type.light}%)`);
+  // Centred on the glyphs rather than dropped below them: this sits over
+  // artwork, and what the shadow is for is lifting the character off whatever
+  // is behind it, not casting it in a direction.
+  root.setProperty(
+    "--line-shadow",
+    type.shadow > 0 ? `0 0 ${type.shadowBlur}px rgba(0, 0, 0, ${type.shadow})` : "none",
+  );
   for (const [key, value] of Object.entries(type)) {
     const asVar = TYPE_VARS[key];
     if (asVar) root.setProperty(...asVar(value));
@@ -767,25 +789,11 @@ function applyType() {
     if (control.check) input.checked = !!value;
     else {
       input.value = String(value);
-      document.getElementById(control.out).textContent = control.fmt(value);
+      if (control.out) document.getElementById(control.out).textContent = control.fmt(value);
     }
   }
   localStorage.setItem(TYPE, JSON.stringify(type));
   report();
-}
-
-for (const btn of fontBtnEls) {
-  btn.addEventListener("click", () => {
-    type = { ...type, font: btn.value };
-    applyType();
-  });
-}
-
-for (const btn of colourBtnEls) {
-  btn.addEventListener("click", () => {
-    type = { ...type, colour: btn.value };
-    applyType();
-  });
 }
 
 for (const [key, control] of Object.entries(CONTROLS)) {
@@ -799,36 +807,17 @@ for (const [key, control] of Object.entries(CONTROLS)) {
   });
 }
 
-// One tab at a time, and the reset button resets the tab being looked at: the
-// settings that go together are the ones that would be put back together.
+// One tab at a time.
 const tabBtnEls = [...document.querySelectorAll("#settings-tabs button")];
 const tabBodyEls = [...document.querySelectorAll(".settings-body")];
-const TAB_KEYS = {
-  type: ["scale", "leading", "tracking", "weight", "backdrop", "shadow", "font", "colour"],
-  place: ["strip", "chars", "mobileScale"],
-  marks: ["tint", "markNew", "markSeen", "markUnknown"],
-};
-let tab = "type";
 
 for (const btn of tabBtnEls) {
   btn.addEventListener("click", () => {
-    tab = btn.value;
     for (const other of tabBtnEls) other.classList.toggle("on", other === btn);
-    for (const body of tabBodyEls) body.hidden = body.dataset.tab !== tab;
+    for (const body of tabBodyEls) body.hidden = body.dataset.tab !== btn.value;
     report();
   });
 }
-
-document.getElementById("settings-reset").addEventListener("click", () => {
-  for (const key of TAB_KEYS[tab]) type = { ...type, [key]: TYPE_DEFAULTS[key] };
-  applyType();
-  if (tab === "marks") {
-    setPaintStatus(true);
-    setCommonRank(DEFAULT_COMMON_RANK);
-    setGhost(false);
-  }
-  redraw();
-});
 
 settingsBtnEl.addEventListener("click", () => {
   settingsPanelEl.hidden = !settingsPanelEl.hidden;
@@ -842,7 +831,6 @@ applyType();
 // underlines by the same rank and paints by the same flag, and a switch that
 // only moved this page would make the two surfaces disagree about the same
 // word.
-const DEFAULT_COMMON_RANK = 5000;
 const statusInputEl = document.getElementById("set-status");
 const commonInputEl = document.getElementById("set-common");
 

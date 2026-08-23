@@ -80,22 +80,34 @@ row that popup made. The side buttons still cost nothing at all and stay the
 way to judge a word without asking what it means.
 
 **The controls live behind one handle.** ☰ at the top left is the bar shut:
-drag it to move the widget, click it to open explain, hide the line, settings
-and pause, which sit in a row to its right. Only the handle opens and shuts it —
-nothing closes it on its own, so a button is never taken out from under the
-pointer reaching for it. Paused tints the handle, since that is the one state
-worth seeing while the bar is shut.
+drag it to move the widget, click it to shut explain, hide the line and
+settings, which sit in a row to its right. It starts open and inverts while it
+is, and only the handle opens and shuts it — nothing closes it on its own, so a
+button is never taken out from under the pointer reaching for it. Paused tints
+the handle, since that is the one state worth seeing while the bar is shut.
 
-**⚙ is three tabs**, because the questions are different. *Type* — size, line
-height, spacing, weight, backdrop, shadow, colour, font. *Placement* — strip
-height, column width, phone size and the scale it uses. *Marks* — whether a
-status is painted and which, how strongly, the rank an unknown word is
-underlined under, and ghost mode. Reset puts back the tab being looked at.
+**⚙ is three tabs**, because the questions are different. *Text* — size, line
+height, spacing, weight, backdrop, shadow strength and spread, colour, font.
+*Placement* — column width, phone size and the scale it uses. *Marks* — whether
+a status is painted and which, how strongly, the common-word threshold, and
+ghost mode. Pausing capture is under the tabs: it is the one action in the
+panel rather than a setting.
+
+The shadow is centred on the glyphs rather than dropped below them — what it is
+for here is lifting the character off the artwork, not casting it in a
+direction.
+
+**The colour and the font are both in-page.** A layer surface has nowhere to
+open a native window, so neither the browser's colour picker nor a `<select>`
+would appear at all: the colour is hue, saturation and lightness sliders, and
+the font list is every Japanese-capable family `fc-list` reports, from
+`GET /api/reader/fonts`, each name drawn in its own face.
 
 Most of it is stored in this browser, because it is about this screen — a phone
 reading the same overlay wants its own. The two every reading surface has to
-agree on, status marks and the underline rank, are read from and written back to
-read-stats, so `#read` and the overlay cannot disagree about the same word.
+agree on, status marks and the common-word threshold, are read from and written
+back to read-stats, so `#read` and the overlay cannot disagree about the same
+word.
 
 `--mobile` draws the overlay at 1.75x with the line on the bottom edge, for
 reading the screen off a phone. ⚙ → Placement switches between

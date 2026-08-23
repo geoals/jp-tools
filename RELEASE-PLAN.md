@@ -817,15 +817,26 @@ line at any scale. **Commit:** `overlay: collapsible button bar`.
 
 ### T5.2 — Settings panel: tabs and new settings
 
-**Status:** done, three tabs rather than four. **The あ button is gone from the
-bar and the phone-size button moved into Placement** — six buttons over a game
-is what T5.1 was about, and both are settings rather than things reached
-mid-line. Ghost mode itself is unchanged, `SIGUSR2` included.
+**Status:** done, three tabs rather than four. **The bar is down to ☰ ℹ 👁 ⚙**:
+ghost, phone size and pause all moved into the panel — six buttons over a game
+is what T5.1 was about, and none of the three is reached mid-line. Ghost mode
+itself is unchanged, `SIGUSR2` included. The handle is the size of a button and
+inverts while the bar is open, which it is by default.
 
-Type: size, line height, spacing, weight, backdrop, shadow, colour, font.
-Placement: strip height, column width, phone size and its scale. Marks: status
-painting on/off, which of the three statuses, tint strength, the underline rank,
-ghost. Reset resets the tab being looked at.
+Text: size, line height, spacing, weight, backdrop, shadow strength and spread,
+colour, font. Placement: column width, phone size and its scale. Marks: status
+painting on/off, which of the three statuses, tint strength, the common-word
+threshold, ghost. Pausing capture sits under the tabs, being the one action
+rather than a setting.
+
+**The shadow is centred on the glyphs**, not offset — over artwork it is there
+to lift the character off what is behind it.
+
+**Both pickers are in-page.** A layer surface has nowhere to open a native
+window, so the colour is hue/saturation/lightness sliders rather than the
+browser's picker, for the same reason the font list is not a `<select>`.
+
+**No reset button.** Every control shows its own value and moves back.
 
 Status painting and the underline rank are written back to read-stats through
 `PUT /api/settings` — they are claims `#read` makes too. Everything else is
@@ -833,9 +844,9 @@ about this screen and stays in `localStorage`.
 
 Not built, and why:
 
-- **Alignment fractions have a drag already.** `--text-x`/`--text-y` are what
-  dragging the line over the game's own text sets, which is a better control
-  than two sliders; only the column width needed a control.
+- **Alignment fractions and the strip height have a drag already.**
+  `--text-x`/`--text-y` are what dragging the line sets, and the strip is where
+  the line is dropped; only the column width needed a control.
 - **Popup scale needs `web-shared/popup.css`, not this page.** The popup is
   sized in `rem` off the root font size, so scaling it from here would scale the
   line with it. It belongs with the shared file.
@@ -861,7 +872,13 @@ and add what is currently env-only or not configurable at all:
 
 ### T5.3 — Font list from the system
 
-`overlay.html` hardcodes eight font chips including `DNP Shuei Mincho Pr6`,
+**Status:** done, with T5.2 — the panel had to have a list to draw.
+`GET /api/reader/fonts` is `fc-list :lang=ja family`, first name per line,
+sorted and deduplicated; no fontconfig answers an empty list rather than an
+error, and the panel then offers only what the shell was launched with. Each
+name is drawn in its own face, so the list is the sample.
+
+`overlay.html` hardcoded eight font chips including `DNP Shuei Mincho Pr6`,
 `HGSMinchoB` and `kaikoku PM` — fonts on one machine. A stranger sees chips that
 do nothing.
 

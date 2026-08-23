@@ -147,6 +147,7 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/api/reader/mine", axum::routing::post(reader::mine::mine))
         .route("/api/reader/mined", get(reader::mined::mined))
+        .route("/api/reader/fonts", get(reader::fonts::fonts))
         .route("/api/reader/audio", get(reader::audio::audio))
         .route("/api/reader/audio/clip", get(reader::audio::clip))
         .route(
