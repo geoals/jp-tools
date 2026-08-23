@@ -14,8 +14,9 @@ silero-VAD finds where the speech ends.
 
 - `kotodex-capture` (was `vn-buffer.sh`) — daemon: ffmpeg ring buffer (60 × 5s WAV segments from the
   default sink monitor) + `vn-ws-logger.py` hooked-line logger, both in
-  `$XDG_RUNTIME_DIR/vn-mine/`. Run via the `kotodex-capture.service` systemd user
-  unit.
+  `$XDG_RUNTIME_DIR/vn-mine/`. Started and stopped by the Kotodex launcher;
+  `kotodex-capture {run|stop|restart|status}` drives it by hand, and delegates
+  to the systemd unit when there is one.
 - `vn-ws-logger.py` — connects to the Textractor WebSocket server
   (`ws://localhost:6677`, override with `VN_WS_URL`) and appends each hooked
   Japanese line to `lines.log` with a timestamp. Auto-reconnects if Textractor
@@ -55,8 +56,8 @@ silero-VAD finds where the speech ends.
   kept unchanged. Needs whisper-service running on :8100.
 - `test_ws_logger.py` — the logger's tests. `python3 -m pytest vn-mine`.
 
-Everything above is on one path: `kotodex-capture.service` runs the ring buffer and
-the logger, and a capture reads what they left. Nothing here is optional and
+Everything above is on one path: the daemon runs the ring buffer and the
+logger, and a capture reads what they left. Nothing here is optional and
 nothing is a spare copy.
 
 ## Reading over the game
@@ -84,10 +85,23 @@ curl -sL -o ~/.local/share/vn-mine/silero_vad.onnx \
   https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx
 
 ln -sf "$PWD/kotodex-capture" ~/.local/bin/kotodex-capture
+```
+
+Launching Kotodex starts the daemon and quitting stops it, which is all most
+setups need — reading is the only thing the ring buffer is for.
+
+The systemd unit is for keeping it up independently of the launcher:
+
+```sh
 cp kotodex-capture.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now kotodex-capture
 ```
+
+Only one of the two should own it. A unit that is running is *adopted* by the
+launcher — never started twice, and never stopped on the way out — so with the
+unit enabled, quitting Kotodex leaves capture running and picking up new code
+means `kotodex restart` rather than relaunching.
 
 Bind `vn-capture.sh` to a KDE shortcut. Requires: ffmpeg, pactl
 (pipewire-pulse), spectacle, curl, jq; Textractor with a WebSocket server

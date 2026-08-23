@@ -87,7 +87,12 @@ run)
 
   "$WS_PYTHON" "$WS_LOGGER" &
   WS_PID=$!
-  trap 'kill $WS_PID $FF_PID 2>/dev/null' EXIT TERM INT
+  # The logger is waited for, not just signalled: it answers SIGTERM by sending
+  # Textractor a proper close frame, and an abortive disconnect crashes
+  # Textractor's WebSocket plugin and takes Textractor with it. Under systemd
+  # the unit's stop timeout covered that; owned by the launcher, this script
+  # exiting is what tears the process group down, so it has to hold the door.
+  trap 'kill $WS_PID $FF_PID 2>/dev/null; wait $WS_PID 2>/dev/null' EXIT TERM INT
 
   # -fflags +bitexact keeps the WAV header at exactly 44 bytes,
   # which vn-capture.sh relies on when concatenating segments.
