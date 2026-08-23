@@ -665,6 +665,13 @@
      the same size, the same spacing. Only the shadow is dropped — that exists
      to lift a glyph off the game's artwork, and here there is a solid panel
      behind it. */
+  /* Over the history panel, which is inside #explain-box and comes after the
+     popup in the document — without this the definition draws behind the lines
+     it was opened from. */
+  #popup {
+    z-index: 50;
+  }
+
   #scrollback {
     box-sizing: border-box;
     /* The column the line is drawn in, so a line that fitted on screen fits
@@ -677,23 +684,22 @@
     border-radius: 10px;
     background: rgba(0, 0, 0, 0.92);
     font-family: var(--line-font);
-    font-size: calc(clamp(1.35rem, calc(1.82vw * var(--scale)), 2.25rem) * var(--line-scale));
+    /* Fixed, and smaller than the line. The line is sized to sit over the
+       game's own text, which is larger than anything wants to read fourteen of
+       at once — and unlike the line, nothing here has to register with what is
+       behind it. */
+    font-size: 1.7rem;
+    line-height: 1.8;
     font-weight: var(--line-weight);
-    line-height: var(--line-leading);
     color: var(--line-color);
     letter-spacing: var(--line-tracking);
-  }
-  html[data-aligned] #scrollback {
-    font-size: calc(var(--text-size) * var(--game-h) * var(--line-scale));
   }
   #scrollback[hidden] {
     display: none;
   }
   #scrollback-lines {
-    /* About fourteen lines, and scroll inside for the rest. Measured in the
-       panel's own line-height so it holds the same number of lines whatever
-       the type is set to. */
-    max-height: calc(14 * var(--line-leading) * 1em);
+    /* About fourteen rows, and scroll inside for the rest. */
+    max-height: calc(14 * 1.8em);
     overflow-y: auto;
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
@@ -702,7 +708,9 @@
   }
   /* The game's own soft breaks arrive as newlines, the same as in #line. */
   #scrollback-lines .sb {
-    margin: 0 0 0.35em;
+    /* Wider than the gap between rows *inside* one line, so a wrapped line
+       still reads as one thing. */
+    margin: 0 0 0.85em;
     padding: 0 0.2em;
     border-radius: 4px;
     white-space: pre-wrap;

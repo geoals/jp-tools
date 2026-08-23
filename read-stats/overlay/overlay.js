@@ -1227,11 +1227,25 @@ function onJudged(target, status) {
  */
 function place(word) {
   const rect = word.getBoundingClientRect();
-  const box = lineEl.getBoundingClientRect();
+  // Clear of the whole line box for a word in the live line, so the popup never
+  // covers the line it came from. Clear of the *word* in the history panel:
+  // that box is fourteen rows tall, and clearing all of it would push every
+  // popup off the top of the screen.
+  const anchor = scrollbackEl.contains(word) ? rect : lineEl.getBoundingClientRect();
   const width = popupEl.offsetWidth;
+  const height = popupEl.offsetHeight;
   const left = rect.left + rect.width / 2 - width / 2;
   popupEl.style.left = `${Math.max(12, Math.min(left, window.innerWidth - width - 12))}px`;
-  popupEl.style.bottom = `${window.innerHeight - box.top}px`;
+  // Above where there is room, below where there is not. The history panel
+  // hangs from the top of the screen, so its first rows have nothing above
+  // them — and a popup pinned above them would be drawn off-screen.
+  if (anchor.top >= height + 16) {
+    popupEl.style.top = "auto";
+    popupEl.style.bottom = `${window.innerHeight - anchor.top}px`;
+  } else {
+    popupEl.style.bottom = "auto";
+    popupEl.style.top = `${anchor.bottom + 8}px`;
+  }
   report();
 }
 
