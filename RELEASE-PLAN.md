@@ -131,20 +131,32 @@ missing — naming which, listing what the note type does have, and the
 `setup.sh` both call it, and `setup.sh` offers `install-lapis` when the missing
 note type is Lapis.
 
-**Lapis is downloaded, not vendored.** It is GPL-3.0, it moves, and
-AnkiConnect's `importPackage` takes an `.apkg` — so a copy here would be a
-second version to keep current for nothing. The release asset is resolved at
-run time.
+**Lapis is downloaded, not vendored.** It is GPL-3.0, it moves, and its release
+is an `.apkg` Anki can import — so a copy here would be a second version to keep
+current for nothing. The release asset is resolved at run time.
 
-Verified: all three report paths, and the download half of `install-lapis`
-(release resolution, asset, 346 KB). **The `importPackage` call itself is
-unverified** — it writes to a live collection, so it wants a fresh profile.
+Two things a fresh profile found, both real:
+
+- **`/tmp` is not a path Anki can read.** A Flatpak Anki has its own, and the
+  import fails with a file-not-found naming a path that plainly exists. The
+  `.apkg` goes in Anki's profile directory now, found through
+  `getMediaDirPath`.
+- **`importPackage` is gone in current Anki** (26.05 here). The importer
+  AnkiConnect calls was replaced, and the refusal comes back as an exception
+  with an empty message — not relative to `collection.media`, not an absolute
+  path, not anywhere. So it is tried first, for the older versions where it
+  still works silently, and `guiImportFile` is the fallback: Anki's own dialog,
+  opened on the file, one click.
+
+Verified end to end against a fresh profile: absent → download → dialog →
+imported, and `check` then reports Lapis with **every one of the thirteen
+configured fields present**, which is the Lapis defaults in `AnkiConfig`
+confirmed against the real note type.
 
 ### T2.6 — Live card round-trip
 
-**Status:** blocked — manual, needs a reading session and a fresh profile. This
-is where the `JP_TOOLS_ANKI_FIELD_*` map gets its first real mine, and where
-`anki-setup install-lapis` gets its only untested step exercised.
+**Status:** blocked — manual, needs a reading session. The fresh profile with
+Lapis on it exists; what is missing is a card going into it.
 
 Mine one card in each style into a scratch deck, and look at it: glossary
 renders, definitions page, pitch shows, image and audio attach, frequency sorts.

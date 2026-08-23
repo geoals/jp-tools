@@ -178,32 +178,65 @@ async fn install_lapis(client: &reqwest::Client) -> ExitCode {
         }
     };
 
-    // AnkiConnect's importPackage takes a path, not the bytes, and reads it as
-    // Anki's own user — so it goes somewhere both can see rather than being
-    // posted.
-    let path = std::env::temp_dir().join(LAPIS_ASSET);
+    // importPackage takes a path, not the bytes, and Anki opens it itself — so
+    // it has to land somewhere Anki can read. /tmp is not that place: a Flatpak
+    // Anki has its own, and the import fails with a file-not-found naming a
+    // path that plainly exists. Anki's own profile directory always works, and
+    // asking for the media directory is how to find it.
+    let path = import_dir(client).await.join("kotodex-lapis.apkg");
     if let Err(e) = std::fs::write(&path, &bytes) {
         println!("✗ could not write {}: {e}", path.display());
         return ExitCode::FAILURE;
     }
 
-    match anki(
-        client,
-        "importPackage",
-        json!({ "path": path.to_string_lossy() }),
-    )
-    .await
-    {
+    let arg = json!({ "path": path.to_string_lossy() });
+
+    // The silent import first. It is gone in current Anki — the importer
+    // AnkiConnect calls was replaced, and the refusal comes back as an
+    // exception with an empty message — but it still works on older ones, and
+    // when it works nothing appears on screen.
+    if anki(client, "importPackage", arg.clone()).await.is_ok() && has_lapis(client).await {
+        let _ = std::fs::remove_file(&path);
+        println!("✓ imported. Lapis brings its own deck; cards still go to your own.");
+        return check(client).await;
+    }
+
+    // Anki's own import dialog, opened on the file. One click, and it is the
+    // only path that works on every version.
+    match anki(client, "guiImportFile", arg).await {
         Ok(_) => {
-            let _ = std::fs::remove_file(&path);
-            println!("✓ imported. Lapis brings its own deck; cards still go to your own.");
-            check(client).await
+            println!("→ Anki's import dialog is open on Lapis. Click Import, then:");
+            println!("    anki-setup check");
+            println!("  the file can be deleted afterwards: {}", path.display());
+            ExitCode::SUCCESS
         }
         Err(e) => {
-            println!("✗ Anki refused the import: {e}");
-            println!("  import it by hand instead: {}", path.display());
+            println!("✗ Anki would not import it: {e}");
+            println!("  do it by hand — Anki, File, Import: {}", path.display());
             ExitCode::FAILURE
         }
+    }
+}
+
+async fn has_lapis(client: &reqwest::Client) -> bool {
+    let models = anki(client, "modelNames", json!({})).await.unwrap_or_default();
+    let models: Vec<String> = serde_json::from_value(models).unwrap_or_default();
+    models.iter().any(|m| m == "Lapis")
+}
+
+/// A directory Anki can read. Its profile folder, which is the media
+/// directory's parent — that is the one path that is inside the sandbox when
+/// there is one, and outside it when there is not.
+async fn import_dir(client: &reqwest::Client) -> std::path::PathBuf {
+    let media = anki(client, "getMediaDirPath", json!({}))
+        .await
+        .ok()
+        .and_then(|v| v.as_str().map(std::path::PathBuf::from));
+    match media.as_ref().and_then(|m| m.parent()) {
+        Some(profile) if profile.is_dir() => profile.to_path_buf(),
+        // An AnkiConnect too old to answer, or a path this process cannot see.
+        // Temp is the best guess left, and the error names it if Anki disagrees.
+        _ => std::env::temp_dir(),
     }
 }
 
