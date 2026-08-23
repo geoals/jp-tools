@@ -50,6 +50,13 @@
     --line-scale: 1;
     --line-leading: 1.68;
     --line-tracking: 0em;
+    --line-weight: 400;
+    --line-color: #fff;
+    --line-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+    /* How loudly a status is painted. Ghost mode derives its own wash from it
+       rather than carrying a second setting — the two are one decision about
+       how strong a mark should be. */
+    --tint: 0.85;
 
     /* Where the game breaks the line, in characters. Not a fraction of the
        window: the game wraps on a character count, and the type is sized off
@@ -97,7 +104,9 @@
     font-size: calc(clamp(1.35rem, calc(1.82vw * var(--scale)), 2.25rem) * var(--line-scale));
     /* Tuned against the game's own line spacing, which the strip sits over. */
     line-height: var(--line-leading);
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+    font-weight: var(--line-weight);
+    color: var(--line-color);
+    text-shadow: var(--line-shadow);
     /* Set by the drag — see moveBy(). The strip is a layer surface pinned to
        every screen edge, so repositioning it means moving the content inside
        the surface, not the window. */
@@ -153,19 +162,19 @@
      outrank `.w:hover`, and a hover that won outright would drop the word's
      status for as long as it is the word being reached for. */
   html[data-ghost] .w {
-    --tint: 0.28;
+    --wash: calc(var(--tint) * 0.33);
   }
   html[data-ghost] .w:hover {
-    --tint: 0.55;
+    --wash: calc(var(--tint) * 0.65);
   }
   html[data-ghost] .w.new {
-    background: hsl(211 70% 52% / var(--tint));
+    background: hsl(211 70% 52% / var(--wash));
   }
   html[data-ghost] .w.seen {
-    background: hsl(276 48% 55% / var(--tint));
+    background: hsl(276 48% 55% / var(--wash));
   }
   html[data-ghost] .w.unknown {
-    background: hsl(28 70% 50% / var(--tint));
+    background: hsl(28 70% 50% / var(--wash));
   }
 
   /* Scaled up, the line is read off the screen rather than fitted over the
@@ -252,13 +261,13 @@
      always sits over a game. `known` gets no mark at all: on a line where most
      words are known, the absence is what makes the rest readable. */
   .w.new {
-    background: hsl(211 62% 33% / 0.85);
+    background: hsl(211 62% 33% / var(--tint));
   }
   .w.seen {
-    background: hsl(276 38% 29% / 0.85);
+    background: hsl(276 38% 29% / var(--tint));
   }
   .w.unknown {
-    background: hsl(28 55% 31% / 0.85);
+    background: hsl(28 55% 31% / var(--tint));
   }
   /* A common word not known is underlined on top of its tint — not knowing a
      rare word is expected, not knowing a common one is the gap worth seeing. */
@@ -389,8 +398,6 @@
   #bar-handle,
   #explain-btn,
   #hide-btn,
-  #ghost-btn,
-  #mobile-btn,
   #settings-btn,
   #pause-btn {
     flex: none;
@@ -408,19 +415,11 @@
     user-select: none;
     touch-action: none;
   }
-  #explain-btn:disabled,
-  /* Nothing to be a ghost over until the game's rectangle is known. */
-  #ghost-btn:disabled {
+  #explain-btn:disabled {
     opacity: 0.45;
     cursor: default;
   }
   #hide-btn.off {
-    color: #9a9a9a;
-  }
-  #ghost-btn.off {
-    color: #9a9a9a;
-  }
-  #mobile-btn.off {
     color: #9a9a9a;
   }
   #settings-btn.off {
@@ -432,13 +431,14 @@
     color: hsl(28 92% 72%);
   }
 
-  /* The type settings. Sits under the buttons like the explain panel, so it is
-     inside #explain-box's rectangle and the shell already takes its clicks. */
+  /* The overlay's settings. Sits under the buttons like the explain panel, so
+     it is inside #explain-box's rectangle and the shell already takes its
+     clicks. Three tabs, because the questions are different: how the line is
+     set, where it sits, and what is marked on it. */
   #settings-panel {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    align-items: center;
-    gap: 0.5rem 0.7rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
     padding: 0.9rem 1.1rem;
     border-radius: 10px;
     background: rgba(0, 0, 0, 0.9);
@@ -448,27 +448,88 @@
   #settings-panel[hidden] {
     display: none;
   }
-  #settings-panel input[type="range"] {
+
+  #settings-tabs {
+    display: flex;
+    gap: 0.3rem;
+  }
+  #settings-tabs button {
+    padding: 0.25rem 0.7rem;
+    border: none;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #b9b9b9;
+    font: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+  #settings-tabs button.on {
+    background: rgba(154, 140, 255, 0.55);
+    color: #fff;
+  }
+
+  .settings-body {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0.5rem 0.7rem;
+  }
+  .settings-body[hidden] {
+    display: none;
+  }
+  .settings-body input[type="range"] {
     width: 11rem;
     accent-color: #9a8cff;
   }
+  .settings-body input[type="checkbox"] {
+    justify-self: start;
+    width: 1rem;
+    height: 1rem;
+    accent-color: #9a8cff;
+  }
+  .settings-body input[type="number"] {
+    width: 6rem;
+    padding: 0.15rem 0.35rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #e6e6e6;
+    font: inherit;
+    font-size: 0.9rem;
+  }
   /* Tabular figures: the readout is beside a slider being dragged, and a
      proportional 1 makes the whole row twitch as the number changes. */
-  #settings-panel output {
+  .settings-body output {
     min-width: 3.2rem;
     font-variant-numeric: tabular-nums;
     text-align: right;
     color: #b9b9b9;
   }
-  /* Chips, not a <select>: the dropdown is a native popup window, and a layer
-     surface has none to open it in — the list simply never appeared. */
-  #set-font {
+  /* A row whose control needs the whole width, and one that is only a note. */
+  .settings-body .wide {
     grid-column: 2 / -1;
+  }
+  .settings-body .note {
+    grid-column: 1 / -1;
+    max-width: 26rem;
+    margin: 0;
+    color: #9a9a9a;
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+
+  /* Chips, not a <select>: the dropdown is a native popup window, and a layer
+     surface has none to open it in — the list simply never appeared. The same
+     goes for the colour, which would otherwise want the native picker. */
+  .chips {
     display: flex;
     flex-wrap: wrap;
     gap: 0.3rem;
+    /* Wraps rather than widening the panel: the panel sits over the game, and
+       one row of font names made it twice as wide as everything else needs. */
+    max-width: 21rem;
   }
-  #set-font button {
+  .chips button {
     padding: 0.2rem 0.55rem;
     border: none;
     border-radius: 6px;
@@ -478,13 +539,24 @@
     font-size: 0.85rem;
     cursor: pointer;
   }
-  #set-font button.on {
+  .chips button.on {
     background: rgba(154, 140, 255, 0.55);
     color: #fff;
   }
+  #set-colour button {
+    width: 1.6rem;
+    height: 1.6rem;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    background: currentColor;
+  }
+  #set-colour button.on {
+    box-shadow: 0 0 0 2px #9a8cff;
+  }
+
+  #mobile-btn,
   #settings-reset {
-    grid-column: 1 / -1;
-    justify-self: end;
     padding: 0.25rem 0.7rem;
     border: none;
     border-radius: 6px;
@@ -493,6 +565,12 @@
     font: inherit;
     font-size: 0.9rem;
     cursor: pointer;
+  }
+  #mobile-btn {
+    justify-self: start;
+  }
+  #settings-reset {
+    align-self: flex-end;
   }
 
   #explain-panel {
@@ -532,37 +610,101 @@
     <div id="buttons" hidden>
       <button id="explain-btn" data-tip="Explain the last line (select a word first to focus on it)">ℹ</button>
       <button id="hide-btn" data-tip="Hide the line">👁</button>
-      <button id="ghost-btn" data-tip="Read the game's own text, marked">あ</button>
-      <button id="mobile-btn" data-tip="Switch to phone size">⤢</button>
       <button id="settings-btn" class="off" data-tip="Type settings">⚙</button>
       <button id="pause-btn" data-tip="Pause capture">⏸</button>
     </div>
   </div>
   <div id="settings-panel" hidden>
-    <label for="set-size">Size</label>
-    <input id="set-size" type="range" min="0.6" max="2" step="0.05" />
-    <output id="out-size"></output>
-    <label for="set-leading">Line height</label>
-    <input id="set-leading" type="range" min="1" max="3" step="0.02" />
-    <output id="out-leading"></output>
-    <label for="set-tracking">Spacing</label>
-    <input id="set-tracking" type="range" min="-0.05" max="0.3" step="0.005" />
-    <output id="out-tracking"></output>
-    <label for="set-backdrop">Backdrop</label>
-    <input id="set-backdrop" type="range" min="0" max="1" step="0.02" />
-    <output id="out-backdrop"></output>
-    <span>Font</span>
-    <div id="set-font">
-      <button value="">As launched</button>
-      <button value="DNP Shuei Mincho Pr6">秀英明朝</button>
-      <button value="DNP Shuei Mincho Pr6B">秀英明朝 B</button>
-      <button value="HGSMinchoB">HGS明朝B</button>
-      <button value="HG明朝B">HG明朝</button>
-      <button value="kaikoku PM">kaikoku</button>
-      <button value="Noto Serif CJK JP">Noto Serif</button>
-      <button value="Noto Sans CJK JP">Noto Sans</button>
+    <div id="settings-tabs">
+      <button value="type" class="on">Type</button>
+      <button value="place">Placement</button>
+      <button value="marks">Marks</button>
     </div>
-    <button id="settings-reset">Reset</button>
+
+    <div class="settings-body" data-tab="type">
+      <label for="set-size">Size</label>
+      <input id="set-size" type="range" min="0.6" max="2" step="0.05" />
+      <output id="out-size"></output>
+      <label for="set-leading">Line height</label>
+      <input id="set-leading" type="range" min="1" max="3" step="0.02" />
+      <output id="out-leading"></output>
+      <label for="set-tracking">Spacing</label>
+      <input id="set-tracking" type="range" min="-0.05" max="0.3" step="0.005" />
+      <output id="out-tracking"></output>
+      <label for="set-weight">Weight</label>
+      <input id="set-weight" type="range" min="200" max="900" step="100" />
+      <output id="out-weight"></output>
+      <label for="set-backdrop">Backdrop</label>
+      <input id="set-backdrop" type="range" min="0" max="1" step="0.02" />
+      <output id="out-backdrop"></output>
+      <label for="set-shadow">Shadow</label>
+      <input id="set-shadow" type="checkbox" />
+      <span></span>
+      <span>Colour</span>
+      <div id="set-colour" class="chips wide"></div>
+      <span>Font</span>
+      <div id="set-font" class="chips wide">
+        <button value="">As launched</button>
+        <button value="DNP Shuei Mincho Pr6">秀英明朝</button>
+        <button value="DNP Shuei Mincho Pr6B">秀英明朝 B</button>
+        <button value="HGSMinchoB">HGS明朝B</button>
+        <button value="HG明朝B">HG明朝</button>
+        <button value="kaikoku PM">kaikoku</button>
+        <button value="Noto Serif CJK JP">Noto Serif</button>
+        <button value="Noto Sans CJK JP">Noto Sans</button>
+      </div>
+    </div>
+
+    <div class="settings-body" data-tab="place" hidden>
+      <label for="set-strip">Strip height</label>
+      <input id="set-strip" type="range" min="120" max="800" step="10" />
+      <output id="out-strip"></output>
+      <label for="set-chars">Column width</label>
+      <input id="set-chars" type="range" min="16" max="80" step="1" />
+      <output id="out-chars"></output>
+      <label for="set-mobile-scale">Phone scale</label>
+      <input id="set-mobile-scale" type="range" min="1.1" max="3" step="0.05" />
+      <output id="out-mobile-scale"></output>
+      <span>Phone size</span>
+      <button id="mobile-btn" data-tip="Switch to phone size">⤢ Switch</button>
+      <span></span>
+      <p class="note">
+        Column width is where the line breaks, in characters, and only applies
+        while the line is placed over the game's own text. Drag the line itself
+        to move it; over the game that drag is the calibration.
+      </p>
+    </div>
+
+    <div class="settings-body" data-tab="marks" hidden>
+      <label for="set-status">Status marks</label>
+      <input id="set-status" type="checkbox" />
+      <span></span>
+      <label for="set-mark-new">Paint new</label>
+      <input id="set-mark-new" type="checkbox" />
+      <span></span>
+      <label for="set-mark-seen">Paint seen</label>
+      <input id="set-mark-seen" type="checkbox" />
+      <span></span>
+      <label for="set-mark-unknown">Paint unknown</label>
+      <input id="set-mark-unknown" type="checkbox" />
+      <span></span>
+      <label for="set-tint">Tint strength</label>
+      <input id="set-tint" type="range" min="0.1" max="1" step="0.05" />
+      <output id="out-tint"></output>
+      <label for="set-common">Underline under rank</label>
+      <input id="set-common" type="number" min="0" step="500" />
+      <span></span>
+      <label for="set-ghost">Ghost mode</label>
+      <input id="set-ghost" type="checkbox" />
+      <span id="ghost-why"></span>
+      <p class="note">
+        Status marks and the underline rank are read by every reading surface,
+        so they are stored with read-stats rather than in this browser. The rest
+        is about this screen and stays here. Rank 0 turns the underline off.
+      </p>
+    </div>
+
+    <button id="settings-reset">Reset this tab</button>
   </div>
   <div id="explain-panel" hidden></div>
 </div>

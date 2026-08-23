@@ -47,7 +47,7 @@ popup being aimed at. `qwebchannel.js` is injected from Qt's own resources, so
 read-stats serves nothing for it.
 `SIGUSR1` (`pkill -USR1 -f vn-overlay.py`) makes the whole surface take input,
 for selecting text rather than advancing. `SIGUSR2` toggles ghost mode, the
-same thing the あ button does. Both are `layer-overlay`'s; see its README for
+same thing the checkbox under ⚙ → Marks does. Both are `layer-overlay`'s; see its README for
 the input region itself.
 `vn-overlay.py` runs perfectly well by hand; the wrapper only handles being
 started from somewhere without a desktop session attached.
@@ -80,14 +80,25 @@ row that popup made. The side buttons still cost nothing at all and stay the
 way to judge a word without asking what it means.
 
 **The controls live behind one handle.** ☰ at the top left is the bar shut:
-drag it to move the widget, click it to open explain, hide the line, ghost,
-phone size, type settings and pause, which sit in a row to its right. Only the
-handle opens and shuts it — nothing closes it on its own, so a button is never
-taken out from under the pointer reaching for it. Paused tints the handle, since
-that is the one state worth seeing while the bar is shut.
+drag it to move the widget, click it to open explain, hide the line, settings
+and pause, which sit in a row to its right. Only the handle opens and shuts it —
+nothing closes it on its own, so a button is never taken out from under the
+pointer reaching for it. Paused tints the handle, since that is the one state
+worth seeing while the bar is shut.
+
+**⚙ is three tabs**, because the questions are different. *Type* — size, line
+height, spacing, weight, backdrop, shadow, colour, font. *Placement* — strip
+height, column width, phone size and the scale it uses. *Marks* — whether a
+status is painted and which, how strongly, the rank an unknown word is
+underlined under, and ghost mode. Reset puts back the tab being looked at.
+
+Most of it is stored in this browser, because it is about this screen — a phone
+reading the same overlay wants its own. The two every reading surface has to
+agree on, status marks and the underline rank, are read from and written back to
+read-stats, so `#read` and the overlay cannot disagree about the same word.
 
 `--mobile` draws the overlay at 1.75x with the line on the bottom edge, for
-reading the screen off a phone. The 📱 button at the top left switches between
+reading the screen off a phone. ⚙ → Placement switches between
 the two without restarting the shell — it reloads the page with the layout's
 query parameters flipped, and the stream replays the newest line on reconnect.
 
@@ -106,7 +117,7 @@ line onto the game's own text to find the offset, which is stored as fractions
 of the window, then set `--text-x`, `--text-y`, `--text-w` and `--text-size`
 from where it landed. They are per install, not yet per work.
 
-**Ghost mode** (the あ button, or `SIGUSR2`) draws the line invisibly over the
+**Ghost mode** (⚙ → Marks, or `SIGUSR2`) draws the line invisibly over the
 game's own text: the game does the typesetting and the overlay contributes only
 the status tint per word, the underline on a common word, and somewhere to
 click. It needs the line to sit on the game's text to the pixel, so it only

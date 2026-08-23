@@ -107,6 +107,7 @@ fetch("/api/settings")
       bccwj: s.reader_common_max_bccwj_rank || 0,
     };
     paintStatus = s.highlight_status !== false;
+    showServerSettings();
   })
   .catch(() => {});
 
@@ -247,11 +248,28 @@ function wideRuby(ruby, parts) {
 }
 
 /** One line, one span per word the tokenizer found. */
-function draw(incoming) {
+/** Is this word's status one of the ones being painted? `known` never is — on a
+ *  line where most words are known, the absence is what makes the rest
+ *  readable. */
+function painted(status) {
+  if (!paintStatus) return false;
+  return { new: type.markNew, seen: type.markSeen, unknown: type.markUnknown }[status] === true;
+}
+
+/** Draw the line already on screen again, under settings that decide what is
+ *  drawn on it. Not `draw`: that one is the arrival of a line, and would send
+ *  it to the explain context a second time. */
+function redraw() {
+  if (line) draw(line, true);
+}
+
+function draw(incoming, again = false) {
   closePopup();
   line = incoming;
-  recent.push(incoming.text);
-  if (recent.length > EXPLAIN_CONTEXT_LINES) recent.shift();
+  if (!again) {
+    recent.push(incoming.text);
+    if (recent.length > EXPLAIN_CONTEXT_LINES) recent.shift();
+  }
   selectedInLine = "";
   const text = line.text;
   const ruby = line.ruby ?? [];
@@ -280,7 +298,7 @@ function draw(incoming) {
         (underRank(span.freq_rank, commonRanks.freq) ||
           underRank(span.bccwj_rank, commonRanks.bccwj)) &&
         span.status !== "known";
-      const mark = paintStatus && span.status !== "known" ? span.status : "";
+      const mark = painted(span.status) ? span.status : "";
       word.className = ["w", mark, common ? "common" : ""].filter(Boolean).join(" ");
       // The surface travels in a dataset field, not as textContent: a furigana
       // annotation inside the span would otherwise read back as 大事おおごと,
@@ -602,7 +620,6 @@ hideBtnEl.addEventListener("click", () => {
 // places than the CSS — the stored drag offset is per layout, and the popup's
 // touch buttons are built from `mobile` — and the stream replays the newest
 // line the moment it reconnects, so nothing is lost.
-const MOBILE_SCALE = 1.75;
 const mobileBtnEl = document.getElementById("mobile-btn");
 mobileBtnEl.classList.toggle("off", !mobile);
 tip(mobileBtnEl, mobile ? "Switch to overlay size" : "Switch to phone size");
@@ -611,7 +628,7 @@ mobileBtnEl.addEventListener("click", () => {
   // Scaled off what is there rather than set to a constant: `VN_OVERLAY_HEIGHT`
   // and a custom scale both arrive this way, and switching layout must not
   // throw them away.
-  const factor = mobile ? 1 / MOBILE_SCALE : MOBILE_SCALE;
+  const factor = mobile ? 1 / type.mobileScale : type.mobileScale;
   next.set("scale", `${Number(scale) * factor}`);
   next.set("h", `${Math.round(Number(params.get("h") ?? "300") * factor)}`);
   if (mobile) next.delete("mobile");
@@ -647,28 +664,73 @@ pauseBtnEl.addEventListener("click", async () => {
   pauseBtnEl.disabled = false;
 });
 
-// How the line is set: size, leading, letter spacing, and how solid the box
-// behind it is. Stored in the browser rather than in settings, because they are
-// about this screen — a phone reading the same overlay wants its own — and
-// applied as CSS variables, so the aligned placement over the game's own text
-// keeps working off them.
+// The overlay's settings, in three tabs: how the line is set, where it sits,
+// and what is marked on it.
+//
+// Most of them are stored in the browser, because they are about this screen —
+// a phone reading the same overlay wants its own — and applied as CSS
+// variables, so the aligned placement over the game's own text keeps working
+// off them. The two that every reading surface has to agree on — whether a
+// status is painted at all, and the rank an unknown word counts as common
+// under — are read from and written back to read-stats.
 const TYPE = "vn-overlay-type";
-// `?bg=` is the backdrop's starting point, not a competing setting: it is what
-// the shell was launched with, and the slider takes over from there.
+// `?bg=` and `?h=` are starting points, not competing settings: they are what
+// the shell was launched with, and the panel takes over from there.
 const TYPE_DEFAULTS = {
   scale: 1,
   leading: 1.68,
   tracking: 0,
+  weight: 400,
   backdrop: Number(params.get("bg") ?? 0.82),
+  shadow: true,
   // Empty means the launcher's `?font=`, left where overlay.js put it above.
   font: "",
+  colour: "",
+  strip: Number(params.get("h") ?? 300),
+  chars: 40,
+  mobileScale: 1.75,
+  tint: 0.85,
+  markNew: true,
+  markSeen: true,
+  markUnknown: true,
 };
+
+// The line is read over artwork, so the choice is between inks that stay legible
+// on one — not a colour picker, which on a layer surface is a native window with
+// nowhere to open.
+const COLOURS = ["", "#ffe9c7", "#cfe4ff", "#ffd0d0", "#d6ffd8"];
+
 const TYPE_VARS = {
   scale: (v) => ["--line-scale", `${v}`],
   leading: (v) => ["--line-leading", `${v}`],
   tracking: (v) => ["--line-tracking", `${v}em`],
+  weight: (v) => ["--line-weight", `${v}`],
   backdrop: (v) => ["--backdrop", `rgba(0, 0, 0, ${v})`],
+  shadow: (v) => ["--line-shadow", v ? "0 1px 3px rgba(0, 0, 0, 0.9)" : "none"],
+  colour: (v) => ["--line-color", v || "#fff"],
+  strip: (v) => ["--strip", `${v}px`],
+  chars: (v) => ["--text-chars", `${v}`],
+  tint: (v) => ["--tint", `${v}`],
 };
+
+/** How each control reads and writes its setting. `fmt` is the readout beside a
+ *  slider; a checkbox has none. */
+const CONTROLS = {
+  scale: { id: "set-size", out: "out-size", fmt: (v) => v.toFixed(2) },
+  leading: { id: "set-leading", out: "out-leading", fmt: (v) => v.toFixed(2) },
+  tracking: { id: "set-tracking", out: "out-tracking", fmt: (v) => `${v.toFixed(3)}em` },
+  weight: { id: "set-weight", out: "out-weight", fmt: (v) => `${v}` },
+  backdrop: { id: "set-backdrop", out: "out-backdrop", fmt: (v) => v.toFixed(2) },
+  shadow: { id: "set-shadow", check: true },
+  strip: { id: "set-strip", out: "out-strip", fmt: (v) => `${v}px` },
+  chars: { id: "set-chars", out: "out-chars", fmt: (v) => `${v}` },
+  mobileScale: { id: "set-mobile-scale", out: "out-mobile-scale", fmt: (v) => `${v.toFixed(2)}x` },
+  tint: { id: "set-tint", out: "out-tint", fmt: (v) => v.toFixed(2) },
+  markNew: { id: "set-mark-new", check: true, repaints: true },
+  markSeen: { id: "set-mark-seen", check: true, repaints: true },
+  markUnknown: { id: "set-mark-unknown", check: true, repaints: true },
+};
+
 let type = { ...TYPE_DEFAULTS };
 try {
   type = { ...type, ...JSON.parse(localStorage.getItem(TYPE) ?? "{}") };
@@ -678,29 +740,40 @@ try {
 
 const settingsBtnEl = document.getElementById("settings-btn");
 const settingsPanelEl = document.getElementById("settings-panel");
-const typeInputs = {
-  scale: [document.getElementById("set-size"), document.getElementById("out-size")],
-  leading: [document.getElementById("set-leading"), document.getElementById("out-leading")],
-  tracking: [document.getElementById("set-tracking"), document.getElementById("out-tracking")],
-  backdrop: [document.getElementById("set-backdrop"), document.getElementById("out-backdrop")],
-};
+const fontBtnEls = [...document.querySelectorAll("#set-font button")];
+const colourBoxEl = document.getElementById("set-colour");
+
+for (const value of COLOURS) {
+  const btn = document.createElement("button");
+  btn.value = value;
+  // `currentColor` is what fills the swatch, so the empty value draws white —
+  // which is what "as measured" actually looks like.
+  btn.style.color = value || "#fff";
+  btn.setAttribute("data-tip", value ? value : "As measured");
+  colourBoxEl.append(btn);
+}
+const colourBtnEls = [...colourBoxEl.children];
 
 function applyType() {
   for (const btn of fontBtnEls) btn.classList.toggle("on", btn.value === type.font);
+  for (const btn of colourBtnEls) btn.classList.toggle("on", btn.value === type.colour);
   root.setProperty("--line-font", `"${type.font || font || "Noto Sans CJK JP"}", sans-serif`);
   for (const [key, value] of Object.entries(type)) {
     const asVar = TYPE_VARS[key];
-    if (!asVar) continue;
-    root.setProperty(...asVar(value));
-    const [input, out] = typeInputs[key];
-    input.value = String(value);
-    out.textContent = key === "tracking" ? `${value.toFixed(3)}em` : value.toFixed(2);
+    if (asVar) root.setProperty(...asVar(value));
+    const control = CONTROLS[key];
+    if (!control) continue;
+    const input = document.getElementById(control.id);
+    if (control.check) input.checked = !!value;
+    else {
+      input.value = String(value);
+      document.getElementById(control.out).textContent = control.fmt(value);
+    }
   }
   localStorage.setItem(TYPE, JSON.stringify(type));
   report();
 }
 
-const fontBtnEls = [...document.querySelectorAll("#set-font button")];
 for (const btn of fontBtnEls) {
   btn.addEventListener("click", () => {
     type = { ...type, font: btn.value };
@@ -708,16 +781,53 @@ for (const btn of fontBtnEls) {
   });
 }
 
-for (const [key, [input]] of Object.entries(typeInputs)) {
-  input.addEventListener("input", () => {
-    type = { ...type, [key]: Number(input.value) };
+for (const btn of colourBtnEls) {
+  btn.addEventListener("click", () => {
+    type = { ...type, colour: btn.value };
     applyType();
   });
 }
 
+for (const [key, control] of Object.entries(CONTROLS)) {
+  const input = document.getElementById(control.id);
+  input.addEventListener("input", () => {
+    type = { ...type, [key]: control.check ? input.checked : Number(input.value) };
+    applyType();
+    // Which statuses are painted is decided while the line is being built, so
+    // the line on screen has to be built again.
+    if (control.repaints) redraw();
+  });
+}
+
+// One tab at a time, and the reset button resets the tab being looked at: the
+// settings that go together are the ones that would be put back together.
+const tabBtnEls = [...document.querySelectorAll("#settings-tabs button")];
+const tabBodyEls = [...document.querySelectorAll(".settings-body")];
+const TAB_KEYS = {
+  type: ["scale", "leading", "tracking", "weight", "backdrop", "shadow", "font", "colour"],
+  place: ["strip", "chars", "mobileScale"],
+  marks: ["tint", "markNew", "markSeen", "markUnknown"],
+};
+let tab = "type";
+
+for (const btn of tabBtnEls) {
+  btn.addEventListener("click", () => {
+    tab = btn.value;
+    for (const other of tabBtnEls) other.classList.toggle("on", other === btn);
+    for (const body of tabBodyEls) body.hidden = body.dataset.tab !== tab;
+    report();
+  });
+}
+
 document.getElementById("settings-reset").addEventListener("click", () => {
-  type = { ...TYPE_DEFAULTS };
+  for (const key of TAB_KEYS[tab]) type = { ...type, [key]: TYPE_DEFAULTS[key] };
   applyType();
+  if (tab === "marks") {
+    setPaintStatus(true);
+    setCommonRank(DEFAULT_COMMON_RANK);
+    setGhost(false);
+  }
+  redraw();
 });
 
 settingsBtnEl.addEventListener("click", () => {
@@ -727,6 +837,47 @@ settingsBtnEl.addEventListener("click", () => {
 });
 
 applyType();
+
+// The two settings read-stats owns, written back as they are changed: `#read`
+// underlines by the same rank and paints by the same flag, and a switch that
+// only moved this page would make the two surfaces disagree about the same
+// word.
+const DEFAULT_COMMON_RANK = 5000;
+const statusInputEl = document.getElementById("set-status");
+const commonInputEl = document.getElementById("set-common");
+
+function showServerSettings() {
+  statusInputEl.checked = paintStatus;
+  commonInputEl.value = String(commonRanks.freq);
+}
+
+function saveSetting(key, value) {
+  fetch("/api/settings", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ [key]: value }),
+  }).catch(() => {
+    // Offline. The panel still shows what was asked for; the next load reads
+    // back whatever was actually stored.
+  });
+}
+
+function setPaintStatus(on) {
+  paintStatus = on;
+  statusInputEl.checked = on;
+  saveSetting("highlight_status", on);
+  redraw();
+}
+
+function setCommonRank(rank) {
+  commonRanks = { ...commonRanks, freq: rank };
+  commonInputEl.value = String(rank);
+  saveSetting("reader_common_max_freq_rank", rank);
+  redraw();
+}
+
+statusInputEl.addEventListener("change", () => setPaintStatus(statusInputEl.checked));
+commonInputEl.addEventListener("change", () => setCommonRank(Math.max(0, Number(commonInputEl.value) || 0)));
 
 // The last text selected inside the line, remembered rather than read at the
 // press: reaching for the button collapses the selection in the act of
@@ -986,34 +1137,35 @@ function onGeometry(x, y, w, h) {
 // marks over nothing is worse than no marks — and never on a phone, where the
 // line is being read off the screen rather than fitted over anything.
 const GHOST = "vn-overlay-ghost";
-const ghostBtnEl = document.getElementById("ghost-btn");
+const ghostInputEl = document.getElementById("set-ghost");
+const ghostWhyEl = document.getElementById("ghost-why");
 let ghost = localStorage.getItem(GHOST) === "1";
 
 function applyGhost() {
   const on = ghost && !!game;
   document.documentElement.toggleAttribute("data-ghost", on);
-  ghostBtnEl.classList.toggle("off", !on);
-  // Left pressable while the game is missing and the mode is on: the button is
+  ghostInputEl.checked = ghost;
+  // Left settable while the game is missing and the mode is on: the checkbox is
   // then the only way to turn it back off, and a game that has quit or has not
   // started yet is the ordinary case rather than a fault.
-  ghostBtnEl.disabled = !game && !ghost;
-  tip(
-    ghostBtnEl,
-    game
-      ? "Read the game's own text, marked"
-      : "Needs the game window — no window name on this work, or it is not running",
-  );
+  ghostInputEl.disabled = !game && !ghost;
+  ghostWhyEl.textContent = game ? "" : "needs the game window";
   report();
 }
 
-function toggleGhost() {
-  ghost = !ghost;
+function setGhost(on) {
+  ghost = on;
   localStorage.setItem(GHOST, ghost ? "1" : "0");
   applyGhost();
 }
 
-ghostBtnEl.addEventListener("click", toggleGhost);
+function toggleGhost() {
+  setGhost(!ghost);
+}
+
+ghostInputEl.addEventListener("change", () => setGhost(ghostInputEl.checked));
 applyGhost();
+
 
 // Only under the overlay shell — in an ordinary browser there is no channel and
 // the page is simply a page. qwebchannel.js is injected by the shell, so

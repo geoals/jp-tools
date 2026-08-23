@@ -817,6 +817,32 @@ line at any scale. **Commit:** `overlay: collapsible button bar`.
 
 ### T5.2 — Settings panel: tabs and new settings
 
+**Status:** done, three tabs rather than four. **The あ button is gone from the
+bar and the phone-size button moved into Placement** — six buttons over a game
+is what T5.1 was about, and both are settings rather than things reached
+mid-line. Ghost mode itself is unchanged, `SIGUSR2` included.
+
+Type: size, line height, spacing, weight, backdrop, shadow, colour, font.
+Placement: strip height, column width, phone size and its scale. Marks: status
+painting on/off, which of the three statuses, tint strength, the underline rank,
+ghost. Reset resets the tab being looked at.
+
+Status painting and the underline rank are written back to read-stats through
+`PUT /api/settings` — they are claims `#read` makes too. Everything else is
+about this screen and stays in `localStorage`.
+
+Not built, and why:
+
+- **Alignment fractions have a drag already.** `--text-x`/`--text-y` are what
+  dragging the line over the game's own text sets, which is a better control
+  than two sliders; only the column width needed a control.
+- **Popup scale needs `web-shared/popup.css`, not this page.** The popup is
+  sized in `rem` off the root font size, so scaling it from here would scale the
+  line with it. It belongs with the shared file.
+- **The Behaviour tab is deferred.** Scrollback size waits on T5.4; lookup
+  recording on/off and click-vs-hover are changes to `reader/define` and to the
+  input model, not settings over what exists.
+
 Today: size, line height, spacing, backdrop, font, reset. Restructure into tabs
 and add what is currently env-only or not configurable at all:
 
