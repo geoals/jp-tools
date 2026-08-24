@@ -42,7 +42,7 @@ bullet list with one-line bullets — but nothing heavier."
 
 /// Pinned to Sonnet 5 — the explain button is a short interactive lookup read
 /// once and thrown away, so it does not need the model the cards are written
-/// with. Not driven by `JP_TOOLS_LLM_MODEL`.
+/// with. Not driven by `KOTODEX_LLM_MODEL`.
 ///
 /// The tags it prints therefore come off a different model than
 /// `compactdef`'s, which is why the rubric is shared source and not a
@@ -272,9 +272,9 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires JP_TOOLS_ANTHROPIC_API_KEY"]
+    #[ignore = "requires KOTODEX_ANTHROPIC_API_KEY"]
     async fn explain_uses_two_axis_tags() {
-        let api_key = std::env::var("JP_TOOLS_ANTHROPIC_API_KEY").expect("set key");
+        let api_key = std::env::var("KOTODEX_ANTHROPIC_API_KEY").expect("set key");
         let http = reqwest::Client::new();
         let context = ["「承知いたしました」と彼は恭しく頭を下げた。".to_string()];
         let out = explain(&http, &api_key, &context, "承知").await.unwrap();

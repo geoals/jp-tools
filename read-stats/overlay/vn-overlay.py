@@ -30,7 +30,7 @@ driving the PC's mouse from the phone leaves no side buttons for them. The
 strip grows with the type; `VN_OVERLAY_HEIGHT` still wins if it is set.
 
     VN_OVERLAY_URL      page to show      (default overlay.html, over read-stats)
-    JP_TOOLS_ANKI_URL   AnkiConnect       (default http://127.0.0.1:8765)
+    KOTODEX_ANKI_URL   AnkiConnect       (default http://127.0.0.1:8765)
     VN_OVERLAY_HEIGHT   strip height, px  (default 300, 525 with --mobile)
     VN_OVERLAY_BG       backdrop alpha    (default 0.82)
     VN_OVERLAY_FONT     font for the line (vn-overlay.sh sets DNP Shuei Mincho
@@ -50,7 +50,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "layer-overlay"))
 import layer_overlay  # noqa: E402
 
 DEFAULT_URL = "http://localhost:3200/overlay/overlay.html"
-ANKI_URL = os.environ.get("JP_TOOLS_ANKI_URL", "http://127.0.0.1:8765")
+ANKI_URL = os.environ.get("KOTODEX_ANKI_URL", "http://127.0.0.1:8765")
 # Names the surface to the compositor and the page's localStorage. Unchanged
 # from when the shell lived in vn-mine, so the type settings, ghost mode and
 # both drag offsets survived the move.

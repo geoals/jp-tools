@@ -418,18 +418,18 @@ set_env_var() {
   chmod 600 "$ENV_FILE"
 }
 
-if grep -q '^JP_TOOLS_ANTHROPIC_API_KEY=.' "$ENV_FILE" 2>/dev/null; then
+if grep -q '^KOTODEX_ANTHROPIC_API_KEY=.' "$ENV_FILE" 2>/dev/null; then
   good "Anthropic API key set — the ℹ explain button is on"
 elif [ "$DRY_RUN" = 1 ]; then
   say "would offer to store an Anthropic API key"
 elif ! (exec 2>/dev/null; : </dev/tty); then
-  skip "no terminal to type a key into — set JP_TOOLS_ANTHROPIC_API_KEY in $ENV_FILE"
+  skip "no terminal to type a key into — set KOTODEX_ANTHROPIC_API_KEY in $ENV_FILE"
 elif confirm "Add an Anthropic API key? It turns on the ℹ explain button."; then
   key=""
   read -r -s -p "    key (not echoed, blank to skip): " key </dev/tty || true
   printf '\n'
   if [ -n "$key" ]; then
-    set_env_var JP_TOOLS_ANTHROPIC_API_KEY "$key"
+    set_env_var KOTODEX_ANTHROPIC_API_KEY "$key"
     good "stored in $ENV_FILE (600)"
   else
     skip "no key — the explain button will not be drawn"

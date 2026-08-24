@@ -14,7 +14,7 @@ use jp_core::tokenize::{
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let db = std::env::var("JP_TOOLS_KNOWLEDGE_DB_PATH")?;
+    let db = std::env::var("KOTODEX_KNOWLEDGE_DB_PATH")?;
     let k = Knowledge::open(&db).await?;
     let lexicon: HashSet<String> = dictionaries::master_headwords(k.pool()).await?;
     let readings = dictionaries::master_entries(k.pool()).await?;
@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .fetch_all(k.pool())
             .await?;
 
-    let dict = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")?;
+    let dict = std::env::var("KOTODEX_SUDACHI_DICT_PATH")?;
     let master = MasterWords::new(lexicon.clone(), &readings);
     let tk = SudachiTokenizer::new(std::path::Path::new(&dict), anki)?
         .with_lexicon(lexicon.clone())

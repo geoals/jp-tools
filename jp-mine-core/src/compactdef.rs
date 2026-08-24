@@ -465,9 +465,9 @@ mod tests {
     /// asserts only that the written form is not tagged *below* the headword,
     /// since a tag tier is a model judgement and not a fixture.
     #[tokio::test]
-    #[ignore = "requires JP_TOOLS_ANTHROPIC_API_KEY"]
+    #[ignore = "requires KOTODEX_ANTHROPIC_API_KEY"]
     async fn the_written_form_is_not_priced_as_its_kanji() {
-        let api_key = std::env::var("JP_TOOLS_ANTHROPIC_API_KEY").expect("set key");
+        let api_key = std::env::var("KOTODEX_ANTHROPIC_API_KEY").expect("set key");
         let http = reqwest::Client::new();
         let sentence =
             |t: &str| format!("湿度が高く、薄暗く、ベッドなどの家具は硬く、<b>{t}</b>臭いがする。");
@@ -494,9 +494,9 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires JP_TOOLS_ANTHROPIC_API_KEY"]
+    #[ignore = "requires KOTODEX_ANTHROPIC_API_KEY"]
     async fn compact_def_integration() {
-        let api_key = std::env::var("JP_TOOLS_ANTHROPIC_API_KEY").expect("set key");
+        let api_key = std::env::var("KOTODEX_ANTHROPIC_API_KEY").expect("set key");
         let http = reqwest::Client::new();
         let out = compact_def(
             &http,

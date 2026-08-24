@@ -51,15 +51,15 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> Self {
-        let db_path = std::env::var("JP_TOOLS_STATS_DB_PATH").unwrap_or_else(|_| {
+        let db_path = std::env::var("KOTODEX_STATS_DB_PATH").unwrap_or_else(|_| {
             let home = std::env::var("HOME").expect("HOME not set");
             format!("{home}/.local/share/kotodex/read-stats.db")
         });
-        let knowledge_db_path = std::env::var("JP_TOOLS_KNOWLEDGE_DB_PATH").unwrap_or_else(|_| {
+        let knowledge_db_path = std::env::var("KOTODEX_KNOWLEDGE_DB_PATH").unwrap_or_else(|_| {
             let home = std::env::var("HOME").expect("HOME not set");
             format!("{home}/.local/share/kotodex/knowledge.db")
         });
-        let listen_addr = std::env::var("JP_TOOLS_STATS_LISTEN_ADDR")
+        let listen_addr = std::env::var("KOTODEX_STATS_LISTEN_ADDR")
             .unwrap_or_else(|_| "0.0.0.0:3200".to_string());
         // One field map for every card path. read-stats used to read the same
         // env vars again with its own defaults, which meant a Lapis install had
@@ -78,30 +78,30 @@ impl Config {
             knowledge_db_path,
             listen_addr,
             covers_dir,
-            anki_url: std::env::var("JP_TOOLS_ANKI_URL")
+            anki_url: std::env::var("KOTODEX_ANKI_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:8765".to_string()),
             anki_deck: anki.deck_name.clone(),
             anki_vocab_field: field(&anki.field_vocab),
             anki_sentence_field: field(&anki.field_sentence),
             anki_compact_def_field: field(&anki.field_compact_def),
             anki,
-            auto_capture_on_add: std::env::var("JP_TOOLS_AUTO_CAPTURE_ON_ADD")
+            auto_capture_on_add: std::env::var("KOTODEX_AUTO_CAPTURE_ON_ADD")
                 .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
                 .unwrap_or(true),
-            sudachi_dict_path: std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
+            sudachi_dict_path: std::env::var("KOTODEX_SUDACHI_DICT_PATH")
                 .unwrap_or_else(|_| "system_full.dic".to_string())
                 .into(),
-            vn_capture_script: std::env::var("JP_TOOLS_VN_CAPTURE_SH")
+            vn_capture_script: std::env::var("KOTODEX_VN_CAPTURE_SH")
                 .map(Into::into)
                 .unwrap_or_else(|_| {
                     jp_core::install::install_root().join("vn-mine/vn-capture.sh")
                 }),
-            anthropic_api_key: std::env::var("JP_TOOLS_ANTHROPIC_API_KEY").ok(),
-            whisper_url: std::env::var("JP_TOOLS_WHISPER_URL")
+            anthropic_api_key: std::env::var("KOTODEX_ANTHROPIC_API_KEY").ok(),
+            whisper_url: std::env::var("KOTODEX_WHISPER_URL")
                 .unwrap_or_else(|_| "http://localhost:8100".to_string()),
             // Numeric for the same reason as `anki_url`: the add-on binds IPv4
             // loopback and `localhost` resolves to `::1` first here.
-            local_audio_url: std::env::var("JP_TOOLS_LOCAL_AUDIO_URL")
+            local_audio_url: std::env::var("KOTODEX_LOCAL_AUDIO_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:5050".to_string()),
         }
     }

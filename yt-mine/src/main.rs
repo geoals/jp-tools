@@ -19,7 +19,7 @@ use yt_mine::services::media::{FfmpegMediaExtractor, MediaExtractor};
 use yt_mine::services::transcribe::{RemoteTranscriber, Transcriber};
 
 /// The external tools, picked once at startup: the real ones, or the fakes
-/// `JP_TOOLS_FAKE_API` swaps in. They go straight into [`AppState`].
+/// `KOTODEX_FAKE_API` swaps in. They go straight into [`AppState`].
 struct Services {
     downloader: Arc<dyn MediaDownloader>,
     transcriber: Arc<dyn Transcriber>,

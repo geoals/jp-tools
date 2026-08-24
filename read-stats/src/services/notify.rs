@@ -23,9 +23,9 @@ const TIMEOUT_MS: &str = "2000";
 /// session bus is silence, logged at debug — this is feedback, not a feature
 /// anything depends on.
 ///
-/// Set `JP_TOOLS_MINE_NOTIFY=0` to mine in silence.
+/// Set `KOTODEX_MINE_NOTIFY=0` to mine in silence.
 pub fn mine_complete(word: &str) {
-    if std::env::var("JP_TOOLS_MINE_NOTIFY").is_ok_and(|v| v == "0") {
+    if std::env::var("KOTODEX_MINE_NOTIFY").is_ok_and(|v| v == "0") {
         return;
     }
     let body = if word.is_empty() {

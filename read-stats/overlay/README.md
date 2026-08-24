@@ -180,7 +180,7 @@ on every change.
 
 - `VN_OVERLAY_URL` — page to show (default `overlay.html` beside it, over
   read-stats on :3200).
-- `JP_TOOLS_ANKI_URL` (default `http://localhost:8765`) — checked at startup
+- `KOTODEX_ANKI_URL` (default `http://localhost:8765`) — checked at startup
   only; the card itself is added by read-stats.
 - `VN_OVERLAY_HEIGHT` (default 300, 525 under `--mobile`) — strip height, px. The
   text is positioned against it, so changing it moves the line by the same

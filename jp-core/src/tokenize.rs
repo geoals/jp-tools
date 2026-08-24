@@ -3219,10 +3219,10 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+    #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
     fn sudachi_tokenizer_produces_tokens() {
-        let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
-            .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+        let dict_path = std::env::var("KOTODEX_SUDACHI_DICT_PATH")
+            .expect("KOTODEX_SUDACHI_DICT_PATH must be set");
         let tokenizer = SudachiTokenizer::new(Path::new(&dict_path), HashSet::new()).unwrap();
         let tokens = tokenizer.tokenize("東京に行く").unwrap();
 
@@ -3258,10 +3258,10 @@ mod tests {
     /// An unlisted compound is a word the reader has not judged, and belongs in
     /// the ledger as one.
     #[test]
-    #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+    #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
     fn a_compound_the_master_does_not_list_is_left_whole() {
-        let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
-            .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+        let dict_path = std::env::var("KOTODEX_SUDACHI_DICT_PATH")
+            .expect("KOTODEX_SUDACHI_DICT_PATH must be set");
         // Stands in for the master dictionary's headwords: every part of 白蓮華
         // is listed, and the compound itself is not.
         let lexicon: HashSet<String> = ["白蓮", "華", "東", "京", "凛", "と"]
@@ -3288,10 +3288,10 @@ mod tests {
     /// The other direction: a compound Sudachi's own lexicon does not hold, so
     /// no mode returns it whole and only recomposition can recover it.
     #[test]
-    #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+    #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
     fn adjacent_parts_rejoin_into_the_word_the_dictionary_lists() {
-        let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
-            .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+        let dict_path = std::env::var("KOTODEX_SUDACHI_DICT_PATH")
+            .expect("KOTODEX_SUDACHI_DICT_PATH must be set");
         let lexicon: HashSet<String> = [
             "噦り上げる",
             "振り返る",
@@ -3358,10 +3358,10 @@ mod tests {
     /// An expression whose last word the sentence conjugated is still that
     /// expression: 気になって is 気になる, and the surfaces spell nothing.
     #[test]
-    #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+    #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
     fn a_conjugated_expression_is_the_expression_it_conjugates() {
-        let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
-            .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+        let dict_path = std::env::var("KOTODEX_SUDACHI_DICT_PATH")
+            .expect("KOTODEX_SUDACHI_DICT_PATH must be set");
         // 気 and なる are listed for the same reason production lists them:
         // without the master's own spelling the identity ladder leaves
         // Sudachi's 成る, and the run then spells 気に成る, which is nothing.
@@ -3418,10 +3418,10 @@ mod tests {
     /// before it. たそう is listed (行きたそう), and without this 音だったそう
     /// filed だっ's た under it.
     #[test]
-    #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+    #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
     fn a_past_tense_ta_never_opens_an_expression() {
-        let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
-            .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+        let dict_path = std::env::var("KOTODEX_SUDACHI_DICT_PATH")
+            .expect("KOTODEX_SUDACHI_DICT_PATH must be set");
         let entries: Vec<(String, String)> = [("たそう", "たそう"), ("ないと", "ないと")]
             .iter()
             .map(|(t, r)| (t.to_string(), r.to_string()))
@@ -3450,10 +3450,10 @@ mod tests {
     /// the parts — the ledger keys on `(headword, reading)`, so a reading built
     /// here would be a second row for a word that already has one.
     #[test]
-    #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+    #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
     fn a_rejoined_token_carries_the_dictionarys_own_reading() {
-        let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
-            .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+        let dict_path = std::env::var("KOTODEX_SUDACHI_DICT_PATH")
+            .expect("KOTODEX_SUDACHI_DICT_PATH must be set");
         let tokenizer = SudachiTokenizer::new(Path::new(&dict_path), HashSet::from(["x".into()]))
             .unwrap()
             .with_lexicon(HashSet::from(["噦り上げる".to_string()]))
@@ -3475,10 +3475,10 @@ mod tests {
     /// bound and 接尾辞 is not a content word, so 得意げ joined correctly and was
     /// then dropped from the feed as grammar.
     #[test]
-    #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+    #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
     fn a_suffix_compound_takes_the_class_the_suffix_derives() {
-        let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
-            .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+        let dict_path = std::env::var("KOTODEX_SUDACHI_DICT_PATH")
+            .expect("KOTODEX_SUDACHI_DICT_PATH must be set");
         let tokenizer = SudachiTokenizer::new(Path::new(&dict_path), HashSet::from(["x".into()]))
             .unwrap()
             .with_standard(&[("得意げ".to_string(), "とくいげ".to_string())]);
@@ -3499,10 +3499,10 @@ mod tests {
     /// A reading naming two headwords is not arbitrated — it is dropped, and
     /// the parts stay apart rather than being merged into a guess.
     #[test]
-    #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+    #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
     fn an_ambiguous_reading_never_joins_anything() {
-        let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
-            .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+        let dict_path = std::env::var("KOTODEX_SUDACHI_DICT_PATH")
+            .expect("KOTODEX_SUDACHI_DICT_PATH must be set");
         let readings: Vec<(String, String)> =
             [("持ち上げる", "もちあげる"), ("餅上げる", "もちあげる")]
                 .iter()
@@ -3529,10 +3529,10 @@ mod tests {
     /// is vocabulary. Sudachi's subclass is the signal; nothing else available
     /// here distinguishes them.
     #[test]
-    #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+    #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
     fn proper_nouns_are_marked_and_ordinary_words_are_not() {
-        let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
-            .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+        let dict_path = std::env::var("KOTODEX_SUDACHI_DICT_PATH")
+            .expect("KOTODEX_SUDACHI_DICT_PATH must be set");
         let tokenizer = SudachiTokenizer::new(Path::new(&dict_path), HashSet::new()).unwrap();
 
         let tokens = tokenizer.tokenize("東京で田中さんが本を読む").unwrap();
@@ -3549,10 +3549,10 @@ mod tests {
     /// used to produce (振る, フッ) — a pair nobody ever wrote — and split one
     /// verb across a ledger row per inflected stem.
     #[test]
-    #[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+    #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
     fn a_conjugated_verb_carries_its_dictionary_forms_reading() {
-        let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
-            .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+        let dict_path = std::env::var("KOTODEX_SUDACHI_DICT_PATH")
+            .expect("KOTODEX_SUDACHI_DICT_PATH must be set");
         let tokenizer = SudachiTokenizer::new(Path::new(&dict_path), HashSet::new()).unwrap();
 
         for (text, surface, base, reading) in [

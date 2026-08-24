@@ -5,7 +5,7 @@ use std::env;
 /// Each field is `Option<String>` — `Some("FieldName")` means populate that
 /// field on the Anki note, `None` means skip it. Defaults are Lapis's field
 /// names, since that is the note type a new install is set up with; every one
-/// is overridable through `JP_TOOLS_ANKI_FIELD_*` for a note type of your own.
+/// is overridable through `KOTODEX_ANKI_FIELD_*` for a note type of your own.
 #[derive(Debug, Clone)]
 pub struct AnkiConfig {
     pub model_name: String,
@@ -67,69 +67,69 @@ fn anki_field(var: &str, default: &str) -> Option<String> {
 }
 
 impl AnkiConfig {
-    /// Load Anki config from `JP_TOOLS_ANKI_*` environment variables, falling
+    /// Load Anki config from `KOTODEX_ANKI_*` environment variables, falling
     /// back to the Lapis defaults. `tags` stays empty — set it
     /// per application after loading.
     pub fn from_env() -> Self {
         let defaults = AnkiConfig::default();
 
         Self {
-            model_name: env::var("JP_TOOLS_ANKI_MODEL").unwrap_or(defaults.model_name),
-            deck_name: env::var("JP_TOOLS_ANKI_DECK").unwrap_or(defaults.deck_name),
+            model_name: env::var("KOTODEX_ANKI_MODEL").unwrap_or(defaults.model_name),
+            deck_name: env::var("KOTODEX_ANKI_DECK").unwrap_or(defaults.deck_name),
             field_vocab: anki_field(
-                "JP_TOOLS_ANKI_FIELD_VOCAB",
+                "KOTODEX_ANKI_FIELD_VOCAB",
                 defaults.field_vocab.as_deref().unwrap_or(""),
             ),
             field_definition: anki_field(
-                "JP_TOOLS_ANKI_FIELD_DEFINITION",
+                "KOTODEX_ANKI_FIELD_DEFINITION",
                 defaults.field_definition.as_deref().unwrap_or(""),
             ),
             field_sentence: anki_field(
-                "JP_TOOLS_ANKI_FIELD_SENTENCE",
+                "KOTODEX_ANKI_FIELD_SENTENCE",
                 defaults.field_sentence.as_deref().unwrap_or(""),
             ),
             field_image: anki_field(
-                "JP_TOOLS_ANKI_FIELD_IMAGE",
+                "KOTODEX_ANKI_FIELD_IMAGE",
                 defaults.field_image.as_deref().unwrap_or(""),
             ),
             field_audio: anki_field(
-                "JP_TOOLS_ANKI_FIELD_AUDIO",
+                "KOTODEX_ANKI_FIELD_AUDIO",
                 defaults.field_audio.as_deref().unwrap_or(""),
             ),
             field_source: anki_field(
-                "JP_TOOLS_ANKI_FIELD_SOURCE",
+                "KOTODEX_ANKI_FIELD_SOURCE",
                 defaults.field_source.as_deref().unwrap_or(""),
             ),
             field_furigana: anki_field(
-                "JP_TOOLS_ANKI_FIELD_FURIGANA",
+                "KOTODEX_ANKI_FIELD_FURIGANA",
                 defaults.field_furigana.as_deref().unwrap_or(""),
             ),
             field_pitch_num: anki_field(
-                "JP_TOOLS_ANKI_FIELD_PITCH_NUM",
+                "KOTODEX_ANKI_FIELD_PITCH_NUM",
                 defaults.field_pitch_num.as_deref().unwrap_or(""),
             ),
             field_pitch_pattern: anki_field(
-                "JP_TOOLS_ANKI_FIELD_PITCH_PATTERN",
+                "KOTODEX_ANKI_FIELD_PITCH_PATTERN",
                 defaults.field_pitch_pattern.as_deref().unwrap_or(""),
             ),
             field_frequency: anki_field(
-                "JP_TOOLS_ANKI_FIELD_FREQUENCY",
+                "KOTODEX_ANKI_FIELD_FREQUENCY",
                 defaults.field_frequency.as_deref().unwrap_or(""),
             ),
             field_compact_def: anki_field(
-                "JP_TOOLS_ANKI_FIELD_COMPACT_DEF",
+                "KOTODEX_ANKI_FIELD_COMPACT_DEF",
                 defaults.field_compact_def.as_deref().unwrap_or(""),
             ),
             field_reading: anki_field(
-                "JP_TOOLS_ANKI_FIELD_READING",
+                "KOTODEX_ANKI_FIELD_READING",
                 defaults.field_reading.as_deref().unwrap_or(""),
             ),
             field_vocab_audio: anki_field(
-                "JP_TOOLS_ANKI_FIELD_VOCAB_AUDIO",
+                "KOTODEX_ANKI_FIELD_VOCAB_AUDIO",
                 defaults.field_vocab_audio.as_deref().unwrap_or(""),
             ),
             field_freq_sort: anki_field(
-                "JP_TOOLS_ANKI_FIELD_FREQ_SORT",
+                "KOTODEX_ANKI_FIELD_FREQ_SORT",
                 defaults.field_freq_sort.as_deref().unwrap_or(""),
             ),
             tags: Vec::new(),
@@ -168,7 +168,7 @@ mod tests {
 
     /// The defaults are what a fresh install gets, so they are Lapis's names,
     /// spelt as the note type in its own release spells them. An existing note
-    /// type pins its own through `JP_TOOLS_ANKI_FIELD_*`.
+    /// type pins its own through `KOTODEX_ANKI_FIELD_*`.
     #[test]
     fn the_defaults_are_the_lapis_note_type() {
         let c = AnkiConfig::default();

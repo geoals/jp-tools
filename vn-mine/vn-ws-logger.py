@@ -38,9 +38,9 @@ plugin and takes Textractor with it.
 Env:
   VN_RUNDIR                   run dir (default: $XDG_RUNTIME_DIR/vn-mine or /run/user/$UID/...)
   VN_WS_URL                   WebSocket URL, overriding settings.line_source_ws_url
-  JP_TOOLS_KNOWLEDGE_DB_PATH  shared knowledge DB (default: ~/.local/share/kotodex/knowledge.db)
-  JP_TOOLS_STATS_DB_PATH      read-stats DB (default: ~/.local/share/kotodex/read-stats.db)
-  JP_TOOLS_STATS_DISABLE      set to 1 to skip the stats sink entirely
+  KOTODEX_KNOWLEDGE_DB_PATH  shared knowledge DB (default: ~/.local/share/kotodex/knowledge.db)
+  KOTODEX_STATS_DB_PATH      read-stats DB (default: ~/.local/share/kotodex/read-stats.db)
+  KOTODEX_STATS_DISABLE      set to 1 to skip the stats sink entirely
 """
 import asyncio
 import json
@@ -462,10 +462,10 @@ def split_ruby(text):
     out.append(RUBY_STRAY.sub("", text[at:]))
     return "".join(out), spans
 
-KNOWLEDGE_DB = os.environ.get("JP_TOOLS_KNOWLEDGE_DB_PATH") or os.path.expanduser(
+KNOWLEDGE_DB = os.environ.get("KOTODEX_KNOWLEDGE_DB_PATH") or os.path.expanduser(
     "~/.local/share/kotodex/knowledge.db"
 )
-STATS_DB = os.environ.get("JP_TOOLS_STATS_DB_PATH") or os.path.expanduser(
+STATS_DB = os.environ.get("KOTODEX_STATS_DB_PATH") or os.path.expanduser(
     "~/.local/share/kotodex/read-stats.db"
 )
 
@@ -505,7 +505,7 @@ class StatsSink:
     def __init__(self):
         self.db = None
         self.pending = []
-        self.disabled = bool(os.environ.get("JP_TOOLS_STATS_DISABLE"))
+        self.disabled = bool(os.environ.get("KOTODEX_STATS_DISABLE"))
         self._next_try = 0.0
         self._complained = False
         self.ready()

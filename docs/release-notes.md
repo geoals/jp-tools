@@ -35,7 +35,7 @@ It is re-runnable, and takes `--dry-run`, `--yes` and `--uninstall`.
 - **Two line sources**, a Textractor WebSocket at a configurable address or the
   clipboard, switched in the settings panel without a restart.
 - **Two Anki profiles**, `lapis` (default) and `legacy`, with every field name
-  overridable through `JP_TOOLS_ANKI_FIELD_*`.
+  overridable through `KOTODEX_ANKI_FIELD_*`.
 
 ## What degrades, and how
 

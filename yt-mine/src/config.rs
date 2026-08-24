@@ -30,24 +30,24 @@ impl Config {
     /// Load config from environment variables, falling back to defaults.
     pub fn from_env() -> Self {
         Self {
-            knowledge_db_path: env::var("JP_TOOLS_KNOWLEDGE_DB_PATH").unwrap_or_else(|_| {
+            knowledge_db_path: env::var("KOTODEX_KNOWLEDGE_DB_PATH").unwrap_or_else(|_| {
                 let home = env::var("HOME").expect("HOME not set");
                 format!("{home}/.local/share/kotodex/knowledge.db")
             }),
-            db_path: env::var("JP_TOOLS_DB_PATH").unwrap_or_else(|_| {
+            db_path: env::var("KOTODEX_DB_PATH").unwrap_or_else(|_| {
                 let home = env::var("HOME").expect("HOME not set");
                 format!("{home}/.local/share/kotodex/yt-mine.db")
             }),
-            audio_dir: env::var("JP_TOOLS_AUDIO_DIR").unwrap_or_else(|_| "audio".into()),
-            listen_addr: env::var("JP_TOOLS_LISTEN_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".into()),
-            anki_url: env::var("JP_TOOLS_ANKI_URL")
+            audio_dir: env::var("KOTODEX_AUDIO_DIR").unwrap_or_else(|_| "audio".into()),
+            listen_addr: env::var("KOTODEX_LISTEN_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".into()),
+            anki_url: env::var("KOTODEX_ANKI_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:8765".into()),
-            media_dir: env::var("JP_TOOLS_MEDIA_DIR").unwrap_or_else(|_| "media".into()),
-            fake_api: matches!(env::var("JP_TOOLS_FAKE_API").as_deref(), Ok("true" | "1"),),
-            anthropic_api_key: env::var("JP_TOOLS_ANTHROPIC_API_KEY").ok(),
-            whisper_service_url: env::var("JP_TOOLS_WHISPER_SERVICE_URL")
+            media_dir: env::var("KOTODEX_MEDIA_DIR").unwrap_or_else(|_| "media".into()),
+            fake_api: matches!(env::var("KOTODEX_FAKE_API").as_deref(), Ok("true" | "1"),),
+            anthropic_api_key: env::var("KOTODEX_ANTHROPIC_API_KEY").ok(),
+            whisper_service_url: env::var("KOTODEX_WHISPER_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:8100".into()),
-            sudachi_dict_path: env::var("JP_TOOLS_SUDACHI_DICT_PATH")
+            sudachi_dict_path: env::var("KOTODEX_SUDACHI_DICT_PATH")
                 .unwrap_or_else(|_| "system_full.dic".into())
                 .into(),
             anki: AnkiConfig {

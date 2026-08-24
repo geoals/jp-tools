@@ -11,7 +11,7 @@
 /// Where the add-on listens. Fixed by the add-on, overridable for a machine
 /// that runs Anki elsewhere.
 pub fn base_url() -> String {
-    std::env::var("JP_TOOLS_LOCAL_AUDIO_URL")
+    std::env::var("KOTODEX_LOCAL_AUDIO_URL")
         .unwrap_or_else(|_| "http://127.0.0.1:5050".to_string())
 }
 

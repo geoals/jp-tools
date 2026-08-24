@@ -1,6 +1,6 @@
 //! Fake implementations of external-tool traits for frontend development.
 //!
-//! Activated by `JP_TOOLS_FAKE_API=true`. No external dependencies needed —
+//! Activated by `KOTODEX_FAKE_API=true`. No external dependencies needed —
 //! no yt-dlp, whisper, ffmpeg, Anki, or UniDic dictionary.
 
 use std::future::Future;

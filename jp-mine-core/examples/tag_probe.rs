@@ -4,7 +4,7 @@
 //!
 //!     cargo run -p jp-mine-core --example tag_probe
 //!
-//! Needs `JP_TOOLS_ANTHROPIC_API_KEY`. Costs one call per probe.
+//! Needs `KOTODEX_ANTHROPIC_API_KEY`. Costs one call per probe.
 //!
 //! The set is fixed so two runs are comparable. Each probe carries what it is
 //! there to catch, never an expected answer: a fixture asserting the tier would
@@ -87,7 +87,7 @@ const PROBES: &[(&str, &str, &str)] = &[
 async fn main() {
     dotenvy::dotenv().ok();
     let api_key =
-        std::env::var("JP_TOOLS_ANTHROPIC_API_KEY").expect("set JP_TOOLS_ANTHROPIC_API_KEY");
+        std::env::var("KOTODEX_ANTHROPIC_API_KEY").expect("set KOTODEX_ANTHROPIC_API_KEY");
     let http = reqwest::Client::new();
 
     let mut tiers = 0;

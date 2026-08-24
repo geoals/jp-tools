@@ -11,7 +11,7 @@ fn main() {
         std::process::exit(1);
     }
 
-    let dict_path: PathBuf = env::var("JP_TOOLS_SUDACHI_DICT_PATH")
+    let dict_path: PathBuf = env::var("KOTODEX_SUDACHI_DICT_PATH")
         .unwrap_or_else(|_| "system_full.dic".into())
         .into();
     let tokenizer =

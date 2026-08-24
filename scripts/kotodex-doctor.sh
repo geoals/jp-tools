@@ -88,7 +88,7 @@ printf '%sKotodex%s — %s\n' "$bold" "$off" "$(_os_release_field PRETTY_NAME 2>
 section "Core"
 binary_row curl curl critical
 binary_row jq jq critical
-if [ -f "$REPO/system_full.dic" ] || [ -n "${JP_TOOLS_SUDACHI_DICT_PATH:-}" ]; then
+if [ -f "$REPO/system_full.dic" ] || [ -n "${KOTODEX_SUDACHI_DICT_PATH:-}" ]; then
   row true "SudachiDict" "present" ""
 else
   row false "SudachiDict" "missing" "run setup.sh — nothing tokenizes without it" critical

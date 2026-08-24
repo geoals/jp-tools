@@ -245,8 +245,8 @@ class CapturePausedFlag(unittest.TestCase):
     def sink(self, value):
         tmp = tempfile.mkdtemp()
         knowledge, stats = make_databases(tmp, paused=value)
-        self.addCleanup(os.environ.pop, "JP_TOOLS_STATS_DISABLE", None)
-        os.environ.pop("JP_TOOLS_STATS_DISABLE", None)
+        self.addCleanup(os.environ.pop, "KOTODEX_STATS_DISABLE", None)
+        os.environ.pop("KOTODEX_STATS_DISABLE", None)
         old = (wl.KNOWLEDGE_DB, wl.STATS_DB)
         wl.KNOWLEDGE_DB, wl.STATS_DB = knowledge, stats
         self.addCleanup(lambda: setattr(wl, "KNOWLEDGE_DB", old[0]))
@@ -277,8 +277,8 @@ class SchemaIsNotOurs(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
-        os.environ.pop("JP_TOOLS_STATS_DISABLE", None)
-        self.addCleanup(os.environ.pop, "JP_TOOLS_STATS_DISABLE", None)
+        os.environ.pop("KOTODEX_STATS_DISABLE", None)
+        self.addCleanup(os.environ.pop, "KOTODEX_STATS_DISABLE", None)
         old = (wl.KNOWLEDGE_DB, wl.STATS_DB)
         wl.KNOWLEDGE_DB = os.path.join(self.tmp, "knowledge.db")
         wl.STATS_DB = os.path.join(self.tmp, "read-stats.db")
@@ -324,8 +324,8 @@ class SplitCaptureRejoined(unittest.TestCase):
     def sink(self):
         tmp = tempfile.mkdtemp()
         knowledge, stats = make_databases(tmp)
-        self.addCleanup(os.environ.pop, "JP_TOOLS_STATS_DISABLE", None)
-        os.environ.pop("JP_TOOLS_STATS_DISABLE", None)
+        self.addCleanup(os.environ.pop, "KOTODEX_STATS_DISABLE", None)
+        os.environ.pop("KOTODEX_STATS_DISABLE", None)
         old = (wl.KNOWLEDGE_DB, wl.STATS_DB)
         wl.KNOWLEDGE_DB, wl.STATS_DB = knowledge, stats
         self.addCleanup(lambda: setattr(wl, "KNOWLEDGE_DB", old[0]))

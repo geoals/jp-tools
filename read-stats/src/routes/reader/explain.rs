@@ -41,7 +41,7 @@ pub async fn explain_line(
 ) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>, AppError> {
     let Some(api_key) = state.anthropic_api_key.clone() else {
         return Err(AppError::BadRequest(
-            "no Anthropic API key set (JP_TOOLS_ANTHROPIC_API_KEY)".into(),
+            "no Anthropic API key set (KOTODEX_ANTHROPIC_API_KEY)".into(),
         ));
     };
 

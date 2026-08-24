@@ -7,7 +7,7 @@
 //! nobody had in mind, which is where the last four regressions were found.
 //!
 //! ```text
-//! JP_TOOLS_SUDACHI_DICT_PATH=$PWD/../system_full.dic \
+//! KOTODEX_SUDACHI_DICT_PATH=$PWD/../system_full.dic \
 //!   cargo test -p jp-core --features test-support --test golden -- --ignored
 //! ```
 //!
@@ -33,10 +33,10 @@ fn tsv(name: &str) -> Vec<Vec<String>> {
 }
 
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn the_identities_a_corpus_yields_have_not_moved() {
-    let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
-        .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+    let dict_path = std::env::var("KOTODEX_SUDACHI_DICT_PATH")
+        .expect("KOTODEX_SUDACHI_DICT_PATH must be set");
 
     let corpus: Vec<String> = include_str!("golden/corpus.txt")
         .lines()

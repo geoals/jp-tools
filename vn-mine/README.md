@@ -22,9 +22,9 @@ silero-VAD finds where the speech ends.
   Japanese line to `lines.log` with a timestamp. Auto-reconnects if Textractor
   restarts. Also inserts each line into the shared knowledge DB
   (`~/.local/share/kotodex/knowledge.db`, override with
-  `JP_TOOLS_KNOWLEDGE_DB_PATH`) so reading time/chars are tracked
+  `KOTODEX_KNOWLEDGE_DB_PATH`) so reading time/chars are tracked
   automatically — best-effort, never blocks mining; disable with
-  `JP_TOOLS_STATS_DISABLE=1`. read-stats' own DB is attached alongside for the
+  `KOTODEX_STATS_DISABLE=1`. read-stats' own DB is attached alongside for the
   `current_work` setting, which is the title stamped on each line.
 
   **It creates neither database.** The schema is jp-core's migrations and

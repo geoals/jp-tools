@@ -20,7 +20,7 @@ use sqlx::SqlitePool;
 /// Two note types want two different things and neither is wrong: Lapis styles
 /// Yomitan's `.yomitan-glossary` directly, so a wrapper is noise; the older note
 /// type styles per dictionary and reaches *through* the wrapper, so removing it
-/// renders the card unstyled. `JP_TOOLS_ANKI_STYLE` picks one.
+/// renders the card unstyled. `KOTODEX_ANKI_STYLE` picks one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Style {
     /// Yomitan's glossary block alone, one per dictionary that has the term.
@@ -32,7 +32,7 @@ pub enum Style {
 
 impl Style {
     pub fn from_env() -> Style {
-        match std::env::var("JP_TOOLS_ANKI_STYLE").as_deref() {
+        match std::env::var("KOTODEX_ANKI_STYLE").as_deref() {
             Ok("legacy") => Style::Legacy,
             _ => Style::Lapis,
         }

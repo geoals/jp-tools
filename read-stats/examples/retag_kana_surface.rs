@@ -51,7 +51,7 @@ async fn call(http: &reqwest::Client, action: &str, params: Value) -> Value {
 async fn main() {
     let write = std::env::args().any(|a| a == "--write");
     let api_key =
-        std::env::var("JP_TOOLS_ANTHROPIC_API_KEY").expect("set JP_TOOLS_ANTHROPIC_API_KEY");
+        std::env::var("KOTODEX_ANTHROPIC_API_KEY").expect("set KOTODEX_ANTHROPIC_API_KEY");
     let http = reqwest::Client::new();
 
     let ids = call(&http, "findNotes", json!({ "query": DECK })).await;

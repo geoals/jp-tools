@@ -311,7 +311,7 @@ else.
    the point:
 
    ```sh
-   JP_TOOLS_SUDACHI_DICT_PATH=$PWD/system_full.dic \
+   KOTODEX_SUDACHI_DICT_PATH=$PWD/system_full.dic \
      cargo test -p jp-core --features test-support -- --ignored
    ```
 

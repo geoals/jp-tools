@@ -46,7 +46,7 @@ drops it.
    (`sqlite3 knowledge.db "select text from lines" > lines.txt`).
 2. New integration test `tests/identity_resolution.rs`, `#[ignore]`d like the
    existing compound test, run with
-   `JP_TOOLS_SUDACHI_DICT_PATH=$PWD/../system_full.dic cargo test -p jp-core --test identity_resolution -- --ignored`.
+   `KOTODEX_SUDACHI_DICT_PATH=$PWD/../system_full.dic cargo test -p jp-core --test identity_resolution -- --ignored`.
 3. Check in `tests/master_pairs.tsv` — a hand-picked subset of Sankoku pairs so
    the test does not depend on the live DB. Regenerate rows from:
    `sqlite3 -separator $'\t' ~/.local/share/kotodex/knowledge.db "select distinct term, reading from dictionary_entries where dictionary_id=1"`.
@@ -273,7 +273,7 @@ Every row is an assertion in `tests/identity_resolution.rs`. "identity" means
 - Data for `spawn_blocking` must be prefetched async (ingest.rs pattern);
   frequency ranks included.
 - The Sudachi dict lives at the repo root (`system_full.dic`); tests need
-  `JP_TOOLS_SUDACHI_DICT_PATH` and `--ignored`.
+  `KOTODEX_SUDACHI_DICT_PATH` and `--ignored`.
 - rust-analyzer may flag `mockall` in `tokenize.rs` when checking without the
   `test-support` feature; it is noise.
 - Never restart the live stack during a VN session; `dev-instance.sh` exists

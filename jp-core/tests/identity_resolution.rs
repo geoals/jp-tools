@@ -5,7 +5,7 @@
 //! `master_pairs.tsv` are Sankoku's own, so a failure means the tokenizer
 //! changed, not that the dictionary did.
 //!
-//! `JP_TOOLS_SUDACHI_DICT_PATH=$PWD/../system_full.dic \
+//! `KOTODEX_SUDACHI_DICT_PATH=$PWD/../system_full.dic \
 //!  cargo test -p jp-core --test identity_resolution -- --ignored`
 
 use std::collections::{HashMap, HashSet};
@@ -155,8 +155,8 @@ fn with_cast(names: &[&str]) -> SudachiTokenizer {
 }
 
 fn build(names: HashSet<String>) -> (SudachiTokenizer, MasterWords) {
-    let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")
-        .expect("JP_TOOLS_SUDACHI_DICT_PATH must be set");
+    let dict_path = std::env::var("KOTODEX_SUDACHI_DICT_PATH")
+        .expect("KOTODEX_SUDACHI_DICT_PATH must be set");
     let entries = master_entries();
     let lexicon: HashSet<String> = entries.iter().map(|(t, _)| t.clone()).collect();
     // A non-empty deck is what puts the tokenizer on the C→B→A path, which is
@@ -202,7 +202,7 @@ fn pair(term: &str, reading: &str) -> (String, String) {
 /// normalised into one: Sudachi has no とん mimetic, so んっと is left over, and
 /// んっと normalises to うんと — a real Sankoku headword, counted 685 times.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_token_with_an_impossible_onset_is_never_rescued_into_a_word() {
     let (tk, master) = setup();
     let tokens = tokens_of(&tk, "そのメルルの胸を、とんっと軽く押した。");
@@ -229,7 +229,7 @@ fn a_token_with_an_impossible_onset_is_never_rescued_into_a_word() {
 /// content-word fence refuses to put it back; the master listing it is the whole
 /// reason it is a word.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn an_expression_the_master_lists_is_rejoined_across_function_words() {
     let (tk, master) = setup();
     let tokens = tokens_of(&tk, "それどころか、彼は笑っていた。");
@@ -248,7 +248,7 @@ fn an_expression_the_master_lists_is_rejoined_across_function_words() {
 /// て + いた: Sankoku lists this いる as its own kana headword, separate from
 /// 居る, and Sudachi's dictionary form already spells it that way.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_kana_subsidiary_goes_to_its_own_kana_headword() {
     let (tk, _) = setup();
 
@@ -269,7 +269,7 @@ fn a_kana_subsidiary_goes_to_its_own_kana_headword() {
 /// The same rule must not touch a subsidiary written in kanji — 見てみる is 見る
 /// once and みる once, not twice of either.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_kanji_subsidiary_keeps_its_kanji_headword() {
     let (tk, _) = setup();
     let tokens = tokens_of(&tk, "見てみる");
@@ -281,7 +281,7 @@ fn a_kanji_subsidiary_keeps_its_kanji_headword() {
 /// share. Where the normalized spelling names no listed pair, the surface-faithful
 /// one does.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_normalized_spelling_the_master_does_not_list_falls_back_to_the_written_one() {
     let (tk, master) = setup();
 
@@ -304,7 +304,7 @@ fn a_normalized_spelling_the_master_does_not_list_falls_back_to_the_written_one(
 /// potential's reading, and (行く, いける) is a pair no dictionary has. Asking
 /// what 行く reads as on its own repairs it.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_potential_form_keeps_its_base_verbs_reading() {
     let (tk, _) = setup();
     let tokens = tokens_of(&tk, "私なら行けるはずだ");
@@ -317,7 +317,7 @@ fn a_potential_form_keeps_its_base_verbs_reading() {
 /// frequency pick is sometimes wrong — 隙をうかがう is 窺う — but a word read and
 /// credited to its commoner spelling beats one credited to nothing.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn an_unwritten_verb_is_arbitrated_by_frequency() {
     let (tk, master) = setup();
     let tokens = tokens_of(&tk, "敵の隙をうかがう");
@@ -331,7 +331,7 @@ fn an_unwritten_verb_is_arbitrated_by_frequency() {
 /// A kanji head plus a kana suffix, joined on the reading. The fence that stops
 /// そう + する → 相する is about all-kana runs, so this passes under it.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_kanji_headed_compound_joins_on_its_reading() {
     let (tk, master) = setup();
     let tokens = tokens_of(&tk, "綺麗ごとを言うな");
@@ -349,7 +349,7 @@ fn a_kanji_headed_compound_joins_on_its_reading() {
 /// Everything that already worked. These pass before the rewrite and have to
 /// keep passing after it.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn the_existing_behaviour_is_unchanged() {
     let (tk, _) = setup();
 
@@ -378,7 +378,7 @@ fn the_existing_behaviour_is_unchanged() {
 /// is a listed pair, so nothing about validating the pair can reach it. The
 /// popularity tags can: わたし is current and わたくし is not.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_bare_kanji_read_as_a_dead_reading_is_corrected() {
     let (tk, _) = setup();
     for text in ["私なら行けるはずだ", "私は知らない", "私が行く"] {
@@ -394,7 +394,7 @@ fn a_bare_kanji_read_as_a_dead_reading_is_corrected() {
 /// the word out, the reading is the text's and stands — わたくし written in kana
 /// is わたくし, whatever the tags say about it.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_reading_the_text_spelled_out_is_never_corrected() {
     let (tk, _) = setup();
     let tokens = tokens_of(&tk, "わたくしが行きます");
@@ -410,7 +410,7 @@ fn a_reading_the_text_spelled_out_is_never_corrected() {
 /// must not. なに is the *preferred* reading here and なん still has to survive
 /// — being acceptable is what protects it.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_word_with_two_current_readings_keeps_sudachis_choice() {
     let (tk, _) = setup();
     assert_eq!(
@@ -424,7 +424,7 @@ fn a_word_with_two_current_readings_keeps_sudachis_choice() {
 /// word that cannot be inflected. Every one of these is a Sankoku headword, and
 /// none of them is what the sentence said.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_stem_is_never_filed_under_a_word_that_does_not_conjugate() {
     let (tk, _) = setup();
     for (text, forbidden) in [
@@ -450,7 +450,7 @@ fn a_stem_is_never_filed_under_a_word_that_does_not_conjugate() {
 /// is 砂漠. Dropping the nouns has to leave the verbs to be arbitrated between,
 /// or a conjugated verb ends up filed under a noun.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_reading_only_match_on_an_inflected_token_stays_a_verb() {
     let (tk, _) = setup();
     let (term, _) = identity_of(&tokens_of(&tk, "魚をさばいている。"), "さばい");
@@ -461,7 +461,7 @@ fn a_reading_only_match_on_an_inflected_token_stays_a_verb() {
 /// 潜める, so the run's canonical spelling came out 眉を潜める — not a headword,
 /// while 眉をひそめる is one. The join has to try the tail as the text spelt it.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn an_expression_is_found_under_the_spelling_the_text_used() {
     let (tk, _) = setup();
     let ids = identities(&tokens_of(&tk, "彼は眉をひそめた。"));
@@ -472,7 +472,7 @@ fn an_expression_is_found_under_the_spelling_the_text_used() {
 /// whether Sankoku happens to list the string, which is not a fact about the
 /// sentence.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn the_same_construction_is_analysed_the_same_way() {
     let (tk, _) = setup();
     let bases: Vec<String> = tokens_of(&tk, "扉が開いて、続いて音がした")
@@ -486,7 +486,7 @@ fn the_same_construction_is_analysed_the_same_way() {
 /// The repair, not just the refusal: なれ is a form of 慣れる, which conjugates,
 /// so it is reached through the lemma's reading rather than the stem's.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn an_inflected_kana_verb_reaches_its_kanji_lemma() {
     let (tk, _) = setup();
     assert_eq!(
@@ -500,7 +500,7 @@ fn an_inflected_kana_verb_reaches_its_kanji_lemma() {
 /// もの + を to the expression. `NEVER_JOIN` names the ones that are phrases in
 /// practice; the rest of what the join builds has to survive it.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_listed_expression_on_the_never_join_list_stays_apart() {
     let (tk, _) = setup();
 
@@ -533,7 +533,7 @@ fn a_listed_expression_on_the_never_join_list_stays_apart() {
 /// is the verb and the conditional, where building the expression also swallows
 /// the する.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn an_expression_that_is_only_a_word_at_a_clause_start_is_refused_mid_clause() {
     let (tk, _) = setup();
 
@@ -568,7 +568,7 @@ fn an_expression_that_is_only_a_word_at_a_clause_start_is_refused_mid_clause() {
 /// and building the expression takes 思う's complement marker with it. 120 of
 /// the 379 ないと were this.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn an_expression_is_refused_where_the_next_word_quotes_it() {
     let (tk, _) = setup();
 
@@ -594,7 +594,7 @@ fn an_expression_is_refused_where_the_next_word_quotes_it() {
 /// concessive ものの. What comes before separates nothing — た is on both sides
 /// of it — and what follows does.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn an_expression_is_refused_where_the_next_word_hangs_off_its_genitive() {
     let tk = with_cast(&[]);
 
@@ -622,7 +622,7 @@ fn an_expression_is_refused_where_the_next_word_hangs_off_its_genitive() {
 /// ように is the shape that rule exists for, and every dictionary here lists it —
 /// so only `NEVER_JOIN` reaches it.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn the_adverbial_of_a_na_adjective_is_one_word_where_the_master_lists_it() {
     let (tk, _) = setup();
 
@@ -642,7 +642,7 @@ fn the_adverbial_of_a_na_adjective_is_one_word_where_the_master_lists_it() {
 /// rejoins it — a run opening on the auxiliary た is a function word, which a
 /// standard dictionary may not license — so the cut list is the only lever.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_boundary_inside_tamae_is_cut_before_sudachi_sees_it() {
     let (tk, _) = setup();
     let tokens = tokens_of(&tk, "待ちたまえ！");
@@ -655,7 +655,7 @@ fn a_boundary_inside_tamae_is_cut_before_sudachi_sees_it() {
 /// out of そう + いえ. No path reaches そう言えば, so the join is refused and what
 /// is left is そう + 言う + ば.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn an_expression_is_refused_where_the_master_lists_its_conditional() {
     let (tk, _) = setup();
 
@@ -678,7 +678,7 @@ fn an_expression_is_refused_where_the_master_lists_its_conditional() {
 /// comitative と — not the adverb ちゃんと. A third of everything the join built
 /// was a cast member greeted by name.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn an_expression_is_refused_where_a_name_makes_its_first_part_an_honorific() {
     let tk = with_cast(&["ヒロ"]);
 
@@ -702,7 +702,7 @@ fn an_expression_is_refused_where_a_name_makes_its_first_part_an_honorific() {
 /// でも in them — while 「読んでも」 and 「一人でも」 are で + も and must stay
 /// apart, which is the floor doing its job.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_two_kana_conjunction_is_built_where_it_opens_a_clause() {
     let (tk, _) = setup();
 
@@ -736,7 +736,7 @@ fn a_two_kana_conjunction_is_built_where_it_opens_a_clause() {
 /// the fence. An inflected stem is not a word, so it is answered by the rung
 /// below instead.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_normalisation_may_not_drop_a_kanji_the_text_wrote() {
     let (tk, _) = setup();
     for (text, surface, reading) in [
@@ -758,7 +758,7 @@ fn a_normalisation_may_not_drop_a_kanji_the_text_wrote() {
 /// 遭っ is not and 遭う is. Both are the master's own spellings of the reading
 /// Sudachi gave the token, and only the kanji on the page separates them.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn an_inflected_stem_keeps_its_kanji_through_the_masters_other_spelling() {
     let (tk, _) = setup();
     for (text, surface, term, reading) in [
@@ -778,7 +778,7 @@ fn an_inflected_stem_keeps_its_kanji_through_the_masters_other_spelling() {
 /// so the pair offered is (信じる, しんずる) — which the master does not list.
 /// The ladder used to fall through to 信ずる, a spelling the text never used.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_normalised_spelling_keeps_its_own_reading() {
     let (tk, _) = setup();
     let tokens = tokens_of(&tk, "まるで信じられない");
@@ -789,7 +789,7 @@ fn a_normalised_spelling_keeps_its_own_reading() {
 /// reads ごぜん: two words sharing a normalisation, and swapping the spelling
 /// would rewrite the sentence.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_normalisation_that_changes_the_sound_is_not_followed() {
     let (tk, _) = setup();
     for (text, surface, term, reading) in [
@@ -809,7 +809,7 @@ fn a_normalisation_that_changes_the_sound_is_not_followed() {
 /// headword in hiragana, since a katakana entry read in katakana is a loanword
 /// (モノ is monochrome) and a line writing モノ means 物.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_katakana_word_is_not_folded_onto_its_hiragana_homophone() {
     let (tk, _) = setup();
     for (text, surface, term, reading) in [
@@ -830,7 +830,7 @@ fn a_katakana_word_is_not_folded_onto_its_hiragana_homophone() {
 /// A katakana headword in its own right is untouched, because the fold is last
 /// and can only win where nothing the text wrote is listed.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn katakana_the_master_does_not_list_folds_onto_the_hiragana_it_does() {
     let (tk, _) = setup();
     for (text, surface, term, reading) in [
@@ -852,7 +852,7 @@ fn katakana_the_master_does_not_list_folds_onto_the_hiragana_it_does() {
 /// simply spelt the way it is read is untouched, since a kana headword matches
 /// on the headword alone and へえ would have taken はい.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_colloquial_adjective_ending_names_the_reading_it_contracts_from() {
     let (tk, _) = setup();
     for (text, surface, term, reading) in [
@@ -873,7 +873,7 @@ fn a_colloquial_adjective_ending_names_the_reading_it_contracts_from() {
 /// っ rather than holding the vowel, so no ending can be un-contracted and the
 /// reading has to be read off the master's own list for that spelling.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_mora_swallowed_into_a_sokuon_names_the_reading_it_came_from() {
     let (tk, _) = setup();
     let tokens = tokens_of(&tk, "うっさいな、黙れ");
@@ -887,7 +887,7 @@ fn a_mora_swallowed_into_a_sokuon_names_the_reading_it_came_from() {
 /// fold: ココ became ここ, stopped being a name, and handed a character's 421
 /// sightings to the pronoun.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_katakana_cast_name_is_never_folded_onto_the_word_it_spells() {
     let tk = with_cast(&["ココ"]);
     let tokens = tokens_of(&tk, "ココは黙って頷いた");
@@ -904,7 +904,7 @@ fn a_katakana_cast_name_is_never_folded_onto_the_word_it_spells() {
 /// free-standing word, so the reading correction has no business here: 数名 is
 /// メイ whatever JMdict thinks of 名/な.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_bound_kanji_keeps_the_reading_its_binding_gives_it() {
     let (tk, _) = setup();
     for (text, surface, term, reading) in [
@@ -923,7 +923,7 @@ fn a_bound_kanji_keeps_the_reading_its_binding_gives_it() {
 /// 哀しみ to the homograph 味, and the honorific お to 御. Each is a pair Sankoku
 /// lists, and none is the word anyone read.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn one_mora_of_kana_never_becomes_a_kanji_word() {
     let (tk, _) = setup();
     for (text, surface) in [
@@ -944,7 +944,7 @@ fn one_mora_of_kana_never_becomes_a_kanji_word() {
 /// tense. Sudachi segments 襲われ + た + らしい correctly; the join is what was
 /// wrong, and it is lexical — hence the list, not a rule.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_past_tense_before_hearsay_is_not_the_suffix_of_a_word() {
     let (tk, _) = setup();
     let tokens = tokens_of(&tk, "若者が襲われたらしい");
@@ -958,7 +958,7 @@ fn a_past_tense_before_hearsay_is_not_the_suffix_of_a_word() {
 /// day it becomes a second implementation of the rules it starts explaining a
 /// pipeline nobody runs, which is worse than explaining nothing.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn explaining_a_line_yields_the_tokens_tokenizing_it_does() {
     let (tk, _) = setup();
     for line in [
@@ -983,7 +983,7 @@ fn explaining_a_line_yields_the_tokens_tokenizing_it_does() {
 /// string is homophonous with a dozen rare entries, so the match is found every
 /// time and means nothing any of them.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn two_morae_of_kana_never_name_a_spelling_nobody_writes() {
     let (tk, _) = setup();
     let tokens = tokens_of(&tk, "ひとりもいやしないんだ");
@@ -996,7 +996,7 @@ fn two_morae_of_kana_never_name_a_spelling_nobody_writes() {
 /// interjection is never とき or はず. はは is laughter and took 母 47 times,
 /// ひっ took the prefix 引っ 70 — both far too common for the rank to refuse.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_two_mora_cry_never_names_a_kanji_word() {
     let (tk, _) = setup();
     let tokens = tokens_of(&tk, "あははは、はは、おかしい");
@@ -1009,7 +1009,7 @@ fn a_two_mora_cry_never_names_a_kanji_word() {
 /// same two morae, and 時, 後 and 筈 are simply what they are. A guard keyed on
 /// length alone would take the commonest words in the language off the scale.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn two_morae_of_kana_still_name_a_spelling_the_language_uses() {
     let (tk, _) = setup();
     let tokens = tokens_of(&tk, "そのときが来た");
@@ -1022,7 +1022,7 @@ fn two_morae_of_kana_still_name_a_spelling_the_language_uses() {
 /// nobody reads, so the rare spelling is the right answer there and the guard
 /// would throw away exactly the words it exists to protect.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn katakana_may_still_name_a_rare_spelling() {
     let (tk, _) = setup();
     let tokens = tokens_of(&tk, "中身はカスだ");
@@ -1033,7 +1033,7 @@ fn katakana_may_still_name_a_rare_spelling() {
 /// Three morae is where the coincidence stops and the evidence starts: ほうき
 /// is 箒 at rank 22,217 and is right, which is why the guard stops at two.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn three_morae_of_kana_may_name_a_rare_spelling() {
     let (tk, _) = setup();
     let tokens = tokens_of(&tk, "長い柄のほうきがある");
@@ -1049,7 +1049,7 @@ fn three_morae_of_kana_may_name_a_rare_spelling() {
 /// the two disagree the page wins, which is the same rule the identity ladder
 /// applies when it refuses to add kanji nobody wrote.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_sounded_join_never_replaces_a_kanji_the_text_wrote() {
     let (tk, _) = setup();
     let tokens = tokens_of(&tk, "生誕祭の準備をする");
@@ -1064,7 +1064,7 @@ fn a_sounded_join_never_replaces_a_kanji_the_text_wrote() {
 /// する into とする, and the mimetic vanished from the line. Sankoku lists すっと
 /// — the word was there the whole time, behind an alphabet.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_katakana_mimetic_joins_the_hiragana_headword_it_sounds_like() {
     let (tk, _) = setup();
     let tokens = tokens_of(&tk, "胸がスッとする");
@@ -1087,7 +1087,7 @@ fn a_katakana_mimetic_joins_the_hiragana_headword_it_sounds_like() {
 /// headword is not: 橘, 出雲, 葵, 司 and シェリー are all master headwords and
 /// all names. A Japanese name does not carry okurigana.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_master_headword_written_with_okurigana_is_not_a_name() {
     let (tk, _) = setup();
 
@@ -1109,7 +1109,7 @@ fn a_master_headword_written_with_okurigana_is_not_a_name() {
 /// the name untagged — it *splits* it, and both halves are ordinary words the
 /// ledger then counts forever. 世/よ ×2,412 and 凪/なぎ ×2,385 over one script.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_name_the_cast_list_holds_is_one_token_and_a_name() {
     let tk = with_cast(&["世凪"]);
     let tokens = tokens_of(&tk, "名前は世凪。");
@@ -1125,7 +1125,7 @@ fn a_name_the_cast_list_holds_is_one_token_and_a_name() {
 /// out `excluded: "name"` 16 times and vocabulary 11 more in one session,
 /// because Sudachi's 固有名詞 is a per-occurrence tag.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_cast_name_is_a_name_in_every_sentence() {
     let tk = with_cast(&["ロブ"]);
     for line in ["おいウィル、ロブを殴れ。", "さっきのロブの話……"] {
@@ -1140,7 +1140,7 @@ fn a_cast_name_is_a_name_in_every_sentence() {
 /// A name Sudachi cannot account for comes back glued to whatever follows it:
 /// 「凛とオリヴィア」 analyses as the adverb 凛と, 72 times over one script.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_name_glued_to_a_particle_comes_apart() {
     let tk = with_cast(&["凛"]);
     let surfaces: Vec<String> = tokens_of(&tk, "凛とオリヴィアが並んでいる")
@@ -1154,7 +1154,7 @@ fn a_name_glued_to_a_particle_comes_apart() {
 /// And only where what is left over is grammar: ウィルス is a word with a name
 /// inside it, and 出雲大社 is a word every dictionary lists.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_word_that_merely_starts_with_a_name_stays_whole() {
     let tk = with_cast(&["ウィル", "出雲"]);
     for (line, word) in [
@@ -1172,7 +1172,7 @@ fn a_word_that_merely_starts_with_a_name_stays_whole() {
 /// A cast name common enough to be an ordinary word is the word. VNDB lists 母
 /// as a character of this very work, and it is rank 872 in fiction.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn an_everyday_word_in_the_cast_list_is_still_a_word() {
     let tk = with_cast(&["母"]);
     let token = tokens_of(&tk, "母の遺した車")
@@ -1186,7 +1186,7 @@ fn an_everyday_word_in_the_cast_list_is_still_a_word() {
 /// 奥深い and 靴箱 give them — so the pair is one no dictionary lists and the
 /// word falls off the master scale.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_word_standing_alone_loses_the_compounds_voicing() {
     let (tk, master) = setup();
     for (line, surface, want) in [
@@ -1206,7 +1206,7 @@ fn a_word_standing_alone_loses_the_compounds_voicing() {
 /// those are two words rather than one word's compound form — rewriting the
 /// reading there asserts a word nobody read.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_reading_the_master_merely_lacks_is_left_alone() {
     let (tk, _) = setup();
     let token = tokens_of(&tk, "私が生まれた所為で起きた")
@@ -1220,7 +1220,7 @@ fn a_reading_the_master_merely_lacks_is_left_alone() {
 /// the gate broke an everyday word into two rarer ledger rows. A compound the
 /// reader-facing list ranks above both its halves is one word.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_compound_commoner_than_its_halves_is_not_split() {
     let (tk, _) = setup();
     let surfaces: Vec<String> = tokens_of(&tk, "国に対する宣戦布告に等しい")
@@ -1236,7 +1236,7 @@ fn a_compound_commoner_than_its_halves_is_not_split() {
 /// Sankoku headword reading てひどい, so every rule after the segmentation
 /// confirms it.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_word_the_lattice_ran_past_the_end_of_is_cut_back() {
     let (tk, _) = setup();
     for (line, want, gone) in [
@@ -1261,7 +1261,7 @@ fn a_word_the_lattice_ran_past_the_end_of_is_cut_back() {
 /// asking the string whether it is present — また lies wholly inside たまたま
 /// and 跨いで, and crosses the まま | ただ of 「縛られたままただ」 by accident.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_word_that_merely_contains_one_is_left_alone() {
     let (tk, _) = setup();
     for (line, want) in [
@@ -1285,7 +1285,7 @@ fn a_word_that_merely_contains_one_is_left_alone() {
 /// 足り (the stem of 物足りる) like 物足りる — Sudachi hands all three over in
 /// pieces and the master has the whole word.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_prefix_compound_joins_when_its_reading_names_one_headword() {
     let (tk, _) = setup();
     for (line, want, want_identity) in [
@@ -1315,7 +1315,7 @@ fn a_prefix_compound_joins_when_its_reading_names_one_headword() {
 /// a kanji in the head every all-kana run is a guess — the same fence that
 /// keeps そう + する off 相する and こと + し off 今年.
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_kana_prefix_alone_is_not_enough_to_join() {
     let (tk, _) = setup();
     let surfaces: Vec<String> = tokens_of(&tk, "お世話になります")
@@ -1331,7 +1331,7 @@ fn a_kana_prefix_alone_is_not_enough_to_join() {
 /// it — so the run stays 最 + 低減 rather than asserting a spelling nobody
 /// read. (The script of 白昼夢の青写真 writes 最低限 this way in four lines.)
 #[test]
-#[ignore = "requires Sudachi dictionary (set JP_TOOLS_SUDACHI_DICT_PATH)"]
+#[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_sounded_join_may_not_respell_a_kanji_the_text_wrote() {
     let (tk, _) = setup();
     // 最低限 in the master is what makes the join *offer* 最低減, so the

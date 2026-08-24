@@ -170,7 +170,7 @@ async fn main() {
     }
 
     let api_key = api.then(|| {
-        std::env::var("JP_TOOLS_ANTHROPIC_API_KEY").expect("set JP_TOOLS_ANTHROPIC_API_KEY")
+        std::env::var("KOTODEX_ANTHROPIC_API_KEY").expect("set KOTODEX_ANTHROPIC_API_KEY")
     });
     let mut retagged = 0usize;
     let mut stopped = false;

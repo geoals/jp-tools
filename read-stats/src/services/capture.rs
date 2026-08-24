@@ -48,7 +48,7 @@ pub async fn run(state: &AppState, target: Target) -> Result<Value, AppError> {
     let script = state.vn_capture_script.clone();
     if !script.is_file() {
         return Err(AppError::BadRequest(format!(
-            "vn-capture.sh not found at {} (set JP_TOOLS_VN_CAPTURE_SH)",
+            "vn-capture.sh not found at {} (set KOTODEX_VN_CAPTURE_SH)",
             script.display()
         )));
     }

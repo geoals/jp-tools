@@ -26,7 +26,7 @@
 #                      instead of whatever has focus. Needed when mining from
 #                      read-stats' #read page, where the browser is focused.
 #                      Unset, it is asked for: read-stats holds it per work.
-#      JP_TOOLS_READ_STATS_URL  where to ask (default http://localhost:3200)
+#      KOTODEX_READ_STATS_URL  where to ask (default http://localhost:3200)
 
 RUNDIR="${VN_RUNDIR:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/vn-mine}"
 SEGDIR="$RUNDIR/seg"
@@ -52,7 +52,7 @@ REPO_ENV="$SCRIPT_DIR/../.env"
 if [ -f "$REPO_ENV" ]; then
   while IFS= read -r line; do
     case "$line" in
-      JP_TOOLS_ANKI_*=*)
+      KOTODEX_ANKI_*=*)
         name="${line%%=*}"
         [ -n "${!name+set}" ] && continue
         value="${line#*=}"
@@ -63,7 +63,7 @@ if [ -f "$REPO_ENV" ]; then
     esac
   done <"$REPO_ENV"
 fi
-ANKI_CONNECT_URL="${JP_TOOLS_ANKI_URL:-http://127.0.0.1:8765}"
+ANKI_CONNECT_URL="${KOTODEX_ANKI_URL:-http://127.0.0.1:8765}"
 WHISPER_URL="${VN_WHISPER_URL:-http://localhost:8100}"
 VAD_PYTHON="$HOME/.local/share/vn-mine/venv/bin/python"
 VAD_SCRIPT="$SCRIPT_DIR/vn-vad.py"
@@ -73,7 +73,7 @@ VN_ANCHOR_TS="${VN_ANCHOR_TS:-}"
 VN_NOTE_ID="${VN_NOTE_ID:-}"
 SHOT_NOTE=""
 
-READ_STATS_URL="${JP_TOOLS_READ_STATS_URL:-http://localhost:3200}"
+READ_STATS_URL="${KOTODEX_READ_STATS_URL:-http://localhost:3200}"
 
 TMP=$(mktemp -d "$RUNDIR/cap.XXXXXX" 2>/dev/null) || TMP=$(mktemp -d)
 
@@ -114,11 +114,11 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 # The note type's field names, the same variables the Rust side reads so one
 # note type is described in one place. The defaults are Lapis's.
-ANKI_MODEL="${JP_TOOLS_ANKI_MODEL:-Lapis}"
-FIELD_VOCAB="${JP_TOOLS_ANKI_FIELD_VOCAB:-Expression}"
-FIELD_SENTENCE="${JP_TOOLS_ANKI_FIELD_SENTENCE:-Sentence}"
-FIELD_IMAGE="${JP_TOOLS_ANKI_FIELD_IMAGE:-Picture}"
-FIELD_AUDIO="${JP_TOOLS_ANKI_FIELD_AUDIO:-SentenceAudio}"
+ANKI_MODEL="${KOTODEX_ANKI_MODEL:-Lapis}"
+FIELD_VOCAB="${KOTODEX_ANKI_FIELD_VOCAB:-Expression}"
+FIELD_SENTENCE="${KOTODEX_ANKI_FIELD_SENTENCE:-Sentence}"
+FIELD_IMAGE="${KOTODEX_ANKI_FIELD_IMAGE:-Picture}"
+FIELD_AUDIO="${KOTODEX_ANKI_FIELD_AUDIO:-SentenceAudio}"
 
 # === LOCATE THE VOICELINE START (before the screenshot — anchor the line at
 # the press so advancing to the next line immediately after can't re-anchor) ===

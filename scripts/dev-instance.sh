@@ -25,8 +25,8 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK="$REPO/target/dev-instance"
 PORT="${DEV_PORT:-3299}"
-LIVE_STATS="${JP_TOOLS_STATS_DB_PATH:-$HOME/.local/share/kotodex/read-stats.db}"
-LIVE_KNOWLEDGE="${JP_TOOLS_KNOWLEDGE_DB_PATH:-$HOME/.local/share/kotodex/knowledge.db}"
+LIVE_STATS="${KOTODEX_STATS_DB_PATH:-$HOME/.local/share/kotodex/read-stats.db}"
+LIVE_KNOWLEDGE="${KOTODEX_KNOWLEDGE_DB_PATH:-$HOME/.local/share/kotodex/knowledge.db}"
 
 say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -65,13 +65,13 @@ fresh_dbs() {
 # requests from a database that has since been replaced.
 serve() {
   exec env -i HOME="$HOME" PATH="$PATH" \
-    JP_TOOLS_STATS_DB_PATH="$WORK/run.db" \
-    JP_TOOLS_KNOWLEDGE_DB_PATH="$WORK/run-knowledge.db" \
-    JP_TOOLS_STATS_LISTEN_ADDR="127.0.0.1:$PORT" \
-    JP_TOOLS_ANKI_URL="http://127.0.0.1:9" \
-    JP_TOOLS_WHISPER_URL="http://127.0.0.1:9" \
-    JP_TOOLS_ANTHROPIC_API_KEY="" \
-    JP_TOOLS_AUTO_CAPTURE_ON_ADD=0 \
+    KOTODEX_STATS_DB_PATH="$WORK/run.db" \
+    KOTODEX_KNOWLEDGE_DB_PATH="$WORK/run-knowledge.db" \
+    KOTODEX_STATS_LISTEN_ADDR="127.0.0.1:$PORT" \
+    KOTODEX_ANKI_URL="http://127.0.0.1:9" \
+    KOTODEX_WHISPER_URL="http://127.0.0.1:9" \
+    KOTODEX_ANTHROPIC_API_KEY="" \
+    KOTODEX_AUTO_CAPTURE_ON_ADD=0 \
     "$REPO/target/debug/read-stats" "$@"
 }
 

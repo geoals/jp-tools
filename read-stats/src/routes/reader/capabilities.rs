@@ -256,7 +256,7 @@ async fn anki(state: &AppState) -> (Capability, Capability) {
     } else {
         off(
             format!("{want} is not in this collection"),
-            "run the note type check, or set JP_TOOLS_ANKI_MODEL to one you have",
+            "run the note type check, or set KOTODEX_ANKI_MODEL to one you have",
         )
     };
     (on(format!("{} note types", models.len())), note_type)
@@ -327,7 +327,7 @@ fn explain(state: &AppState) -> Capability {
     } else {
         off(
             "no API key",
-            "set JP_TOOLS_ANTHROPIC_API_KEY to explain a line",
+            "set KOTODEX_ANTHROPIC_API_KEY to explain a line",
         )
     }
 }

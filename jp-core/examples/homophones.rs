@@ -7,7 +7,7 @@
 //! anything smarter.
 //!
 //! ```text
-//! JP_TOOLS_SUDACHI_DICT_PATH=$PWD/system_full.dic \
+//! KOTODEX_SUDACHI_DICT_PATH=$PWD/system_full.dic \
 //!   cargo run --release --example homophones -p jp-core --features test-support
 //! ```
 
@@ -23,7 +23,7 @@ const READING_ONLY: &str = "Matched by reading only";
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")?;
+    let dict_path = std::env::var("KOTODEX_SUDACHI_DICT_PATH")?;
     let db = std::env::var("HOME")? + "/.local/share/kotodex/knowledge.db";
     let pool = sqlx::SqlitePool::connect(&format!("sqlite://{db}?mode=ro")).await?;
 

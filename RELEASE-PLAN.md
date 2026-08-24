@@ -31,7 +31,7 @@ the ones in `docs/compositors.md`.
   dictionaries, roles or the tokenizer:
 
   ```
-  JP_TOOLS_SUDACHI_DICT_PATH=$PWD/system_full.dic \
+  KOTODEX_SUDACHI_DICT_PATH=$PWD/system_full.dic \
     cargo test -p jp-core --features test-support -- --ignored
   ```
 
@@ -59,9 +59,9 @@ the ones in `docs/compositors.md`.
   looking for the assets), else the build workspace. The compiled-in path is
   last because for a release it names a CI container.
 - **One Anki field map.** `jp_mine_core::config::AnkiConfig` — Lapis by default,
-  every name overridable through `JP_TOOLS_ANKI_FIELD_*`. read-stats' config,
+  every name overridable through `KOTODEX_ANKI_FIELD_*`. read-stats' config,
   the overlay's mine route and `vn-capture.sh` all read it; nothing spells a
-  field name or the note type for itself. `JP_TOOLS_ANKI_STYLE` = `lapis`
+  field name or the note type for itself. `KOTODEX_ANKI_STYLE` = `lapis`
   (default) | `legacy` picks the card markup.
 - **Capabilities.** `read-stats/src/routes/reader/capabilities.rs` is the one
   probe, served under `capabilities` on `/api/reader/state`; every row is

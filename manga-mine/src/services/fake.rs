@@ -1,4 +1,4 @@
-//! Fake implementations for frontend development (`JP_TOOLS_FAKE_API=true`).
+//! Fake implementations for frontend development (`KOTODEX_FAKE_API=true`).
 //! No OCR service, Sudachi dictionary, or Anki needed.
 
 use std::future::Future;

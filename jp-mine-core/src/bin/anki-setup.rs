@@ -20,7 +20,7 @@ const LAPIS_RELEASE: &str = "https://api.github.com/repos/donkuri/lapis/releases
 const LAPIS_ASSET: &str = "Lapis.apkg";
 
 fn anki_url() -> String {
-    std::env::var("JP_TOOLS_ANKI_URL").unwrap_or_else(|_| "http://127.0.0.1:8765".into())
+    std::env::var("KOTODEX_ANKI_URL").unwrap_or_else(|_| "http://127.0.0.1:8765".into())
 }
 
 async fn anki(client: &reqwest::Client, action: &str, params: Value) -> Result<Value, String> {
@@ -59,7 +59,7 @@ async fn check(client: &reqwest::Client) -> ExitCode {
         if config.model_name == "Lapis" {
             println!("  anki-setup install-lapis  — downloads it and imports it");
         } else {
-            println!("  set JP_TOOLS_ANKI_MODEL to one you have, or create it in Anki");
+            println!("  set KOTODEX_ANKI_MODEL to one you have, or create it in Anki");
         }
         return ExitCode::FAILURE;
     }
@@ -109,20 +109,20 @@ async fn check(client: &reqwest::Client) -> ExitCode {
 /// nothing.
 fn env_var_for(what: &str) -> &'static str {
     match what {
-        "headword" => "JP_TOOLS_ANKI_FIELD_VOCAB",
-        "definition" => "JP_TOOLS_ANKI_FIELD_DEFINITION",
-        "gloss" => "JP_TOOLS_ANKI_FIELD_COMPACT_DEF",
-        "sentence" => "JP_TOOLS_ANKI_FIELD_SENTENCE",
-        "image" => "JP_TOOLS_ANKI_FIELD_IMAGE",
-        "audio" => "JP_TOOLS_ANKI_FIELD_AUDIO",
-        "source" => "JP_TOOLS_ANKI_FIELD_SOURCE",
-        "furigana" => "JP_TOOLS_ANKI_FIELD_FURIGANA",
-        "reading" => "JP_TOOLS_ANKI_FIELD_READING",
-        "pitch position" => "JP_TOOLS_ANKI_FIELD_PITCH_NUM",
-        "pitch pattern" => "JP_TOOLS_ANKI_FIELD_PITCH_PATTERN",
-        "frequency" => "JP_TOOLS_ANKI_FIELD_FREQUENCY",
-        "frequency sort" => "JP_TOOLS_ANKI_FIELD_FREQ_SORT",
-        _ => "JP_TOOLS_ANKI_FIELD_?",
+        "headword" => "KOTODEX_ANKI_FIELD_VOCAB",
+        "definition" => "KOTODEX_ANKI_FIELD_DEFINITION",
+        "gloss" => "KOTODEX_ANKI_FIELD_COMPACT_DEF",
+        "sentence" => "KOTODEX_ANKI_FIELD_SENTENCE",
+        "image" => "KOTODEX_ANKI_FIELD_IMAGE",
+        "audio" => "KOTODEX_ANKI_FIELD_AUDIO",
+        "source" => "KOTODEX_ANKI_FIELD_SOURCE",
+        "furigana" => "KOTODEX_ANKI_FIELD_FURIGANA",
+        "reading" => "KOTODEX_ANKI_FIELD_READING",
+        "pitch position" => "KOTODEX_ANKI_FIELD_PITCH_NUM",
+        "pitch pattern" => "KOTODEX_ANKI_FIELD_PITCH_PATTERN",
+        "frequency" => "KOTODEX_ANKI_FIELD_FREQUENCY",
+        "frequency sort" => "KOTODEX_ANKI_FIELD_FREQ_SORT",
+        _ => "KOTODEX_ANKI_FIELD_?",
     }
 }
 

@@ -150,7 +150,7 @@ Provided by `jp-core` crate. See `jp-core/` for details.
 
 ```sh
 cargo run -p yt-mine                              # server on 0.0.0.0:3000
-JP_TOOLS_FAKE_API=true cargo run -p yt-mine       # dev mode (no external deps)
+KOTODEX_FAKE_API=true cargo run -p yt-mine       # dev mode (no external deps)
 cargo test -p yt-mine                             # unit + integration (mocked)
 cargo test -p yt-mine -- --ignored                # real subprocess tests
 ```
@@ -160,7 +160,7 @@ cargo test -p yt-mine -- --ignored                # real subprocess tests
 Via env vars, loaded from `.env` (repo root) via `dotenvy`. See `config.rs` and
 `.env.example`.
 
-Anki export fields are all configurable via `JP_TOOLS_ANKI_*` vars (model, deck,
+Anki export fields are all configurable via `KOTODEX_ANKI_*` vars (model, deck,
 field mapping). Defaults match the "Japanese sentences" Yomitan note type — and
 are now the same fields read-stats writes: the glossary goes to `VocabDefFull`
 in Yomitan's per-dictionary markup (`VocabDef` is Yomitan's own short gloss and

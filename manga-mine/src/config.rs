@@ -40,35 +40,35 @@ impl Config {
     /// Load config from environment variables, falling back to defaults.
     pub fn from_env() -> Self {
         Self {
-            inbox_dir: env::var("JP_TOOLS_MANGA_INBOX").unwrap_or_else(|_| "manga-inbox".into()),
-            listen_addr: env::var("JP_TOOLS_MANGA_LISTEN_ADDR")
+            inbox_dir: env::var("KOTODEX_MANGA_INBOX").unwrap_or_else(|_| "manga-inbox".into()),
+            listen_addr: env::var("KOTODEX_MANGA_LISTEN_ADDR")
                 .unwrap_or_else(|_| "0.0.0.0:3100".into()),
-            anki_url: env::var("JP_TOOLS_ANKI_URL")
+            anki_url: env::var("KOTODEX_ANKI_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:8765".into()),
-            media_dir: env::var("JP_TOOLS_MEDIA_DIR").unwrap_or_else(|_| "media".into()),
-            knowledge_db_path: env::var("JP_TOOLS_KNOWLEDGE_DB_PATH").unwrap_or_else(|_| {
+            media_dir: env::var("KOTODEX_MEDIA_DIR").unwrap_or_else(|_| "media".into()),
+            knowledge_db_path: env::var("KOTODEX_KNOWLEDGE_DB_PATH").unwrap_or_else(|_| {
                 let home = env::var("HOME").expect("HOME not set");
                 format!("{home}/.local/share/kotodex/knowledge.db")
             }),
-            db_path: env::var("JP_TOOLS_DB_PATH").unwrap_or_else(|_| {
+            db_path: env::var("KOTODEX_DB_PATH").unwrap_or_else(|_| {
                 let home = env::var("HOME").expect("HOME not set");
                 format!("{home}/.local/share/kotodex/yt-mine.db")
             }),
-            fake_api: matches!(env::var("JP_TOOLS_FAKE_API").as_deref(), Ok("true" | "1"),),
-            ocr_service_url: env::var("JP_TOOLS_OCR_SERVICE_URL")
+            fake_api: matches!(env::var("KOTODEX_FAKE_API").as_deref(), Ok("true" | "1"),),
+            ocr_service_url: env::var("KOTODEX_OCR_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:8200".into()),
-            sudachi_dict_path: env::var("JP_TOOLS_SUDACHI_DICT_PATH")
+            sudachi_dict_path: env::var("KOTODEX_SUDACHI_DICT_PATH")
                 .unwrap_or_else(|_| "system_full.dic".into())
                 .into(),
             use_client_anki: !matches!(
-                env::var("JP_TOOLS_ANKI_USE_CLIENT").as_deref(),
+                env::var("KOTODEX_ANKI_USE_CLIENT").as_deref(),
                 Ok("false" | "0"),
             ),
-            card_image_max_dim: env::var("JP_TOOLS_MANGA_CARD_IMAGE_MAX_DIM")
+            card_image_max_dim: env::var("KOTODEX_MANGA_CARD_IMAGE_MAX_DIM")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(1280),
-            card_image_quality: env::var("JP_TOOLS_MANGA_CARD_IMAGE_QUALITY")
+            card_image_quality: env::var("KOTODEX_MANGA_CARD_IMAGE_QUALITY")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(80),

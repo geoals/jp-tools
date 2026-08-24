@@ -77,7 +77,7 @@ what the thing does, how to set it up, the endpoints and the config.
   to the cross-work rate. A finished work shows its real dates instead.
 - **Anki integration is read-only.** On dashboard load (or the ↻ button) the
   server probes for AnkiConnect — the client's own IP first, for a phone running
-  AnkiconnectAndroid, then `JP_TOOLS_ANKI_URL` — and snapshots the deck's
+  AnkiconnectAndroid, then `KOTODEX_ANKI_URL` — and snapshots the deck's
   `VocabKanji` fields into `anki_notes`. Note ids double as creation timestamps,
   which gives cards-per-session for free. New lines are tokenized into per-day
   lemma counts (`word_days`), which power the **re-encounter card**: how many
@@ -103,8 +103,8 @@ works the same way.
   context, to the Anthropic API and shows a short read on it. **Select a word
   first** and the explanation centres on that word; the selection is read the
   instant the button is tapped. Capped at a few sentences, on
-  `claude-haiku-4-5` by default (`JP_TOOLS_LLM_MODEL`), and only enabled when
-  `JP_TOOLS_ANTHROPIC_API_KEY` is set.
+  `claude-haiku-4-5` by default (`KOTODEX_LLM_MODEL`), and only enabled when
+  `KOTODEX_ANTHROPIC_API_KEY` is set.
 - **Tapping a word judges it** — see CLAUDE.md for the rules.
 
 While the reader is open the **page title is set to `current_work`**, because
@@ -114,7 +114,7 @@ is set, cards get stamped "read-stats"; set the work first.
 
 Cards must land in the collection on the machine running the VN, since that is
 what `vn-capture.sh` attaches media to, so the proxy forwards to
-`JP_TOOLS_ANKI_URL` unconditionally rather than preferring the requesting client
+`KOTODEX_ANKI_URL` unconditionally rather than preferring the requesting client
 the way manga-mine's export does. The 5-minute ring-buffer limit applies either
 way: mine before advancing.
 
@@ -203,7 +203,7 @@ separate systemd user unit: `systemctl --user start kotodex-capture`.
   inverse. See *How it works* → clear last line
 - `GET  /api/reader/state` — `{paused, current_work, capture_available,
   explain_available, trim_available}`. `trim_available` is a live probe of
-  whisper-service (`JP_TOOLS_WHISPER_URL`, 800 ms timeout) — false lights the
+  whisper-service (`KOTODEX_WHISPER_URL`, 800 ms timeout) — false lights the
   reader's **✂ off** hint; capture doesn't depend on it
 - `POST /api/reader/explain` — `{context: [oldest…newest], focus?}`; sends the
   lines to the Anthropic API and returns `{text}`, a short explanation of the
@@ -211,7 +211,7 @@ separate systemd user unit: `systemctl --user start kotodex-capture`.
   context is empty; the context is capped server-side. See *The reading view*
 - `GET  /api/vn/windows` — open window titles (via xdotool, Wine/Qt/IME
   scaffolding filtered out), offered as a picker for a work's `vn_window`
-- `POST /api/vn/capture` — run `vn-capture.sh` (see `JP_TOOLS_VN_CAPTURE_SH`)
+- `POST /api/vn/capture` — run `vn-capture.sh` (see `KOTODEX_VN_CAPTURE_SH`)
   and return its result. A capture that fails for an ordinary reason (stale
   line, Anki closed) is `200 {"ok": false, "error": ...}`; only an unrunnable
   or unparseable script is a 5xx
@@ -247,7 +247,7 @@ are still added through the same path, and read-stats' own AnkiConnect calls
 bypass the proxy so a refresh can't inflate the count.
 
 Yomitan's duplicate check uses the **first field** of the note type, which must
-be the field named in `JP_TOOLS_ANKI_FIELD_VOCAB` (`VocabKanji`) for the term to
+be the field named in `KOTODEX_ANKI_FIELD_VOCAB` (`VocabKanji`) for the term to
 be recorded. To confirm it's working, do a lookup and:
 
 ```sh
@@ -359,35 +359,35 @@ curl -X POST localhost:3200/api/sessions -H 'Content-Type: application/json' \
 
 ## Config
 
-- `JP_TOOLS_KNOWLEDGE_DB_PATH` (default `~/.local/share/kotodex/knowledge.db`) —
+- `KOTODEX_KNOWLEDGE_DB_PATH` (default `~/.local/share/kotodex/knowledge.db`) —
   the shared database holding the line stream; must match what
   `vn-ws-logger.py` writes to
-- `JP_TOOLS_STATS_DB_PATH` (default `~/.local/share/kotodex/read-stats.db`) — must
+- `KOTODEX_STATS_DB_PATH` (default `~/.local/share/kotodex/read-stats.db`) — must
   match what `vn-ws-logger.py` uses (same env var).
-- `JP_TOOLS_STATS_LISTEN_ADDR` (default `0.0.0.0:3200`)
-- `JP_TOOLS_ANKI_URL` (default `http://localhost:8765`) — fallback AnkiConnect
-  when the dashboard client has none; `JP_TOOLS_ANKI_DECK` (`Japanese`),
-  `JP_TOOLS_ANKI_FIELD_VOCAB` (`VocabKanji`)
-- `JP_TOOLS_ANKI_FIELD_SENTENCE` (`SentKanji`), `JP_TOOLS_ANKI_FIELD_COMPACT_DEF`
+- `KOTODEX_STATS_LISTEN_ADDR` (default `0.0.0.0:3200`)
+- `KOTODEX_ANKI_URL` (default `http://localhost:8765`) — fallback AnkiConnect
+  when the dashboard client has none; `KOTODEX_ANKI_DECK` (`Japanese`),
+  `KOTODEX_ANKI_FIELD_VOCAB` (`VocabKanji`)
+- `KOTODEX_ANKI_FIELD_SENTENCE` (`SentKanji`), `KOTODEX_ANKI_FIELD_COMPACT_DEF`
   (`CompactDef`) — when a card is added through `/anki-proxy` (Yomitan mining a
   VN line), the proxy forwards it unchanged and then, in the background,
   generates a ≤2-second CompactDef gloss from the note's word + sentence and
-  writes it to that field. Needs `JP_TOOLS_ANTHROPIC_API_KEY`; set the field
+  writes it to that field. Needs `KOTODEX_ANTHROPIC_API_KEY`; set the field
   name empty to disable.
-- `JP_TOOLS_AUTO_CAPTURE_ON_ADD` (default **on**) — fire `vn-capture.sh` after a
+- `KOTODEX_AUTO_CAPTURE_ON_ADD` (default **on**) — fire `vn-capture.sh` after a
   proxied card add (audio + picture, best-effort). This *is* mining now; there
   is no button. Set to `0` on a machine that serves the dashboard but doesn't
   run the VN — where the capture script is simply absent it already no-ops with
   a warning.
-- `JP_TOOLS_SUDACHI_DICT_PATH` (default `system_full.dic` in the working dir)
-- `JP_TOOLS_VN_CAPTURE_SH` (default `../vn-mine/vn-capture.sh` relative to the
+- `KOTODEX_SUDACHI_DICT_PATH` (default `system_full.dic` in the working dir)
+- `KOTODEX_VN_CAPTURE_SH` (default `../vn-mine/vn-capture.sh` relative to the
   crate) — what the proxy runs after a card add. It needs the desktop session's
   environment (`spectacle` screenshots the active window), so read-stats has to
   be started from within the session, as `scripts/start-all.sh` does.
-- `JP_TOOLS_ANTHROPIC_API_KEY` — enables `#read`'s ℹ explain last line button; unset
-  leaves it disabled. `JP_TOOLS_LLM_MODEL` (default `claude-haiku-4-5`) — the
+- `KOTODEX_ANTHROPIC_API_KEY` — enables `#read`'s ℹ explain last line button; unset
+  leaves it disabled. `KOTODEX_LLM_MODEL` (default `claude-haiku-4-5`) — the
   model it asks. Both are shared with yt-mine, so a root `.env` covers both.
-- `JP_TOOLS_WHISPER_URL` (default `http://localhost:8100`) — whisper-service,
+- `KOTODEX_WHISPER_URL` (default `http://localhost:8100`) — whisper-service,
   probed only to light the reader's **✂ off** hint. read-stats never calls it
   directly; `vn-capture.sh` does (its own `VN_WHISPER_URL`), and the mine works
   whether or not it's up.

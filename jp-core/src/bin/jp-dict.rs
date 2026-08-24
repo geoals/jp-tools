@@ -42,9 +42,9 @@ usage:
                                   master, never spelling or the word count)
 
 options:
-  --dir <path>   dictionaries directory (default: $JP_TOOLS_DICTIONARY_DIR,
+  --dir <path>   dictionaries directory (default: $KOTODEX_DICTIONARY_DIR,
                  else <repo>/dictionaries)
-  --db <path>    knowledge.db (default: $JP_TOOLS_KNOWLEDGE_DB_PATH,
+  --db <path>    knowledge.db (default: $KOTODEX_KNOWLEDGE_DB_PATH,
                  else ~/.local/share/kotodex/knowledge.db)
 ";
 
@@ -337,7 +337,7 @@ async fn ensure_master(pool: &sqlx::SqlitePool) -> Result<(), String> {
         return Ok(());
     }
     let marker =
-        std::env::var("JP_TOOLS_MASTER_DICTIONARY").unwrap_or_else(|_| DEFAULT_MASTER.to_string());
+        std::env::var("KOTODEX_MASTER_DICTIONARY").unwrap_or_else(|_| DEFAULT_MASTER.to_string());
     match db::ensure_master(pool, &marker).await {
         Ok(Some(id)) => {
             let title = db::master(pool)
@@ -405,20 +405,20 @@ fn zips_in(dir: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(zips)
 }
 
-/// `--dir`, else `JP_TOOLS_DICTIONARY_DIR`, else `dictionaries/` beside the
+/// `--dir`, else `KOTODEX_DICTIONARY_DIR`, else `dictionaries/` beside the
 /// workspace this binary was built from.
 fn resolve_dictionary_dir(flag: Option<String>) -> PathBuf {
     if let Some(dir) = flag {
         return PathBuf::from(dir);
     }
-    if let Ok(dir) = std::env::var("JP_TOOLS_DICTIONARY_DIR") {
+    if let Ok(dir) = std::env::var("KOTODEX_DICTIONARY_DIR") {
         return PathBuf::from(dir);
     }
     jp_core::install::install_root().join("dictionaries")
 }
 
 fn resolve_db_path(flag: Option<String>) -> String {
-    flag.or_else(|| std::env::var("JP_TOOLS_KNOWLEDGE_DB_PATH").ok())
+    flag.or_else(|| std::env::var("KOTODEX_KNOWLEDGE_DB_PATH").ok())
         .unwrap_or_else(|| {
             let home = std::env::var("HOME").expect("HOME not set");
             format!("{home}/.local/share/kotodex/knowledge.db")
