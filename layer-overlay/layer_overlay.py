@@ -126,7 +126,15 @@ class Overlay(QObject):
             self._probe.start()
         else:
             self._probe.stop()
-            self.geometry.emit(0, 0, 0, 0)
+            # Through _confine, which has the surface to give back: a name
+            # cleared while shrunk onto a window would otherwise leave the
+            # surface that size with the page no longer placing anything
+            # against it, and everything the page then puts outside those
+            # bounds is clipped away rather than drawn.
+            if CONFINE:
+                self._confine(None)
+            else:
+                self.geometry.emit(0, 0, 0, 0)
 
     def _poll_geometry(self) -> None:
         rect = self._window_rect()
@@ -149,14 +157,17 @@ class Overlay(QObject):
         surface is above them by protocol wherever it is — this only stops it
         being over the parts of the screen the window does not occupy.
         """
+        # Before the window check, both of them: giving the surface back is
+        # what has to happen even when there is no window to do it to, and the
+        # page is owed the zero rectangle either way.
+        if rect is None:
+            self._inset(0, 0, 0, 0)
+            self.geometry.emit(0, 0, 0, 0)
+            return
         if self._window is None:
             return
         screen = self._window.screen()
         if screen is None:
-            return
-        if rect is None:
-            self._inset(0, 0, 0, 0)
-            self.geometry.emit(0, 0, 0, 0)
             return
         # X answers in device pixels; a layer surface's margins, like every
         # other length Qt takes, are logical ones.
@@ -175,6 +186,8 @@ class Overlay(QObject):
     def _inset(self, left: int, top: int, right: int, bottom: int) -> None:
         """The four margins the QML binds the surface's own to."""
         self._confined = any((left, top, right, bottom))
+        if self._window is None:
+            return
         for name, value in (
             ("insetLeft", left), ("insetTop", top),
             ("insetRight", right), ("insetBottom", bottom),
@@ -307,7 +320,11 @@ class Overlay(QObject):
         self._window.requestUpdate()
         if os.environ.get("LAYER_OVERLAY_DEBUG"):
             rects = " ".join(f"{x},{y} {w}x{h}" for x, y, w, h in _rects(region))
-            print(f"mask [{len(self._hits)}] {rects}", flush=True)
+            print(
+                f"mask [{len(self._hits)}] "
+                f"in {self._window.width()}x{self._window.height()} {rects}",
+                flush=True,
+            )
         self._window.setProperty("interactive", self.interactive)
 
 
