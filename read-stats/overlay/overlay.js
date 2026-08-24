@@ -464,6 +464,12 @@ let drag = null;
 let offset = { x: 0, y: 0 };
 let alignedOffset = { x: 0, y: 0 };
 
+// What `apply` last put on the box. The box's measured position includes it,
+// so subtracting it back out is what gives the position with no drag at all —
+// and it is not always `offsetPx`, because an offset that would put the box
+// outside the surface is clamped rather than obeyed.
+let applied = { x: 0, y: 0 };
+
 for (const [key, into] of [[PLACE, "free"], [ALIGNED_PLACE, "aligned"]]) {
   try {
     const stored = JSON.parse(localStorage.getItem(key) ?? "{}");
@@ -482,29 +488,56 @@ function offsetPx() {
     : offset;
 }
 
-/** Move to `x, y`, clamped so the box stays somewhere it can be grabbed back
- * from — the surface is the whole screen, and a strip pushed off it is gone. */
-function moveTo(x, y) {
+/** A drag in pixels, held where the box can still be seen and grabbed.
+ *
+ * Clamped on the way *out* rather than only when dragged: the surface is not a
+ * fixed size. It is the game's window, and the game is resized, goes
+ * fullscreen, or is replaced by one a different shape — each of which can leave
+ * a stored offset pointing past an edge that has moved. An offset that does
+ * that is a strip drawn outside the surface, which is not a strip drawn partly
+ * off the edge but one that is not drawn at all.
+ *
+ * The stored value is left alone. It is a calibration against the game's own
+ * text, so it is still the right one when the surface it was measured on comes
+ * back — clamping is how it is *drawn* meanwhile, not a correction to it. */
+function clampPx(at) {
   const rect = lineEl.getBoundingClientRect();
-  const at = offsetPx();
-  const left = rect.left - at.x;
-  const top = rect.top - at.y;
+  // Before the first layout there is nothing to hold inside anything.
+  if (!rect.width && !rect.height) return at;
+  const left = rect.left - applied.x;
+  const top = rect.top - applied.y;
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(v, hi));
-  const px = {
-    x: clamp(x, -left, Math.max(0, window.innerWidth - rect.width) - left),
-    y: clamp(y, -top, Math.max(0, window.innerHeight - rect.height) - top),
+  return {
+    x: clamp(at.x, -left, Math.max(0, window.innerWidth - rect.width) - left),
+    y: clamp(at.y, -top, Math.max(0, window.innerHeight - rect.height) - top),
   };
+}
+
+function moveTo(x, y) {
+  const px = clampPx({ x, y });
   if (game) alignedOffset = { x: px.x / game.w, y: px.y / game.h };
   else offset = px;
   apply();
 }
 
 function apply() {
-  const at = offsetPx();
-  boxEl.style.setProperty("--dx", `${at.x}px`);
-  boxEl.style.setProperty("--dy", `${at.y}px`);
+  applied = clampPx(offsetPx());
+  boxEl.style.setProperty("--dx", `${applied.x}px`);
+  boxEl.style.setProperty("--dy", `${applied.y}px`);
   report();
 }
+
+// The surface is resized under the page: it is the game's window, and the game
+// is resized, goes fullscreen, or is replaced by one a different shape. The
+// shell says so through `geometry`, but it says so *before* the compositor has
+// configured the surface — so the viewport is still the old size when that
+// arrives, and clamping against it there clamps against nothing. This is the
+// event that means the new size is real.
+window.addEventListener("resize", () => {
+  apply();
+  if (scrollbackOpen()) sizeScrollback();
+  if (popup.anchor()) place(popup.anchor());
+});
 
 lineEl.addEventListener("pointerdown", (e) => {
   if (e.button !== 0 || e.target.closest(".w")) return;
