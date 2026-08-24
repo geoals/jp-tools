@@ -88,6 +88,17 @@ Two constraints for anything new drawn in the overlay:
   column shrinks its rows instead of scrolling there. Check anything new in a
   real view, not only in a browser.
 
+## Naming
+
+**Kotodex, a reading log for Japanese.** The repo is `geoals/kotodex`; the
+workspace, the crates and `~/.local/share/jp-tools` are unchanged. yt-mine,
+manga-mine and the services stay in it — they share `jp-core` and
+`jp-mine-core`, so a split would mean publishing those.
+
+Held elsewhere by dormant projects with no traction: the GitHub user `kotodex`
+and PyPI `kotodex`. `kotodex.com` is ours, and `com.kotodex.Kotodex` is the app
+id to use for the desktop entry, the icon and a future Flatpak.
+
 ## This machine
 
 - **The launcher owns the capture daemon.** `vn-buffer.service` is stopped and
@@ -113,13 +124,6 @@ Two constraints for anything new drawn in the overlay:
 
 Must be freely distributable — a commercial title's art in a public README is a
 licensing question worth avoiding.
-
-### Repository shape
-
-The README is Kotodex's, but the repo is `jp-tools` and its root holds yt-mine,
-manga-mine and the services too. Decide before making it public and before
-tagging, because the tag, the release URL and every link people get are the
-repo name.
 
 ## Build
 

@@ -1,6 +1,8 @@
-# jp-tools
+# kotodex
 
-Cargo workspace for Japanese language learning tools.
+Cargo workspace for Japanese language learning tools. The repo is `kotodex`,
+after the product it ships; the workspace directory, the crates and
+`~/.local/share/jp-tools` keep the old name.
 
 - `jp-core/` — the language layer, shared by everything: `text` (character
   counting, sentence segmentation, the kanji grade and BCCWJ frequency tables —

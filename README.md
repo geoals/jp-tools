@@ -1,5 +1,7 @@
 # Kotodex / コトデックス
 
+**A reading log for Japanese.**
+
 Read a Japanese visual novel with the line, its dictionary and your own
 vocabulary history drawn over the game — fullscreen included — and mine a card
 with the character's voice on it in one click.
