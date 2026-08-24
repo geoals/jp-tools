@@ -586,6 +586,9 @@ let barDrag = null;
 let barDragged = false;
 let explaining = false;
 let explainOffset = { x: 0, y: 0 };
+// As `applied` is to the strip's offset: what was last put on the widget, which
+// is not always what is stored — see `clampExplainPx`.
+let explainApplied = { x: 0, y: 0 };
 
 try {
   explainOffset = { ...explainOffset, ...JSON.parse(localStorage.getItem(EXPLAIN_PLACE) ?? "{}") };
@@ -594,23 +597,32 @@ try {
 }
 applyExplainPlace();
 
+/** Held on the surface, like the strip's own offset and for the same reason:
+ *  pushed off it the widget is not drawn at all, and what is not drawn cannot
+ *  be dragged back. Clamped where it is *used*, because what it is measured
+ *  against moves — the widget hangs off the game's corner now, and the game
+ *  is moved, resized and replaced. */
+function clampExplainPx(at) {
+  const rect = explainBoxEl.getBoundingClientRect();
+  if (!rect.width && !rect.height) return at;
+  const left = rect.left - explainApplied.x;
+  const top = rect.top - explainApplied.y;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(v, hi));
+  return {
+    x: clamp(at.x, -left, Math.max(0, window.innerWidth - rect.width) - left),
+    y: clamp(at.y, -top, Math.max(0, window.innerHeight - rect.height) - top),
+  };
+}
+
 function applyExplainPlace() {
-  explainBoxEl.style.setProperty("--ex", `${explainOffset.x}px`);
-  explainBoxEl.style.setProperty("--ey", `${explainOffset.y}px`);
+  explainApplied = clampExplainPx(explainOffset);
+  explainBoxEl.style.setProperty("--ex", `${explainApplied.x}px`);
+  explainBoxEl.style.setProperty("--ey", `${explainApplied.y}px`);
   report();
 }
 
-/** Clamped like the strip's own drag: pushed off the surface it is gone, and
- *  the surface is the whole screen. */
 function moveExplainTo(x, y) {
-  const rect = explainBoxEl.getBoundingClientRect();
-  const left = rect.left - explainOffset.x;
-  const top = rect.top - explainOffset.y;
-  const clamp = (v, lo, hi) => Math.max(lo, Math.min(v, hi));
-  explainOffset = {
-    x: clamp(x, -left, Math.max(0, window.innerWidth - rect.width) - left),
-    y: clamp(y, -top, Math.max(0, window.innerHeight - rect.height) - top),
-  };
+  explainOffset = clampExplainPx({ x, y });
   applyExplainPlace();
 }
 
@@ -1518,6 +1530,9 @@ function onGeometry(x, y, w, h) {
   document.documentElement.toggleAttribute("data-aligned", !!game);
   applyGhost();
   apply();
+  // The widget's corner is the game's corner now, so it has moved too — and
+  // its offset is clamped against where it has moved to.
+  applyExplainPlace();
   // The popup hangs off the line box, so it has to be re-placed under it.
   if (popup.anchor()) place(popup.anchor());
 }

@@ -337,6 +337,16 @@
     transform: translate(var(--ex, 0px), var(--ey, 0px));
   }
 
+  /* Aligned, the widget hangs off the game's corner rather than the screen's,
+     so it travels with the window instead of staying behind over whatever the
+     window has moved away from. The drag offset stays in pixels: this is
+     placement, not the calibration against the game's own typesetting that
+     #box's offset is, so it has no reason to scale with the window. */
+  html[data-aligned] #explain-box {
+    left: calc(var(--game-x) + 1rem);
+    top: calc(var(--game-y) + 1rem);
+  }
+
   #bar {
     display: flex;
     /* Stretch, so the handle is exactly as tall as the row of buttons beside
