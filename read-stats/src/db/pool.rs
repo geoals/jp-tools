@@ -43,9 +43,14 @@ pub async fn create_pool(db_path: &str) -> Result<SqlitePool, sqlx::Error> {
 }
 
 /// Open the shared knowledge database and bring the line stream up to date.
-pub async fn open_knowledge(db_path: &str) -> Result<Knowledge, sqlx::Error> {
+///
+/// `recount` is off for the demo, whose seed is already consistent and whose
+/// whole point is that a boot changes nothing.
+pub async fn open_knowledge(db_path: &str, recount: bool) -> Result<Knowledge, sqlx::Error> {
     let knowledge = Knowledge::open(db_path).await?;
-    recount_line_chars(&knowledge).await?;
+    if recount {
+        recount_line_chars(&knowledge).await?;
+    }
     Ok(knowledge)
 }
 

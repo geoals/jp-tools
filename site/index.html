@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kotodex</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* The app's own palette, from web-shared/theme.css — the demo is one click
+   away and the two should not look like different products. */
+:root {
+  color-scheme: light;
+  --page: hsl(60 11.1% 94.7%);
+  --text-primary: hsl(0 0% 4.3%);
+  --text-secondary: hsl(45 2.5% 31.4%);
+  --muted: hsl(45 3.3% 52.2%);
+  --border-strong: hsl(52 12% 82%);
+  --accent: hsl(212.8 67.7% 50.2%);
+  --accent-ink: hsl(0 0% 100%);
+  --shadow: 0 10px 34px hsl(0 0% 0% / 12%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: hsl(0 0% 5.1%);
+    --text-primary: hsl(0 0% 100%);
+    --text-secondary: hsl(45 9.1% 74.1%);
+    --muted: hsl(45 3.3% 52.2%);
+    --border-strong: hsl(226 20% 21%);
+    --accent: hsl(212.8 76.8% 56.1%);
+    --accent-ink: hsl(216 100% 96%);
+    --shadow: 0 10px 34px hsl(0 0% 0% / 60%);
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  padding: 48px 24px;
+  text-align: center;
+  background: var(--page);
+  color: var(--text-primary);
+  font-family: Inter, "Noto Sans JP", system-ui, sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mark {
+  font-family: "Noto Sans JP", Inter, sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+  margin: 0;
+}
+
+h1 {
+  margin: 8px 0 0;
+  font-size: clamp(36px, 8vw, 56px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.tagline {
+  margin: 0;
+  max-width: 30rem;
+  color: var(--text-secondary);
+  font-size: clamp(16px, 2.4vw, 18px);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+
+.btn {
+  display: inline-block;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 15px;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: transform 0.12s ease;
+}
+
+.btn:hover { transform: translateY(-1px); }
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: var(--shadow);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.note {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+</style>
+</head>
+<body>
+
+<p class="mark">コトデックス</p>
+<h1>Kotodex</h1>
+
+<!-- The description goes here. -->
+<p class="tagline">A reading log for Japanese. Linux.</p>
+
+<div class="actions">
+  <a class="btn btn-primary" href="https://demo.kotodex.com">Try the demo</a>
+  <a class="btn btn-secondary" href="https://github.com/geoals/kotodex">GitHub</a>
+</div>
+
+<p class="note">The demo is a real reading history with the text replaced.</p>
+
+</body>
+</html>

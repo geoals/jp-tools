@@ -120,6 +120,20 @@ header h1 a {
   color: var(--text-secondary);
 }
 
+.demo-banner {
+  background: var(--surface-1);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 8px 14px;
+  margin-bottom: 14px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.demo-banner strong {
+  color: var(--text-primary);
+}
+
 .card {
   background: var(--surface-1);
   border: 1px solid var(--border);

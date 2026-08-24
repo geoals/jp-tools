@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
 use axum::Router;
-use axum::http::HeaderValue;
+use axum::extract::State;
 use axum::http::header::CACHE_CONTROL;
-use axum::response::Html;
+use axum::http::{HeaderValue, Method, StatusCode};
+use axum::response::{Html, IntoResponse};
 use axum::routing::{delete, get, post};
 use jp_core::knowledge::Knowledge;
 use sqlx::SqlitePool;
@@ -73,6 +74,34 @@ pub struct AppState {
     /// The reading view's Sudachi pipeline, built on the first line that needs
     /// it and shared from then on. See [`reader::highlight::Shared`].
     pub highlighter: reader::highlight::Shared,
+    /// Public demo: serve the seed, change nothing. See [`demo_guard`].
+    pub demo: bool,
+}
+
+/// Refuse everything that could write, on the public demo.
+///
+/// One gate over the whole router rather than a check per handler: the demo has
+/// to stay safe as routes are added, and a new POST that nobody remembered to
+/// guard is exactly the failure a shared instance cannot have. GET is the whole
+/// dashboard — every figure on it is derived at query time — so refusing the
+/// rest costs the demo nothing.
+///
+/// Not done by opening the databases read-only, because the migrations in a new
+/// release still have to run against the scratch copy at boot.
+async fn demo_guard(
+    State(state): State<AppState>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let method = request.method();
+    if state.demo && method != Method::GET && method != Method::HEAD {
+        return (
+            StatusCode::FORBIDDEN,
+            "Read-only demo — this would change the data, so it is not saved.",
+        )
+            .into_response();
+    }
+    next.run(request).await
 }
 
 async fn spa_shell() -> Html<&'static str> {
@@ -197,6 +226,10 @@ pub fn build_router(state: AppState) -> Router {
         .layer(SetResponseHeaderLayer::if_not_present(
             CACHE_CONTROL,
             HeaderValue::from_static("no-cache"),
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            demo_guard,
         ))
         .with_state(state)
 }

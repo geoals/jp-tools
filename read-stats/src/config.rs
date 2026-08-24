@@ -47,6 +47,12 @@ pub struct Config {
     /// The Local Audio Server for Yomitan, an Anki add-on: the popup's 🔊.
     /// Down or absent means no audio button, never a failed popup.
     pub local_audio_url: String,
+    /// Serve a frozen copy of someone else's reading, and change nothing.
+    ///
+    /// The public demo. Every request that is not a GET is refused, and the
+    /// boot-time writes are skipped, so a shared instance stays exactly as its
+    /// seed left it however many people click through it.
+    pub demo: bool,
 }
 
 impl Config {
@@ -103,6 +109,9 @@ impl Config {
             // loopback and `localhost` resolves to `::1` first here.
             local_audio_url: std::env::var("KOTODEX_LOCAL_AUDIO_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:5050".to_string()),
+            demo: std::env::var("KOTODEX_DEMO")
+                .map(|v| !(v.is_empty() || v == "0" || v.eq_ignore_ascii_case("false")))
+                .unwrap_or(false),
         }
     }
 }

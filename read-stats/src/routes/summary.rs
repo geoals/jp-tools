@@ -30,6 +30,9 @@ pub async fn summary(State(state): State<AppState>) -> Result<Json<Value>, AppEr
 
     Ok(Json(json!({
         "paused": h.settings.capture_paused,
+        // The banner, and every button the dashboard disables rather than
+        // letting it come back 403 from `app::demo_guard`.
+        "demo": state.demo,
         "today": {
             "date": today.to_string(),
             "chars": today_total.chars,

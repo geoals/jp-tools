@@ -131,6 +131,7 @@ function App({ view, sub }) {
         ${
           // Capture belongs where reading happens: `#read` has its own, and ⚙.
           offTab &&
+          !summary.demo &&
           html`<button
             class="pause-btn ${summary.paused ? "paused" : ""}"
             onClick=${togglePause}
@@ -148,6 +149,13 @@ function App({ view, sub }) {
         </a>
       </div>
     </header>
+    ${
+      summary.demo &&
+      html`<div class="demo-banner">
+        <strong>Demo</strong> — someone else's reading history, frozen. Click
+        anything; nothing you do here is saved.
+      </div>`
+    }
     ${
       summary.paused &&
       html`<div

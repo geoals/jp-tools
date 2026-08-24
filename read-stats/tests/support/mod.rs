@@ -39,7 +39,7 @@ impl TestApp {
         let knowledge_path =
             std::env::temp_dir().join(format!("read-stats-test-knowledge-{nanos}.db"));
         let local = db::create_pool(db_path.to_str().unwrap()).await.unwrap();
-        let knowledge = db::open_knowledge(knowledge_path.to_str().unwrap())
+        let knowledge = db::open_knowledge(knowledge_path.to_str().unwrap(), true)
             .await
             .unwrap();
 
@@ -50,6 +50,7 @@ impl TestApp {
             http: reqwest::Client::new(),
             // Pointed at the discard port: no test may reach a real service.
             anki_url: "http://127.0.0.1:9".into(),
+            anki: Default::default(),
             anki_deck: "Japanese".into(),
             anki_vocab_field: "VocabKanji".into(),
             anki_sentence_field: "SentKanji".into(),
@@ -66,6 +67,7 @@ impl TestApp {
             // being absent — the case the popup has to survive.
             local_audio_url: "http://127.0.0.1:9".into(),
             highlighter: Default::default(),
+            demo: false,
         };
         TestApp {
             router: build_router(state.clone()),

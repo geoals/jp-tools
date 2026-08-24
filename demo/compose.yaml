@@ -1,0 +1,32 @@
+services:
+  demo:
+    build:
+      context: .
+    image: kotodex-demo:latest
+    container_name: kotodex-demo
+    restart: unless-stopped
+    ports:
+      - 3299:3299
+    volumes:
+      # Read-only on purpose: the seed is the one copy and every visitor shares
+      # this instance. The entrypoint copies it to scratch inside the container.
+      - ./seed:/seed:ro
+    environment:
+      # Refuse every request that is not a GET. The dashboard is entirely GETs,
+      # so the demo loses nothing and cannot be changed by anyone visiting it.
+      - KOTODEX_DEMO=1
+      - KOTODEX_STATS_DB_PATH=/var/lib/kotodex/read-stats.db
+      - KOTODEX_KNOWLEDGE_DB_PATH=/var/lib/kotodex/knowledge.db
+      - KOTODEX_STATS_LISTEN_ADDR=0.0.0.0:3299
+      # Port 9 is discard. Nothing here may reach a real service, and the
+      # dashboard already draws every one of these as simply absent.
+      - KOTODEX_ANKI_URL=http://127.0.0.1:9
+      - KOTODEX_WHISPER_URL=http://127.0.0.1:9
+      - KOTODEX_LOCAL_AUDIO_URL=http://127.0.0.1:9
+      - KOTODEX_AUTO_CAPTURE_ON_ADD=0
+      - TZ=Europe/Oslo
+    networks: []
+networks: {}
+x-dockge:
+  urls:
+    - https://demo.kotodex.com
