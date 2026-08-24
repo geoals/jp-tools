@@ -109,18 +109,17 @@ Two constraints for anything new drawn in the overlay:
 
 ## Decide
 
-### Ubuntu 24.04 LTS has no PySide6
-
-Only PySide2/Qt5 is packaged; PySide6 arrives in 24.10, and Debian 12 has none
-either (Debian 13 does). So "current Ubuntu LTS" in the README is not true as
-written, and this is what the "~90% of installs" claim turns on. Options are in
-the conversation that found it: require 24.10+/Debian 13, or support a pip
-PySide6 for 24.04 and accept that it has no layer-shell plugin.
-
 ### Which VN to record for the README (T7.3)
 
 Must be freely distributable — a commercial title's art in a public README is a
 licensing question worth avoiding.
+
+### Repository shape
+
+The README is Kotodex's, but the repo is `jp-tools` and its root holds yt-mine,
+manga-mine and the services too. Decide before making it public and before
+tagging, because the tag, the release URL and every link people get are the
+repo name.
 
 ## Build
 
@@ -134,12 +133,6 @@ licensing question worth avoiding.
 
 **Verify:** renders on GitHub, under 10 MB each.
 **Commit:** `docs: screenshots and demo recording`.
-
-### T5.6 — Settings export/import
-
-Deferred and mostly overtaken: everything two surfaces must agree on is
-server-side already. What is left is moving the whole set between machines,
-which is not wanted yet.
 
 ### T7.5 — Tag the release
 
