@@ -175,6 +175,11 @@ struct Heartbeat {
 struct CaptureStatus {
     /// `live`, `stalled`, `unhooked`, `down` or `paused`.
     capture: &'static str,
+    /// `settings.capture_paused` itself, not the derived state above. The
+    /// logger takes a poll to act on the flag, so `capture` still reads `live`
+    /// for a second or two after a pause — long enough for a button bound to
+    /// it to flip back under the click that set it.
+    paused: bool,
     /// Seconds since the last heartbeat, for the tooltip. `None` when the
     /// logger has never run against this database.
     age_secs: Option<f64>,
@@ -201,13 +206,16 @@ async fn capture_status(state: &AppState) -> CaptureStatus {
         .as_deref()
         .and_then(|v| serde_json::from_str::<Heartbeat>(v).ok());
 
-    let settings = db::load_settings(&state.local).await.ok();
+    let paused = db::load_settings(&state.local)
+        .await
+        .is_ok_and(|s| s.capture_paused);
     let vn_window = crate::services::capture::vn_window(state).await;
     let vn_window = (!vn_window.is_empty()).then_some(vn_window);
 
     let Some(beat) = beat else {
         return CaptureStatus {
             capture: "down",
+            paused,
             age_secs: None,
             pending: 0,
             vn_window,
@@ -221,15 +229,13 @@ async fn capture_status(state: &AppState) -> CaptureStatus {
     } else if beat.pending > 0 {
         "stalled"
     } else if !beat.ws {
-        match &settings {
-            Some(s) if s.capture_paused => "paused",
-            _ => "unhooked",
-        }
+        if paused { "paused" } else { "unhooked" }
     } else {
         "live"
     };
     CaptureStatus {
         capture,
+        paused,
         age_secs: Some(age),
         pending: beat.pending,
         vn_window,

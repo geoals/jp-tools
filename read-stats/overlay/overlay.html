@@ -718,23 +718,24 @@
 
   #scrollback {
     box-sizing: border-box;
-    /* The column the line is drawn in, so a line that fitted on screen fits
-       here without rewrapping. Measured off #box rather than derived: the box
-       is sized two different ways — the character count when it is aligned to
-       the game, viewport insets when it is not — and only one of those can be
-       written here. See sizeScrollback(). */
-    width: var(--sb-width, calc(var(--text-chars) * (1em + var(--line-tracking)) + 1.4em));
-    max-width: 78vw;
+    /* The line's column in characters, so a line that fitted on screen fits
+       here without rewrapping — re-measured at this panel's own smaller type
+       rather than at the line's. Counted off #line rather than derived: the
+       box is sized two different ways — the character count when it is aligned
+       to the game, viewport insets when it is not — and only one of those can
+       be written here. See sizeScrollback(). */
+    width: calc(var(--sb-chars, var(--text-chars)) * (1em + var(--line-tracking)) + 1.4em);
+    max-width: 60vw;
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-panel);
     background: var(--panel);
     box-shadow: var(--shadow);
     font-family: var(--line-font);
-    /* Fixed, and smaller than the line. The line is sized to sit over the
-       game's own text, which is larger than anything wants to read fourteen of
-       at once — and unlike the line, nothing here has to register with what is
+    /* Fixed, and well under the line. The line is sized to sit over the game's
+       own text, which is far larger than anything wants to read fourteen of at
+       once — and unlike the line, nothing here has to register with what is
        behind it. */
-    font-size: 1.7rem;
+    font-size: 1.15rem;
     line-height: 1.8;
     font-weight: var(--line-weight);
     color: var(--line-color);

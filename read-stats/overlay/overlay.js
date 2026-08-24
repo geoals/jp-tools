@@ -174,7 +174,7 @@ const stream = new EventSource(`/api/lines/stream?backlog=${EXPLAIN_CONTEXT_LINE
 stream.onmessage = (e) => draw(JSON.parse(e.data));
 
 stream.addEventListener("status", (e) => {
-  const { capture, vn_window } = JSON.parse(e.data);
+  const { capture, paused, vn_window } = JSON.parse(e.data);
   // A missing window name is worth saying out loud: the screenshot on a card
   // then grabs the whole screen with the overlay on it, and nothing else here
   // reports that. A capture fault outranks it — no line at all is the bigger
@@ -188,9 +188,10 @@ stream.addEventListener("status", (e) => {
           ? ""
           : "no window name on this work",
   );
-  // Only the two states that say what the flag is. `down` and `stalled` are
-  // faults in the logger, and neither means capture was switched off.
-  if (capture === "paused" || capture === "live") showPaused(capture === "paused");
+  // The flag, not `capture`: the logger takes a poll to close its socket, so
+  // `capture` still reads `live` right after a pause and would flip the button
+  // back under the click that set it.
+  showPaused(paused);
   // Kept even before the channel is up: the first status usually beats it, and
   // the shell is told on connect. The name is per work, so it changes under a
   // running overlay whenever the current work does. Only on a change: the shell
@@ -834,15 +835,28 @@ async function pageBack() {
   }
 }
 
-/** Match the line's column exactly, whichever way #box is being sized.
+/** Match the line's column in *characters*, whichever way #box is being sized.
  *
- * Read rather than derived: aligned to the game it is a character count, and
- * free-floating it is a pair of viewport insets. A hidden or ghosted line has
- * no width to copy, so the CSS fallback stands. */
+ * A count rather than the measured width: the panel is set smaller than the
+ * line, so copying the pixels would draw a column far wider than it needs and
+ * still rewrap nothing. Passing the count lets the CSS re-measure it at this
+ * panel's own type.
+ *
+ * Read rather than derived: aligned to the game the column is a character
+ * count, and free-floating it is a pair of viewport insets. A hidden line has
+ * no width to count, so the CSS fallback stands. */
 function sizeScrollback() {
-  const width = boxEl.getBoundingClientRect().width;
-  if (width > 100) root.setProperty("--sb-width", `${Math.round(width)}px`);
-  else root.removeProperty("--sb-width");
+  const style = getComputedStyle(lineEl);
+  const width =
+    lineEl.getBoundingClientRect().width -
+    parseFloat(style.paddingLeft) -
+    parseFloat(style.paddingRight);
+  const advance = parseFloat(style.fontSize) + (parseFloat(style.letterSpacing) || 0);
+  if (width > 100 && advance > 0) {
+    root.setProperty("--sb-chars", `${Math.round(width / advance)}`);
+  } else {
+    root.removeProperty("--sb-chars");
+  }
 }
 
 function openScrollback() {
