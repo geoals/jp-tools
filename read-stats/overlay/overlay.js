@@ -31,6 +31,7 @@
 import { createPopup } from "/shared/popup.js";
 import { parseMarkdown } from "/shared/markdown.js";
 import { streamExplain } from "/shared/explain.js";
+import { THEMES, storedTheme, setTheme } from "/static/lib/theme.js";
 
 const params = new URLSearchParams(location.search);
 const root = document.documentElement.style;
@@ -893,8 +894,8 @@ function closeBarPanels(keep) {
 }
 
 // Which button owns which panel, by id — the elements are not all declared
-// yet here. A button in neither column, the hide and the handle, owns nothing
-// and closes all three.
+// yet here. A button in neither column — the hide, the pause and the handle —
+// owns nothing and closes all three.
 const BAR_PANELS = new Map([
   ["scrollback-btn", "scrollback"],
   ["explain-btn", "explain-panel"],
@@ -980,7 +981,9 @@ function showPaused(paused) {
   pauseBtnEl.classList.toggle("paused", paused);
   // The one state worth seeing with the bar shut.
   handleEl.classList.toggle("paused", paused);
-  pauseBtnEl.textContent = paused ? "▶ Resume capture" : "⏸ Pause capture";
+  // A glyph, not a phrase: it sits in the row of square buttons over the game
+  // now, and the tooltip is where the sentence goes.
+  pauseBtnEl.textContent = paused ? "▶" : "⏸";
   tip(pauseBtnEl, paused ? "Resume capture" : "Pause capture");
 }
 
@@ -995,8 +998,8 @@ pauseBtnEl.addEventListener("click", async () => {
   pauseBtnEl.disabled = false;
 });
 
-// The overlay's settings, in three tabs: how the line is set, where it sits,
-// and what is marked on it.
+// The overlay's settings, in three tabs: how the line is set and sized, what
+// is marked on it, and where its lines come from.
 //
 // Most of them are stored in the browser, because they are about this screen —
 // a phone reading the same overlay wants its own — and applied as CSS
@@ -1023,6 +1026,8 @@ const TYPE_DEFAULTS = {
   sat: 0,
   light: 100,
   chars: 40,
+  // What the phone-size toggle scales by. No control: one factor reads well on
+  // a phone, and a slider for it was a setting nobody moved twice.
   mobileScale: 1.75,
   tint: 0.85,
   markNew: true,
@@ -1035,7 +1040,7 @@ const TYPE_VARS = {
   leading: (v) => ["--line-leading", `${v}`],
   tracking: (v) => ["--line-tracking", `${v}em`],
   weight: (v) => ["--line-weight", `${v}`],
-  backdrop: (v) => ["--backdrop", `rgba(0, 0, 0, ${v})`],
+  backdrop: (v) => ["--backdrop", `hsl(0 0% 0% / ${v})`],
   chars: (v) => ["--text-chars", `${v}`],
   tint: (v) => ["--tint", `${v}`],
 };
@@ -1056,7 +1061,6 @@ const CONTROLS = {
   // Redrawn as it moves: the width is where the line breaks, and the break is
   // the thing being set.
   chars: { id: "set-chars", out: "out-chars", fmt: (v) => `${v}`, repaints: true },
-  mobileScale: { id: "set-mobile-scale", out: "out-mobile-scale", fmt: (v) => `${v.toFixed(2)}x` },
   tint: { id: "set-tint", out: "out-tint", fmt: (v) => v.toFixed(2) },
   markNew: { id: "set-mark-new", check: true, repaints: true },
   markSeen: { id: "set-mark-seen", check: true, repaints: true },
@@ -1129,7 +1133,7 @@ function applyType() {
   // A single blurred shadow at full opacity is still faint — the blur spreads
   // what it has over its whole radius — so opacity is the wrong knob and stacked
   // copies are what actually darkens it.
-  const shade = `0 0 ${type.shadowBlur}px rgba(0, 0, 0, 1)`;
+  const shade = `0 0 ${type.shadowBlur}px hsl(0 0% 0%)`;
   // Rounded: a value stored when this was an opacity is a fraction, and
   // `Array` throws on one.
   const layers = Math.max(0, Math.round(type.shadow));
@@ -1163,6 +1167,29 @@ for (const [key, control] of Object.entries(CONTROLS)) {
     if (control.repaints) redraw();
   });
 }
+
+// Light, dark, or whatever the machine says — the dashboard's own control, on
+// the dashboard's own key, so the setting means one thing wherever it is
+// changed. The stamp is already on <html> from the inline script in the page
+// head; this only offers the three states and remembers a new pick. The line
+// itself is untouched by it: what colour that is drawn in and how dark its
+// backdrop sits are the type settings above, because the line is registered
+// against the game's own text rather than against a page.
+const themeBoxEl = document.getElementById("set-theme");
+const themeBtnEls = [...themeBoxEl.children];
+
+function showTheme(theme) {
+  for (const btn of themeBtnEls) btn.classList.toggle("on", btn.value === theme);
+}
+
+for (const btn of themeBtnEls) {
+  btn.addEventListener("click", () => {
+    if (!THEMES.includes(btn.value)) return;
+    setTheme(btn.value);
+    showTheme(btn.value);
+  });
+}
+showTheme(storedTheme());
 
 // One tab at a time.
 const tabBtnEls = [...document.querySelectorAll("#settings-tabs button")];

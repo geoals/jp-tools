@@ -14,10 +14,32 @@
   a popup has somewhere to open into. Everything above the box is transparent,
   and takes no clicks either while the overlay is passing them through.
 -->
+<link rel="stylesheet" href="/shared/theme.css" />
 <link rel="stylesheet" href="/shared/popup.css" />
+<!-- The theme, stamped before the first paint. Same key as the dashboard's
+     (`read-stats-theme`, see static/lib/theme.js) and the same three states, so
+     the setting means one thing across the app — but its own copy, because the
+     shell runs in its own QtWebEngine profile and does not share storage with
+     the browser. The overlay's settings panel writes it here. -->
+<script>
+  try {
+    var t = localStorage.getItem("read-stats-theme");
+    // Dark unless told otherwise, and written down so the control agrees with
+    // what is on screen. The dashboard defaults to the machine's preference;
+    // this surface does not, because it is over a game — a machine set to
+    // light would put a white bar and a white definition on top of artwork
+    // that is almost always dark. "System" is still one of the three; it just
+    // is not what an overlay that has never been configured starts as.
+    if (t !== "system" && t !== "light" && t !== "dark") {
+      t = "dark";
+      localStorage.setItem("read-stats-theme", t);
+    }
+    if (t !== "system") document.documentElement.setAttribute("data-theme", t);
+  } catch (e) {}
+</script>
 <style>
   :root {
-    --backdrop: rgba(0, 0, 0, 0.82);
+    --backdrop: hsl(0 0% 0% / 82%);
     --strip: 300px;
     --line-font: "Noto Sans CJK JP", "Noto Sans JP", sans-serif;
     /* `?scale=` — everything below is in `rem` or in `em` under something that
@@ -51,8 +73,8 @@
     --line-leading: 1.68;
     --line-tracking: 0em;
     --line-weight: 400;
-    --line-color: #fff;
-    --line-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+    --line-color: hsl(0 0% 100%);
+    --line-shadow: 0 1px 3px hsl(0 0% 0% / 90%);
     /* How loudly a status is painted. Ghost mode derives its own wash from it
        rather than carrying a second setting — the two are one decision about
        how strong a mark should be. */
@@ -75,7 +97,7 @@
     margin: 0;
     overflow: hidden;
     background: transparent;
-    color: #fff;
+    color: var(--ink);
     font-family: "Noto Sans CJK JP", "Noto Sans JP", sans-serif;
   }
 
@@ -185,7 +207,7 @@
   /* Nothing of the game is being read through the line at phone size, so the
      backdrop stops being a compromise and just makes the text legible. */
   html[data-mobile] {
-    --backdrop: rgba(0, 0, 0, 0.92);
+    --backdrop: hsl(0 0% 0% / 92%);
   }
 
   html[data-mobile] #box {
@@ -254,7 +276,7 @@
     padding: 0.14em 0;
   }
   .w:hover {
-    background: rgba(255, 255, 255, 0.16);
+    background: hsl(0 0% 100% / 16%);
   }
 
   /* The same hues as the reader's marks (base.css), dark ramp only — this
@@ -281,13 +303,13 @@
      White, as it is when the line draws its own words: the status tints own the
      hues, and a coloured underline would read as a status of its own. */
   html[data-ghost] .w.common {
-    text-decoration-color: rgba(255, 255, 255, 0.85);
+    text-decoration-color: hsl(0 0% 100% / 85%);
   }
   /* The word the popup is about. A ring, not a fill: the fills are the status
      scale, and the word being read about has to stay legible as `new`, `seen`
      or `unknown` — including while a button in the popup changes it. */
   .w.open {
-    box-shadow: 0 0 0 2px #fff;
+    box-shadow: 0 0 0 2px hsl(0 0% 100%);
   }
 
   /* `left` and `bottom` are set per word — see place() — and this is only
@@ -312,7 +334,7 @@
     position: absolute;
     right: 0.8rem;
     bottom: calc(var(--strip) - 1.3rem);
-    color: hsl(28 92% 72%);
+    color: var(--alert);
     font-size: 0.75rem;
     letter-spacing: 0.04em;
   }
@@ -368,15 +390,14 @@
     display: none;
   }
 
-  /* Solid, where the buttons are translucent: it is the one control that is
-     always there, and it is what the widget is dragged by. */
-  #bar > #bar-handle {
-    background: #000;
+  #bar-handle:hover,
+  #buttons button:hover:not(:disabled) {
+    background: var(--panel-hover);
   }
   /* Paused is the one state worth seeing while the bar is shut — nothing being
      read is being counted. */
   #bar-handle.paused {
-    color: hsl(28 92% 72%);
+    color: var(--alert);
   }
 
   /* Own tooltip rather than `title`. QtWebEngine's native one is a separate
@@ -394,9 +415,11 @@
     width: max-content;
     max-width: 22rem;
     padding: 0.4rem 0.6rem;
-    border-radius: 6px;
-    background: rgba(0, 0, 0, 0.92);
-    color: #e6e6e6;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-control);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    color: var(--ink-2);
     font-size: 0.85rem;
     line-height: 1.35;
     text-align: left;
@@ -407,6 +430,7 @@
   #bar-handle,
   #explain-btn,
   #hide-btn,
+  #pause-btn,
   #scrollback-btn,
   #settings-btn {
     flex: none;
@@ -415,10 +439,10 @@
     width: 2.6rem;
     height: 2.6rem;
     padding: 0;
-    border: none;
-    border-radius: 8px;
-    background: rgba(0, 0, 0, 0.82);
-    color: #e6e6e6;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-control);
+    background: var(--panel);
+    color: var(--ink-2);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -435,35 +459,35 @@
     opacity: 0.45;
     cursor: default;
   }
-  #hide-btn.off {
-    color: #9a9a9a;
-  }
-  #settings-btn.off {
-    color: #9a9a9a;
+  #hide-btn.off,
+  #settings-btn.off,
+  #scrollback-btn.off {
+    color: var(--ink-3);
   }
   /* Paused is the state worth seeing from across the room: nothing being read
-     is being counted. Coloured rather than dimmed, unlike the other toggles. */
+     is being counted. Coloured rather than dimmed, unlike the other toggles.
+
+     Its own button in the bar rather than a row at the foot of the settings:
+     pausing is something reached for mid-scene, and a control two clicks deep
+     behind a cogwheel is a control that gets skipped. */
   #pause-btn.paused {
-    color: hsl(28 92% 72%);
+    color: var(--alert);
   }
 
   /* The overlay's settings. Sits under the buttons like the explain panel, so
      it is inside #explain-box's rectangle and the shell already takes its
      clicks. Three tabs, because the questions are different: how the line is
-     set, where it sits, and what is marked on it. */
-  #settings-foot {
-    display: flex;
-    justify-content: flex-end;
-  }
-
+     set and sized, what is marked on it, and where its lines come from. */
   #settings-panel {
     display: flex;
     flex-direction: column;
     gap: 0.7rem;
     padding: 0.9rem 1.1rem;
-    border-radius: 10px;
-    background: rgba(0, 0, 0, 0.9);
-    color: #e6e6e6;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-panel);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    color: var(--ink-2);
     font-size: 0.95rem;
   }
   #settings-panel[hidden] {
@@ -474,19 +498,34 @@
     display: flex;
     gap: 0.3rem;
   }
-  #settings-tabs button {
+  /* The popup's badge metrics: same border, radius and size, so a chip means
+     the same thing in the definition and in the settings behind it. */
+  #settings-tabs button,
+  .chips button {
     padding: 0.25rem 0.7rem;
-    border: none;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.1);
-    color: #b9b9b9;
+    border: 1px solid var(--chip);
+    border-radius: var(--radius-chip);
+    background: var(--panel-raised);
+    color: var(--ink-2);
     font: inherit;
     font-size: 0.9rem;
     cursor: pointer;
   }
-  #settings-tabs button.on {
-    background: rgba(154, 140, 255, 0.55);
-    color: #fff;
+  #settings-tabs button:hover,
+  .chips button:hover {
+    background: var(--panel-hover);
+  }
+  /* Chosen, painted the way every other picked control in this app is: the
+     dashboard's tab and the popup's status button are this same blue. */
+  #settings-tabs button.on,
+  .chips button.on {
+    border-color: var(--accent);
+    background: var(--accent-fill);
+    color: var(--accent-ink);
+  }
+  .chips {
+    display: flex;
+    gap: 0.3rem;
   }
 
   .settings-body {
@@ -500,22 +539,22 @@
   }
   .settings-body input[type="range"] {
     width: 11rem;
-    accent-color: #9a8cff;
+    accent-color: var(--accent);
   }
   .settings-body input[type="checkbox"] {
     justify-self: start;
     width: 1rem;
     height: 1rem;
-    accent-color: #9a8cff;
+    accent-color: var(--accent);
   }
   .settings-body input[type="number"],
   .settings-body input[type="text"] {
     width: 6rem;
     padding: 0.15rem 0.35rem;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 5px;
-    background: rgba(255, 255, 255, 0.06);
-    color: #e6e6e6;
+    border: 1px solid var(--chip);
+    border-radius: var(--radius-chip);
+    background: var(--panel-raised);
+    color: var(--ink);
     font: inherit;
     font-size: 0.9rem;
   }
@@ -531,7 +570,7 @@
     min-width: 3.2rem;
     font-variant-numeric: tabular-nums;
     text-align: right;
-    color: #b9b9b9;
+    color: var(--ink-3);
   }
   /* A row whose control needs the whole width, and one that is only a note. */
   .settings-body .wide {
@@ -541,7 +580,7 @@
     grid-column: 1 / -1;
     max-width: 26rem;
     margin: 0;
-    color: #9a9a9a;
+    color: var(--ink-3);
     font-size: 0.85rem;
     line-height: 1.5;
   }
@@ -550,24 +589,19 @@
      surface has none to open it in — the list simply never appeared. The same
      goes for the colour, which would otherwise want the native picker. */
 
-  #mobile-btn,
-  #pause-btn {
+  #mobile-btn {
+    justify-self: start;
     padding: 0.25rem 0.7rem;
-    border: none;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.14);
-    color: #e6e6e6;
+    border: 1px solid var(--chip);
+    border-radius: var(--radius-chip);
+    background: var(--panel-raised);
+    color: var(--ink-2);
     font: inherit;
     font-size: 0.9rem;
     cursor: pointer;
   }
-  #mobile-btn {
-    justify-self: start;
-  }
-  /* Paused is the state worth seeing from across the room: nothing being read
-     is being counted. Coloured rather than dimmed, unlike the other toggles. */
-  #pause-btn.paused {
-    color: hsl(28 92% 72%);
+  #mobile-btn:hover {
+    background: var(--panel-hover);
   }
 
   /* The hue slider paints the choice it is making. The native track has to be
@@ -591,7 +625,7 @@
     appearance: none;
     width: 0.9rem;
     height: 0.9rem;
-    border: 2px solid #fff;
+    border: 2px solid var(--ink);
     border-radius: 50%;
     background: transparent;
     cursor: pointer;
@@ -604,18 +638,18 @@
     align-items: center;
     gap: 0.4rem 0.7rem;
     padding: 0.5rem 0.6rem;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-control);
   }
   .group-head {
-    color: #b9b9b9;
+    color: var(--ink-3);
   }
 
   #colour-swatch {
     width: 1.6rem;
     height: 1.6rem;
     justify-self: end;
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    border: 1px solid var(--border-strong);
     border-radius: 50%;
     background: var(--line-color);
   }
@@ -637,8 +671,8 @@
   #set-font .row {
     overflow: hidden;
     padding: 0.25rem 0.5rem;
-    border-radius: 5px;
-    color: #b9b9b9;
+    border-radius: var(--radius-chip);
+    color: var(--ink-2);
     font-size: 0.95rem;
     white-space: nowrap;
     text-overflow: ellipsis;
@@ -647,12 +681,12 @@
   }
   #set-line-source .row:hover,
   #set-font .row:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--panel-hover);
   }
   #set-line-source .row.on,
   #set-font .row.on {
-    background: rgba(154, 140, 255, 0.55);
-    color: #fff;
+    background: var(--accent-fill);
+    color: var(--accent-ink);
   }
   /* The name is read, so it is set in the panel's own face — a display font
      renders its own name too fine to pick out of a list. The sample beside it
@@ -661,7 +695,7 @@
     display: inline-block;
     width: 4rem;
     font-size: 1.1rem;
-    color: #e6e6e6;
+    color: var(--ink);
   }
 
   /* Earlier lines, under the button that opens them.
@@ -691,8 +725,10 @@
        written here. See sizeScrollback(). */
     width: var(--sb-width, calc(var(--text-chars) * (1em + var(--line-tracking)) + 1.4em));
     max-width: 78vw;
-    border-radius: 10px;
-    background: rgba(0, 0, 0, 0.92);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-panel);
+    background: var(--panel);
+    box-shadow: var(--shadow);
     font-family: var(--line-font);
     /* Fixed, and smaller than the line. The line is sized to sit over the
        game's own text, which is larger than anything wants to read fourteen of
@@ -712,7 +748,7 @@
     max-height: calc(14 * 1.8em);
     overflow-y: auto;
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+    scrollbar-color: var(--chip) transparent;
     padding: 0.5em 0.7em;
     overscroll-behavior: contain;
   }
@@ -731,7 +767,7 @@
   /* The line that is on screen right now, so scrolling back has somewhere to
      come home to. */
   #scrollback-lines .sb.current {
-    background: rgba(154, 140, 255, 0.16);
+    background: var(--accent-wash);
   }
   /* Where one sitting ends and the next begins, on the gap the server splits
      sessions on — so this divider marks the same sitting the dashboard counts.
@@ -740,14 +776,14 @@
   #scrollback-lines .sb-session {
     margin: 1.1em 0 0.6em;
     padding-top: 0.5em;
-    border-top: 1px solid rgba(255, 255, 255, 0.16);
+    border-top: 1px solid var(--border);
     font-family: system-ui, sans-serif;
     font-size: 0.72rem;
     font-weight: 400;
     letter-spacing: 0.06em;
     line-height: 1.4;
     text-transform: uppercase;
-    color: #8d8d8d;
+    color: var(--ink-3);
   }
   #scrollback-lines .sb-session:first-child {
     margin-top: 0;
@@ -762,7 +798,7 @@
     gap: 0.6rem;
     align-items: center;
     padding: 0.35rem 0.7rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    border-top: 1px solid var(--border);
     font-family: system-ui, sans-serif;
     font-size: 0.75rem;
     font-weight: 400;
@@ -771,19 +807,19 @@
   }
   #scrollback-count {
     flex: 1;
-    color: #9a9a9a;
+    color: var(--ink-3);
   }
   #scrollback-foot button {
     padding: 0.15rem 0.5rem;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 5px;
-    background: rgba(255, 255, 255, 0.06);
-    color: #e6e6e6;
+    border: 1px solid var(--chip);
+    border-radius: var(--radius-chip);
+    background: var(--panel-raised);
+    color: var(--ink-2);
     font: inherit;
     cursor: pointer;
   }
   #scrollback-foot button:hover {
-    background: rgba(255, 255, 255, 0.14);
+    background: var(--panel-hover);
   }
 
   #explain-panel {
@@ -791,9 +827,11 @@
     overflow-y: auto;
     scrollbar-width: none;
     padding: 0.9rem 1.2rem;
-    border-radius: 10px;
-    background: rgba(0, 0, 0, 0.9);
-    color: #f2f2f2;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-panel);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    color: var(--ink);
     font-size: 1.15rem;
     line-height: 1.7;
   }
@@ -801,7 +839,7 @@
     display: none;
   }
   #explain-panel.err {
-    color: hsl(28 92% 72%);
+    color: var(--alert);
   }
   #explain-panel p {
     margin: 0 0 0.5rem;
@@ -824,18 +862,24 @@
       <button id="explain-btn" data-tip="Explain the last line (select a word first to focus on it)">ℹ</button>
       <button id="hide-btn" data-tip="Hide the line">👁</button>
       <button id="scrollback-btn" class="off" data-tip="Earlier lines">▤</button>
+      <button id="pause-btn" data-tip="Pause capture">⏸</button>
       <button id="settings-btn" class="off" data-tip="Settings">⚙</button>
     </div>
   </div>
   <div id="settings-panel" hidden>
     <div id="settings-tabs">
       <button value="text" class="on">Text</button>
-      <button value="place">Placement</button>
       <button value="marks">Marks</button>
       <button value="source">Source</button>
     </div>
 
     <div class="settings-body" data-tab="text">
+      <span>Theme</span>
+      <div id="set-theme" class="chips wide">
+        <button value="system">System</button>
+        <button value="light">Light</button>
+        <button value="dark">Dark</button>
+      </div>
       <label for="set-size">Font size</label>
       <input id="set-size" type="range" min="0.6" max="2" step="0.05" />
       <output id="out-size"></output>
@@ -848,6 +892,9 @@
       <label for="set-weight">Font weight</label>
       <input id="set-weight" type="range" min="200" max="900" step="100" />
       <output id="out-weight"></output>
+      <label for="set-chars">Column width</label>
+      <input id="set-chars" type="range" min="16" max="80" step="1" />
+      <output id="out-chars"></output>
       <label for="set-backdrop">Backdrop</label>
       <input id="set-backdrop" type="range" min="0" max="1" step="0.02" />
       <output id="out-backdrop"></output>
@@ -873,15 +920,6 @@
       </div>
       <span>Font</span>
       <div id="set-font" class="wide"></div>
-    </div>
-
-    <div class="settings-body" data-tab="place" hidden>
-      <label for="set-chars">Column width</label>
-      <input id="set-chars" type="range" min="16" max="80" step="1" />
-      <output id="out-chars"></output>
-      <label for="set-mobile-scale">Phone scale</label>
-      <input id="set-mobile-scale" type="range" min="1.1" max="3" step="0.05" />
-      <output id="out-mobile-scale"></output>
       <span>Phone size</span>
       <button id="mobile-btn" data-tip="Switch to phone size">⤢ Switch</button>
       <span></span>
@@ -924,10 +962,6 @@
       <label></label>
       <div id="source-note" class="wide note"></div>
       <span></span>
-    </div>
-
-    <div id="settings-foot">
-      <button id="pause-btn" data-tip="Pause capture">⏸ Pause capture</button>
     </div>
   </div>
   <div id="scrollback" hidden>
