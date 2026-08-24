@@ -4,9 +4,8 @@
 /* Palette roles (dataviz reference palette): light values, dark under both the
    OS signal and an explicit data-theme stamp, so a toggle wins both ways.
 
-   --vocab-* is the one scale written in HSL rather than hex, because it is a
-   scale and not three colours. Two rules generate it, and a fourth status
-   would follow them rather than be picked by eye:
+   --vocab-* is a scale and not three colours: two rules generate it, and a
+   fourth status would follow them rather than be picked by eye:
 
      hue      names the status, one hue each, far enough apart to be told
               apart at a glance and in the corner of the eye: 211 (blue) is
@@ -30,20 +29,20 @@
    same colour as the pile it is counted in. */
 :root {
   color-scheme: light;
-  --page: #f9f9f7;
-  --surface-1: #fcfcfb;
-  --text-primary: #0b0b0b;
-  --text-secondary: #52514e;
-  --muted: #898781;
-  --grid: #e1e0d9;
-  --baseline: #c3c2b7;
-  --border: rgba(11, 11, 11, 0.1);
-  --series-1: #2a78d6;
-  --series-2: #008300;
-  --series-3: #db2777;
-  --meter-track: #cde2fb;
-  --good: #006300;
-  --warn: #b3261e;
+  --page: hsl(60 11.1% 94.7%);
+  --surface-1: hsl(213 22% 98.63%);
+  --text-primary: hsl(0 0% 4.3%);
+  --text-secondary: hsl(45 2.5% 31.4%);
+  --muted: hsl(45 3.3% 52.2%);
+  --grid: hsl(52.5 11.8% 86.7%);
+  --baseline: hsl(55 9.1% 74.1%);
+  --border: hsl(0 0% 4.3% / 10%);
+  --series-1: hsl(212.8 67.7% 50.2%);
+  --series-2: hsl(120 100% 25.7%);
+  --series-3: hsl(333.3 71.4% 50.6%);
+  --meter-track: hsl(212.6 85.2% 89.4%);
+  --good: hsl(120 100% 19.4%);
+  --warn: hsl(3.2 71.3% 41%);
   --vocab-new: hsl(211 88% 84%);
   --vocab-seen: hsl(276 62% 89%);
   --vocab-unknown: hsl(28 92% 84%);
@@ -52,20 +51,20 @@
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
-    --page: #0d0d0d;
-    --surface-1: #1a1a19;
-    --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --muted: #898781;
-    --grid: #2c2c2a;
-    --baseline: #383835;
-    --border: rgba(255, 255, 255, 0.1);
-    --series-1: #3987e5;
-    --series-2: #008300;
-    --series-3: #e0407f;
-    --meter-track: #0d366b;
-    --good: #0ca30c;
-    --warn: #cf3b31;
+    --page: hsl(0 0% 5.1%);
+    --surface-1: hsl(213 8% 10%);
+    --text-primary: hsl(0 0% 100%);
+    --text-secondary: hsl(45 9.1% 74.1%);
+    --muted: hsl(45 3.3% 52.2%);
+    --grid: hsl(60 2.3% 16.9%);
+    --baseline: hsl(60 2.8% 21.4%);
+    --border: hsl(0 0% 100% / 10%);
+    --series-1: hsl(212.8 76.8% 56.1%);
+    --series-2: hsl(120 100% 25.7%);
+    --series-3: hsl(333.3 72.1% 56.5%);
+    --meter-track: hsl(212.6 78.3% 23.5%);
+    --good: hsl(120 86.3% 34.3%);
+    --warn: hsl(3.8 62.2% 50.2%);
     --vocab-new: hsl(211 62% 33%);
     --vocab-seen: hsl(276 38% 29%);
     --vocab-unknown: hsl(28 55% 31%);
@@ -74,20 +73,20 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --page: #0d0d0d;
-  --surface-1: #1a1a19;
-  --text-primary: #ffffff;
-  --text-secondary: #c3c2b7;
-  --muted: #898781;
-  --grid: #2c2c2a;
-  --baseline: #383835;
-  --border: rgba(255, 255, 255, 0.1);
-  --series-1: #3987e5;
-  --series-2: #008300;
-  --series-3: #e0407f;
-  --meter-track: #0d366b;
-  --good: #0ca30c;
-  --warn: #cf3b31;
+  --page: hsl(0 0% 5.1%);
+  --surface-1: hsl(213 8% 10%);
+  --text-primary: hsl(0 0% 100%);
+  --text-secondary: hsl(45 9.1% 74.1%);
+  --muted: hsl(45 3.3% 52.2%);
+  --grid: hsl(60 2.3% 16.9%);
+  --baseline: hsl(60 2.8% 21.4%);
+  --border: hsl(0 0% 100% / 10%);
+  --series-1: hsl(212.8 76.8% 56.1%);
+  --series-2: hsl(120 100% 25.7%);
+  --series-3: hsl(333.3 72.1% 56.5%);
+  --meter-track: hsl(212.6 78.3% 23.5%);
+  --good: hsl(120 86.3% 34.3%);
+  --warn: hsl(3.8 62.2% 50.2%);
   --vocab-new: hsl(211 62% 33%);
   --vocab-seen: hsl(276 38% 29%);
   --vocab-unknown: hsl(28 55% 31%);
@@ -148,7 +147,7 @@ header {
 .tab-on,
 .tab-on:hover {
   background: var(--series-1);
-  color: #fff;
+  color: hsl(0 0% 100%);
 }
 .tab:focus-visible {
   outline: 2px solid var(--series-1);
@@ -194,7 +193,7 @@ header h1 a {
 .pause-btn.paused {
   background: var(--series-1);
   border-color: transparent;
-  color: #fff;
+  color: hsl(0 0% 100%);
 }
 .paused-banner {
   background: var(--surface-1);
@@ -228,7 +227,7 @@ header h1 a {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: rgba(0, 0, 0, 0.45);
+  background: hsl(0 0% 0% / 45%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -238,7 +237,7 @@ header h1 a {
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 12px 32px hsl(0 0% 0% / 28%);
   width: min(560px, 100%);
   padding: 16px 18px 18px;
   /* A tall form scrolls inside the dialog rather than moving it off-centre. */
