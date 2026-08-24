@@ -39,6 +39,7 @@ import sys
 from pathlib import Path
 
 import backend
+import xwatch
 from xshape import InputRegion
 
 # Both the platform plugin and the shell integration are read once, when
@@ -47,7 +48,9 @@ from xshape import InputRegion
 BACKEND, BACKEND_REASON = backend.choose()
 backend.apply_environment(BACKEND)
 
-from PySide6.QtCore import QFile, QIODevice, QObject, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import (
+    QFile, QIODevice, QObject, QSocketNotifier, QTimer, QUrl, Signal, Slot,
+)
 from PySide6.QtGui import QGuiApplication, QRegion
 from PySide6.QtQml import QQmlApplicationEngine
 # Registers the qrc that webchannel_script() reads.
@@ -58,7 +61,14 @@ from PySide6.QtWebEngineQuick import QtWebEngineQuick
 _HERE = Path(__file__).resolve().parent
 QML = str(_HERE / ("Overlay.qml" if BACKEND == backend.LAYER_SHELL else "OverlayX11.qml"))
 
+#: Only for the fallback, and only for *finding* a window. Where X can be
+#: watched, a window that has been found reports its own moves — see [`xwatch`].
 GEOMETRY_POLL_MS = 300
+
+#: With the watcher, the timer is a safety net rather than the mechanism: it
+#: catches a window whose title changes into a match, which is the one thing
+#: no event here subscribes to.
+DISCOVERY_POLL_MS = 1000
 
 
 def _rects(region):
@@ -88,11 +98,23 @@ class Overlay(QObject):
         self._name = ""
         self._rect = None
         self._xdotool = shutil.which("xdotool")
+        # Events where X can be watched, the subprocess and a timer where it
+        # cannot. The page cannot tell which it got; the difference is whether
+        # the line arrives with the window or up to an interval behind it.
+        self._watch = xwatch.WindowWatch()
+        self._notifier = None
+        if self._watch.available:
+            self._notifier = QSocketNotifier(
+                self._watch.fd, QSocketNotifier.Type.Read
+            )
+            self._notifier.activated.connect(self._on_x_ready)
         # Only the X11 backend needs one: under Wayland the mask already means
         # the input region, and opening an X connection would be pointless.
         self._input = InputRegion() if BACKEND == backend.X11 else None
         self._probe = QTimer()
-        self._probe.setInterval(GEOMETRY_POLL_MS)
+        self._probe.setInterval(
+            DISCOVERY_POLL_MS if self._watch.available else GEOMETRY_POLL_MS
+        )
         self._probe.timeout.connect(self._poll_geometry)
 
     @Slot(str)
@@ -106,22 +128,43 @@ class Overlay(QObject):
         """
         name = (name or "").strip()
         self._name = name
+        if self._watch.available:
+            self._watch.set_name(name)
         # Answer every push, not only a new name. The page pushes on each
         # channel connect, and a reloaded page holds no geometry — dropping the
         # repeat would leave it placed against the screen until the tracked
         # window next moved.
         self._rect = None
-        if name and self._xdotool:
-            self._poll_geometry()
+        if name and (self._watch.available or self._xdotool):
+            self._poll_geometry(force=True)
             self._probe.start()
         else:
             self._probe.stop()
             self.geometry.emit(0, 0, 0, 0)
 
-    def _poll_geometry(self) -> None:
-        rect = self._window_rect()
-        if rect == self._rect:
-            return
+    def _on_x_ready(self) -> None:
+        """The X connection has something to say. What it is does not matter.
+
+        Looped rather than handled once: asking X where the window is reads the
+        connection too, so the answer can arrive with further events behind it
+        that leave the queue full and the descriptor quiet.
+        """
+        while True:
+            self._watch.drain()
+            self._poll_geometry()
+            if not self._watch.pending():
+                return
+
+    def _poll_geometry(self, force: bool = False) -> None:
+        if self._watch.available:
+            changed = self._watch.refresh()
+            if not (changed or force):
+                return
+            rect = self._watch.rect
+        else:
+            rect = self._window_rect()
+            if rect == self._rect and not force:
+                return
         self._rect = rect
         self.geometry.emit(*(self._to_surface(rect) if rect else (0, 0, 0, 0)))
 
