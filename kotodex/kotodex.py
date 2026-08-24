@@ -32,7 +32,11 @@ REPO = Path(__file__).resolve().parent.parent
 # jp_core::install::install_root.
 os.environ.setdefault("KOTODEX_ROOT", str(REPO))
 READ_STATS_URL = os.environ.get("KOTODEX_READ_STATS_URL", "http://127.0.0.1:3200")
-SOCKET_NAME = "kotodex"
+# Reverse-DNS off kotodex.com, and the same string as the desktop entry's
+# filename: on Wayland Qt uses it as the app_id, which is how the compositor
+# matches the window to the entry.
+APP_ID = "com.kotodex.Kotodex"
+SOCKET_NAME = APP_ID
 
 # How long read-stats gets to answer before the overlay is started anyway. It
 # builds on first run, which is slow and not a failure.
@@ -295,9 +299,9 @@ def main() -> int:
 
     app = QApplication(sys.argv)
     app.setApplicationName("Kotodex")
-    # Ties the process to kotodex.desktop, which is what makes the taskbar and
-    # the tray show this entry's name and icon rather than "python3".
-    app.setDesktopFileName("kotodex")
+    # Ties the process to the desktop entry, which is what makes the taskbar
+    # and the tray show its name and icon rather than "python3".
+    app.setDesktopFileName(APP_ID)
     app.setQuitOnLastWindowClosed(False)
 
     instance = SingleInstance(SOCKET_NAME)

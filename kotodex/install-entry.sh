@@ -12,14 +12,17 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
 BIN="$HOME/.local/bin"
 APPS="$HOME/.local/share/applications"
+# Reverse-DNS off kotodex.com: what Flatpak and the desktop spec want an app
+# called, and what the launcher passes to setDesktopFileName.
+APP_ID="com.kotodex.Kotodex"
 ICONS="$HOME/.local/share/icons/hicolor"
 
 if [ "${1:-}" = "--uninstall" ]; then
-  rm -f "$BIN/kotodex" "$BIN/kotodex-capture" "$APPS/kotodex.desktop"
+  rm -f "$BIN/kotodex" "$BIN/kotodex-capture" "$APPS/$APP_ID.desktop" "$APPS/kotodex.desktop"
   for size in 48 64 128 256 512; do
-    rm -f "$ICONS/${size}x${size}/apps/kotodex.png"
+    rm -f "$ICONS/${size}x${size}/apps/$APP_ID.png" "$ICONS/${size}x${size}/apps/kotodex.png"
   done
-  rm -f "$ICONS/scalable/apps/kotodex.svg"
+  rm -f "$ICONS/scalable/apps/$APP_ID.svg" "$ICONS/scalable/apps/kotodex.svg"
   command -v update-desktop-database >/dev/null && update-desktop-database "$APPS" || true
   echo "removed. Your databases under ~/.local/share/jp-tools were not touched."
   exit 0
@@ -31,15 +34,17 @@ ln -sf "$REPO/vn-mine/kotodex-capture" "$BIN/kotodex-capture"
 
 for size in 48 64 128 256 512; do
   mkdir -p "$ICONS/${size}x${size}/apps"
-  cp -f "$HERE/icons/kotodex-$size.png" "$ICONS/${size}x${size}/apps/kotodex.png"
+  cp -f "$HERE/icons/kotodex-$size.png" "$ICONS/${size}x${size}/apps/$APP_ID.png"
 done
-cp -f "$HERE/kotodex.svg" "$ICONS/scalable/apps/kotodex.svg"
-cp -f "$HERE/kotodex.desktop" "$APPS/kotodex.desktop"
+cp -f "$HERE/kotodex.svg" "$ICONS/scalable/apps/$APP_ID.svg"
+# An install from before the app id was reverse-DNS leaves a second entry.
+rm -f "$APPS/kotodex.desktop"
+cp -f "$HERE/$APP_ID.desktop" "$APPS/$APP_ID.desktop"
 
 command -v update-desktop-database >/dev/null && update-desktop-database "$APPS" || true
 command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -qtf "$ICONS" || true
 
-echo "installed: $APPS/kotodex.desktop"
+echo "installed: $APPS/$APP_ID.desktop"
 case ":$PATH:" in
   *":$BIN:"*) ;;
   *) echo "note: $BIN is not on PATH. Add it:"
