@@ -38,8 +38,8 @@ plugin and takes Textractor with it.
 Env:
   VN_RUNDIR                   run dir (default: $XDG_RUNTIME_DIR/vn-mine or /run/user/$UID/...)
   VN_WS_URL                   WebSocket URL, overriding settings.line_source_ws_url
-  JP_TOOLS_KNOWLEDGE_DB_PATH  shared knowledge DB (default: ~/.local/share/jp-tools/knowledge.db)
-  JP_TOOLS_STATS_DB_PATH      read-stats DB (default: ~/.local/share/jp-tools/read-stats.db)
+  JP_TOOLS_KNOWLEDGE_DB_PATH  shared knowledge DB (default: ~/.local/share/kotodex/knowledge.db)
+  JP_TOOLS_STATS_DB_PATH      read-stats DB (default: ~/.local/share/kotodex/read-stats.db)
   JP_TOOLS_STATS_DISABLE      set to 1 to skip the stats sink entirely
 """
 import asyncio
@@ -463,10 +463,10 @@ def split_ruby(text):
     return "".join(out), spans
 
 KNOWLEDGE_DB = os.environ.get("JP_TOOLS_KNOWLEDGE_DB_PATH") or os.path.expanduser(
-    "~/.local/share/jp-tools/knowledge.db"
+    "~/.local/share/kotodex/knowledge.db"
 )
 STATS_DB = os.environ.get("JP_TOOLS_STATS_DB_PATH") or os.path.expanduser(
-    "~/.local/share/jp-tools/read-stats.db"
+    "~/.local/share/kotodex/read-stats.db"
 )
 
 # The columns this writes. Checked rather than created: the schema belongs to

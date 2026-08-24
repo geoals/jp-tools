@@ -37,7 +37,7 @@ move is always to rebuild the working set. None of it lives in the repo.
 moves while the reader reads.
 
 ```
-sqlite3 ~/.local/share/jp-tools/knowledge.db ".backup /tmp/snap.db"
+sqlite3 ~/.local/share/kotodex/knowledge.db ".backup /tmp/snap.db"
 ```
 
 **2. Dump the corpus, before and after.** One line per line read: the text, then

@@ -24,7 +24,7 @@ const READING_ONLY: &str = "Matched by reading only";
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dict_path = std::env::var("JP_TOOLS_SUDACHI_DICT_PATH")?;
-    let db = std::env::var("HOME")? + "/.local/share/jp-tools/knowledge.db";
+    let db = std::env::var("HOME")? + "/.local/share/kotodex/knowledge.db";
     let pool = sqlx::SqlitePool::connect(&format!("sqlite://{db}?mode=ro")).await?;
 
     let master = dictionaries::master_entries(&pool).await?;

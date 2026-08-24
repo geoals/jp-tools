@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! cargo run --example golden -p jp-core -- \
-//!     ~/.local/share/jp-tools/knowledge.db lines.txt system_full.dic
+//!     ~/.local/share/kotodex/knowledge.db lines.txt system_full.dic
 //! ```
 //!
 //! where `lines.txt` is the read corpus

@@ -24,7 +24,7 @@ ASSUME_YES=0
 DRY_RUN=0
 UNINSTALL=0
 
-DATA="$HOME/.local/share/jp-tools"
+DATA="$HOME/.local/share/kotodex"
 VN_DATA="$HOME/.local/share/vn-mine"
 ENV_FILE="$HERE/.env"
 

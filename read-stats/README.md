@@ -251,7 +251,7 @@ be the field named in `JP_TOOLS_ANKI_FIELD_VOCAB` (`VocabKanji`) for the term to
 be recorded. To confirm it's working, do a lookup and:
 
 ```sh
-sqlite3 ~/.local/share/jp-tools/knowledge.db 'SELECT ts, term, work FROM lookups ORDER BY id DESC LIMIT 5;'
+sqlite3 ~/.local/share/kotodex/knowledge.db 'SELECT ts, term, work FROM lookups ORDER BY id DESC LIMIT 5;'
 ```
 
 An empty table with popups appearing means the request shape wasn't recognized —
@@ -359,10 +359,10 @@ curl -X POST localhost:3200/api/sessions -H 'Content-Type: application/json' \
 
 ## Config
 
-- `JP_TOOLS_KNOWLEDGE_DB_PATH` (default `~/.local/share/jp-tools/knowledge.db`) —
+- `JP_TOOLS_KNOWLEDGE_DB_PATH` (default `~/.local/share/kotodex/knowledge.db`) —
   the shared database holding the line stream; must match what
   `vn-ws-logger.py` writes to
-- `JP_TOOLS_STATS_DB_PATH` (default `~/.local/share/jp-tools/read-stats.db`) — must
+- `JP_TOOLS_STATS_DB_PATH` (default `~/.local/share/kotodex/read-stats.db`) — must
   match what `vn-ws-logger.py` uses (same env var).
 - `JP_TOOLS_STATS_LISTEN_ADDR` (default `0.0.0.0:3200`)
 - `JP_TOOLS_ANKI_URL` (default `http://localhost:8765`) — fallback AnkiConnect

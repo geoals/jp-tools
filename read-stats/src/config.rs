@@ -53,11 +53,11 @@ impl Config {
     pub fn from_env() -> Self {
         let db_path = std::env::var("JP_TOOLS_STATS_DB_PATH").unwrap_or_else(|_| {
             let home = std::env::var("HOME").expect("HOME not set");
-            format!("{home}/.local/share/jp-tools/read-stats.db")
+            format!("{home}/.local/share/kotodex/read-stats.db")
         });
         let knowledge_db_path = std::env::var("JP_TOOLS_KNOWLEDGE_DB_PATH").unwrap_or_else(|_| {
             let home = std::env::var("HOME").expect("HOME not set");
-            format!("{home}/.local/share/jp-tools/knowledge.db")
+            format!("{home}/.local/share/kotodex/knowledge.db")
         });
         let listen_addr = std::env::var("JP_TOOLS_STATS_LISTEN_ADDR")
             .unwrap_or_else(|_| "0.0.0.0:3200".to_string());

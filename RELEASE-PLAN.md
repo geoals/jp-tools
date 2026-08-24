@@ -90,10 +90,10 @@ Two constraints for anything new drawn in the overlay:
 
 ## Naming
 
-**Kotodex, a reading log for Japanese.** The repo is `geoals/kotodex`; the
-workspace, the crates and `~/.local/share/jp-tools` are unchanged. yt-mine,
-manga-mine and the services stay in it — they share `jp-core` and
-`jp-mine-core`, so a split would mean publishing those.
+**Kotodex, a reading log for Japanese.** The repo is `geoals/kotodex` and the
+data lives in `~/.local/share/kotodex`. The crates keep their own names.
+yt-mine, manga-mine and the services stay in the repo — they share `jp-core`
+and `jp-mine-core`, so a split would mean publishing those.
 
 Held elsewhere by dormant projects with no traction: the GitHub user `kotodex`
 and PyPI `kotodex`. `kotodex.com` is ours, and `com.kotodex.Kotodex` is the app

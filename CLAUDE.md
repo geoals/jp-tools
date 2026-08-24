@@ -1,8 +1,8 @@
 # kotodex
 
-Cargo workspace for Japanese language learning tools. The repo is `kotodex`,
-after the product it ships; the workspace directory, the crates and
-`~/.local/share/jp-tools` keep the old name.
+Cargo workspace for Japanese language learning tools, named after the product
+it ships. The crates keep their own names — `read-stats` is still the server
+and `read-stats.db` still its database.
 
 - `jp-core/` — the language layer, shared by everything: `text` (character
   counting, sentence segmentation, the kanji grade and BCCWJ frequency tables —
@@ -74,7 +74,7 @@ after the product it ships; the workspace directory, the crates and
 | `read-stats.db` | `settings`, `reader_marks`, `work_covers`                                                                          | read-stats           |
 | `yt-mine.db`    | `mining_jobs`, `mining_sentences`                                                                                  | yt-mine              |
 
-All under `~/.local/share/jp-tools/`. The split is by what the data *is*, not by
+All under `~/.local/share/kotodex/`. The split is by what the data *is*, not by
 which app wrote it first: anything another tool will ask questions of — what has
 been read, what was looked up, what the dictionaries say, what is known — is
 shared. Everything else is the app's own.
@@ -271,7 +271,7 @@ threshold means roughly the same thing under either.
 - **A word the reader reports as misparsed goes in `jp-core/PARSE-DEFECTS.md`**,
   one entry saying what the pipeline does with it and why, and is worked
   through later in a batch rather than fixed on the spot.
-- **Don't restart the stack or touch `~/.local/share/jp-tools` while a VN is
+- **Don't restart the stack or touch `~/.local/share/kotodex` while a VN is
   being read** — nothing breaks, but it interrupts the session, and
   `scripts/dev-instance.sh` exists so read-stats can be worked on regardless.
   Otherwise restart the affected services after a change so it is live

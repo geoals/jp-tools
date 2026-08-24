@@ -32,11 +32,11 @@ impl Config {
         Self {
             knowledge_db_path: env::var("JP_TOOLS_KNOWLEDGE_DB_PATH").unwrap_or_else(|_| {
                 let home = env::var("HOME").expect("HOME not set");
-                format!("{home}/.local/share/jp-tools/knowledge.db")
+                format!("{home}/.local/share/kotodex/knowledge.db")
             }),
             db_path: env::var("JP_TOOLS_DB_PATH").unwrap_or_else(|_| {
                 let home = env::var("HOME").expect("HOME not set");
-                format!("{home}/.local/share/jp-tools/yt-mine.db")
+                format!("{home}/.local/share/kotodex/yt-mine.db")
             }),
             audio_dir: env::var("JP_TOOLS_AUDIO_DIR").unwrap_or_else(|_| "audio".into()),
             listen_addr: env::var("JP_TOOLS_LISTEN_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".into()),

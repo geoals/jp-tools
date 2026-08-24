@@ -49,7 +49,7 @@ drops it.
    `JP_TOOLS_SUDACHI_DICT_PATH=$PWD/../system_full.dic cargo test -p jp-core --test identity_resolution -- --ignored`.
 3. Check in `tests/master_pairs.tsv` — a hand-picked subset of Sankoku pairs so
    the test does not depend on the live DB. Regenerate rows from:
-   `sqlite3 -separator $'\t' ~/.local/share/jp-tools/knowledge.db "select distinct term, reading from dictionary_entries where dictionary_id=1"`.
+   `sqlite3 -separator $'\t' ~/.local/share/kotodex/knowledge.db "select distinct term, reading from dictionary_entries where dictionary_id=1"`.
    Needed rows at minimum: それどころか, みる, いる, なる, おく, しまう, くる,
    見る/みる, 居る/いる, 成る/なる, 伺う/うかがう, 窺う/うかがう, 行く/いく,
    行く/ゆく, はず, ちょっと, 綺麗/きれい, 奇麗/きれい, 綺麗事/きれいごと,

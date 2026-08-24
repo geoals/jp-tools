@@ -24,7 +24,7 @@ if [ "${1:-}" = "--uninstall" ]; then
   done
   rm -f "$ICONS/scalable/apps/$APP_ID.svg" "$ICONS/scalable/apps/kotodex.svg"
   command -v update-desktop-database >/dev/null && update-desktop-database "$APPS" || true
-  echo "removed. Your databases under ~/.local/share/jp-tools were not touched."
+  echo "removed. Your databases under ~/.local/share/kotodex were not touched."
   exit 0
 fi
 

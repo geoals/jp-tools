@@ -45,7 +45,7 @@ options:
   --dir <path>   dictionaries directory (default: $JP_TOOLS_DICTIONARY_DIR,
                  else <repo>/dictionaries)
   --db <path>    knowledge.db (default: $JP_TOOLS_KNOWLEDGE_DB_PATH,
-                 else ~/.local/share/jp-tools/knowledge.db)
+                 else ~/.local/share/kotodex/knowledge.db)
 ";
 
 fn main() -> std::process::ExitCode {
@@ -421,7 +421,7 @@ fn resolve_db_path(flag: Option<String>) -> String {
     flag.or_else(|| std::env::var("JP_TOOLS_KNOWLEDGE_DB_PATH").ok())
         .unwrap_or_else(|| {
             let home = std::env::var("HOME").expect("HOME not set");
-            format!("{home}/.local/share/jp-tools/knowledge.db")
+            format!("{home}/.local/share/kotodex/knowledge.db")
         })
 }
 

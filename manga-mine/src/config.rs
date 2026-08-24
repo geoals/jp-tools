@@ -48,11 +48,11 @@ impl Config {
             media_dir: env::var("JP_TOOLS_MEDIA_DIR").unwrap_or_else(|_| "media".into()),
             knowledge_db_path: env::var("JP_TOOLS_KNOWLEDGE_DB_PATH").unwrap_or_else(|_| {
                 let home = env::var("HOME").expect("HOME not set");
-                format!("{home}/.local/share/jp-tools/knowledge.db")
+                format!("{home}/.local/share/kotodex/knowledge.db")
             }),
             db_path: env::var("JP_TOOLS_DB_PATH").unwrap_or_else(|_| {
                 let home = env::var("HOME").expect("HOME not set");
-                format!("{home}/.local/share/jp-tools/yt-mine.db")
+                format!("{home}/.local/share/kotodex/yt-mine.db")
             }),
             fake_api: matches!(env::var("JP_TOOLS_FAKE_API").as_deref(), Ok("true" | "1"),),
             ocr_service_url: env::var("JP_TOOLS_OCR_SERVICE_URL")

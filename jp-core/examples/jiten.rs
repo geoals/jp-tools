@@ -3,7 +3,7 @@
 //!
 //! ```text
 //! cargo run --example jiten -p jp-core -- \
-//!     ~/.local/share/jp-tools/knowledge.db cases.tsv system_full.dic > report.txt
+//!     ~/.local/share/kotodex/knowledge.db cases.tsv system_full.dic > report.txt
 //! ```
 //!
 //! The corpus is `jp-core/tests/jiten/cases.tsv`: `sentence<TAB>tok tok tok`,

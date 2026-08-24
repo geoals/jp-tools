@@ -274,7 +274,7 @@ else.
    reading the live one under a session:
 
    ```sh
-   sqlite3 ~/.local/share/jp-tools/knowledge.db ".backup /tmp/k.db"
+   sqlite3 ~/.local/share/kotodex/knowledge.db ".backup /tmp/k.db"
    cargo run --release --example tokens -p jp-core -- /tmp/k.db system_full.dic > before.tsv
    # ...change the rule...
    cargo run --release --example tokens -p jp-core -- /tmp/k.db system_full.dic > after.tsv
@@ -320,7 +320,7 @@ else.
 
    ```sh
    cargo run --release --example golden -p jp-core --features test-support -- \
-     ~/.local/share/jp-tools/knowledge.db jp-core/tests/golden/corpus.txt system_full.dic
+     ~/.local/share/kotodex/knowledge.db jp-core/tests/golden/corpus.txt system_full.dic
    ```
 
 5. **Re-derive the ledger.** `POST /api/vocab/rebuild` re-ingests every line
@@ -591,7 +591,7 @@ Mining:
 
 ## Working on it
 
-Don't restart the live stack or touch `~/.local/share/jp-tools` while a VN is
+Don't restart the live stack or touch `~/.local/share/kotodex` while a VN is
 being read. Use an isolated instance:
 
 ```sh
