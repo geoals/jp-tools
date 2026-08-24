@@ -18,20 +18,6 @@ Window {
     // Written from Python whenever the input region changes.
     property bool interactive: false
 
-    // The surface shrunk onto the tracked window, as insets from each edge of
-    // the output in logical pixels. Written from Python, which is where the
-    // window's rectangle is known; zero on every side is the whole output,
-    // which is what a page with no window to sit on gets.
-    //
-    // Sized this way rather than by width/height: a surface anchored to all
-    // four edges is stretched to the output and its own size ignored, and
-    // dropping anchors to size it directly would leave the compositor choosing
-    // where to put it.
-    property int insetLeft: 0
-    property int insetTop: 0
-    property int insetRight: 0
-    property int insetBottom: 0
-
     LayerShell.Window.scope: overlayScope
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop
@@ -41,12 +27,6 @@ Window {
     // Zero: the surface lies on top of what is below rather than shrinking its
     // output.
     LayerShell.Window.exclusionZone: 0
-    LayerShell.Window.margins: ({
-        left: root.insetLeft,
-        top: root.insetTop,
-        right: root.insetRight,
-        bottom: root.insetBottom,
-    })
     // OnDemand leaves the keyboard with the window underneath until the surface
     // is clicked, so that window keeps taking input with the overlay up.
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityOnDemand
