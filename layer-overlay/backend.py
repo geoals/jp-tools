@@ -74,20 +74,11 @@ def _qt_qml_paths() -> list[str]:
     return [QLibraryInfo.path(QLibraryInfo.LibraryPath.QmlImportsPath)]
 
 
-def choose(reparent: bool = False) -> tuple[str, str]:
-    """The backend to use and one line saying why, for the log and the doctor.
-
-    `reparent` settles it on its own: a surface that becomes a child of the
-    game's window has to be an X window, and a layer surface cannot be one. The
-    stacking layer-shell was picked for then comes from the parent instead, so
-    nothing is given up by taking X11 here — see [`reparent`].
-    """
+def choose() -> tuple[str, str]:
+    """The backend to use and one line saying why, for the log and the doctor."""
     forced = os.environ.get("LAYER_OVERLAY_BACKEND", "").strip().lower()
     if forced in (LAYER_SHELL, X11):
         return forced, "set by LAYER_OVERLAY_BACKEND"
-
-    if reparent:
-        return X11, "reparenting into the tracked window needs an X surface"
 
     if not os.environ.get("WAYLAND_DISPLAY"):
         return X11, "no Wayland session"

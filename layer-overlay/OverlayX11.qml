@@ -29,19 +29,10 @@ Window {
 
     // Tool rather than Window: it keeps the surface out of the taskbar and the
     // alt-tab list, which a thing with no title bar has no business being in.
-    // BypassWindowManagerHint would also stay on top and is wrong here — it
-    // opts out of the window manager entirely, so the geometry never follows an
-    // output change.
-    //
-    // Reparenting wants exactly that opt-out, though. A managed window is
-    // reparented into a frame of the window manager's own, and pulling it out
-    // of that frame and into the game races the manager for ownership of it;
-    // override-redirect means there was never a frame to leave. The output
-    // change it cannot follow is the parent's problem once it is inside one,
-    // and unparented it is still on top, where an unmanaged window sits.
-    flags: overlayReparenting
-         ? Qt.Window | Qt.FramelessWindowHint | Qt.BypassWindowManagerHint
-         : Qt.Window
+    // BypassWindowManagerHint would also stay on top and is wrong — it opts out
+    // of the window manager entirely, so the geometry never follows an output
+    // change.
+    flags: Qt.Window
          | Qt.FramelessWindowHint
          | Qt.WindowStaysOnTopHint
          | Qt.Tool

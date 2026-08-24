@@ -39,22 +39,13 @@ import sys
 from pathlib import Path
 
 import backend
-import reparent as reparent_x11
 from xshape import InputRegion
-
-#: Be a child of the tracked window rather than a surface over the whole
-#: screen. `LAYER_OVERLAY_REPARENT=0` goes back to the surface, which is what
-#: to do when a game turns out to page-flip past a child window.
-REPARENT = os.environ.get("LAYER_OVERLAY_REPARENT", "1") != "0"
 
 # Both the platform plugin and the shell integration are read once, when
 # QGuiApplication is constructed, so the backend has to be settled before any Qt
 # import that could pull one in.
-BACKEND, BACKEND_REASON = backend.choose(reparent=REPARENT)
+BACKEND, BACKEND_REASON = backend.choose()
 backend.apply_environment(BACKEND)
-# An explicit LAYER_OVERLAY_BACKEND=layer-shell outranks the request: a layer
-# surface cannot be anything's child.
-REPARENT = REPARENT and BACKEND == backend.X11
 
 from PySide6.QtCore import QFile, QIODevice, QObject, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication, QRegion
@@ -70,20 +61,8 @@ QML = str(_HERE / ("Overlay.qml" if BACKEND == backend.LAYER_SHELL else "Overlay
 GEOMETRY_POLL_MS = 300
 
 
-def _rects(region, scale=1.0):
-    """The region as plain tuples, optionally in device pixels.
-
-    Qt works in logical pixels and X does not, so anything handed to X on a
-    scaled output has to be multiplied on the way out. `setMask` needs no such
-    thing — Qt scales that itself.
-    """
-    return [
-        (
-            round(r.x() * scale), round(r.y() * scale),
-            round(r.width() * scale), round(r.height() * scale),
-        )
-        for r in region
-    ]
+def _rects(region):
+    return [(r.x(), r.y(), r.width(), r.height()) for r in region]
 
 
 class Overlay(QObject):
@@ -108,11 +87,6 @@ class Overlay(QObject):
         self._hits = []
         self._name = ""
         self._rect = None
-        self._reparent = reparent_x11.Reparenter() if REPARENT else None
-        #: The tracked window as `id, x, y, width, height`, as last found.
-        self._found = None
-        #: The window this surface is currently inside, or 0 at the root.
-        self._parent_id = 0
         self._xdotool = shutil.which("xdotool")
         # Only the X11 backend needs one: under Wayland the mask already means
         # the input region, and opening an X connection would be pointless.
@@ -132,7 +106,6 @@ class Overlay(QObject):
         """
         name = (name or "").strip()
         self._name = name
-        self._found = None
         # Answer every push, not only a new name. The page pushes on each
         # channel connect, and a reloaded page holds no geometry — dropping the
         # repeat would leave it placed against the screen until the tracked
@@ -146,77 +119,11 @@ class Overlay(QObject):
             self.geometry.emit(0, 0, 0, 0)
 
     def _poll_geometry(self) -> None:
-        found = self._window_rect()
-        if found == self._found:
+        rect = self._window_rect()
+        if rect == self._rect:
             return
-        self._found = found
-        if self._reparent is not None:
-            self._follow(found)
-            return
-        rect = found[1:] if found else None
         self._rect = rect
         self.geometry.emit(*(self._to_surface(rect) if rect else (0, 0, 0, 0)))
-
-    def _follow(self, found) -> None:
-        """Be a child of the tracked window, or a toplevel again without one.
-
-        Only three things reach here — the window appeared, it was replaced, it
-        resized. A *move* does not, and that is the point: the server carries a
-        child along with its parent, so there is nothing to follow and nothing
-        to sample. The poll is left only to notice the three that remain.
-
-        The page is told `(0, 0, w, h)` while parented. Inside the parent that
-        is where the game's content is, so the translation `_to_surface` does
-        for a toplevel has already been done by X.
-        """
-        if self._window is None:
-            return
-        child = int(self._window.winId())
-        if found is None:
-            self._release(child)
-            self.geometry.emit(0, 0, 0, 0)
-            return
-        wid, _x, _y, w, h = found
-        if wid != self._parent_id:
-            if not self._reparent.into(child, wid, w, h):
-                self._parent_id = 0
-                self.geometry.emit(0, 0, 0, 0)
-                return
-            self._parent_id = wid
-        else:
-            self._reparent.fill(child, w, h)
-        # X answers in device pixels and Qt asks in logical ones, so on a scaled
-        # output the two differ — handing X's answer to Qt makes a surface
-        # larger than the window it is inside, clipped by exactly the scale
-        # factor. The page counts in the same logical pixels Qt does, so the
-        # rectangle it is given is converted too.
-        scale = self._scale()
-        self._window.setGeometry(0, 0, round(w / scale), round(h / scale))
-        self.geometry.emit(0, 0, round(w / scale), round(h / scale))
-        self.apply()
-
-    def _scale(self) -> float:
-        """Device pixels per logical pixel, for the output the surface is on."""
-        if self._window is None:
-            return 1.0
-        return self._window.devicePixelRatio() or 1.0
-
-    def _release(self, child: int) -> None:
-        """Back to a toplevel over the screen, where a page with no game to sit
-        on has always been drawn."""
-        if not self._parent_id:
-            return
-        self._parent_id = 0
-        screen = self._window.screen()
-        if screen is None:
-            return
-        g = screen.geometry()
-        scale = self._scale()
-        self._reparent.to_root(child, round(g.x() * scale), round(g.y() * scale))
-        # Qt does the sizing, in its own units; X is only asked for the move
-        # back out of the parent and the map that a reparent costs.
-        self._window.setGeometry(g)
-        self.apply()
 
     def _to_surface(self, rect):
         """The tracked window in the page's own coordinates.
@@ -253,31 +160,19 @@ class Overlay(QObject):
             key, _, value = line.partition("=")
             if value.lstrip("-").isdigit():
                 fields[key] = int(value)
-        if not {"WINDOW", "X", "Y", "WIDTH", "HEIGHT"} <= fields.keys():
+        if not {"X", "Y", "WIDTH", "HEIGHT"} <= fields.keys():
             return None
-        # The id as well as the rectangle: reparenting needs to know when the
-        # window it is inside has been replaced rather than merely moved, which
-        # a game does on some fullscreen toggles.
-        return (
-            fields["WINDOW"], fields["X"], fields["Y"],
-            fields["WIDTH"], fields["HEIGHT"],
-        )
+        return (fields["X"], fields["Y"], fields["WIDTH"], fields["HEIGHT"])
 
     def attach(self, window) -> None:
         if self.hidden:
             window.setVisible(False)
         self._window = window
-        # A rebuilt window is a new X window at the root, so nothing it used to
-        # be inside is anything it is inside now.
-        self._parent_id = 0
-        self._found = None
         # The compositor configures a layer surface after the window is
         # created, and a Plasma panel's exclusive zone shrinks it further, so
         # the height here is not the final one. Recompute when it settles.
         window.heightChanged.connect(self.apply)
         self.apply()
-        if self._reparent is not None and self._name:
-            self._poll_geometry()
 
     @Slot(list)
     def setHits(self, flat) -> None:
@@ -339,7 +234,7 @@ class Overlay(QObject):
             # the way it looks, so this costs it only one dead pixel.
             region = QRegion(0, 0, 1, 1)
         if self._input is not None and self._input.available:
-            self._input.apply(int(self._window.winId()), _rects(region, self._scale()))
+            self._input.apply(int(self._window.winId()), _rects(region))
         else:
             self._window.setMask(region)
         # The region reaches the compositor on the surface's next commit, and a
@@ -348,9 +243,7 @@ class Overlay(QObject):
         # clicks until something else happens to repaint.
         self._window.requestUpdate()
         if os.environ.get("LAYER_OVERLAY_DEBUG"):
-            rects = " ".join(
-                f"{x},{y} {w}x{h}" for x, y, w, h in _rects(region, self._scale())
-            )
+            rects = " ".join(f"{x},{y} {w}x{h}" for x, y, w, h in _rects(region))
             print(f"mask [{len(self._hits)}] {rects}", flush=True)
         self._window.setProperty("interactive", self.interactive)
 
@@ -389,12 +282,6 @@ class Surface:
         self._rebuild.stop()
 
     def _closed(self, window) -> None:
-        # Only a layer surface is closed out from under the process, by the
-        # compositor losing its output. An X11 surface goes invisible when it is
-        # reparented — X unmaps a mapped window to move it — and rebuilding on
-        # that would tear down the window that is being placed.
-        if BACKEND != backend.LAYER_SHELL:
-            return
         if window is self._engine.rootObjects()[0] and not window.isVisible():
             self._schedule()
 
@@ -456,11 +343,7 @@ def run(url: str, *, scope: str, storage, qt_args=()) -> int:
     # helper processes go with it.
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
-    print(
-        f"backend: {BACKEND} ({BACKEND_REASON})"
-        f"{'' if REPARENT else '; not reparenting'}",
-        flush=True,
-    )
+    print(f"backend: {BACKEND} ({BACKEND_REASON})", flush=True)
 
     QtWebEngineQuick.initialize()  # has to precede QGuiApplication
     app = QGuiApplication([sys.argv[0], *qt_args])
@@ -474,7 +357,6 @@ def run(url: str, *, scope: str, storage, qt_args=()) -> int:
             "overlay": overlay,
             "overlayUrl": url,
             "overlayScope": scope,
-            "overlayReparenting": REPARENT,
             "overlayStorage": str(storage),
             "overlayWebChannelScript": webchannel_script(),
         },
