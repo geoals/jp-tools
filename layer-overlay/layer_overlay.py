@@ -47,6 +47,15 @@ from xshape import InputRegion
 BACKEND, BACKEND_REASON = backend.choose()
 backend.apply_environment(BACKEND)
 
+#: Shrink the surface onto the tracked window instead of covering the whole
+#: output. Layer-shell only: it is the surface's own size that moves, which is
+#: something only the layer-shell protocol lets this ask for.
+#: `LAYER_OVERLAY_CONFINE=0` goes back to a surface over everything.
+CONFINE = (
+    os.environ.get("LAYER_OVERLAY_CONFINE", "1") != "0"
+    and BACKEND == backend.LAYER_SHELL
+)
+
 from PySide6.QtCore import QFile, QIODevice, QObject, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication, QRegion
 from PySide6.QtQml import QQmlApplicationEngine
@@ -87,6 +96,7 @@ class Overlay(QObject):
         self._hits = []
         self._name = ""
         self._rect = None
+        self._confined = False
         self._xdotool = shutil.which("xdotool")
         # Only the X11 backend needs one: under Wayland the mask already means
         # the input region, and opening an X connection would be pointless.
@@ -123,7 +133,56 @@ class Overlay(QObject):
         if rect == self._rect:
             return
         self._rect = rect
+        if CONFINE:
+            self._confine(rect)
+            return
         self.geometry.emit(*(self._to_surface(rect) if rect else (0, 0, 0, 0)))
+
+    def _confine(self, rect) -> None:
+        """Shrink the surface onto `rect`, or back over the whole output.
+
+        The page is then told `(0, 0, w, h)`: the surface starts where the
+        window does, so the offset `_to_surface` exists to apply is zero by
+        construction and the page's own origin is the window's.
+
+        What this does *not* buy is being covered by other windows. A layer
+        surface is above them by protocol wherever it is — this only stops it
+        being over the parts of the screen the window does not occupy.
+        """
+        if self._window is None:
+            return
+        screen = self._window.screen()
+        if screen is None:
+            return
+        if rect is None:
+            self._inset(0, 0, 0, 0)
+            self.geometry.emit(0, 0, 0, 0)
+            return
+        # X answers in device pixels; a layer surface's margins, like every
+        # other length Qt takes, are logical ones.
+        scale = self._window.devicePixelRatio() or 1.0
+        x, y, w, h = (round(v / scale) for v in rect)
+        area = screen.geometry()
+        left = max(x - area.x(), 0)
+        top = max(y - area.y(), 0)
+        self._inset(
+            left, top,
+            max(area.width() - left - w, 0),
+            max(area.height() - top - h, 0),
+        )
+        self.geometry.emit(0, 0, w, h)
+
+    def _inset(self, left: int, top: int, right: int, bottom: int) -> None:
+        """The four margins the QML binds the surface's own to."""
+        self._confined = any((left, top, right, bottom))
+        for name, value in (
+            ("insetLeft", left), ("insetTop", top),
+            ("insetRight", right), ("insetBottom", bottom),
+        ):
+            self._window.setProperty(name, value)
+        # The surface is reconfigured to a new size, and the mask is in its
+        # coordinates — so what was clickable has moved.
+        self.apply()
 
     def _to_surface(self, rect):
         """The tracked window in the page's own coordinates.
@@ -173,6 +232,10 @@ class Overlay(QObject):
         # the height here is not the final one. Recompute when it settles.
         window.heightChanged.connect(self.apply)
         self.apply()
+        # A rebuilt window carries none of the insets the old one had, and the
+        # rectangle has not changed, so nothing else would re-apply them.
+        if CONFINE and self._rect is not None:
+            self._confine(self._rect)
 
     @Slot(list)
     def setHits(self, flat) -> None:
