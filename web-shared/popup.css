@@ -4,15 +4,22 @@
  * data-* attributes carrying no styling of its own. Yomitan supplies that from
  * its own stylesheet plus a styles.css inside each zip, and neither travels
  * with the definition — which is why the raw markup reads as
- * "1.(1)nounsuffix". Everything below is that styling, rewritten for a dark
- * popup. It is the reason this file is shared rather than reimplemented: a
+ * "1.(1)nounsuffix". Everything below is that styling, rewritten for a popup
+ * that is read over a game or beside a video rather than off white paper. It is the reason this file is shared rather than reimplemented: a
  * second copy would be several hundred lines of per-dictionary selectors
  * silently drifting out of step with the dictionaries they were written for.
  *
  * Positioning is deliberately absent. The overlay pins the popup above a fixed
  * strip; yt-mine puts it under a word in a scrolling list. Each host sets
  * `left`/`top`/`bottom` itself.
+ *
+ * Colour comes entirely from `theme.css`, imported below and shared with the
+ * dashboard and the overlay: the popup picks no colour of its own, so a change
+ * to the palette reaches all three at once and light mode needs no second
+ * stylesheet.
  */
+
+@import url("theme.css");
 
 .jp-popup {
   --scale: 1;
@@ -23,11 +30,12 @@
   overflow-y: auto;
   box-sizing: border-box;
   padding: 0.875rem 1.06rem 1rem;
-  border: 1px solid #2b3040;
-  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-panel);
   /* Opaque: a definition read against moving artwork is unreadable. */
-  background: #14161d;
-  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.8);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--shadow);
   font-size: 1.1rem;
   line-height: 1.55;
   text-shadow: none;
@@ -43,7 +51,7 @@
   flex-wrap: wrap;
   padding-bottom: 0.5rem;
   margin-bottom: 0.5rem;
-  border-bottom: 1px solid #232838;
+  border-bottom: 1px solid var(--border);
 }
 .jp-popup .term {
   font-size: 1.5rem;
@@ -51,11 +59,11 @@
 /* Downstep, as Yomitan writes it: [0] heiban, [1] atamadaka, [n] falling
    after the nth mora. */
 .jp-popup .pitch {
-  color: #93c5fd;
+  color: var(--link);
   font-size: 1rem;
 }
 .jp-popup .reading {
-  color: #9ca3af;
+  color: var(--muted);
 }
 /* One pill per frequency list, split like Yomitan's: the name carries the
    fill, the number sits in the same outline unfilled. Same greys as the
@@ -68,20 +76,20 @@
 }
 .jp-popup .freq {
   display: inline-flex;
-  border: 1px solid #3a4152;
+  border: 1px solid var(--chip);
   border-radius: 0.3em;
   font-size: 0.9rem;
   line-height: 1.55;
 }
 .jp-popup .freq-name {
   padding: 0 0.4em;
-  background-color: #3a4152;
-  color: #e5e7eb;
+  background-color: var(--chip);
+  color: var(--chip-ink);
   font-weight: bold;
 }
 .jp-popup .freq-value {
   padding: 0 0.4em;
-  color: #cbd5e1;
+  color: var(--ink-2);
 }
 
 /* The word is already a card. Green rather than the badge greys, because it
@@ -90,10 +98,10 @@
    and looks like one. */
 .jp-popup .mined {
   padding: 0 0.4em;
-  border: 1px solid rgba(94, 196, 94, 0.55);
+  border: 1px solid var(--ok-edge);
   border-radius: 0.3em;
-  background: rgba(94, 196, 94, 0.16);
-  color: #86e086;
+  background: var(--ok-wash);
+  color: var(--ok);
   font: inherit;
   font-size: 0.9rem;
   line-height: 1.55;
@@ -104,12 +112,12 @@
 .jp-popup .mined.to-card {
   cursor: pointer;
   text-decoration: underline;
-  text-decoration-color: rgba(134, 224, 134, 0.5);
+  text-decoration-color: color-mix(in srgb, var(--ok) 50%, transparent);
   text-underline-offset: 0.2em;
 }
 .jp-popup .mined.to-card:hover {
-  background: rgba(94, 196, 94, 0.28);
-  text-decoration-color: #86e086;
+  background: color-mix(in srgb, var(--ok) 28%, transparent);
+  text-decoration-color: var(--ok);
 }
 
 /* Known, unknown, mine. One character each and the frequency pills' own
@@ -121,10 +129,10 @@
 }
 .jp-popup .acts button {
   padding: 0 0.5em;
-  border: 1px solid #3a4152;
+  border: 1px solid var(--chip);
   border-radius: 0.3em;
-  background: #1b1f29;
-  color: #cbd5e1;
+  background: var(--panel-raised);
+  color: var(--ink-2);
   font: inherit;
   font-size: 0.9rem;
   line-height: 1.55;
@@ -141,7 +149,7 @@
   fill: currentColor;
 }
 .jp-popup .acts button:hover {
-  background: #262c3a;
+  background: var(--panel-hover);
 }
 /* The mine is in flight. Sized to the ＋ it replaces so the head does not
    twitch a pixel wider while it spins. */
@@ -150,8 +158,8 @@
   width: 0.9em;
   height: 0.9em;
   vertical-align: -0.05em;
-  border: 2px solid #3a4152;
-  border-top-color: #cbd5e1;
+  border: 2px solid var(--chip);
+  border-top-color: var(--ink-2);
   border-radius: 50%;
   animation: jp-popup-spin 0.7s linear infinite;
 }
@@ -164,15 +172,15 @@
 /* Anki refused. Says only that it did — the reason is a sentence, and the host
    has somewhere to put one. */
 .jp-popup .acts button.failed {
-  color: #fca5a5;
-  border-color: #7f1d1d;
+  color: var(--danger-ink);
+  border-color: var(--danger);
 }
 
 /* The status the word is on now. */
 .jp-popup .acts button.on {
-  border-color: #3f6ea8;
-  background: #223247;
-  color: #cfe3ff;
+  border-color: var(--accent);
+  background: var(--accent-fill);
+  color: var(--accent-ink);
 }
 
 /* The other matches at this position — see expansions() in overlay.js. One
@@ -190,19 +198,19 @@
 }
 .jp-popup .expansions button {
   padding: 0 0.5em;
-  border: 1px solid #3a4152;
+  border: 1px solid var(--chip);
   border-radius: 0.3em;
-  background: #1b1f29;
-  color: #cbd5e1;
+  background: var(--panel-raised);
+  color: var(--ink-2);
   font: inherit;
   font-size: 1rem;
   cursor: pointer;
 }
 .jp-popup .expansions button:hover {
-  background: #262c3a;
+  background: var(--panel-hover);
 }
 .jp-popup .expansions .none {
-  color: #9ca3af;
+  color: var(--muted);
   font-size: 0.9rem;
 }
 
@@ -221,16 +229,16 @@
 .jp-popup .paging button {
   width: 1.75rem;
   padding: 0 0.25rem;
-  border: 1px solid #2b3040;
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
-  background: #1b1f29;
-  color: #cbd5e1;
+  background: var(--panel-raised);
+  color: var(--ink-2);
   font: inherit;
   line-height: 1.3;
   cursor: pointer;
 }
 .jp-popup .paging button:hover:not(:disabled) {
-  background: #262c3a;
+  background: var(--panel-hover);
 }
 .jp-popup .paging button:disabled {
   opacity: 0.35;
@@ -239,7 +247,7 @@
 
 .jp-popup .dict {
   margin-top: 0;
-  color: #7f8ea3;
+  color: var(--ink-3);
   font-size: 0.9rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -255,7 +263,7 @@
   margin: 0.15rem 0;
 }
 .jp-popup .none {
-  color: #9ca3af;
+  color: var(--muted);
 }
 
 /* Every dictionary here ships Yomitan *structured content*: HTML tagged with
@@ -271,8 +279,9 @@
 
 /* An inline image is standing in for a character — 三省堂 sets its part of
    speech markers and accent bars this way, and hiding them drops content.
-   They are black or red line art drawn for paper: invert to bring them onto
-   a dark background, then turn the hue back so a red bar stays red.
+   They are black or red line art drawn for paper, so on a dark panel they are
+   inverted and the hue turned back to keep a red bar red — and on a light one
+   they are left exactly as drawn, which is what --dict-art is for.
 
    The size has to be capped here: 明鏡's markers declare no dimensions and
    their SVGs carry no intrinsic size either, so without a height they fill
@@ -281,22 +290,23 @@
   width: auto;
   height: 1em;
   vertical-align: -0.1em;
-  filter: invert(1) hue-rotate(180deg);
+  filter: var(--dict-art);
 }
 /* Illustrations and stroke-order diagrams are pictures rather than
-   characters: they get their own line, and paper-white behind them. */
+   characters: they get their own line, and paper-white behind them whichever
+   theme is on — they are photographs of a page. */
 .jp-popup img.dict-figure {
   display: block;
   max-width: 100%;
   height: auto;
   margin: 0.35rem 0;
   padding: 0.25rem;
-  background: #fff;
+  background: hsl(0 0% 100%);
   border-radius: 0.25rem;
   filter: none;
 }
 .jp-popup a {
-  color: #93c5fd;
+  color: var(--link);
   text-decoration: none;
 }
 
@@ -330,8 +340,8 @@
   margin-right: 0.25em;
   padding: 0.15em 0.35em;
   border-radius: 0.3em;
-  background-color: #3a4152;
-  color: #e5e7eb;
+  background-color: var(--chip);
+  color: var(--chip-ink);
   font-size: 0.72em;
   font-weight: bold;
   vertical-align: text-bottom;
@@ -355,34 +365,26 @@
 .jp-popup [data-content="example-sentence"] {
   margin: 0.4rem 0;
   padding: 0.4rem 0.5rem;
-  border-left: 2px solid #3a4152;
+  border-left: 2px solid var(--d-rule);
   border-radius: 0.4rem;
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--d-box);
 }
 .jp-popup [data-content="example-sentence-a"] {
   font-size: 1.25em;
 }
 .jp-popup [data-content="example-keyword"] {
-  color: #5ec45e;
+  color: var(--ok);
 }
 .jp-popup [data-content="example-sentence-b"] {
   font-size: 0.85em;
-  color: #9ca3af;
+  color: var(--muted);
 }
 
-/* One palette for all four, so a sense number means the same colour whichever
-   dictionary is showing and the eye can find it without reading. The paper
-   originals price their reds and pink boxes against white; these are the same
-   distinctions at a brightness that survives being over a game. */
-.jp-popup {
-  --d-key: hsl(0 75% 70%); /* headword and the spellings beside it */
-  --d-num: #e5e7eb; /* sense numbers — bold and plain, found by weight */
-  --d-tag: #9fb3cc; /* part of speech, register, field labels */
-  --d-note: #9ca3af; /* notes, cross references, anything secondary */
-  --d-ex: #9aa3b2; /* example sentences, set off by their rule not a hue */
-  --d-box: rgba(255, 255, 255, 0.06);
-  --d-rule: #3a4152;
-}
+/* The per-dictionary palette — --d-key, --d-num, --d-tag, --d-note, --d-ex,
+   --d-box, --d-rule — is in `web-shared/theme.css` with the rest of the
+   tokens, and has a light set as well as a dark one: the paper originals price
+   their reds against white, and on a light theme that is what they are back on.
+   The rules below spend those tokens; they do not pick colours. */
 /* Ruby is a reading over a word in every dictionary here, and small in all
    of them. */
 .jp-popup [data-rt],
@@ -511,7 +513,7 @@
 }
 .jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="参照G"],
 .jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="対義語G"] {
-  color: #93c5fd;
+  color: var(--link);
   font-size: 0.85em;
 }
 .jp-popup [data-dict="三省堂国語辞典-第八版"] [data-name="red"] {
@@ -576,7 +578,7 @@
   color: var(--d-key);
 }
 .jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-blue] {
-  color: #93c5fd;
+  color: var(--link);
 }
 .jp-popup [data-dict="小学館例解学習国語-第十二版"] [data-green] {
   color: var(--d-ex);

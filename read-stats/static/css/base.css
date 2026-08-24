@@ -1,97 +1,12 @@
-/* Palette, theme, page shell and typography — everything every other
-   sheet assumes is already set. */
+@import url("/shared/theme.css");
 
-/* Palette roles (dataviz reference palette): light values, dark under both the
-   OS signal and an explicit data-theme stamp, so a toggle wins both ways.
+/* Page shell and typography — everything every other sheet assumes is already
+   set. The palette itself is in `web-shared/theme.css`, shared with the
+   dictionary popup and the VN overlay: one set of HSL tokens, light/dark/system,
+   so the same word is the same colour whichever surface it is read on. The
+   vocab scale's reasoning lives there too, since the overlay paints with it.
 
-   --vocab-* is a scale and not three colours: two rules generate it, and a
-   fourth status would follow them rather than be picked by eye:
-
-     hue      names the status, one hue each, far enough apart to be told
-              apart at a glance and in the corner of the eye: 211 (blue) is
-              never met before, 276 (violet) is met but never judged, 28
-              (amber) is judged and not known. They were shades of one hue
-              first, and two shades of a blue are a thing you have to stop and
-              compare — which is the one thing a mark on a line being read
-              must never ask for.
-     lightness says how loudly, and it is what keeps three hues from becoming
-              three alarms: `new` is the rarest and sits furthest from the
-              page, `seen` is most of a line and sits nearest it. The dark ramp
-              mirrors the light one about the page rather than reusing its
-              values: same distance from the background, opposite direction.
-
-   They are backgrounds behind body text in both themes, so every one of them
-   is a *tint* — saturation stays high enough to name the hue and lightness
-   stays close enough to --page that --text-primary keeps its contrast on top.
-   Where they are used: the reading view's word highlights (reader.css, painted
-   through the CSS Custom Highlight API) and the #vocab status counts, which is
-   the point of their being shared — the tint under a word in the feed is the
-   same colour as the pile it is counted in. */
-:root {
-  color-scheme: light;
-  --page: hsl(60 11.1% 94.7%);
-  --surface-1: hsl(213 22% 98.63%);
-  --text-primary: hsl(0 0% 4.3%);
-  --text-secondary: hsl(45 2.5% 31.4%);
-  --muted: hsl(45 3.3% 52.2%);
-  --grid: hsl(52.5 11.8% 86.7%);
-  --baseline: hsl(55 9.1% 74.1%);
-  --border: hsl(0 0% 4.3% / 10%);
-  --series-1: hsl(212.8 67.7% 50.2%);
-  --series-2: hsl(120 100% 25.7%);
-  --series-3: hsl(333.3 71.4% 50.6%);
-  --meter-track: hsl(212.6 85.2% 89.4%);
-  --good: hsl(120 100% 19.4%);
-  --warn: hsl(3.2 71.3% 41%);
-  --vocab-new: hsl(211 88% 84%);
-  --vocab-seen: hsl(276 62% 89%);
-  --vocab-unknown: hsl(28 92% 84%);
-  --vocab-ink: var(--text-secondary);
-}
-@media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme="light"])) {
-    color-scheme: dark;
-    --page: hsl(0 0% 5.1%);
-    --surface-1: hsl(213 8% 10%);
-    --text-primary: hsl(0 0% 100%);
-    --text-secondary: hsl(45 9.1% 74.1%);
-    --muted: hsl(45 3.3% 52.2%);
-    --grid: hsl(60 2.3% 16.9%);
-    --baseline: hsl(60 2.8% 21.4%);
-    --border: hsl(0 0% 100% / 10%);
-    --series-1: hsl(212.8 76.8% 56.1%);
-    --series-2: hsl(120 100% 25.7%);
-    --series-3: hsl(333.3 72.1% 56.5%);
-    --meter-track: hsl(212.6 78.3% 23.5%);
-    --good: hsl(120 86.3% 34.3%);
-    --warn: hsl(3.8 62.2% 50.2%);
-    --vocab-new: hsl(211 62% 33%);
-    --vocab-seen: hsl(276 38% 29%);
-    --vocab-unknown: hsl(28 55% 31%);
-    --vocab-ink: var(--text-secondary);
-  }
-}
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --page: hsl(0 0% 5.1%);
-  --surface-1: hsl(213 8% 10%);
-  --text-primary: hsl(0 0% 100%);
-  --text-secondary: hsl(45 9.1% 74.1%);
-  --muted: hsl(45 3.3% 52.2%);
-  --grid: hsl(60 2.3% 16.9%);
-  --baseline: hsl(60 2.8% 21.4%);
-  --border: hsl(0 0% 100% / 10%);
-  --series-1: hsl(212.8 76.8% 56.1%);
-  --series-2: hsl(120 100% 25.7%);
-  --series-3: hsl(333.3 72.1% 56.5%);
-  --meter-track: hsl(212.6 78.3% 23.5%);
-  --good: hsl(120 86.3% 34.3%);
-  --warn: hsl(3.8 62.2% 50.2%);
-  --vocab-new: hsl(211 62% 33%);
-  --vocab-seen: hsl(276 38% 29%);
-  --vocab-unknown: hsl(28 55% 31%);
-  --vocab-ink: var(--text-secondary);
-}
+   Local roles the dashboard alone has go below, named off the shared ones. */
 
 * {
   box-sizing: border-box;

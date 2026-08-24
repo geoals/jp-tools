@@ -1,0 +1,207 @@
+/* One palette, for every surface this workspace draws.
+ *
+ * There were three: the dashboard's tokens (css/base.css), the dictionary
+ * popup's hand-picked hexes, and the VN overlay's chrome greys. They were
+ * near-misses of each other — three greys that were nearly one grey, two blues
+ * that nearly matched — which is worse than a deliberate contrast, because the
+ * eye reads the near-miss as a mistake rather than as a distinction.
+ *
+ * Everything here is HSL, because every colour in it is a point on a scale
+ * someone has to be able to move: a tint's lightness, a status hue, a chip a
+ * step darker than the panel behind it. A hex says none of that.
+ *
+ * Three states, the same pattern throughout: light on bare `:root`, dark under
+ * the OS signal *unless* an explicit light stamp says otherwise, and dark again
+ * under `[data-theme="dark"]` so the in-app toggle wins in both directions.
+ * `read-stats/static/lib/theme.js` sets the stamp; the overlay sets it from the
+ * same key.
+ *
+ * Two families of token:
+ *
+ *   page/surface/text/series/vocab  the dashboard's roles, unchanged — the
+ *                                   dataviz reference palette, and the vocab
+ *                                   scale whose hues mean the same thing in the
+ *                                   reader, the counts and the overlay's marks.
+ *   panel/chip/ink                  chrome that sits *over* something: the
+ *                                   popup, the overlay's bar and panels. Its
+ *                                   own ramp because it is opaque over artwork
+ *                                   rather than flat on a page, and it has to
+ *                                   stay readable with a game moving behind it.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Page */
+  --page: hsl(60 11.1% 94.7%);
+  --surface-1: hsl(213 22% 98.63%);
+  --text-primary: hsl(0 0% 4.3%);
+  --text-secondary: hsl(45 2.5% 31.4%);
+  --muted: hsl(45 3.3% 52.2%);
+  --grid: hsl(52.5 11.8% 86.7%);
+  --baseline: hsl(55 9.1% 74.1%);
+  --border: hsl(0 0% 4.3% / 10%);
+  --series-1: hsl(212.8 67.7% 50.2%);
+  --series-2: hsl(120 100% 25.7%);
+  --series-3: hsl(333.3 71.4% 50.6%);
+  --meter-track: hsl(212.6 85.2% 89.4%);
+  --good: hsl(120 100% 19.4%);
+  --warn: hsl(3.2 71.3% 41%);
+  --vocab-new: hsl(211 88% 84%);
+  --vocab-seen: hsl(276 62% 89%);
+  --vocab-unknown: hsl(28 92% 84%);
+  --vocab-ink: var(--text-secondary);
+
+  /* Chrome: panels that sit over something else.
+
+     Opaque, all of it. The only translucency on a surface over a game is the
+     one behind the line being read — the overlay's own `--backdrop`, which is
+     a slider in its settings because it trades legibility against seeing the
+     art. Chrome is not that trade: a definition or a settings panel with
+     artwork moving through it is just harder to read. */
+  --panel: hsl(213 22% 99%);
+  --panel-raised: hsl(60 11% 94.7%);
+  --panel-hover: hsl(52 12% 89%);
+  --border-strong: hsl(52 12% 82%);
+  --chip: hsl(52 10% 86%);
+  --chip-ink: hsl(0 0% 15%);
+  --ink: var(--text-primary);
+  --ink-2: var(--text-secondary);
+  --ink-3: var(--muted);
+  --link: var(--series-1);
+  --accent: var(--series-1);
+  --accent-fill: hsl(212.8 67.7% 50.2% / 90%);
+  --accent-ink: hsl(0 0% 100%);
+  --accent-wash: hsl(212.8 67.7% 50.2% / 14%);
+  --alert: hsl(28 88% 34%);
+  --danger: hsl(0 63% 45%);
+  --danger-ink: hsl(0 70% 38%);
+  --ok: hsl(120 46% 30%);
+  --ok-wash: hsl(120 46% 40% / 16%);
+  --ok-edge: hsl(120 46% 40% / 55%);
+  --shadow: 0 10px 34px hsl(0 0% 0% / 22%);
+  --radius-panel: 12px;
+  --radius-control: 8px;
+  --radius-chip: 0.3em;
+
+  /* The dictionaries' own structure: one palette for all four, so a sense
+     number means the same thing whichever is showing. The paper originals
+     price their reds against white; these are the same distinctions at a
+     brightness that survives the surface they are actually read on. */
+  --d-key: hsl(0 70% 42%);
+  --d-num: var(--text-primary);
+  --d-tag: hsl(213 31% 38%);
+  --d-note: var(--muted);
+  --d-ex: hsl(218 14% 40%);
+  --d-box: hsl(0 0% 0% / 4%);
+  --d-rule: var(--border-strong);
+  /* Dictionary line art is black-and-red drawn for paper: on a light panel it
+     is already right, on a dark one it has to be inverted and the hue turned
+     back so a red accent bar stays red. */
+  --dict-art: none;
+}
+
+/* Dark, from the OS — unless an explicit light stamp says otherwise. */
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: hsl(0 0% 5.1%);
+    --surface-1: hsl(213 8% 10%);
+    --text-primary: hsl(0 0% 100%);
+    --text-secondary: hsl(45 9.1% 74.1%);
+    --muted: hsl(45 3.3% 52.2%);
+    --grid: hsl(60 2.3% 16.9%);
+    --baseline: hsl(60 2.8% 21.4%);
+    --border: hsl(0 0% 100% / 10%);
+    --series-1: hsl(212.8 76.8% 56.1%);
+    --series-2: hsl(120 100% 25.7%);
+    --series-3: hsl(333.3 72.1% 56.5%);
+    --meter-track: hsl(212.6 78.3% 23.5%);
+    --good: hsl(120 86.3% 34.3%);
+    --warn: hsl(3.8 62.2% 50.2%);
+    --vocab-new: hsl(211 62% 33%);
+    --vocab-seen: hsl(276 38% 29%);
+    --vocab-unknown: hsl(28 55% 31%);
+    --vocab-ink: var(--text-secondary);
+
+    --panel: hsl(227 18% 9.6%);
+    --panel-raised: hsl(223 21% 13%);
+    --panel-hover: hsl(222 21% 19%);
+    --border-strong: hsl(226 20% 21%);
+    --chip: hsl(222 17% 27%);
+    --chip-ink: hsl(220 13% 91%);
+    --link: hsl(213 97% 78%);
+    --accent: hsl(212.8 76.8% 56.1%);
+    --accent-fill: hsl(214 35% 21%);
+    --accent-ink: hsl(216 100% 91%);
+    --accent-wash: hsl(212.8 76.8% 56.1% / 22%);
+    --alert: hsl(28 92% 72%);
+    --danger: hsl(0 63% 31%);
+    --danger-ink: hsl(0 94% 82%);
+    --ok: hsl(120 58% 70%);
+    --ok-wash: hsl(120 47% 57% / 16%);
+    --ok-edge: hsl(120 47% 57% / 55%);
+    --shadow: 0 10px 34px hsl(0 0% 0% / 80%);
+
+    --d-key: hsl(0 75% 70%);
+    --d-num: hsl(220 13% 91%);
+    --d-tag: hsl(213 31% 71%);
+    --d-note: hsl(218 11% 65%);
+    --d-ex: hsl(218 14% 65%);
+    --d-box: hsl(0 0% 100% / 6%);
+    --d-rule: hsl(222 17% 27%);
+    --dict-art: invert(1) hue-rotate(180deg);
+  }
+}
+
+/* Dark, chosen. Same values; a separate block because a stamp has to beat the
+   OS signal in both directions and CSS has no way to say that once. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: hsl(0 0% 5.1%);
+  --surface-1: hsl(213 8% 10%);
+  --text-primary: hsl(0 0% 100%);
+  --text-secondary: hsl(45 9.1% 74.1%);
+  --muted: hsl(45 3.3% 52.2%);
+  --grid: hsl(60 2.3% 16.9%);
+  --baseline: hsl(60 2.8% 21.4%);
+  --border: hsl(0 0% 100% / 10%);
+  --series-1: hsl(212.8 76.8% 56.1%);
+  --series-2: hsl(120 100% 25.7%);
+  --series-3: hsl(333.3 72.1% 56.5%);
+  --meter-track: hsl(212.6 78.3% 23.5%);
+  --good: hsl(120 86.3% 34.3%);
+  --warn: hsl(3.8 62.2% 50.2%);
+  --vocab-new: hsl(211 62% 33%);
+  --vocab-seen: hsl(276 38% 29%);
+  --vocab-unknown: hsl(28 55% 31%);
+  --vocab-ink: var(--text-secondary);
+
+  --panel: hsl(227 18% 9.6%);
+  --panel-raised: hsl(223 21% 13%);
+  --panel-hover: hsl(222 21% 19%);
+  --border-strong: hsl(226 20% 21%);
+  --chip: hsl(222 17% 27%);
+  --chip-ink: hsl(220 13% 91%);
+  --link: hsl(213 97% 78%);
+  --accent: hsl(212.8 76.8% 56.1%);
+  --accent-fill: hsl(214 35% 21%);
+  --accent-ink: hsl(216 100% 91%);
+  --accent-wash: hsl(212.8 76.8% 56.1% / 22%);
+  --alert: hsl(28 92% 72%);
+  --danger: hsl(0 63% 31%);
+  --danger-ink: hsl(0 94% 82%);
+  --ok: hsl(120 58% 70%);
+  --ok-wash: hsl(120 47% 57% / 16%);
+  --ok-edge: hsl(120 47% 57% / 55%);
+  --shadow: 0 10px 34px hsl(0 0% 0% / 80%);
+
+  --d-key: hsl(0 75% 70%);
+  --d-num: hsl(220 13% 91%);
+  --d-tag: hsl(213 31% 71%);
+  --d-note: hsl(218 11% 65%);
+  --d-ex: hsl(218 14% 65%);
+  --d-box: hsl(0 0% 100% / 6%);
+  --d-rule: hsl(222 17% 27%);
+  --dict-art: invert(1) hue-rotate(180deg);
+}
