@@ -24,6 +24,10 @@ X11 = "x11"
 #: The interface whose presence *is* the layer-shell backend.
 PROTOCOL = "zwlr_layer_shell_v1"
 
+#: What makes QtWebEngine keep the page's alpha under X11. See
+#: [`apply_environment`].
+TRANSPARENT_VISUALS = "--enable-transparent-visuals"
+
 
 def _advertises_layer_shell() -> bool:
     """Ask the compositor what it offers.
@@ -103,6 +107,12 @@ def apply_environment(backend: str) -> None:
     On a native Wayland surface Qt accepts `WindowStaysOnTopHint` and silently
     does nothing with it, so the X11 backend has to ask for the xcb plugin
     rather than inherit the session's default.
+
+    The X11 backend also has to ask Chromium for a transparent visual. A
+    Wayland surface is transparent by protocol, but on X11 QtWebEngine clears
+    every frame opaque whatever `backgroundColor` the view is given — so the
+    page's own translucent backdrop arrives as solid black, and an overlay that
+    is supposed to show the window underneath instead hides it completely.
     """
     if backend == LAYER_SHELL:
         os.environ.setdefault("QT_WAYLAND_SHELL_INTEGRATION", "layer-shell")
@@ -110,6 +120,11 @@ def apply_environment(backend: str) -> None:
     else:
         os.environ["QT_QPA_PLATFORM"] = "xcb"
         os.environ.pop("QT_WAYLAND_SHELL_INTEGRATION", None)
+        flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+        if TRANSPARENT_VISUALS not in flags:
+            os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+                f"{flags} {TRANSPARENT_VISUALS}".strip()
+            )
 
 
 if __name__ == "__main__":
