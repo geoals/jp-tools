@@ -37,8 +37,13 @@ for size in 48 64 128 256 512; do
   cp -f "$HERE/icons/kotodex-$size.png" "$ICONS/${size}x${size}/apps/$APP_ID.png"
 done
 cp -f "$HERE/kotodex.svg" "$ICONS/scalable/apps/$APP_ID.svg"
-# An install from before the app id was reverse-DNS leaves a second entry.
+# An install from before the app id was reverse-DNS leaves a second entry and a
+# second icon, both of which show up in the menu beside the real one.
 rm -f "$APPS/kotodex.desktop"
+for size in 48 64 128 256 512; do
+  rm -f "$ICONS/${size}x${size}/apps/kotodex.png"
+done
+rm -f "$ICONS/scalable/apps/kotodex.svg"
 cp -f "$HERE/$APP_ID.desktop" "$APPS/$APP_ID.desktop"
 
 command -v update-desktop-database >/dev/null && update-desktop-database "$APPS" || true

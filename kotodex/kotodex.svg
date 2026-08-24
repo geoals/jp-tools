@@ -1,10 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Kotodex">
-  <rect width="256" height="256" rx="56" fill="#1b1f2a"/>
-  <!-- The reading strip: a line of text over a game, which is the whole product. -->
-  <rect x="40" y="96" width="176" height="64" rx="14" fill="#f4f1ea"/>
-  <rect x="60" y="116" width="92" height="10" rx="5" fill="#1b1f2a"/>
-  <rect x="60" y="136" width="60" height="10" rx="5" fill="#8a93a8"/>
-  <!-- One word marked, which is the other half. -->
-  <rect x="160" y="116" width="36" height="10" rx="5" fill="#e0803a"/>
-  <rect x="160" y="136" width="24" height="10" rx="5" fill="#e0803a" opacity="0.5"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Kotodex">
+  <!-- rx 48 is the overlay bar button's 8px on 2.6rem: the icon and the bar it
+       launches share one corner. -->
+  <rect width="256" height="256" rx="48" fill="#1b1f2a"/>
+
+  <!-- コト drawn as strokes rather than <text>: a shipped icon has to render on
+       a machine with no Japanese font installed. Butt caps and miter joins, so
+       the terminals are flat the way a gothic face's are. The horizontals are
+       sized for a 78 x 84 ink block — a butt cap gives back none of the half
+       stroke a round cap adds at each end, so the same coordinates under round
+       caps would draw a wider glyph. -->
+  <g fill="none" stroke="#f4f1ea" stroke-width="22" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M 47 77 H 114 V 139 H 47"/>
+    <path d="M 163 66 V 150"/>
+    <path d="M 163 101 L 204 118"/>
+  </g>
+
+  <!-- The looked-up word. #93c5fd is the dictionary popup's headword blue.
+       It ends at x 200, the lower corner of the branch's cap rather than its
+       rightmost point: the cap is perpendicular to an angled stroke, so its
+       corners sit 8.4 apart in x, and the rule runs under the glyphs. -->
+  <rect x="47" y="168" width="153" height="18" fill="#93c5fd"/>
 </svg>
