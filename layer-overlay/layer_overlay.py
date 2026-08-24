@@ -168,15 +168,34 @@ class Overlay(QObject):
         self._rect = rect
         self.geometry.emit(*(self._to_surface(rect) if rect else (0, 0, 0, 0)))
 
+    def _scale(self) -> float:
+        """Device pixels per logical pixel, on the output the surface is on."""
+        if self._window is None:
+            return 1.0
+        return self._window.devicePixelRatio() or 1.0
+
     def _to_surface(self, rect):
         """The tracked window in the page's own coordinates.
 
-        A layer surface covers the output, so this is identity there. A
-        window manager shrinks an X11 surface to the *work area* instead, and a
-        panel then offsets it — leaving the page to place everything against a
-        screen origin its surface does not start at.
+        Two conversions, and the units are the one that bites. X answers in
+        device pixels and the page counts in CSS pixels, which are Qt's logical
+        ones — the same thing only on an unscaled output. Handed the device
+        numbers directly the page puts the overlay 1/scale too far from the
+        origin, so the error grows with the distance and the overlay drifts
+        away from the window as the window is moved rather than sitting wrong
+        by a fixed amount.
+
+        Then the origin. A layer surface covers the output, so that part is
+        identity there. A window manager shrinks an X11 surface to the *work
+        area* instead, and a panel then offsets it — leaving the page to place
+        everything against a screen origin its surface does not start at.
+
+        Fractions of the rectangle — the per-game `--text-*` measurements, and
+        both drag offsets — are unaffected: they scale with the width and
+        height they are fractions of.
         """
-        x, y, w, h = rect
+        scale = self._scale()
+        x, y, w, h = (round(v / scale) for v in rect)
         if self._window is None:
             return (x, y, w, h)
         return (x - self._window.x(), y - self._window.y(), w, h)
