@@ -161,7 +161,6 @@ cap xdotool "window tracking"
 
 section "Extras"
 cap explain "explain"
-flush_section
 
 if [ -z "$CAPS" ]; then
   printf '\n%sMost rows need Kotodex running.%s Start it, then run this again.\n' "$yellow" "$off"
