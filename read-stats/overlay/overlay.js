@@ -1003,9 +1003,6 @@ function showPaused(paused) {
   // now, and the tooltip is where the sentence goes.
   pauseBtnEl.textContent = paused ? "▶" : "⏸";
   tip(pauseBtnEl, paused ? "Resume capture" : "Pause capture");
-  // The handle is all there is to see with the bar shut, so it carries the
-  // state too — by what it draws, like the button, rather than by colour.
-  handleEl.textContent = paused ? "⏸" : "☰";
 }
 
 pauseBtnEl.addEventListener("click", async () => {
