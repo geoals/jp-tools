@@ -18,6 +18,8 @@
 #   -k, --keep       never restart; leave running services alone
 #   --cpu            use the CPU whisper compose file instead of GPU
 #   --release        build/run the Rust servers in release mode
+#   --no-build       never invoke cargo; run the release binaries as shipped,
+#                    and say to run setup.sh if one is missing
 #
 # Services managed (aliases in parens):
 #   manga-ocr-service  uvicorn (.venv)            :8200  (ocr)
@@ -40,6 +42,9 @@ WHISPER_FLAVOR="gpu"
 # A release tarball ships release binaries and no toolchain, so there is
 # nothing to build and nothing in target/debug to run.
 if command -v cargo >/dev/null; then CARGO_PROFILE="debug"; else CARGO_PROFILE="release"; fi
+# Building is a developer action, not a startup step: the launcher passes
+# --no-build so clicking the desktop entry never waits on cargo.
+NO_BUILD=0
 COMMAND="start"
 SELECTED=()         # empty = all services
 
@@ -62,6 +67,7 @@ for arg in "$@"; do
     -k|--keep)         MODE="keep" ;;
     --cpu)             WHISPER_FLAVOR="cpu" ;;
     --release)         CARGO_PROFILE="release" ;;
+    --no-build)        NO_BUILD=1; CARGO_PROFILE="release" ;;
     -h|--help)         awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' \
                          "${BASH_SOURCE[0]}"; exit 0 ;;
     *)
@@ -255,6 +261,10 @@ start_ocr() {
 start_rust() { # name port binary
   local name="$1" port="$2" bin="$REPO_ROOT/target/$CARGO_PROFILE/$3"
   should_start "$name" "$port" || return 0
+  if [[ ! -x "$bin" ]]; then
+    fail "$name: no binary at $bin — run ./setup.sh"
+    return 1
+  fi
   stop_port "$name" "$port"
   start_native "$name" "$port" "$REPO_ROOT" "$bin"
   wait_for_port "$name" "$port" 30 "$LOG_DIR/$name.log"
@@ -262,6 +272,9 @@ start_rust() { # name port binary
 
 build_rust() {
   local pkgs=() names=() name
+  if (( NO_BUILD )); then
+    return 0
+  fi
   if ! command -v cargo >/dev/null; then
     info "no cargo — running the binaries as shipped"
     return 0

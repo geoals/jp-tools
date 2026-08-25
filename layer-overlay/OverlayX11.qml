@@ -51,6 +51,31 @@ Window {
         userScripts.collection: [overlayWebChannelScript]
         webChannel: WebChannel { id: channel }
         Component.onCompleted: channel.registerObject("shell", overlay)
+
+        // read-stats may still be starting, and a failed load puts Chromium's
+        // error page over the whole screen with nothing to dismiss it. So the
+        // error page is off — a failed load leaves the surface as it was — and
+        // the view retries until the server answers.
+        settings.errorPageEnabled: false
+
+        onLoadingChanged: function (load) {
+            if (load.status === WebEngineView.LoadFailedStatus)
+                retry.restart()
+            else if (load.status === WebEngineView.LoadSucceededStatus)
+                retry.delay = 500
+        }
+
+        Timer {
+            id: retry
+            // Backs off, so a server that never comes up is not polled tightly
+            // for the rest of the session.
+            property int delay: 500
+            interval: delay
+            onTriggered: {
+                delay = Math.min(delay * 2, 5000)
+                view.reload()
+            }
+        }
     }
 
     Shortcut {

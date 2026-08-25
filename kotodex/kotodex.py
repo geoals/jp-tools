@@ -38,9 +38,10 @@ READ_STATS_URL = os.environ.get("KOTODEX_READ_STATS_URL", "http://127.0.0.1:3200
 APP_ID = "com.kotodex.Kotodex"
 SOCKET_NAME = APP_ID
 
-# How long read-stats gets to answer before the overlay is started anyway. It
-# builds on first run, which is slow and not a failure.
-READY_TIMEOUT = 90.0
+# How long read-stats gets to answer before it is called down. The launcher
+# never builds it — see --no-build — so this covers the migrations it runs
+# against knowledge.db on the way up, not a compile.
+READY_TIMEOUT = 60.0
 # How long a restarted capture gets to answer before it is read as down and
 # started a second time. Its restart command returns before the daemon is up,
 # and the daemon deletes its segment files on the way up, so the seg probe is
@@ -210,12 +211,16 @@ def children():
         Child(
             "read-stats",
             read_stats_up,
-            [str(REPO / "scripts" / "start-all.sh"), "read-stats"],
+            # Clicking the desktop entry must never wait on cargo: a launch
+            # that builds is a launch that takes minutes and looks hung.
+            [str(REPO / "scripts" / "start-all.sh"), "--no-build", "read-stats"],
             # The wrapper it is started through exits at once, so there is no
             # process here to terminate — stopping it has to go back through
             # start-all.sh, or quitting the launcher would leave it running.
             stop_cmd=[str(REPO / "scripts" / "start-all.sh"), "stop", "read-stats"],
-            restart_cmd=[str(REPO / "scripts" / "start-all.sh"), "restart", "read-stats"],
+            restart_cmd=[
+                str(REPO / "scripts" / "start-all.sh"), "--no-build", "restart", "read-stats"
+            ],
             detaches=True,
         ),
         Child(
@@ -236,7 +241,7 @@ def wait_for_read_stats(log):
         if read_stats_up():
             return True
         time.sleep(1)
-    log("read-stats: no answer yet — starting the overlay anyway")
+    log("read-stats: no answer — not starting the overlay")
     return False
 
 
@@ -279,7 +284,8 @@ def restart_components() -> int:
     """
     steps = [
         ("capture", [str(REPO / "vn-mine" / "kotodex-capture"), "restart"]),
-        ("read-stats", [str(REPO / "scripts" / "start-all.sh"), "restart", "read-stats"]),
+        ("read-stats",
+         [str(REPO / "scripts" / "start-all.sh"), "--no-build", "restart", "read-stats"]),
         ("overlay", [str(REPO / "read-stats" / "overlay" / "vn-overlay.sh"), "restart"]),
     ]
     failed = 0
@@ -333,10 +339,16 @@ def main() -> int:
 
     kids = children()
 
+    # The overlay draws a read-stats page, so starting it before the port
+    # answers puts a browser error page over the whole screen with no way to
+    # dismiss it. If read-stats never comes up the tray is how it is retried.
+    serving = True
     for child in kids:
+        if child.name == "overlay" and not serving:
+            continue
         child.ensure(log)
         if child.name == "read-stats":
-            wait_for_read_stats(log)
+            serving = wait_for_read_stats(log)
 
     tray = Tray(app, kids, READ_STATS_URL, log)
 
@@ -351,6 +363,7 @@ def main() -> int:
         back as its child, or the restart would quietly convert it into
         something adopted — running, but no longer stopped on the way out.
         """
+        nonlocal serving
         log("restarting everything")
         restarting["until"] = time.time() + 120
         for child in reversed(kids):
@@ -374,9 +387,11 @@ def main() -> int:
             # start-all.sh, so it is back before this runs.
             if child.name == "capture":
                 child.wait_ready(log, CAPTURE_READY)
+            if child.name == "overlay" and not serving:
+                continue
             child.ensure(log)
             if child.name == "read-stats":
-                wait_for_read_stats(log)
+                serving = wait_for_read_stats(log)
         restarting["until"] = 0.0
         log("restarted")
 

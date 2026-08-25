@@ -6,8 +6,10 @@
 #   source /path/to/layer-overlay/runner.sh
 #   layer_overlay_main "$@"
 #
-# Gives the caller `start` / `stop` / `restart` / `status`, and passes anything
-# after the command through to the script. `-h`/`--help` is the caller's, so it
+# Gives the caller `start` / `stop` / `restart` / `ensure` / `status`, and
+# passes anything after the command through to the script. `ensure` starts one
+# only if none is running, which is what a "show it" button wants — `start`
+# would replace a perfectly good overlay. `-h`/`--help` is the caller's, so it
 # can document its own flags — handle it before calling this.
 #
 #   OVERLAY_PYTHON    interpreter to run it  (default python3)
@@ -31,7 +33,20 @@ OVERLAY_PYTHON="${OVERLAY_PYTHON:-python3}"
 OVERLAY_RUN_DIR="${OVERLAY_RUN_DIR:-$XDG_RUNTIME_DIR/$OVERLAY_NAME}"
 OVERLAY_LOG="${OVERLAY_LOG:-$OVERLAY_RUN_DIR/overlay.log}"
 _OVERLAY_PID_FILE="$OVERLAY_RUN_DIR/overlay.pid"
+_OVERLAY_LOCK_FILE="$OVERLAY_RUN_DIR/overlay.lock"
 
+# Serialise everything that looks at the pid and then acts on it. `start` stops
+# a running overlay before spawning its own, so two of them a moment apart both
+# find nothing to stop and both spawn — two overlays, one pid file. The window
+# is real: the launcher starts the overlay at the same moment a second launch
+# asks to be shown.
+_layer_overlay_lock() {
+  command -v flock >/dev/null || return 0
+  exec 9>"$_OVERLAY_LOCK_FILE"
+  # Bounded: a lock that cannot be taken is worth a warning and a try anyway,
+  # never a command that hangs with no output.
+  flock -w 30 9 || echo "$OVERLAY_NAME: lock busy after 30s — continuing" >&2
+}
 # The pid of the running overlay, or empty. The pid file alone is not enough —
 # it outlives a crash, and the number is reused — so the process behind it has
 # to still be this script. `pgrep -f` is the fallback, so that an instance
@@ -90,12 +105,15 @@ _layer_overlay_wayland() {
 layer_overlay_main() {
   local command="start"
   case "${1-}" in
-    start | stop | restart | status)
+    start | stop | restart | ensure | status)
       command="$1"
       shift
       ;;
   esac
   [[ "$command" == "restart" ]] && command="start"
+
+  mkdir -p "$OVERLAY_RUN_DIR"
+  _layer_overlay_lock
 
   case "$command" in
     stop)
@@ -114,16 +132,26 @@ layer_overlay_main() {
       echo
       return 0
       ;;
+    ensure)
+      local pid
+      pid="$(layer_overlay_pid)"
+      if [[ -n "$pid" ]]; then
+        echo "$OVERLAY_NAME: already running (pid $pid)"
+        return 0
+      fi
+      ;;
   esac
 
-  mkdir -p "$OVERLAY_RUN_DIR"
   layer_overlay_stop
   _layer_overlay_wayland || return 1
 
   # setsid so it leaves the ssh session's process group, and every descriptor
   # redirected so nothing of it is left pointing at a terminal that is about to
   # close. Without both, logging out takes the overlay with it.
-  setsid "$OVERLAY_PYTHON" "$OVERLAY_SCRIPT" "$@" </dev/null >"$OVERLAY_LOG" 2>&1 &
+  # 9>&-: the lock fd must not reach the overlay. Inherited, it is held for the
+  # whole life of the process rather than the length of this script, and every
+  # later start/stop/status blocks on it forever.
+  setsid "$OVERLAY_PYTHON" "$OVERLAY_SCRIPT" "$@" </dev/null >"$OVERLAY_LOG" 2>&1 9>&- &
   local pid=$!
   echo "$pid" >"$_OVERLAY_PID_FILE"
 

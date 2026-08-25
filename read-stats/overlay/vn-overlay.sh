@@ -6,6 +6,7 @@
 #   vn-overlay.sh [start] [--mobile ...]  start it, replacing a running one
 #   vn-overlay.sh stop                    stop it
 #   vn-overlay.sh restart [--mobile ...]  same as start
+#   vn-overlay.sh ensure [--mobile ...]   start it only if none is running
 #   vn-overlay.sh status                  is it up, and with what
 #
 # Everything after the command goes to vn-overlay.py, so `--mobile` and any

@@ -73,7 +73,10 @@ class Tray:
         return "Kotodex — already running, left alone on quit: " + ", ".join(adopted)
 
     def show_overlay(self):
-        subprocess.Popen([str(OVERLAY), "start"], cwd=REPO)
+        # `ensure`, not `start`: this is also where a second launch of the
+        # desktop entry lands, and restarting a running overlay would throw
+        # away the page the reader is looking at.
+        subprocess.Popen([str(OVERLAY), "ensure"], cwd=REPO)
 
     def hide_overlay(self):
         subprocess.run([str(OVERLAY), "stop"], cwd=REPO, capture_output=True)
