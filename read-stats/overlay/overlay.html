@@ -781,16 +781,29 @@
   #scrollback-lines .sb.current {
     background: var(--accent-wash);
   }
-  /* The word marks are built for the line, which is always over the game: the
-     hover wash and the open-word ring are both white, and this panel paints
-     `--panel` behind them — invisible in light mode. The status tints are the
-     same dark ramp but read as tints either way, so only these two are
-     restated in theme colours. */
+  /* The word marks are built for the line, which is always over the game and so
+     always on the dark ramp whatever the theme says. This panel is themed, and
+     in light mode that ramp is a dark wash under dark text with the white hover
+     and the white ring invisible on top of it.
+
+     The same marks the dashboard draws, then — `--vocab-*` carries a ramp per
+     theme, and `#read` paints them exactly like this. The line keeps its own
+     hardcoded ramp and its `--tint`: that one is set over artwork, which is
+     what the opacity is for. */
   #scrollback-lines .w:hover {
     background: var(--panel-hover);
   }
   #scrollback-lines .w.open {
     box-shadow: 0 0 0 2px var(--ink);
+  }
+  #scrollback-lines .w.new {
+    background: var(--vocab-new);
+  }
+  #scrollback-lines .w.seen {
+    background: var(--vocab-seen);
+  }
+  #scrollback-lines .w.unknown {
+    background: var(--vocab-unknown);
   }
   /* Where one sitting ends and the next begins, on the gap the server splits
      sessions on — so this divider marks the same sitting the dashboard counts.
