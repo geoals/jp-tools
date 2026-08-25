@@ -3,7 +3,7 @@
 # Keeps the last ~300s of desktop audio as 5s WAV segments in a tmpfs ring,
 # and logs every Japanese line Textractor hooks (read from its WebSocket
 # server) with a timestamp. vn-capture.sh reads both to cut out the last
-# voiceline. Run via systemd user unit: systemctl --user start vn-buffer
+# voiceline. Started by the Kotodex launcher.
 
 RUNDIR="${VN_RUNDIR:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/vn-mine}"
 SEGDIR="$RUNDIR/seg"
@@ -11,21 +11,14 @@ LINES_LOG="$RUNDIR/lines.log"
 SEG_TIME=5
 SEG_WRAP=60 # 60 x 5s = 300s ring
 
-WS_PYTHON="$HOME/.local/share/vn-mine/venv/bin/python"
+WS_PYTHON="$HOME/.local/share/kotodex/venv/bin/python"
 WS_LOGGER="$(dirname "$(readlink -f "$0")")/vn-ws-logger.py"
 
-# The unit that owns this daemon, if one does. Two names because an install
-# from before the rename still has `vn-buffer.service`, and a shim that only
-# renames the binary would leave `restart` restarting the wrong thing.
+# The unit that owns this daemon, if one does — optional, and only where the
+# reader installed it to keep capture up across launcher restarts.
 capture_unit() {
-  local unit
-  for unit in kotodex-capture.service vn-buffer.service; do
-    if systemctl --user is-active --quiet "$unit" 2>/dev/null; then
-      echo "$unit"
-      return 0
-    fi
-  done
-  return 1
+  systemctl --user is-active --quiet kotodex-capture.service 2>/dev/null \
+    && echo kotodex-capture.service
 }
 
 case "$1" in

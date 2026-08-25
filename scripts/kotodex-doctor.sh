@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # What works here, what does not, and the one command that fixes each.
 #
-#   scripts/kotodex-doctor.sh [--url http://localhost:3200]
+#   scripts/kotodex-doctor.sh [--url http://localhost:3200] [--only-problems]
+#
+# `--only-problems` prints just the rows that need something and the sections
+# holding them, which is what setup.sh ends with: a reader who has just watched
+# every step succeed does not need the same list again.
 #
 # Exit 0 when the core works: a tokenizer dictionary, at least one definition
 # dictionary, and a line source. Everything else is reported and forgiven — the
@@ -23,22 +27,42 @@ else
 fi
 
 URL="http://localhost:${READ_STATS_PORT:-3200}"
-[ "${1:-}" = "--url" ] && URL="$2"
+ONLY_PROBLEMS=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --url) URL="$2"; shift ;;
+    --only-problems) ONLY_PROBLEMS=1 ;;
+  esac
+  shift
+done
 
 bold=$'\033[1m'; red=$'\033[31m'; yellow=$'\033[33m'; green=$'\033[32m'; off=$'\033[0m'
 [ -t 1 ] || { bold=""; red=""; yellow=""; green=""; off=""; }
 
 core_broken=0
 
-section() { printf '\n%s%s%s\n' "$bold" "$1" "$off"; }
+# Held rather than printed, so a section whose every row was suppressed does not
+# leave a bare heading behind.
+PENDING_SECTION=""
+section() {
+  if [ "$ONLY_PROBLEMS" = 1 ]; then PENDING_SECTION="$1"; return; fi
+  printf '\n%s%s%s\n' "$bold" "$1" "$off"
+}
+flush_section() {
+  [ -n "$PENDING_SECTION" ] || return 0
+  printf '\n%s%s%s\n' "$bold" "$PENDING_SECTION" "$off"
+  PENDING_SECTION=""
+}
 
 # row <ok> <name> <detail> <fix> <critical>
 row() {
   local ok="$1" name="$2" detail="$3" fix="$4" critical="${5:-}"
   if [ "$ok" = true ]; then
+    [ "$ONLY_PROBLEMS" = 1 ] && return
     printf '  %s✓%s %-18s %s\n' "$green" "$off" "$name" "$detail"
     return
   fi
+  flush_section
   if [ -n "$critical" ]; then
     printf '  %s✗%s %-18s %s\n' "$red" "$off" "$name" "$detail"
     core_broken=1
@@ -91,13 +115,13 @@ binary_row jq jq critical
 if [ -f "$REPO/system_full.dic" ] || [ -n "${KOTODEX_SUDACHI_DICT_PATH:-}" ]; then
   row true "SudachiDict" "present" ""
 else
-  row false "SudachiDict" "missing" "run setup.sh — nothing tokenizes without it" critical
+  row false "SudachiDict" "missing" "run setup.sh — required for reading any Japanese text" critical
 fi
 if [ -n "$CAPS" ]; then
   row true "read-stats" "answering on $URL" ""
 else
   row false "read-stats" "not answering on $URL" \
-    "start it: scripts/start-all.sh read-stats — the rows below need it" critical
+    "start Kotodex from the application menu — the rows below need it" critical
 fi
 
 section "Capture"
@@ -121,10 +145,10 @@ cap anki_note_type "note type"
 cap screenshot_tool "screenshot tool"
 
 section "Overlay"
-py="$(kotodex_python)"
-if [ "$py" != python3 ]; then
+src="$(pyside6_source 2>/dev/null || true)"
+if [ "$src" = pip ]; then
   row true "PySide6" "pip, in $KOTODEX_VENV" ""
-elif python3 -c "import PySide6.QtWebEngineQuick" >/dev/null 2>&1; then
+elif [ -n "$src" ]; then
   row true "PySide6" "installed" ""
 elif distro_packages_pyside6; then
   row false "PySide6" "not installed" "$(pkg_install_cmd pyside6 qt6-webengine)" critical
@@ -137,16 +161,17 @@ cap xdotool "window tracking"
 
 section "Extras"
 cap explain "explain"
-printf '  %s—%s %-18s %s\n' "$yellow" "$off" "whisper setup" \
-  "not configured automatically in this release"
-printf '      it narrows a card'"'"'s clip to the mined sentence; see whisper-service/README.md\n'
+flush_section
+printf '  %s—%s %-18s %s\n' "$yellow" "$off" "whisper setup" "not set up automatically"
+printf '      required for trimming card audio to the mined sentence; see whisper-service/README.md\n'
 
 if [ -z "$CAPS" ]; then
-  printf '\n%sMost rows need read-stats running.%s Start it and run this again.\n' "$yellow" "$off"
+  printf '\n%sMost rows need Kotodex running.%s Start it, then run this again.\n' "$yellow" "$off"
 fi
 
 printf '\n'
 if [ "$core_broken" = 0 ]; then
+  [ "$ONLY_PROBLEMS" = 1 ] && exit 0
   printf '%sThe core works.%s Anything marked — is optional and says what it would add.\n' "$green" "$off"
   exit 0
 fi

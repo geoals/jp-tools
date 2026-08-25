@@ -96,7 +96,7 @@ fn capture_running() -> Capability {
     } else {
         off(
             "the ring buffer is not being written",
-            "start it: vn-mine/vn-buffer.sh run",
+            "start Kotodex — it runs the capture daemon",
         )
     }
 }
@@ -117,11 +117,11 @@ async fn lines_source(state: &AppState) -> Capability {
     match chosen.as_str() {
         "clipboard" => off(
             "clipboard, no producer",
-            "start the capture daemon — it is what watches the clipboard",
+            "start Kotodex — it runs the capture daemon that watches the clipboard",
         ),
         _ => off(
             "ws, no producer",
-            "run Textractor with its WebSocket plugin pointed at vn-ws-logger.py",
+            "in Textractor, point its WebSocket plugin at vn-ws-logger.py",
         ),
     }
 }
@@ -129,14 +129,14 @@ async fn lines_source(state: &AppState) -> Capability {
 fn vad_model() -> Capability {
     let path = std::env::var("VN_VAD_MODEL").map(PathBuf::from).unwrap_or_else(|_| {
         PathBuf::from(std::env::var("HOME").unwrap_or_default())
-            .join(".local/share/vn-mine/silero_vad.onnx")
+            .join(".local/share/kotodex/silero_vad.onnx")
     });
     if path.is_file() {
         on(path.display().to_string())
     } else {
         off(
             "not downloaded",
-            "run setup.sh, or fetch silero_vad.onnx into ~/.local/share/vn-mine/",
+            "run setup.sh again — it downloads the model",
         )
     }
 }
@@ -157,7 +157,8 @@ fn xdotool() -> Capability {
     } else {
         off(
             "not installed",
-            "install xdotool — without it the screenshot takes whatever has focus",
+            "install xdotool — required for anki cards to get a screenshot of the right
+             window, and for positioning of the overlay",
         )
     }
 }
@@ -219,7 +220,8 @@ async fn whisper(state: &AppState) -> Capability {
     } else {
         off(
             "not running",
-            "optional — it narrows the clip to the mined sentence; see whisper-service/README.md",
+            "required for trimming card audio to the mined sentence; see
+             whisper-service/README.md",
         )
     }
 }
@@ -245,7 +247,7 @@ async fn anki(state: &AppState) -> (Capability, Capability) {
         return (
             off(
                 "not running",
-                "start Anki with the AnkiConnect add-on — mining is off until then",
+                "start Anki with the AnkiConnect add-on — required for mining",
             ),
             off("unknown", "needs a reachable Anki"),
         );
@@ -277,24 +279,26 @@ async fn dictionaries(state: &AppState) -> Value {
         Some(d) => on(d.title.clone()),
         None => off(
             "none",
-            "import a monolingual dictionary — without one there is no vocabulary scale",
+            "import a monolingual dictionary — required for the vocabulary count",
         ),
     };
     let frequency = match count(Role::Frequency) {
         0 => off(
             "none",
-            "import a frequency list — no underline, no rank pill, no ordering by how common a word is",
+            "import a frequency list — required for underlining common words, the rank
+             in the popup, and review order",
         ),
         n => on(format!("{n}")),
     };
     let pitch = match count(Role::Pitch) {
-        0 => off("none", "import a pitch dictionary to show the accent"),
+        0 => off("none", "import a pitch dictionary — required for the accent line"),
         n => on(format!("{n}")),
     };
     let defs = match definitions {
         0 => off(
             "none",
-            "drop a Yomitan zip in dictionaries/ and run jp-dict sync — the popup is empty without one",
+            "drop a Yomitan zip in dictionaries/ and run setup.sh again — required for
+             any definitions",
         ),
         n => on(format!("{n}")),
     };
@@ -316,7 +320,7 @@ async fn vocabulary_ledger(state: &AppState) -> Capability {
     } else {
         off(
             "empty",
-            "it fills itself as you read; status marks stay off until it has rows",
+            "fills itself as you read — required for status marks",
         )
     }
 }
@@ -327,7 +331,8 @@ fn explain(state: &AppState) -> Capability {
     } else {
         off(
             "no API key",
-            "set KOTODEX_ANTHROPIC_API_KEY to explain a line",
+            "set KOTODEX_ANTHROPIC_API_KEY — required for AI generated explanation of
+             lines, and word definitions",
         )
     }
 }

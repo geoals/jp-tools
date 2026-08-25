@@ -1,12 +1,11 @@
-# The venv at ~/.local/share/vn-mine/venv, which vn-buffer.service runs from.
+# The venv at ~/.local/share/kotodex/venv, which kotodex-capture runs the
+# logger and the VAD from. `setup.sh` creates it and installs this file.
 #
-#   python3 -m venv ~/.local/share/vn-mine/venv
-#   ~/.local/share/vn-mine/venv/bin/pip install -r vn-mine/requirements.txt
-#
-# The overlay is NOT in here. It runs on the system python, because PySide6 and
-# the layer-shell platform plugin are system packages (Arch: pyside6,
-# qt6-wayland, layer-shell-qt) and the venv is built without system site
-# packages. `vn-overlay.sh` calls bare `python3` for that reason.
+# PySide6 is deliberately not listed. The venv is built with
+# `--system-site-packages` so the packaged PySide6 is visible through it, and
+# only a distribution that has no such package gets a pip one — a pip wheel
+# carries its own Qt and cannot load the system layer-shell plugin, which is
+# what puts the overlay over a fullscreen game.
 
 # vn-ws-logger.py — the Textractor WebSocket client
 websockets

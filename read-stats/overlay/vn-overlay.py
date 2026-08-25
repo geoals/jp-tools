@@ -51,12 +51,10 @@ import layer_overlay  # noqa: E402
 
 DEFAULT_URL = "http://localhost:3200/overlay/overlay.html"
 ANKI_URL = os.environ.get("KOTODEX_ANKI_URL", "http://127.0.0.1:8765")
-# Names the surface to the compositor and the page's localStorage. Unchanged
-# from when the shell lived in vn-mine, so the type settings, ghost mode and
-# both drag offsets survived the move.
+# Names the surface to the compositor and the page's localStorage.
 SCOPE = "vn-overlay"
 STORAGE = (
-    Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "vn-mine/overlay"
+    Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "kotodex/overlay"
 )
 
 

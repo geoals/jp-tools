@@ -104,6 +104,12 @@ pkg_name() {
     python:pacman) echo python ;;
     python:*) echo python3 ;;
 
+    # Only Debian and Ubuntu ship venv separately; everywhere else it comes
+    # with the interpreter.
+    python3-venv:apt) echo python3-venv ;;
+    python3-venv:pacman) echo python ;;
+    python3-venv:*) echo python3 ;;
+
     import:pacman) echo imagemagick ;;
     import:apt) echo imagemagick ;;
     import:*) echo ImageMagick ;;
@@ -152,6 +158,23 @@ kotodex_python() {
   else
     echo python3
   fi
+}
+
+# `pip` or `system` — where the PySide6 that will be imported actually lives.
+# The venv is built with `--system-site-packages` and always exists, so it can
+# import the distribution's PySide6; that it resolves through the venv says
+# nothing about who installed it. Asking the module for its own path does.
+pyside6_source() {
+  local py file
+  py="$(kotodex_python)"
+  # QtWebEngineQuick, not PySide6 alone: the base package without the WebEngine
+  # addon cannot draw the overlay, and reporting it as present hides that.
+  file="$("$py" -c "import PySide6.QtWebEngineQuick, PySide6, sys; sys.stdout.write(PySide6.__file__)" 2>/dev/null)" \
+    || return 1
+  case "$file" in
+    "$KOTODEX_VENV"/*) echo pip ;;
+    *) echo system ;;
+  esac
 }
 
 # Whether this distribution packages PySide6 at all. Ubuntu 24.04 LTS and

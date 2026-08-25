@@ -20,7 +20,7 @@ CONTEXT = 64         # v5 model expects 64 context samples prepended
 THRESHOLD = float(os.environ.get("VN_VAD_THRESHOLD", "0.5"))
 MODEL = os.environ.get(
     "VN_VAD_MODEL",
-    os.path.expanduser("~/.local/share/vn-mine/silero_vad.onnx"),
+    os.path.expanduser("~/.local/share/kotodex/silero_vad.onnx"),
 )
 # Ignore blips shorter than this. Set well above a plausible sound effect
 # rather than just above the noise floor: the model is stateful, so a loud

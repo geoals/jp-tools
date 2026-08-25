@@ -65,7 +65,7 @@ if [ -f "$REPO_ENV" ]; then
 fi
 ANKI_CONNECT_URL="${KOTODEX_ANKI_URL:-http://127.0.0.1:8765}"
 WHISPER_URL="${VN_WHISPER_URL:-http://localhost:8100}"
-VAD_PYTHON="$HOME/.local/share/vn-mine/venv/bin/python"
+VAD_PYTHON="$HOME/.local/share/kotodex/venv/bin/python"
 VAD_SCRIPT="$SCRIPT_DIR/vn-vad.py"
 TRIM_SCRIPT="$SCRIPT_DIR/vn-trim.py"
 VN_WINDOW="${VN_WINDOW:-}"

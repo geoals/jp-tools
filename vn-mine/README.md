@@ -79,9 +79,9 @@ The badge in its corner reports exactly that.
 ## Setup
 
 ```sh
-python3 -m venv ~/.local/share/vn-mine/venv
-~/.local/share/vn-mine/venv/bin/pip install -r vn-mine/requirements.txt
-curl -sL -o ~/.local/share/vn-mine/silero_vad.onnx \
+python3 -m venv ~/.local/share/kotodex/venv
+~/.local/share/kotodex/venv/bin/pip install -r vn-mine/requirements.txt
+curl -sL -o ~/.local/share/kotodex/silero_vad.onnx \
   https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx
 
 ln -sf "$PWD/kotodex-capture" ~/.local/bin/kotodex-capture
