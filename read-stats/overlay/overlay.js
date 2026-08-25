@@ -960,7 +960,6 @@ for (const host of [lineEl, scrollbackLinesEl]) {
 const hideBtnEl = document.getElementById("hide-btn");
 hideBtnEl.addEventListener("click", () => {
   boxEl.hidden = !boxEl.hidden;
-  warnEl.hidden = boxEl.hidden;
   hideBtnEl.classList.toggle("off", boxEl.hidden);
   tip(hideBtnEl, boxEl.hidden ? "Show the line" : "Hide the line");
   if (boxEl.hidden) closePopup();

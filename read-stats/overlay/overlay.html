@@ -331,20 +331,14 @@
   /* Silent while the capture pipeline is healthy. It only speaks up to explain
      why no line is arriving, which is the one failure invisible from here.
 
-     Inside #box, pinned to its top-left corner: what it reports is about the
-     line, so it has to sit with the line. Anywhere on the screen is the wrong
-     answer — the box is dragged, and under `data-aligned` it moves to the
-     game's own text position, so a screen-anchored notice ends up nowhere in
-     particular. #box's padding-top is the gap this sits in.
+     Under the buttons, in #explain-box's column: it is a report on the
+     capture pipeline, and the controls for that pipeline are what it belongs
+     beside. In flow rather than placed, so it follows the widget wherever the
+     drag and `data-aligned` put it.
 
-     Its own panel, because the backdrop is on #line rather than the strip:
-     everything around the text is transparent, so bare words here are over
-     whatever the game is drawing. */
+     Its own panel, because everything around the widget is transparent — bare
+     words there are over whatever the game is drawing. */
   #warn {
-    position: absolute;
-    top: 0;
-    left: 0;
-    max-width: 100%;
     padding: 0.35rem 0.75rem;
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-control);
@@ -868,7 +862,7 @@
   }
 </style>
 
-<div id="box"><div id="warn"></div><div id="line"></div></div>
+<div id="box"><div id="line"></div></div>
 <div id="popup" class="jp-popup" hidden></div>
 <div id="explain-box">
   <div id="bar">
@@ -986,6 +980,7 @@
       <button id="scrollback-latest">Latest</button>
     </div>
   </div>
+  <div id="warn"></div>
   <div id="explain-panel" hidden></div>
 </div>
 <script type="module" src="/overlay/overlay.js"></script>
