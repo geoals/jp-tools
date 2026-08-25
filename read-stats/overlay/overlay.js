@@ -376,7 +376,15 @@ function draw(incoming, again = false, append = true) {
   // hanging the indent: a narration line starts at the margin and every row of
   // it does.
   lineEl.classList.toggle("quoted", QUOTE_OPEN.test(line.text));
-  if (append && scrollbackOpen()) appendScrollback(line);
+  // Whether the panel is *populated*, not whether it is open. Appending only
+  // while open meant a line read with it shut was never added, and reopening
+  // does not go looking: it seeds only when it has no rows at all. The history
+  // was then missing exactly the stretch read with it closed.
+  //
+  // Still nothing before the first open, so that the seed and its page back are
+  // what build the panel — appending into an empty one would leave it holding
+  // this session with no way to reach anything older.
+  if (append && scrollbackLinesEl.children.length) appendScrollback(line);
   report();
 }
 
