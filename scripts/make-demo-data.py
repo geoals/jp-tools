@@ -28,13 +28,21 @@ Deterministic: the same input gives the same output.
 
 import argparse
 import hashlib
-import random
+import json
 import shutil
 import sqlite3
 import sys
+import time
+import urllib.request
 from pathlib import Path
 
-SEED = 20260824
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import aozora_corpus
+
+# The day the demo's clock is pinned to (KOTODEX_DEMO_TODAY on the container).
+# Data after it is dropped, so Today always has reading under it and nothing
+# sits in the dashboard's future.
+DEMO_TODAY = "2026-08-22"
 
 # Renamed for the public page, not for copyright. Anything absent from this map
 # keeps its real title.
@@ -43,51 +51,16 @@ WORK_TITLES = {
     "夏ノ鎖": "Fate/stay night",
 }
 
-# Written for this script. Ordinary declarative sentences, no punctuation, so
-# that a line built from them counts the same under
-# `jp_core::text::chars::count_chars` as the row it replaces.
-SENTENCES = [
-    "朝の光が窓から差し込んでいた",
-    "駅前の商店街はいつもより静かだった",
-    "彼女は小さな声で名前を呼んだ",
-    "犬が坂道をゆっくり登っていく",
-    "台所からいい匂いがしてきた",
-    "今日は一日中雨が降るらしい",
-    "図書館の二階には誰もいなかった",
-    "川の水はとても冷たかった",
-    "子供たちは公園で笑っていた",
-    "小さな鈴の音が遠くから聞こえる",
-    "机の上に古い手紙が置いてある",
-    "先生はゆっくりと黒板に字を書いた",
-    "夜空には星がたくさん出ていた",
-    "彼は何も言わずに立ち上がった",
-    "電車は五分ほど遅れて到着した",
-    "春になれば桜がきれいに咲くだろう",
-    "母が作った味噌汁の味を思い出す",
-    "海の向こうに小さな島が見える",
-    "その本はもう何度も読み返している",
-    "風が強くて帽子が飛ばされそうだ",
-    "喫茶店の窓際の席が空いていた",
-    "彼女は少し困った顔をしていた",
-    "山の上から町全体が見下ろせる",
-    "新しい仕事はまだ慣れていない",
-    "夏の夕方には花火の音が響く",
-    "猫は日なたで気持ちよさそうに眠る",
-    "約束の時間まであと十分ある",
-    "誰かが階段を上がってくる音がした",
-    "この道をまっすぐ行けば駅に着く",
-    "彼の言葉の意味がよく分からなかった",
-    "冬の朝は布団から出るのがつらい",
-    "手紙の最後に小さく名前が書いてあった",
-    "店の主人は優しく笑ってくれた",
-    "教室の窓から校庭がよく見える",
-    "長い一日がようやく終わった",
-    "彼女は約束を必ず守る人だった",
-    "雪が積もって町が白くなっている",
-    "その話を聞いて少し安心した",
-    "人の多い場所では静かにしよう",
-    "遠くの空が少しずつ明るくなってきた",
-]
+# The renamed works' own covers, by VNDB id rather than by search, so a shifting
+# search result cannot put a different game's art on the page. Both are flagged
+# safe for work upstream. A drawn cover stands in when the fetch fails, so
+# regenerating the seed offline still produces a complete library page.
+WORK_COVER_IDS = {
+    "CLANNAD": "v4",
+    "Fate/stay night": "v11",
+}
+
+VNDB_API = "https://api.vndb.org/kana/vn"
 
 # For the renamed works only: their real cast would name the work the rename
 # exists to hide.
@@ -131,14 +104,54 @@ def backup(src: Path, dst: Path) -> None:
     target.close()
 
 
-def line_text(rng: random.Random, chars: int) -> str:
-    """A line of exactly `chars` characters, so `lines.chars` still holds."""
-    if chars <= 0:
-        return ""
-    out = ""
-    while len(out) < chars:
-        out += SENTENCES[rng.randrange(len(SENTENCES))]
-    return out[:chars]
+# One definition of the counting rule, shared with the fetcher that sizes the
+# corpus by it.
+is_counted = aozora_corpus.is_counted
+count_chars = aozora_corpus.count_chars
+
+
+class Corpus:
+    """Public-domain prose, handed out in order.
+
+    Sequential rather than sampled, and one cursor per work. That is what makes
+    the kanji grid and "new kanji per day" look like reading: a book introduces
+    its characters gradually, so early days meet common kanji and later ones
+    keep turning up something new. Sampling the same small bank for every line
+    gives every kanji the same count on the same day, which is the shape the
+    demo had and the reason this exists.
+    """
+
+    def __init__(self, text: str):
+        self.text = text
+        self.cursors: dict[str, int] = {}
+        self.starts: dict[str, int] = {}
+
+    def region(self, key: str, start: int) -> None:
+        self.starts[key] = start % len(self.text)
+        self.cursors[key] = self.starts[key]
+
+    def take(self, key: str, chars: int) -> str:
+        """The next run of prose worth exactly `chars` counted characters."""
+        if chars <= 0:
+            return ""
+        i = self.cursors.setdefault(key, self.starts.get(key, 0))
+        out, got = [], 0
+        while got < chars:
+            if i >= len(self.text):
+                i = 0
+            ch = self.text[i]
+            i += 1
+            if ch == "\n":
+                continue
+            out.append(ch)
+            if is_counted(ch):
+                got += 1
+        # Carry the closing punctuation, so a line does not start on 。or 」.
+        while i < len(self.text) and not is_counted(self.text[i]) and self.text[i] != "\n":
+            out.append(self.text[i])
+            i += 1
+        self.cursors[key] = i
+        return "".join(out)
 
 
 def title(work):
@@ -147,7 +160,24 @@ def title(work):
     return WORK_TITLES.get(work, work)
 
 
-def scrub_knowledge(db: sqlite3.Connection, rng: random.Random) -> None:
+def truncate_after(db: sqlite3.Connection, cutoff: float) -> None:
+    """Drop everything after the day the demo's clock is pinned to.
+
+    Without this the pinned Today has days *after* it, and the trend charts run
+    off into a future the dashboard says has not happened yet.
+    """
+    db.execute("DELETE FROM lines WHERE ts >= ?", (cutoff,))
+    db.execute("DELETE FROM lookups WHERE ts >= ?", (cutoff,))
+    db.execute("DELETE FROM manual_sessions WHERE start_ts >= ?", (cutoff,))
+    db.execute("DELETE FROM vocabulary_events WHERE ts >= ?", (cutoff,))
+    day = time.strftime("%Y-%m-%d", time.localtime(cutoff))
+    db.execute("DELETE FROM word_days WHERE date >= ?", (day,))
+    db.execute(
+        "UPDATE vocabulary SET last_seen = ? WHERE last_seen >= ?", (cutoff, cutoff)
+    )
+
+
+def scrub_knowledge(db: sqlite3.Connection, corpus: Corpus) -> None:
     # Works keep their titles. The renamed two also lose the window title,
     # which is the game's own executable name.
     for old, new in WORK_TITLES.items():
@@ -158,10 +188,23 @@ def scrub_knowledge(db: sqlite3.Connection, rng: random.Random) -> None:
 
     # Lines. The text, its wrapped form and its ruby go; ts, chars, discarded
     # and the work stay, which is the whole reading history.
-    rows = db.execute("SELECT id, chars, work FROM lines").fetchall()
+    #
+    # Ordered by ts, and each work reading its own stretch of the corpus, so the
+    # replacement stream introduces new characters at the pace a book does.
+    works = [w for (w,) in db.execute("SELECT DISTINCT work FROM lines") if w]
+    span = len(corpus.text) // max(len(works) + 2, 1)
+    for i, work in enumerate(sorted(works)):
+        corpus.region(work, i * span)
+
+    rows = db.execute(
+        "SELECT id, chars, work FROM lines ORDER BY ts, id"
+    ).fetchall()
     db.executemany(
         "UPDATE lines SET text = ?, wrapped = NULL, ruby = NULL, work = ? WHERE id = ?",
-        [(line_text(rng, chars), title(work), lid) for lid, chars, work in rows],
+        [
+            (corpus.take(work or "_", chars), title(work), lid)
+            for lid, chars, work in rows
+        ],
     )
 
     # Manual sessions carry the pasted text of a book session.
@@ -169,7 +212,7 @@ def scrub_knowledge(db: sqlite3.Connection, rng: random.Random) -> None:
     db.executemany(
         "UPDATE manual_sessions SET content = ?, note = NULL, url = NULL, work = ? WHERE id = ?",
         [
-            (line_text(rng, chars) if content else None, title(work), sid)
+            (corpus.take("_sessions", chars) if content else None, title(work), sid)
             for sid, chars, work, content in rows
         ],
     )
@@ -179,7 +222,7 @@ def scrub_knowledge(db: sqlite3.Connection, rng: random.Random) -> None:
     for work, body_chars, body_start, position in db.execute(
         "SELECT work, body_chars, body_start, position FROM books"
     ).fetchall():
-        text = line_text(rng, (body_start or 0) + (body_chars or 0))
+        text = corpus.take("_books", (body_start or 0) + (body_chars or 0))
         db.execute(
             "UPDATE books SET work = ?, text = ?, text_bytes = ?, position = ? WHERE work = ?",
             (
@@ -211,6 +254,29 @@ def scrub_knowledge(db: sqlite3.Connection, rng: random.Random) -> None:
 
     for table in DICTIONARY_TABLES:
         db.execute(f"DELETE FROM {table}")
+
+
+def fetch_cover(name: str, path: Path) -> bool:
+    """The work's own cover from VNDB, the way the app fetches every other one."""
+    vndb_id = WORK_COVER_IDS.get(name)
+    if not vndb_id:
+        return False
+    try:
+        body = json.dumps(
+            {"filters": ["id", "=", vndb_id], "fields": "image.url"}
+        ).encode()
+        request = urllib.request.Request(
+            VNDB_API, data=body, headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(request, timeout=20) as response:
+            results = json.load(response)["results"]
+        url = results[0]["image"]["url"]
+        with urllib.request.urlopen(url, timeout=30) as response:
+            path.write_bytes(response.read())
+        return True
+    except Exception as e:
+        print(f"  {name}: VNDB cover unavailable ({e}), drawing one")
+        return False
 
 
 def find_font() -> str:
@@ -280,18 +346,26 @@ def make_covers(db: sqlite3.Connection, live_covers: Path, out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     drawn = set(WORK_TITLES.values())
     count = 0
+    fetched = 0
 
     for name, cover in db.execute(
         "SELECT title, cover_path FROM works WHERE cover_path IS NOT NULL"
     ).fetchall():
         source = live_covers / cover
-        if name in drawn or not source.exists():
+        if name in drawn:
+            if fetch_cover(name, out / cover):
+                fetched += 1
+            else:
+                draw_cover(name, out / cover)
+                count += 1
+        elif source.exists():
+            shutil.copy2(source, out / cover)
+        else:
             draw_cover(name, out / cover)
             count += 1
-        else:
-            shutil.copy2(source, out / cover)
 
-    print(f"covers: {len(list(out.glob('*.jpg')))} ({count} drawn)")
+    total = len(list(out.glob("*.jpg")))
+    print(f"covers: {total} ({fetched} from VNDB, {count} drawn)")
 
 
 def scrub_stats(db: sqlite3.Connection) -> None:
@@ -365,10 +439,14 @@ def main() -> None:
         default=Path(__file__).resolve().parent.parent / "target/demo-data",
         help="where to write the seed",
     )
+    parser.add_argument(
+        "--today",
+        default=DEMO_TODAY,
+        help="the day the demo's clock is pinned to; later data is dropped",
+    )
     args = parser.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)
-    rng = random.Random(SEED)
 
     for name in ("knowledge.db", "read-stats.db"):
         source = args.live_dir / name
@@ -377,9 +455,29 @@ def main() -> None:
         backup(source, args.out / name)
         print(f"copied {name}")
 
+    needed = 0
+    probe = sqlite3.connect(f"file:{args.live_dir / 'knowledge.db'}?mode=ro", uri=True)
+    for query in (
+        "SELECT sum(chars) FROM lines",
+        "SELECT sum(chars) FROM manual_sessions",
+        "SELECT sum(body_start + body_chars) FROM books",
+    ):
+        needed += probe.execute(query).fetchone()[0] or 0
+    probe.close()
+    # Sized to exactly what was read, in the same unit the history is measured
+    # in. The fetcher stops the moment it has that much.
+    corpus_path = args.out.parent / "demo-corpus.txt"
+    corpus = Corpus(aozora_corpus.load(needed, corpus_path))
+    print(f"corpus: {count_chars(corpus.text)} counted chars for {needed} needed")
+
+    cutoff = time.mktime(
+        time.strptime(args.today, "%Y-%m-%d")
+    ) + 86400.0
+
     knowledge = sqlite3.connect(args.out / "knowledge.db")
     with knowledge:
-        scrub_knowledge(knowledge, rng)
+        truncate_after(knowledge, cutoff)
+        scrub_knowledge(knowledge, corpus)
     knowledge.execute("VACUUM")
     make_covers(knowledge, args.live_dir / "covers", args.out / "covers")
     knowledge.close()

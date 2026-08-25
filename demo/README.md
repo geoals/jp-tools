@@ -10,10 +10,24 @@ and rebuilding the image; nothing here is built from source.
 ## The seed
 
 `scripts/make-demo-data.py` turns a copy of the live databases into the seed.
-No text from outside this repository survives it — titles, lines, books, mined
-cards and looked-up words are all replaced, and the dictionary cache is
-emptied. What is kept is every timestamp and count, so the pacing and the
-streaks are a real reader's.
+Titles, covers, vocabulary and every timestamp and count are the reader's own,
+because a list of what someone read is a bookshelf. The hooked lines and the
+books are replaced, because those are the works themselves and the demo serves
+them over public GETs — `/api/lines/before` pages back through the whole
+stream.
+
+The replacement prose comes from `scripts/aozora_corpus.py`: public-domain
+works from Aozora Bunko, fetched to a cache in `target/`. It is sized to the
+number of characters actually read and stops there, mid-work if that is where
+the total lands. Real prose rather than a sentence bank because the kanji grid
+and "new kanji per day" count distinct characters — a small bank gives every
+kanji the same count on one day, which is not what a reading history looks
+like. Each work walks its own stretch of the corpus in timestamp order, so new
+characters arrive at the pace a book introduces them.
+
+`--today` (default 2026-08-22) is the day the container's `KOTODEX_DEMO_TODAY`
+pins the clock to. Everything after it is dropped, so Today always has reading
+under it and nothing sits in the dashboard's future. The two have to agree.
 
 The seed is deliberately not regenerated per release. It only needs redoing
 when a new panel reads data it has none of.
