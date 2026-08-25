@@ -41,6 +41,11 @@ SOCKET_NAME = APP_ID
 # How long read-stats gets to answer before the overlay is started anyway. It
 # builds on first run, which is slow and not a failure.
 READY_TIMEOUT = 90.0
+# How long a restarted capture gets to answer before it is read as down and
+# started a second time. Its restart command returns before the daemon is up,
+# and the daemon deletes its segment files on the way up, so the seg probe is
+# false for the first few seconds of a live restart.
+CAPTURE_READY = 30.0
 # A detaching child gets this long to appear before the probe is trusted.
 SPAWN_GRACE = 10.0
 # Restart a child this many times before giving up and saying which one.
@@ -117,6 +122,19 @@ class Child:
             log(f"{self.name}: already running, adopted")
             return
         self.spawn(log)
+
+    def wait_ready(self, log, timeout):
+        """Poll the probe until it answers, so a just-restarted component is
+        not read as down and started a second time. Returns whether it ever
+        answered; a caller that restarted it will fall back to spawning its
+        own when it does not."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if self.probe():
+                return True
+            time.sleep(1)
+        log(f"{self.name}: not answering after {timeout:.0f}s")
+        return False
 
     def spawn(self, log):
         log(f"{self.name}: starting")
@@ -348,6 +366,14 @@ def main() -> int:
             child.adopted = False
             child.restarts = 0
             child.failed = False
+            # A restarted child answers its probe later than its restart command
+            # returns — the capture daemon's `restart` detaches and deletes its
+            # segment files on the way up — so give it time to come back before
+            # probing it, or `ensure` reads the restart as a down component and
+            # starts a second one. read-stats waits for its own port in
+            # start-all.sh, so it is back before this runs.
+            if child.name == "capture":
+                child.wait_ready(log, CAPTURE_READY)
             child.ensure(log)
             if child.name == "read-stats":
                 wait_for_read_stats(log)
