@@ -331,20 +331,20 @@
   /* Silent while the capture pipeline is healthy. It only speaks up to explain
      why no line is arriving, which is the one failure invisible from here.
 
-     Centred just above the strip, not in a screen corner: it is read at the
-     moment the line stops arriving, so it belongs where the eye already is.
-     Rare enough that centring costs nothing — unlike the line, which is left
-     aligned so its first glyph does not move with every change of length.
+     Inside #box, pinned to its top-left corner: what it reports is about the
+     line, so it has to sit with the line. Anywhere on the screen is the wrong
+     answer — the box is dragged, and under `data-aligned` it moves to the
+     game's own text position, so a screen-anchored notice ends up nowhere in
+     particular. #box's padding-top is the gap this sits in.
 
-     Its own panel, because it sits on the transparent part of the surface:
-     bare text there is over whatever the game is drawing, which is where the
-     old corner placement became hard to see at all. */
+     Its own panel, because the backdrop is on #line rather than the strip:
+     everything around the text is transparent, so bare words here are over
+     whatever the game is drawing. */
   #warn {
     position: absolute;
-    left: 50%;
-    bottom: calc(var(--strip) + 0.6rem);
-    transform: translateX(-50%);
-    max-width: 60vw;
+    top: 0;
+    left: 0;
+    max-width: 100%;
     padding: 0.35rem 0.75rem;
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-control);
@@ -353,7 +353,6 @@
     color: var(--alert);
     font-size: 0.85rem;
     line-height: 1.35;
-    text-align: center;
   }
   /* The panel would otherwise draw as an empty chip whenever there is nothing
      wrong, which is almost always. */
@@ -869,7 +868,7 @@
   }
 </style>
 
-<div id="box"><div id="line"></div></div>
+<div id="box"><div id="warn"></div><div id="line"></div></div>
 <div id="popup" class="jp-popup" hidden></div>
 <div id="explain-box">
   <div id="bar">
@@ -989,5 +988,4 @@
   </div>
   <div id="explain-panel" hidden></div>
 </div>
-<div id="warn"></div>
 <script type="module" src="/overlay/overlay.js"></script>
