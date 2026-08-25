@@ -746,7 +746,10 @@
     font-size: 1.15rem;
     line-height: 1.8;
     font-weight: var(--line-weight);
-    color: var(--line-color);
+    /* Theme ink, not `--line-color`. That one is the reader's setting for text
+       over the game's art — white by default — and this panel paints `--panel`
+       behind it, which in light mode is white on white. */
+    color: var(--ink);
     letter-spacing: var(--line-tracking);
   }
   #scrollback[hidden] {

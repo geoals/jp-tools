@@ -854,10 +854,12 @@ async function pageBack() {
  * no width to count, so the CSS fallback stands. */
 function sizeScrollback() {
   const style = getComputedStyle(lineEl);
+  // #box, not #line. #line is `width: fit-content`, so measuring it gives the
+  // width of whatever text happens to be showing — one short line of dialogue
+  // and the history panel came out as narrow as that line. What the character
+  // count means is the column the line is set in, which is #box's.
   const width =
-    lineEl.getBoundingClientRect().width -
-    parseFloat(style.paddingLeft) -
-    parseFloat(style.paddingRight);
+    boxEl.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
   const advance = parseFloat(style.fontSize) + (parseFloat(style.letterSpacing) || 0);
   if (width > 100 && advance > 0) {
     root.setProperty("--sb-chars", `${Math.round(width / advance)}`);
