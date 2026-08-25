@@ -44,12 +44,21 @@ core_broken=0
 # Held rather than printed, so a section whose every row was suppressed does not
 # leave a bare heading behind.
 PENDING_SECTION=""
+# The banner is held for the same reason: --only-problems on a healthy machine
+# printed nothing but a title, which read as a report that had lost its rows.
+PENDING_TITLE=""
+flush_title() {
+  [ -n "$PENDING_TITLE" ] || return 0
+  printf '%s' "$PENDING_TITLE"
+  PENDING_TITLE=""
+}
 section() {
   if [ "$ONLY_PROBLEMS" = 1 ]; then PENDING_SECTION="$1"; return; fi
   printf '\n%s%s%s\n' "$bold" "$1" "$off"
 }
 flush_section() {
   [ -n "$PENDING_SECTION" ] || return 0
+  flush_title
   printf '\n%s%s%s\n' "$bold" "$PENDING_SECTION" "$off"
   PENDING_SECTION=""
 }
@@ -107,7 +116,14 @@ cap() {
   row "$ok" "$label" "$detail" "$fix" "$critical"
 }
 
-printf '%sKotodex%s — %s\n' "$bold" "$off" "$(_os_release_field PRETTY_NAME 2>/dev/null || echo "unknown system")"
+TITLE="$(printf '%sKotodex%s — %s\n' "$bold" "$off" \
+  "$(_os_release_field PRETTY_NAME 2>/dev/null || echo "unknown system")")"
+if [ "$ONLY_PROBLEMS" = 1 ]; then
+  PENDING_TITLE="$TITLE
+"
+else
+  printf '%s\n' "$TITLE"
+fi
 
 section "Core"
 binary_row curl curl critical
@@ -163,14 +179,16 @@ section "Extras"
 cap explain "explain"
 
 if [ -z "$CAPS" ]; then
+  flush_title
   printf '\n%sMost rows need Kotodex running.%s Start it, then run this again.\n' "$yellow" "$off"
 fi
 
-printf '\n'
+# Nothing to say and nothing said: a clean --only-problems run ends silently, so
+# the step that runs it does not print a heading over an empty report.
 if [ "$core_broken" = 0 ]; then
   [ "$ONLY_PROBLEMS" = 1 ] && exit 0
-  printf '%sThe core works.%s Anything marked — is optional and says what it would add.\n' "$green" "$off"
+  printf '\n%sThe core works.%s Anything marked — is optional and says what it would add.\n' "$green" "$off"
   exit 0
 fi
-printf '%sSomething the core needs is missing.%s The ✗ rows above say what.\n' "$red" "$off"
+printf '\n%sSomething the core needs is missing.%s The ✗ rows above say what.\n' "$red" "$off"
 exit 1
