@@ -43,19 +43,13 @@ SOCKET_NAME = APP_ID
 # against knowledge.db on the way up, not a compile.
 READY_TIMEOUT = 60.0
 # How long a restarted capture gets to answer before it is read as down and
-# started a second time. Its restart command returns before the daemon is up,
-# and the daemon deletes its segment files on the way up, so the seg probe is
-# false for the first few seconds of a live restart.
+# started a second time. Its restart command detaches and returns before the
+# daemon it spawned is up.
 CAPTURE_READY = 30.0
 # A detaching child gets this long to appear before the probe is trusted.
 SPAWN_GRACE = 10.0
 # Restart a child this many times before giving up and saying which one.
 MAX_RESTARTS = 3
-
-
-def run_dir() -> Path:
-    base = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
-    return Path(base) / "vn-mine"
 
 
 def read_stats_up() -> bool:
@@ -66,20 +60,32 @@ def read_stats_up() -> bool:
         return False
 
 
+def capture_binary() -> str:
+    return shutil.which("kotodex-capture") or str(REPO / "vn-mine" / "kotodex-capture")
+
+
 def capture_up() -> bool:
-    """A segment written in the last half minute. ffmpeg rewrites one every 5s,
-    so stale files mean the daemon is gone even though the ring is still there."""
-    seg = run_dir() / "seg"
-    try:
-        newest = max((p.stat().st_mtime for p in seg.glob("seg*.wav")), default=0)
-    except OSError:
-        return False
-    return time.time() - newest < 30
+    """Asked of the daemon's own script, which knows whether systemd owns it.
+
+    Not the ring buffer: a segment is only rewritten every 5s, so a daemon that
+    has just died still leaves fresh files behind and gets adopted — running,
+    in the launcher's view, with nothing recording.
+    """
+    return subprocess.run(
+        [capture_binary(), "status"], capture_output=True
+    ).returncode == 0
 
 
 def overlay_up() -> bool:
+    """Asked of the overlay's own script, which owns the pid file and the lock.
+
+    A bare `pgrep -f vn-overlay.py` matches any command line that merely
+    mentions the script — a shell loop, an editor — and reads it as a running
+    overlay. There is one answer to this and it is not here.
+    """
     return subprocess.run(
-        ["pgrep", "-f", "vn-overlay.py"], capture_output=True
+        [str(REPO / "read-stats" / "overlay" / "vn-overlay.sh"), "status"],
+        capture_output=True,
     ).returncode == 0
 
 
@@ -199,7 +205,7 @@ class Child:
 
 def children():
     """In start order. Stopping walks it backwards."""
-    capture = shutil.which("kotodex-capture") or str(REPO / "vn-mine" / "kotodex-capture")
+    capture = capture_binary()
     overlay = str(REPO / "read-stats" / "overlay" / "vn-overlay.sh")
     return [
         Child(
@@ -380,9 +386,9 @@ def main() -> int:
             child.restarts = 0
             child.failed = False
             # A restarted child answers its probe later than its restart command
-            # returns — the capture daemon's `restart` detaches and deletes its
-            # segment files on the way up — so give it time to come back before
-            # probing it, or `ensure` reads the restart as a down component and
+            # returns — the capture daemon's `restart` detaches — so give it
+            # time to come back before probing it, or `ensure` reads the
+            # restart as a down component and
             # starts a second one. read-stats waits for its own port in
             # start-all.sh, so it is back before this runs.
             if child.name == "capture":
