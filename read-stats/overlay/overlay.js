@@ -999,13 +999,13 @@ mobileBtnEl.addEventListener("click", () => {
 const pauseBtnEl = document.getElementById("pause-btn");
 
 function showPaused(paused) {
-  pauseBtnEl.classList.toggle("paused", paused);
-  // The one state worth seeing with the bar shut.
-  handleEl.classList.toggle("paused", paused);
   // A glyph, not a phrase: it sits in the row of square buttons over the game
   // now, and the tooltip is where the sentence goes.
   pauseBtnEl.textContent = paused ? "▶" : "⏸";
   tip(pauseBtnEl, paused ? "Resume capture" : "Pause capture");
+  // The handle is all there is to see with the bar shut, so it carries the
+  // state too — by what it draws, like the button, rather than by colour.
+  handleEl.textContent = paused ? "⏸" : "☰";
 }
 
 pauseBtnEl.addEventListener("click", async () => {
