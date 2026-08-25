@@ -141,15 +141,10 @@ pub async fn define(
                 .collect(),
         });
     }
-    // The master, then priority order — a stable sort over a list that is
-    // already in priority order, so the rest keeps it. By role and a column
-    // rather than by name: which definition is worth reading first is the
-    // reader's call, and install order is only the default.
-    sources.sort_by_key(|s| {
-        !dicts
-            .iter()
-            .any(|d| d.title == s.dictionary && d.role == dictionaries::Role::Master)
-    });
+    // Priority order, which is the order they arrive in. Which definition is
+    // worth reading first is the reader's call and `priority` is where they say
+    // so, so nothing here overrides it — the master used to be pinned in front,
+    // which meant the column could not move it.
 
     // The pitch dictionaries first, then anything else carrying accent rows —
     // so a dictionary given the role answers even where an older one happens to

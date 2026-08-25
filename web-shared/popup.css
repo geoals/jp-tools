@@ -26,7 +26,7 @@
   position: absolute;
   width: min(41.25rem, calc(57.5vw * var(--scale)));
   min-height: 8.75rem;
-  max-height: min(57.5vh, calc(575px * var(--scale)));
+  max-height: min(46vh, calc(460px * var(--scale)));
   overflow-y: auto;
   box-sizing: border-box;
   padding: 0.875rem 1.06rem 1rem;
