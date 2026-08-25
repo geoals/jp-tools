@@ -175,18 +175,25 @@ stream.onmessage = (e) => draw(JSON.parse(e.data));
 
 stream.addEventListener("status", (e) => {
   const { capture, paused, vn_window } = JSON.parse(e.data);
-  // A missing window name is worth saying out loud: the screenshot on a card
-  // then grabs the whole screen with the overlay on it, and nothing else here
-  // reports that. A capture fault outranks it — no line at all is the bigger
-  // problem.
+  // Nothing while paused: the reader chose it, the pause button already says
+  // so, and every fault here is about lines not arriving — which is the point
+  // of pausing, not a problem with it. Routing a chosen state through the fault
+  // line is what put the bare word "paused" on screen whenever capture stopped.
+  //
+  // Otherwise a capture fault outranks the rest — no line at all is the bigger
+  // problem — and a missing window name is worth saying out loud, since the
+  // screenshot on a card then grabs the whole screen with the overlay on it and
+  // nothing else here reports that.
   warn(
-    capture !== "live"
-      ? capture
-      : !can("lines_source")
-        ? "no line source — run Textractor with its WebSocket plugin"
-        : vn_window
-          ? ""
-          : "no window name on this work",
+    paused
+      ? ""
+      : capture !== "live"
+        ? capture
+        : !can("lines_source")
+          ? "no line source — run Textractor with its WebSocket plugin"
+          : vn_window
+            ? ""
+            : "no window name on this work",
   );
   // The flag, not `capture`: the logger takes a poll to close its socket, so
   // `capture` still reads `live` right after a pause and would flip the button

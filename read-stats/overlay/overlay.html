@@ -329,14 +329,36 @@
   }
 
   /* Silent while the capture pipeline is healthy. It only speaks up to explain
-     why no line is arriving, which is the one failure invisible from here. */
+     why no line is arriving, which is the one failure invisible from here.
+
+     Centred just above the strip, not in a screen corner: it is read at the
+     moment the line stops arriving, so it belongs where the eye already is.
+     Rare enough that centring costs nothing — unlike the line, which is left
+     aligned so its first glyph does not move with every change of length.
+
+     Its own panel, because it sits on the transparent part of the surface:
+     bare text there is over whatever the game is drawing, which is where the
+     old corner placement became hard to see at all. */
   #warn {
     position: absolute;
-    right: 0.8rem;
-    bottom: calc(var(--strip) - 1.3rem);
+    left: 50%;
+    bottom: calc(var(--strip) + 0.6rem);
+    transform: translateX(-50%);
+    max-width: 60vw;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-control);
+    background: var(--panel);
+    box-shadow: var(--shadow);
     color: var(--alert);
-    font-size: 0.75rem;
-    letter-spacing: 0.04em;
+    font-size: 0.85rem;
+    line-height: 1.35;
+    text-align: center;
+  }
+  /* The panel would otherwise draw as an empty chip whenever there is nothing
+     wrong, which is almost always. */
+  #warn:empty {
+    display: none;
   }
 
   /* The model's read on the last line, and the button that asks for it. Placed
@@ -395,9 +417,11 @@
     background: var(--panel-hover);
   }
   /* Paused is the one state worth seeing while the bar is shut — nothing being
-     read is being counted. */
+     read is being counted. Filled rather than coloured: it has to carry across
+     the room, and a hue over artwork is a hue competing with the artwork. */
   #bar-handle.paused {
-    color: var(--alert);
+    background: var(--ink-2);
+    color: var(--panel);
   }
 
   /* Own tooltip rather than `title`. QtWebEngine's native one is a separate
@@ -465,13 +489,20 @@
     color: var(--ink-3);
   }
   /* Paused is the state worth seeing from across the room: nothing being read
-     is being counted. Coloured rather than dimmed, unlike the other toggles.
+     is being counted. Filled rather than dimmed like the other toggles, and
+     filled rather than coloured — the glyph has already flipped to ▶, so this
+     only has to be unmistakable, not loud.
 
      Its own button in the bar rather than a row at the foot of the settings:
      pausing is something reached for mid-scene, and a control two clicks deep
      behind a cogwheel is a control that gets skipped. */
-  #pause-btn.paused {
-    color: var(--alert);
+  #pause-btn.paused,
+  #pause-btn.paused:hover {
+    background: var(--ink-2);
+    color: var(--panel);
+  }
+  #pause-btn.paused:hover {
+    background: var(--ink);
   }
 
   /* The overlay's settings. Sits under the buttons like the explain panel, so
