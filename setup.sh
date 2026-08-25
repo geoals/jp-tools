@@ -480,8 +480,16 @@ else
   skip "no key"
 fi
 
-skip "no whisper — required for trimming card audio to the mined sentence"
-say "set it up by hand: whisper-service/README.md"
+# Nothing here installs whisper, so this only ever reports. Probed rather than
+# asserted: it said "no whisper" to a reader with the service running, while
+# doctor two steps later said "reachable" off the same endpoint.
+WHISPER_URL="${KOTODEX_WHISPER_URL:-http://localhost:8100}"
+if curl -fsS --max-time 2 "$WHISPER_URL/health" >/dev/null 2>&1; then
+  good "whisper answering on $WHISPER_URL"
+else
+  skip "no whisper — required for trimming card audio to the mined sentence"
+  say "set it up by hand: whisper-service/README.md"
+fi
 
 # ----------------------------------------------------------- application --
 
