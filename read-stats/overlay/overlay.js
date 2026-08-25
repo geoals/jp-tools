@@ -1416,17 +1416,22 @@ function place(word) {
   const height = popupEl.offsetHeight;
   const left = rect.left + rect.width / 2 - width / 2;
   popupEl.style.left = `${Math.max(12, Math.min(left, window.innerWidth - width - 12))}px`;
-  // Above where there is room, below where there is not, and clamped to the
-  // screen either way. The history panel hangs from the top, so its first rows
-  // have little or nothing above them.
+  // Above where there is room, below where there is not. The history panel
+  // hangs from the top of the screen, so its first rows have nothing above
+  // them — and a popup pinned above them would be drawn off-screen.
   //
-  // Always by `top`, never by `bottom`: pinned by its bottom edge the popup
-  // grows upward as it fills, which is how a definition opened near the top of
-  // the screen ran off it. `.jp-popup` is capped at 57.5vh, so there is always
-  // a position that fits.
-  const top = height <= anchor.top - 16 ? anchor.top - height - 8 : anchor.bottom + 8;
-  popupEl.style.bottom = "auto";
-  popupEl.style.top = `${Math.max(12, Math.min(top, window.innerHeight - height - 12))}px`;
+  // Pinned by its bottom edge when it goes above, so that a definition which
+  // changes height — paging to a longer dictionary — grows away from the line
+  // rather than down over it. That is worth more than the clamping a `top`
+  // anchor would allow: `place` now runs again once the content is in, so the
+  // choice above is made against the real height rather than a placeholder's.
+  if (anchor.top >= height + 16) {
+    popupEl.style.top = "auto";
+    popupEl.style.bottom = `${window.innerHeight - anchor.top}px`;
+  } else {
+    popupEl.style.bottom = "auto";
+    popupEl.style.top = `${anchor.bottom + 8}px`;
+  }
   report();
 }
 

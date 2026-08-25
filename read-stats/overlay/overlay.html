@@ -732,8 +732,15 @@
        box is sized two different ways — the character count when it is aligned
        to the game, viewport insets when it is not — and only one of those can
        be written here. See sizeScrollback(). */
-    width: calc(var(--sb-chars, var(--text-chars)) * (1em + var(--line-tracking)) + 1.4em);
-    max-width: 60vw;
+    /* The character count is a floor, not the whole answer: it keeps a line
+       that fitted on screen from rewrapping here, and a panel wider than that
+       only wraps less. Below it the history was a narrow strip down one side
+       of the screen. */
+    width: max(
+      calc(var(--sb-chars, var(--text-chars)) * (1em + var(--line-tracking)) + 1.4em),
+      62vw
+    );
+    max-width: 85vw;
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-panel);
     background: var(--panel);
@@ -756,8 +763,10 @@
     display: none;
   }
   #scrollback-lines {
-    /* About fourteen rows, and scroll inside for the rest. */
-    max-height: calc(14 * 1.8em);
+    /* As much of the screen as the panel can have without becoming the screen,
+       and scroll inside for the rest. In vh rather than rows: what matters is
+       how much of the game it covers, and a row is sized off the type. */
+    max-height: 70vh;
     overflow-y: auto;
     scrollbar-width: thin;
     scrollbar-color: var(--chip) transparent;

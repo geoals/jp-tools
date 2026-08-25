@@ -246,6 +246,10 @@ export function createPopup(opts) {
         // attribute, so the stylesheet keys its rules on this.
         body.dataset.dict = source.slug;
         body.replaceChildren(list);
+        // Paging swaps in a definition of a different height, and the host
+        // placed this one against the last one's. `isConnected` skips the
+        // build: the first call runs before the popup is in the document.
+        if (body.isConnected) place(anchor);
       };
       back.addEventListener("click", () => (at--, showSource()));
       next.addEventListener("click", () => (at++, showSource()));
