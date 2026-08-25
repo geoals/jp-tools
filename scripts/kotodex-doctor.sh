@@ -162,8 +162,6 @@ cap xdotool "window tracking"
 section "Extras"
 cap explain "explain"
 flush_section
-printf '  %s—%s %-18s %s\n' "$yellow" "$off" "whisper setup" "not set up automatically"
-printf '      required for trimming card audio to the mined sentence; see whisper-service/README.md\n'
 
 if [ -z "$CAPS" ]; then
   printf '\n%sMost rows need Kotodex running.%s Start it, then run this again.\n' "$yellow" "$off"

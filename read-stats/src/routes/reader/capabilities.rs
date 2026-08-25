@@ -220,8 +220,8 @@ async fn whisper(state: &AppState) -> Capability {
     } else {
         off(
             "not running",
-            "required for trimming card audio to the mined sentence; see
-             whisper-service/README.md",
+            "required for trimming card audio to the mined sentence; \
+             see whisper-service/README.md",
         )
     }
 }

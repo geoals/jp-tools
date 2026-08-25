@@ -781,6 +781,17 @@
   #scrollback-lines .sb.current {
     background: var(--accent-wash);
   }
+  /* The word marks are built for the line, which is always over the game: the
+     hover wash and the open-word ring are both white, and this panel paints
+     `--panel` behind them — invisible in light mode. The status tints are the
+     same dark ramp but read as tints either way, so only these two are
+     restated in theme colours. */
+  #scrollback-lines .w:hover {
+    background: var(--panel-hover);
+  }
+  #scrollback-lines .w.open {
+    box-shadow: 0 0 0 2px var(--ink);
+  }
   /* Where one sitting ends and the next begins, on the gap the server splits
      sessions on — so this divider marks the same sitting the dashboard counts.
      Chrome rather than content, so it is sized in rem and set in the UI face,
