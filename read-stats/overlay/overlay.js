@@ -359,7 +359,10 @@ function renderLine(row) {
   return frag;
 }
 
-function draw(incoming, again = false) {
+// `append`: whether the line is new to the history. False when it is being put
+// back on screen because the one after it was cleared — its row is already in
+// the panel, and appending would show it twice.
+function draw(incoming, again = false, append = true) {
   closePopup();
   line = incoming;
   if (!again) {
@@ -373,7 +376,7 @@ function draw(incoming, again = false) {
   // hanging the indent: a narration line starts at the margin and every row of
   // it does.
   lineEl.classList.toggle("quoted", QUOTE_OPEN.test(line.text));
-  if (scrollbackOpen()) appendScrollback(line);
+  if (append && scrollbackOpen()) appendScrollback(line);
   report();
 }
 
@@ -958,6 +961,59 @@ for (const host of [lineEl, scrollbackLinesEl]) {
   host.addEventListener("auxclick", onWordAuxclick);
   host.addEventListener("wheel", onWordWheel, { passive: false });
 }
+
+// The same write `#read`'s "✕ clear last" makes: the line stops counting toward
+// anything derived, without being deleted. The id comes from the line on screen
+// rather than the server picking "the last one", so a line hooked mid-click is
+// not the one that goes.
+const clearBtnEl = document.getElementById("clear-btn");
+let clearing = false;
+
+async function clearLast() {
+  if (clearing || !line || line.id == null) return;
+  const dropped = line;
+  clearing = true;
+  clearBtnEl.disabled = true;
+  try {
+    const res = await fetch("/api/lines/discard", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids: [dropped.id] }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { ids = [] } = await res.json();
+    if (!ids.length) return;
+
+    scrollbackLinesEl.querySelector(`.sb[data-id="${dropped.id}"]`)?.remove();
+    // The explain context is the last few lines *read*, and this one no longer
+    // counts as read.
+    const at = recent.lastIndexOf(dropped.text);
+    if (at !== -1) recent.splice(at, 1);
+
+    // Back to the line before it, which is what the reader is now looking at.
+    const older = await fetch(`/api/lines/before?before=${dropped.id}&limit=1`)
+      .then((r) => r.json())
+      .catch(() => ({}));
+    const prev = (older.lines ?? [])[0];
+    if (prev) {
+      draw(prev, true, false);
+      scrollbackLinesEl
+        .querySelector(`.sb[data-id="${prev.id}"]`)
+        ?.classList.add("current");
+    } else {
+      line = null;
+      lineEl.replaceChildren();
+    }
+    markSessions();
+    countScrollback();
+  } catch (err) {
+    warn(`could not clear the line — ${err.message}`, 6000);
+  } finally {
+    clearing = false;
+    clearBtnEl.disabled = false;
+  }
+}
+clearBtnEl.addEventListener("click", clearLast);
 
 const hideBtnEl = document.getElementById("hide-btn");
 hideBtnEl.addEventListener("click", () => {
