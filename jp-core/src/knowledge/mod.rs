@@ -45,6 +45,8 @@ const MIGRATION_WORK_NAMES: &str = include_str!("../../migrations/knowledge/013_
 const MIGRATION_BOOKS: &str = include_str!("../../migrations/knowledge/014_books.sql");
 const MIGRATION_WORKS_PLANNED: &str =
     include_str!("../../migrations/knowledge/015_works_planned.sql");
+const MIGRATION_COVERING_INDEXES: &str =
+    include_str!("../../migrations/knowledge/016_covering_indexes.sql");
 
 /// Create the directory a database file will live in.
 ///
@@ -138,6 +140,7 @@ impl Knowledge {
             MIGRATION_WORKS_PLANNED,
             MIGRATION_TERM_SURFACES,
             MIGRATION_STRIP_CONTROL,
+            MIGRATION_COVERING_INDEXES,
         ] {
             sqlx::raw_sql(sql).execute(&self.0).await?;
         }

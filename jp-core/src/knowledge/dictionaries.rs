@@ -66,9 +66,15 @@ pub async fn wordhood_entries(
     pool: &SqlitePool,
 ) -> Result<(HashSet<String>, HashSet<String>), sqlx::Error> {
     let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT DISTINCT de.term, de.reading FROM dictionary_entries de \
-         JOIN dictionaries d ON d.id = de.dictionary_id \
- WHERE d.role IN ('master', 'name', 'reference', 'standard')",
+        // Roles as a subquery, not a join: the join gives the planner no way to
+        // restrict by dictionary before it reads, so it walks the whole entries
+        // table and filters afterwards. Resolving the ids first turns it into a
+        // search of four dictionaries. Only worth it where the role set covers
+        // most of the table — the narrower queries below read the same either
+        // way, and a join says what they mean more plainly.
+        "SELECT DISTINCT term, reading FROM dictionary_entries \
+         WHERE dictionary_id IN \
+         (SELECT id FROM dictionaries WHERE role IN ('master', 'name', 'reference', 'standard'))",
     )
     .fetch_all(pool)
     .await?;
@@ -118,9 +124,12 @@ pub async fn master_entries(pool: &SqlitePool) -> Result<Vec<(String, String)>, 
 /// that conjugate. See `SudachiTokenizer::with_conjugatable`.
 pub async fn master_conjugatable(pool: &SqlitePool) -> Result<HashSet<String>, sqlx::Error> {
     let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT DISTINCT de.term FROM dictionary_entries de \
-         JOIN dictionaries d ON d.id = de.dictionary_id \
-         WHERE d.role = 'master' AND de.rules != ''",
+        // Subquery for the same reason as `wordhood_entries`, and here because
+        // `rules` is in no index: restricting to the master first is what keeps
+        // that from being a row fetch per entry in every dictionary.
+        "SELECT DISTINCT term FROM dictionary_entries \
+         WHERE dictionary_id IN (SELECT id FROM dictionaries WHERE role = 'master') \
+         AND rules != ''",
     )
     .fetch_all(pool)
     .await?;
