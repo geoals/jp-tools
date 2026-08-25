@@ -115,6 +115,10 @@ export function createPopup(opts) {
 
     onOpen(data, target);
     popupEl.replaceChildren(...render(data, matches));
+    // Placed again now there is something to measure. The first call had the
+    // "…" placeholder in it, so every host asking "does it fit above the word?"
+    // was answering for a box one line tall.
+    place(anchor);
     onLayout();
 
     loadAudio(mine_);
