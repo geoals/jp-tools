@@ -70,6 +70,29 @@ pub(crate) fn render_style(obj: &serde_json::Map<String, Value>) -> String {
         .join(";")
 }
 
+/// The tags Yomitan's structured-content format defines. A zip is a file from
+/// the internet and `tag` is a string out of it, written into the markup the
+/// popup hands to `innerHTML` and the card hands to Anki's webview — so anything
+/// not on this list is dropped and only its content kept.
+///
+/// Without the list the tag is emitted verbatim, which is enough to smuggle an
+/// attribute past the escaping: `"tag": "img src=x onerror=…"` is not `img`, so
+/// it falls through as an unknown tag and the handler runs on insertion.
+const TAGS: &[&str] = &[
+    "a", "br", "details", "div", "img", "li", "ol", "rp", "rt", "ruby", "span", "summary", "table",
+    "tbody", "td", "tfoot", "th", "thead", "tr", "ul",
+];
+
+/// Whether an `href` may be kept. Yomitan uses it for internal cross-references
+/// (`?query=…`) and for links out; a `javascript:` one is neither.
+fn safe_href(url: &str) -> bool {
+    let url = url.trim();
+    url.starts_with('?')
+        || url.starts_with('#')
+        || url.starts_with("http://")
+        || url.starts_with("https://")
+}
+
 /// Convert Yomitan structured-content JSON to an HTML string.
 /// The `images` map provides pre-extracted image data URIs keyed by zip path,
 /// used to embed `img` tags inline rather than skipping them.
@@ -112,9 +135,11 @@ impl HtmlWriter<'_> {
                 self.buf.push_str("<br>");
                 return;
             }
-            Some(t) => t,
-            None => {
-                // No tag — just recurse into content
+            // An unknown tag is dropped and its content kept, the same as an
+            // object with no tag at all: a definition is worth reading without
+            // whatever wrapper the dictionary asked for.
+            Some(t) if TAGS.contains(&t) => t,
+            _ => {
                 if let Some(content) = obj.get("content") {
                     self.write(content);
                 }
@@ -235,7 +260,9 @@ fn write_attributes(obj: &serde_json::Map<String, Value>, buf: &mut String) {
     }
 
     // href
-    if let Some(Value::String(val)) = obj.get("href") {
+    if let Some(Value::String(val)) = obj.get("href")
+        && safe_href(val)
+    {
         write_attr(buf, "href", val);
     }
 

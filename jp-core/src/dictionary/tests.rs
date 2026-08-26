@@ -834,6 +834,39 @@ fn sc_html_attribute_order() {
     );
 }
 
+/// A zip is a file from the internet and `tag` is a string out of it. Anything
+/// off Yomitan's list is dropped and its content kept — an unknown tag written
+/// verbatim is how an attribute gets past the escaping.
+#[test]
+fn sc_html_drops_a_tag_yomitan_does_not_define() {
+    let script = serde_json::json!({"tag": "script", "content": "alert(1)"});
+    assert_eq!(
+        structured_content_to_html(&script, &HashMap::new()),
+        "alert(1)"
+    );
+    let smuggled = serde_json::json!({"tag": "img src=x onerror=alert(1)", "content": ""});
+    assert_eq!(structured_content_to_html(&smuggled, &HashMap::new()), "");
+}
+
+#[test]
+fn sc_html_drops_an_href_that_is_not_a_link() {
+    let v = serde_json::json!({
+        "tag": "a",
+        "href": "javascript:alert(1)",
+        "content": "link"
+    });
+    assert_eq!(
+        structured_content_to_html(&v, &HashMap::new()),
+        "<a>link</a>"
+    );
+    // Yomitan's own internal cross-reference shape survives.
+    let query = serde_json::json!({"tag": "a", "href": "?query=x", "content": "x"});
+    assert_eq!(
+        structured_content_to_html(&query, &HashMap::new()),
+        r#"<a href="?query=x">x</a>"#
+    );
+}
+
 #[test]
 fn sc_html_object_without_tag_recurses_content() {
     let v = serde_json::json!({"content": "just text"});
