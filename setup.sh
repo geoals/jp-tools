@@ -559,6 +559,36 @@ if [ "$DRY_RUN" != 1 ]; then
   mkdir -p "$DATA" && printf '%s\n' "$TIER" >"$DATA/install-tier"
 fi
 
+step "Starting kotodex-server"
+# The doctor asks the server what it can do, so almost every row below is
+# unanswerable while it is down — and a fresh install has never started it, so
+# a clean run reported itself as broken. Started here, the closing check is a
+# real answer. The launcher adopts a running server rather than starting a
+# second one, so leaving this up costs nothing.
+SERVER_LOG="$DATA/kotodex-server.log"
+server_answering() { curl -s --max-time 2 "http://localhost:3200/api/reader/state" >/dev/null 2>&1; }
+if [ "$DRY_RUN" = 1 ]; then
+  say "would start target/release/kotodex-server"
+elif server_answering; then
+  good "already running"
+elif [ ! -x "$HERE/target/release/kotodex-server" ]; then
+  fail "target/release/kotodex-server is missing"
+else
+  mkdir -p "$DATA"
+  # setsid so it outlives this script, and the log so a failure to start has
+  # somewhere to say why.
+  setsid "$HERE/target/release/kotodex-server" >>"$SERVER_LOG" 2>&1 &
+  for _ in $(seq 40); do
+    server_answering && break
+    sleep 0.5
+  done
+  if server_answering; then
+    good "answering on http://localhost:3200"
+  else
+    fail "did not come up — see $SERVER_LOG"
+  fi
+fi
+
 step "Anything still missing"
 if [ "$DRY_RUN" = 1 ]; then
   say "would run scripts/kotodex-doctor.sh --only-problems"

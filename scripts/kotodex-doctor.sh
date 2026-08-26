@@ -154,8 +154,13 @@ fi
 if [ -n "$CAPS" ]; then
   row true "kotodex-server" "answering on $URL" ""
 else
+  if reading_here; then
+    start="start Kotodex from the application menu"
+  else
+    start="start it with target/release/kotodex-server"
+  fi
   row false "kotodex-server" "not answering on $URL" \
-    "start Kotodex from the application menu — the rows below need it" critical
+    "$start — the rows below need it" critical
 fi
 
 if reading_here; then
