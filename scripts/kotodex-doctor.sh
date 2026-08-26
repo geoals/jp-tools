@@ -193,7 +193,6 @@ cap dict_master "master"
 cap dict_definitions "definitions" critical
 cap dict_frequency "frequency"
 cap dict_pitch "pitch"
-cap vocabulary_ledger "ledger"
 
 section "Anki"
 cap anki "AnkiConnect"
