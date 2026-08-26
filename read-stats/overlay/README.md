@@ -3,42 +3,51 @@
 The line and its dictionary drawn **over** the game, fullscreen included.
 
 `#read` has to sit beside the VN, because Yomitan needs a browser window and a
-browser window loses to a fullscreen one. KWin puts a `zwlr_layer_shell_v1`
-overlay surface *above* fullscreen windows, so the line can sit on the game.
+browser window loses to a fullscreen one. A surface that is above a fullscreen
+window by protocol does not — that is `layer-overlay/`, which picks between a
+`zwlr_layer_shell_v1` surface and an always-on-top XWayland window depending on
+what the compositor offers.
 
 ```sh
-read-stats/overlay/vn-overlay.sh                  # start, or restart what is up
+read-stats/overlay/vn-overlay.sh                  # start, replacing a running one
 read-stats/overlay/vn-overlay.sh --mobile         # 1.75x, read off a phone
-read-stats/overlay/vn-overlay.sh stop|status
+read-stats/overlay/vn-overlay.sh ensure           # start only if none is running
+read-stats/overlay/vn-overlay.sh restart|stop|status
 ```
 
-Needs PySide6, qt6-webengine and layer-shell-qt — **system packages, not the
-venv**, which is why `vn-overlay.sh` calls bare `python3`.
+Needs PySide6 with Qt WebEngine. The layer-shell backend needs
+`layer-shell-qt` too, and all three as **system packages** — a pip PySide6
+carries its own Qt and no `org.kde.layershell`. Where the distribution packages
+none, `setup.sh` puts one in a venv and the X11 backend runs off that;
+`vn-overlay.sh` resolves which interpreter that is through
+`scripts/lib/platform.sh`.
 
 - `overlay.html` / `overlay.js` — the page. Vanilla JS, sharing only
   `web-shared/` with read-stats' own frontend.
 - `vn-overlay.py` — which page, and the two health checks. Everything about
   *being* an overlay is `layer-overlay/`, which knows nothing about reading.
 - `vn-overlay.sh` — start it from anywhere, including over ssh, and keep it
-  alive when that shell goes. Starting stops whatever is already running, so
-  there is only ever one.
+  alive when that shell goes. `start` stops whatever is already running, so
+  there is only ever one; `ensure` leaves a running one alone.
 
-**read-stats is the backend, and serves this directory at `/overlay/`.** The
-page calls eight `/api` routes — the line stream, the dictionary, the ledger,
-the card — and none of them can be answered anywhere else, since the dictionary
-and the ledger are jp-core's. Loading it over `file://` would break every
-relative `fetch`, and an absolute URL would need CORS for nothing. It is served
-straight off disk, but the view only reads it at load, so an edit is picked up
-by `vn-overlay.sh restart`.
+**read-stats is the backend, and serves this directory at `/overlay/`.** Every
+route the page calls is one of read-stats' — the line stream, the dictionary,
+the ledger, the card, the fonts, the audio — and none of them can be answered
+anywhere else, since the dictionary and the ledger are jp-core's. Loading it over
+`file://` would break every relative `fetch`, and an absolute URL would need CORS
+for nothing. It is served straight off disk, but the view only reads it at load,
+so an edit is picked up by `vn-overlay.sh restart`.
 
 Starting without read-stats warns and carries on; the strip fills in when
 read-stats arrives, because `EventSource` reconnects on its own. Anki down
 warns too — mining is what fails. Textractor is not checked here: the page
 already reports it live in the corner, from the logger's heartbeat.
 
-**Clicks are the design.** The page reports the box it has drawn, and Qt hands
-that to `wl_surface.set_input_region`: a click on the overlay looks a word up,
-a click anywhere else reaches the VN and advances the line. No mode to switch.
+**Clicks are the design.** The page reports the box it has drawn, and the shell
+makes that the surface's input region — `wl_surface.set_input_region` under
+layer-shell, an XShape input shape under X11: a click on the overlay looks a word
+up, a click anywhere else reaches the VN and advances the line. No mode to
+switch.
 The report is **pushed over a WebChannel the instant the layout changes**, and
 the popup opens flush against the top of the line box. Both are the same
 requirement: any lag, and any gap between the two boxes, is a click that was
@@ -79,20 +88,24 @@ hands back the id `define` returned, so a retraction can only ever undo the one
 row that popup made. The side buttons still cost nothing at all and stay the
 way to judge a word without asking what it means.
 
-**The controls live behind one handle.** ☰ at the top left is the bar shut:
-drag it to move the widget, click it to shut explain, hide the line and
-settings, which sit in a row to its right. It starts open, and only the handle
-opens and shuts it — nothing closes it on its own, so a
-button is never taken out from under the pointer reaching for it. Paused tints
-the handle, since that is the one state worth seeing while the bar is shut.
+**The controls live behind one handle.** ☰ at the top left is the bar shut: drag
+it to move the widget, click it to hide the row to its right — explain, hide the
+line, scrollback, pause capture, settings, and ✕ quit. It starts open, and only
+the handle opens and shuts it — nothing closes it on its own, so a button is
+never taken out from under the pointer reaching for it. The three panels that
+hang under the bar (scrollback, explain, settings) are alternatives rather than a
+stack: opening one closes the others.
 
-**⚙ is three tabs**, because the questions are different. *Text* — font size,
-line height, spacing, weight, backdrop, shadow strength and spread, colour,
-font.
-*Placement* — column width, phone size and the scale it uses. *Marks* — whether
-a status is painted and which, how strongly, the common-word threshold, and
-ghost mode. Pausing capture is under the tabs: it is the one action in the
-panel rather than a setting.
+Pause is its own button in that row rather than a row inside the settings:
+pausing is reached for mid-scene, and a control two clicks behind a cogwheel is
+one that gets skipped. Its icon carries the state — two bars while capture runs,
+a triangle while it is stopped.
+
+**⚙ is three tabs**, because the questions are different. *Text* — theme, font
+size, line height, spacing, weight, column width, backdrop, shadow strength and
+spread, colour, font, and the switch to phone size. *Marks* — whether a status is
+painted and which, how strongly, the common-word threshold, and ghost mode.
+*Source* — Textractor's WebSocket or the clipboard, and the WebSocket's address.
 
 The shadow is centred on the glyphs rather than dropped below them — what it is
 for here is lifting the character off the artwork, not casting it in a
@@ -115,19 +128,21 @@ back to read-stats, so `#read` and the overlay cannot disagree about the same
 word.
 
 `--mobile` draws the overlay at 1.75x with the line on the bottom edge, for
-reading the screen off a phone. ⚙ → Placement switches between
-the two without restarting the shell — it reloads the page with the layout's
-query parameters flipped, and the stream replays the newest line on reconnect.
+reading the screen off a phone. ⚙ → Text → *Phone size* switches between the two
+without restarting the shell — it reloads the page with the layout's query
+parameters flipped, and the stream replays the newest line on reconnect.
 
 **The line is placed against the game's window, not the screen.** read-stats
 puts the current work's `vn_window` on the status event — the same column
 `vn-capture.sh` screenshots by, so there is still one place to say which window
-is the game — and the shell polls `xdotool` for its rectangle and pushes it over
-the WebChannel. Everything in `overlay.html`'s `--text-*` is a fraction of that
-rectangle, so moving or resizing the game carries the line with it and another
-resolution needs no re-measuring. No rectangle — no name on the work, no
-`xdotool`, a Wayland-native game — and the line falls back to sitting against
-the screen, which is where it sat before any of this.
+is the game — and the shell finds that window's rectangle and pushes it over the
+WebChannel. It is told where the window is by X rather than asking again and
+again (`layer-overlay/xwatch.py`), and falls back to polling `xdotool` where no X
+connection can be opened. Everything in `overlay.html`'s `--text-*` is a fraction
+of that rectangle, so moving or resizing the game carries the line with it and
+another resolution needs no re-measuring. No rectangle — no name on the work, no
+way to reach X, a Wayland-native game — and the line falls back to sitting
+against the screen, which is where it sat before any of this.
 
 The `--text-*` defaults are measured off one VN. Another wants its own: drag the
 line onto the game's own text to find the offset, which is stored as fractions
@@ -156,12 +171,16 @@ asked after the definition is drawn so a shut or slow Anki cannot hold it up,
 and a mine made while the popup is open raises the badge from the id the add
 returns — no reopening.
 
-The card is built by read-stats and added through the AnkiConnect proxy Yomitan
-uses, so it is enriched and captured identically. `VocabDefFull` is written with
+The card is built by read-stats (`routes/reader/mine.rs`) and handed to
+`services::card::add_note`, which is where Yomitan's own add arrives too, so it
+is enriched and captured identically. Every field name comes from
+`jp_mine_core::config::AnkiConfig`, so the card fits whichever note type is
+configured and nothing here spells one. The definition field is written with
 Yomitan's own per-dictionary wrapper divs, since the note type styles
 `.dict-<name>-body` rather than the glossary inside it, and carries Sankoku and
-Jitendex only — the two that note type has rules for. `VocabAudio` is the one
-field it cannot fill — Yomitan fetches that from its own audio sources.
+Jitendex only — the two that note type has rules for. The word's own recording
+comes from the same Local Audio Server the ♪ button plays, which is where
+Yomitan's audio sources point, so both surfaces attach the same file.
 
 Yomitan does not run here, so alt-tab to `#read` when the tokenizer picks the
 wrong boundary.
@@ -180,7 +199,7 @@ on every change.
 
 - `VN_OVERLAY_URL` — page to show (default `overlay.html` beside it, over
   read-stats on :3200).
-- `KOTODEX_ANKI_URL` (default `http://localhost:8765`) — checked at startup
+- `KOTODEX_ANKI_URL` (default `http://127.0.0.1:8765`) — checked at startup
   only; the card itself is added by read-stats.
 - `VN_OVERLAY_HEIGHT` (default 300, 525 under `--mobile`) — strip height, px. The
   text is positioned against it, so changing it moves the line by the same

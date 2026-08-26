@@ -28,8 +28,10 @@ clicking through. `SIGUSR2` is the page's to define. Both are sent by name:
 
     pkill -USR1 -f <the script that called run()>
 
-Needs PySide6, qt6-webengine and layer-shell-qt as **system packages** — a venv
-build of PySide6 carries no `org.kde.layershell`.
+Needs PySide6 with Qt WebEngine. The layer-shell backend needs `layer-shell-qt`
+too, and all of them as **system packages** — a pip PySide6 carries its own Qt,
+which cannot load a system `org.kde.layershell`. [`backend`] checks for that and
+answers x11, so a venv build still runs.
 """
 
 import os
@@ -287,8 +289,6 @@ class Overlay(QObject):
         asking from the process being stopped from outside — a stop is also a
         clean exit, and the two want opposite responses.
         """
-        from PySide6.QtGui import QGuiApplication
-
         app = QGuiApplication.instance()
         if app is not None:
             app.exit(QUIT_REQUESTED)

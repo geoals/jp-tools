@@ -1,9 +1,10 @@
 # What Kotodex needs, and what it does without it
 
 One row per optional part: what it gives, what happens when it is missing, and
-the one thing that turns it on. This is the specification for the capability
-probe (T3.1), the installer (Phase 6) and `kotodex doctor` (T3.6) — all three
-read from here, so a change belongs in this table first.
+the one thing that turns it on. This is the specification for three
+implementations of it — `read-stats/src/routes/reader/capabilities.rs`
+(the probe), `setup.sh` (the installer) and `scripts/kotodex-doctor.sh` (`kotodex
+doctor`) — so a change belongs in this table first.
 
 Install commands are written generically; `scripts/lib/platform.sh` maps the
 package names per distro.
@@ -24,7 +25,7 @@ package names per distro.
 | `pactl` | finds the sink to record | no voiceline audio on any card | `pkg install pulseaudio-utils` (or `pipewire-pulse`) |
 | `ffmpeg` | the ring buffer, clip cutting, Vorbis encoding | no voiceline audio on any card | `pkg install ffmpeg` |
 | silero VAD model (`silero_vad.onnx`) | trims the clip to the spoken line | the clip keeps its raw window — long, with room tone | `setup.sh` downloads it (2.2 MB, MIT) |
-| `onnxruntime` (python) | runs the VAD model | same as a missing model | `pip install onnxruntime` |
+| `onnxruntime` (python) | runs the VAD model | same as a missing model | `setup.sh` installs it into `~/.local/share/kotodex/venv` |
 | whisper-service | narrows the clip to the mined sentence | the VAD-trimmed clip is attached instead; the reader's trim indicator is off | not set up in this release — see `whisper-service/README.md` |
 
 ## Line source
@@ -32,7 +33,7 @@ package names per distro.
 | part | gives | without it | turn it on |
 |---|---|---|---|
 | Textractor WebSocket (`vn-ws-logger.py`) | the lines being read, live | no feed; the overlay shows the warning line and nothing else | run Textractor with the WS plugin pointed at the logger |
-| clipboard watcher (T5.7) | the same rows from a clipboard hooker | only matters as an alternative to the above | select it in settings |
+| clipboard watcher (`wl-clipboard` or `xclip`) | the same rows from a clipboard hooker | only matters as an alternative to the above | ⚙ → Source in the overlay, or `line_source` in settings |
 
 ## Dictionaries
 
@@ -62,7 +63,7 @@ Roles, not titles: any dictionary answers the wordhood gate, `standard` and
 
 | part | gives | without it | turn it on |
 |---|---|---|---|
-| `layer-shell-qt` (`org.kde.layershell`) | the feed above a fullscreen game, click-through | falls back to the X11 backend (T4.8), or windowed reading in `#read` | `pkg install layer-shell-qt` — system package only |
+| `layer-shell-qt` (`org.kde.layershell`) | the feed above a fullscreen game, click-through | falls back to the X11 backend, which is above a fullscreen game everywhere except KDE | `pkg install layer-shell-qt` — system package only |
 | a compositor that stacks it | the same, in practice | see `docs/compositors.md` for which do | use KDE or a wlroots compositor for fullscreen |
 | `xdotool` | tracks the game window's geometry so the strip follows it | the strip sits at a fixed screen position | `pkg install xdotool` |
 

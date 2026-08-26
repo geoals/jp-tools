@@ -3,7 +3,7 @@
 <title>overlay</title>
 <!--
   The line being read, and a dictionary popup for the word clicked in it — the
-  page behind vn-mine's layer-shell strip over the VN.
+  page inside the strip `layer-overlay/` draws over the VN.
 
   Not `#read` with things hidden: this one is over the game, so anything that is
   not the line is in the way. No feed, no header, no controls. The backdrop
@@ -413,10 +413,10 @@
     display: flex;
     gap: 0.4rem;
   }
-  /* Collapsed is the resting state: six buttons over a game are six things in
-     the way of the art, and the handle is the one that has to stay reachable
-     because it is also what the whole widget is dragged by. Only the handle
-     opens and shuts it — a bar that closed itself took the button out from
+  /* The row can be shut, because a row of buttons over a game is that many
+     things in the way of the art — and the handle is the one that has to stay
+     reachable, since it is also what the whole widget is dragged by. Only the
+     handle opens and shuts it: a bar that closed itself took the button out from
      under the pointer reaching for it. */
   #buttons[hidden] {
     display: none;

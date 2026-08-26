@@ -64,10 +64,9 @@ session, and that the surface stays above the game there as the spike measured.
 
 ## What this means for the release
 
-The fullscreen overlay is not limited to layer-shell compositors. GNOME —
-the largest single desktop — works through the X11 backend, which makes T4.8
-required rather than optional, and the "90% of desktop Linux" claim defensible
-rather than something to narrow.
+The fullscreen overlay is not limited to layer-shell compositors. GNOME — the
+largest single desktop — works through the X11 backend, which is what makes the
+"90% of desktop Linux" claim defensible rather than something to narrow.
 
 Backend selection at startup: layer-shell where the compositor offers it, X11
 otherwise. Both are reported by `kotodex doctor`.

@@ -18,9 +18,9 @@
 #   WAYLAND_DISPLAY   compositor socket      (default: the only one running)
 #
 # Started over ssh the script has no session of its own to inherit, so this
-# fills in what a Wayland client needs: the runtime dir, the compositor socket,
-# and the Qt platform plugin. `setsid` plus closed stdio is what keeps it alive
-# when the ssh session ends — a layer surface has no terminal to belong to.
+# fills in the two things a Wayland client needs and cannot guess: the runtime
+# dir and the compositor socket. `setsid` plus closed stdio is what keeps it
+# alive when the ssh session ends — an overlay has no terminal to belong to.
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 # The Qt platform plugin is the backend's to set — layer-shell needs wayland

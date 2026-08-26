@@ -2,18 +2,22 @@
 
 Automatic daily reading tracker: characters read and active reading time,
 derived from the raw line stream `vn-mine/vn-ws-logger.py` already captures — no
-manual copying, no counters to reset. Plus `#read`, the live line feed read
-beside the running VN, where Yomitan does its lookups and mining.
+manual copying, no counters to reset.
+
+Two reading surfaces sit over the same API. `#read` is the live line feed read
+*beside* the running VN in a browser, which is the only one Yomitan is over.
+`overlay/` is the same feed and its own dictionary drawn *over* the game,
+fullscreen included — the everyday one, documented in `overlay/README.md`.
 
 `CLAUDE.md` has the architecture and the invariants; this file is the reference:
 what the thing does, how to set it up, the endpoints and the config.
 
 ## How it works
 
-- **Ingestion is passive.** `vn-ws-logger.py` (under the `kotodex-capture` systemd
-  unit) inserts every hooked line — timestamp, char count, text — into the shared
-  `knowledge.db`. Stats are captured whenever you read, whether or not the
-  dashboard is running.
+- **Ingestion is passive.** `vn-ws-logger.py` (run by the `kotodex-capture`
+  daemon, which the Kotodex launcher starts) inserts every hooked line —
+  timestamp, char count, text — into the shared `knowledge.db`. Stats are
+  captured whenever you read, whether or not the dashboard is running.
 - **Characters are counted like texthooker-ui does** (`jp_core::text::chars`,
   mirrored in `vn-ws-logger.py`): an allowlist of kana, kanji, radicals and
   alphanumerics, so punctuation doesn't inflate chars/h. Startup recomputes
@@ -77,8 +81,8 @@ what the thing does, how to set it up, the endpoints and the config.
   to the cross-work rate. A finished work shows its real dates instead.
 - **Anki integration is read-only.** On dashboard load (or the ↻ button) the
   server probes for AnkiConnect — the client's own IP first, for a phone running
-  AnkiconnectAndroid, then `KOTODEX_ANKI_URL` — and snapshots the deck's
-  `VocabKanji` fields into `anki_notes`. Note ids double as creation timestamps,
+  AnkiconnectAndroid, then `KOTODEX_ANKI_URL` — and snapshots the deck's vocab
+  field (`KOTODEX_ANKI_FIELD_VOCAB`) into `anki_notes`. Note ids double as creation timestamps,
   which gives cards-per-session for free. New lines are tokenized into per-day
   lemma counts (`word_days`), which power the **re-encounter card**: how many
   mined words the reading has since shown you again.
@@ -92,19 +96,19 @@ works the same way.
 
 - **Yomitan** scans the lines. Point its *Server address* at `/anki-proxy` so
   lookups are counted and cards land in Anki.
-- **Mining has no button.** Yomitan's `addNote` goes through `/anki-proxy`, and
-  the proxy runs `vn-mine/vn-capture.sh` once Anki accepts the note, so audio and
-  a screenshot attach to every mine. whisper-service is *optional* here — it only
-  narrows the clip to the mined sentence within a multi-sentence line. When it is
-  down the VAD-trimmed clip is attached instead and the bar shows a muted **✂
-  off** hint.
+- **Mining has no button.** Yomitan's `addNote` goes through `/anki-proxy`, which
+  hands it to `services::card::add_note` — the one seam every card path calls,
+  the overlay's `POST /api/reader/mine` included. That runs
+  `vn-mine/vn-capture.sh` once Anki accepts the note, so audio and a screenshot
+  attach to every mine. whisper-service is *optional* here — it only narrows the
+  clip to the mined sentence within a multi-sentence line. When it is down the
+  VAD-trimmed clip is attached instead and the bar shows a muted **✂ off** hint.
 - **✕ clear last** drops the newest hooked line from the stats.
 - **ℹ explain last line** sends the newest line, with a few before it for
   context, to the Anthropic API and shows a short read on it. **Select a word
   first** and the explanation centres on that word; the selection is read the
-  instant the button is tapped. Capped at a few sentences, on
-  `claude-haiku-4-5` by default (`KOTODEX_LLM_MODEL`), and only enabled when
-  `KOTODEX_ANTHROPIC_API_KEY` is set.
+  instant the button is tapped. Capped at a few sentences, streamed as it
+  arrives, and only enabled when `KOTODEX_ANTHROPIC_API_KEY` is set.
 - **Tapping a word judges it** — see CLAUDE.md for the rules.
 
 While the reader is open the **page title is set to `current_work`**, because
@@ -160,8 +164,10 @@ cargo run -p read-stats     # http://localhost:3200
 ```
 
 Or as part of the stack: `scripts/start-all.sh`, which takes service names
-(`start-all.sh restart read-stats`). The `kotodex-capture` ingestion daemon is a
-separate systemd user unit: `systemctl --user start kotodex-capture`.
+(`start-all.sh restart read-stats`). Launching Kotodex starts this and the
+`kotodex-capture` ingestion daemon together; `vn-mine/kotodex-capture
+{run|stop|restart|status}` drives that one by hand, and there is an optional
+systemd user unit for keeping it up independently (`vn-mine/README.md`).
 
 ## API
 
@@ -190,31 +196,38 @@ separate systemd user unit: `systemctl --user start kotodex-capture`.
   reading/queued/finished/dropped; `vn_window` is the capture-target substring
   for this VN (empty string clears)
 - `PUT  /api/works/{id}` / `DELETE /api/works/{id}` — same fields by id / remove
-- `GET  /api/lines/stream` — SSE, one event per hooked line, `data` being
-  `{id, ts, chars, text}` and the event id being the line id. Opens on the
+- `GET  /api/lines/stream` — SSE, one event per hooked line, `data` being the
+  row (`{id, ts, chars, text, ruby, …}`) plus `tokens`, one span per word the
+  tokenizer found, and the event id being the line id. Opens on the
   sitting in progress, widened to 200 lines when that sitting is shorter than
   that, so a feed opened onto a session that has just started still has
   something to look back over; `?backlog=<n>` asks for a fixed tail instead, and
   `?after=<id>` / `Last-Event-ID` resumes so a reconnecting client doesn't
-  replay or skip
+  replay or skip. A second event, `status`, republishes the capture pipeline's
+  health every 2s: `{capture, paused, age_secs, pending, vn_window}`, where
+  `capture` is `live` / `stalled` / `unhooked` / `down` / `paused`
+- `GET  /api/lines/before?before=<id>&limit=200` — one page older than what the
+  feed holds, tokenized exactly as the stream tokenizes it
 - `POST /api/lines/discard` — `{ids: [...]}` (max 500), flags those lines
   `discarded` so every derived figure drops them; returns the ids actually
   changed, which is what undo re-sends. `POST /api/lines/undiscard` is the
   inverse. See *How it works* → clear last line
 - `GET  /api/reader/state` — `{paused, current_work, capture_available,
-  explain_available, trim_available}`. `trim_available` is a live probe of
-  whisper-service (`KOTODEX_WHISPER_URL`, 800 ms timeout) — false lights the
-  reader's **✂ off** hint; capture doesn't depend on it
+  explain_available, trim_available, session_gap_secs, capabilities}`.
+  `trim_available` is a live probe of whisper-service (`KOTODEX_WHISPER_URL`,
+  800 ms timeout) — false lights the reader's **✂ off** hint; capture doesn't
+  depend on it. `capabilities` is every optional part of the product with
+  `{ok, detail, fix}` each — `docs/degradation.md` at runtime, and what both
+  reading surfaces decide which controls to draw from. `kotodex doctor` prints it
 - `POST /api/reader/explain` — `{context: [oldest…newest], focus?}`; sends the
   lines to the Anthropic API and returns `{text}`, a short explanation of the
   last one centred on `focus` if given. 400 if no key is configured or the
   context is empty; the context is capped server-side. See *The reading view*
 - `GET  /api/vn/windows` — open window titles (via xdotool, Wine/Qt/IME
   scaffolding filtered out), offered as a picker for a work's `vn_window`
-- `POST /api/vn/capture` — run `vn-capture.sh` (see `KOTODEX_VN_CAPTURE_SH`)
-  and return its result. A capture that fails for an ordinary reason (stale
-  line, Anki closed) is `200 {"ok": false, "error": ...}`; only an unrunnable
-  or unparseable script is a 5xx
+- `GET  /api/vn/window` — which window is the VN right now, for `vn-capture.sh`
+  fired by hotkey. One implementation of that rule, so the hotkey and a card add
+  cannot aim at different games
 - `POST /api/capture/pause` — toggle capture at the source (`settings.capture_paused`)
 - `POST /api/anki/refresh` — probe AnkiConnect (client IP, then fallback),
   snapshot the deck, tokenize new lines
@@ -223,15 +236,112 @@ separate systemd user unit: `systemctl --user start kotodex-capture`.
 - `GET  /api/lookups/summary` — lookup outcomes per distinct term (mined /
   already-carded / never carded), repeat-lookup list, leech list, median
   lookup→card latency
-- `GET/PUT /api/settings` — `afk_secs`, `session_gap_secs`, `day_rollover_hour`,
-  `goal_floor_mins`, `goal_target_mins`, `chars_per_page`, `current_work`,
-  `vn_window` (legacy global fallback; the VN window is now a per-work column —
-  see `PUT /api/works/:id` — so it travels with the VN instead of going stale on
-  a switch),
-  `pace_start_date` (ISO date or "" — clips the finish-estimate pace window;
-  no dashboard control, set it here after a reading break:
+- `GET/PUT /api/settings` — `db::SETTING_KEYS` is the list, and a PUT of anything
+  else is a 400: `afk_secs`, `session_gap_secs`, `day_rollover_hour`,
+  `goal_target_mins`, `streak_min_mins`, `chars_per_page`, `current_work`,
+  `pace_start_date`, `vn_window`, `triage_min_encounters`,
+  `reader_common_max_freq_rank`, `reader_common_max_bccwj_rank`,
+  `capture_paused`, `highlight_status`, `line_source`, `line_source_ws_url`.
+  `vn_window` is a legacy global fallback; the VN window is a per-work column —
+  see `PUT /api/works/{id}` — so it travels with the VN instead of going stale on
+  a switch. `pace_start_date` is an ISO date or "" — it clips the finish-estimate
+  pace window, and has no dashboard control, so set it here after a reading
+  break:
   `curl -X PUT localhost:3200/api/settings -H 'Content-Type: application/json'
-  -d '{"pace_start_date": "2026-07-15"}'`)
+  -d '{"pace_start_date": "2026-07-15"}'`
+### The ledger
+
+Every rule these enforce is an invariant, and `CLAUDE.md` is where they are
+stated. Two carry most of the weight: `judge` is the **only** writer of
+`vocabulary.status`, and `rebuild` is the undo for a tokenizer change.
+
+- `GET  /api/vocab/summary` — the ledger by status. `in_master` is the
+  vocabulary scale: a term counts toward "I know N words" only if the master
+  dictionary lists it
+- `GET  /api/vocab/history` — the count as a daily curve, over **words** rather
+  than rows, so its last point equals the summary's `known_words`. It only
+  reaches back as far as `vocabulary_events`; everything asserted before that log
+  existed lands on its first day, which is a bulk import and not a week's reading
+- `GET  /api/vocab/queue` — the triage batch, most-encountered first, or
+  commonest first with `order=frequency`. Scoped to what has been read since the
+  last submit unless `scoped=0`. `preselect` is computed server-side because it
+  decides what gets written
+- `POST /api/vocab/judge` — the submit. Statuses are parsed strictly, and the
+  sweep watermark moves after the write and only for a request that asked
+- `GET  /api/vocab/surfaces?term=` — how one term was actually written, with a
+  line per spelling. The ledger keys on the normalized form, so a queue row may
+  never have appeared in the text as it is spelt
+- `GET  /api/vocab/browse` — read the ledger rather than judge it: a page
+  filtered by status and by which pass wrote the row
+- `GET  /api/vocab/non-words` — what `blacklist-non-words` would write, paged,
+  before it writes it
+- `POST /api/vocab/blacklist-non-words` — blacklist every untriaged row no
+  dictionary calls a word, so the untriaged count stops being padded by
+  tokenizer noise
+- `POST /api/vocab/anki-import` — import the Anki review pile as `known`.
+  Reader-triggered only, never folded into the recurring snapshot. A card still
+  in Anki's new/learning queue is a word not yet had, and a homograph is skipped
+  rather than guessed at
+- `POST /api/vocab/repair-empty-readings` — merge the empty-reading rows the
+  import leaves for kanji headwords. Idempotent
+- `POST /api/vocab/rebuild` — re-ingest every line under the current rules,
+  carry stranded judgements onto their new keys, prune what the pass no longer
+  produces
+
+### Paper books
+
+A book is logged against its epub, and every position is a byte offset into one
+stored flattening of it — see *Invariants* in `CLAUDE.md` for why the text is
+stored rather than the path.
+
+- `GET  /api/books` — the shelf's books with their status
+- `POST /api/books/upload` — the epub itself as the body, not a form. Flattens
+  it, creates the book and its `works` row, and lifts the cover out of the epub
+  if the work has none
+- `POST /api/books/setup` — `{work, anchor, first_page?, last_page?}`; place the
+  starting position from a typed anchor, and record the pages the body runs
+  between so a page estimate does not count the TOC and the afterword
+- `POST /api/books/preview` — what the span since the last position is made of,
+  by ledger status, unique terms rather than tokens. Writes nothing
+- `POST /api/books/log` — log a sitting: the anchor is searched **forward only**
+  from the last position, and what lands in `manual_sessions` is an ordinary row
+- `POST /api/books/skip` — move the position without writing a session, for a
+  book already part-read when its epub was added
+
+### The rest
+
+- `GET  /api/kanji` — every kanji ever read, in one payload: the grid, the grade
+  meters and the discovery curve are several readings of the same rows, so
+  fetching them separately would let them disagree about a kanji met while the
+  page was open. It walks the whole line stream, which is why the tab fetches it
+  itself instead of holding up the first paint
+- `POST /api/tokenize` — `{text}`; what the pipeline made of it, in the same
+  terms the ledger is keyed on, plus `jp_core::tokenize::trace`. Excluded tokens
+  come back rather than being filtered, since what was dropped and under which
+  rule is most of the question. **Writes nothing** — no ledger row, no count, no
+  presence mark
+- `POST /api/text/count` — count a block of text the way a session would, so the
+  log form can show the figure before submitting
+- `GET  /api/works/detail?work=` — the dashboard's derivations over the slice of
+  the stream stamped with one title. Untimed manual sessions merge in but do not
+  contribute to *speed*, which would report the reader's own pace back
+- `GET  /api/works/triage?work=` — the script's unjudged words, commonest in
+  this work first. Distinct from the queue above, which can only offer words
+  actually met — most of a script is words that were not
+- `GET  /api/anki/cards` — every mined card against what the reading knows,
+  sorted by what the reading says since its last review. Read-only: it reports
+  what a sweep *would* act on. Joins on the resolved ledger key, never the card's
+  spelling
+- `GET  /api/sessions/{id}/content` — the pasted text a manual session counted
+
+### The overlay's own
+
+`/api/reader/define`, `/api/reader/expand`, `/api/reader/mine`,
+`/api/reader/mined`, `/api/reader/mined/browse`, `/api/reader/audio`,
+`/api/reader/audio/clip`, `/api/reader/fonts`, `/api/reader/lookup/retract`.
+What each answers is about that surface — which of them records a lookup and
+which deliberately does not is the whole design — so `overlay/README.md`
+describes them.
 
 ### Counting lookups
 
@@ -247,8 +357,8 @@ are still added through the same path, and read-stats' own AnkiConnect calls
 bypass the proxy so a refresh can't inflate the count.
 
 Yomitan's duplicate check uses the **first field** of the note type, which must
-be the field named in `KOTODEX_ANKI_FIELD_VOCAB` (`VocabKanji`) for the term to
-be recorded. To confirm it's working, do a lookup and:
+be the field named in `KOTODEX_ANKI_FIELD_VOCAB` (`Expression` on Lapis) for the
+term to be recorded. To confirm it's working, do a lookup and:
 
 ```sh
 sqlite3 ~/.local/share/kotodex/knowledge.db 'SELECT ts, term, work FROM lookups ORDER BY id DESC LIMIT 5;'
@@ -365,32 +475,56 @@ curl -X POST localhost:3200/api/sessions -H 'Content-Type: application/json' \
 - `KOTODEX_STATS_DB_PATH` (default `~/.local/share/kotodex/read-stats.db`) — must
   match what `vn-ws-logger.py` uses (same env var).
 - `KOTODEX_STATS_LISTEN_ADDR` (default `0.0.0.0:3200`)
-- `KOTODEX_ANKI_URL` (default `http://localhost:8765`) — fallback AnkiConnect
-  when the dashboard client has none; `KOTODEX_ANKI_DECK` (`Japanese`),
-  `KOTODEX_ANKI_FIELD_VOCAB` (`VocabKanji`)
-- `KOTODEX_ANKI_FIELD_SENTENCE` (`SentKanji`), `KOTODEX_ANKI_FIELD_COMPACT_DEF`
-  (`CompactDef`) — when a card is added through `/anki-proxy` (Yomitan mining a
-  VN line), the proxy forwards it unchanged and then, in the background,
-  generates a ≤2-second CompactDef gloss from the note's word + sentence and
-  writes it to that field. Needs `KOTODEX_ANTHROPIC_API_KEY`; set the field
-  name empty to disable.
-- `KOTODEX_AUTO_CAPTURE_ON_ADD` (default **on**) — fire `vn-capture.sh` after a
-  proxied card add (audio + picture, best-effort). This *is* mining now; there
+- **The note type and every field name come from
+  `jp_mine_core::config::AnkiConfig`**, which read-stats, the overlay's mine
+  route, `anki-setup` and `vn-capture.sh` all read — nothing spells a field name
+  for itself. The defaults are the Lapis note type's; every one is overridable
+  through `KOTODEX_ANKI_FIELD_*`, where **unset means the default and empty means
+  this note type has no such field**. `KOTODEX_ANKI_MODEL` (`Lapis`),
+  `KOTODEX_ANKI_DECK` (`Japanese`), `KOTODEX_ANKI_STYLE` (`lapis` | `legacy`,
+  which markup the definition field is written in). `kotodex anki check` reports
+  what a configured note type is missing.
+- `KOTODEX_ANKI_URL` (default `http://127.0.0.1:8765`) — fallback AnkiConnect
+  when the dashboard client has none. Numeric on purpose: AnkiConnect binds IPv4
+  loopback only, and `localhost` can resolve to `::1` first.
+- `KOTODEX_ANKI_FIELD_COMPACT_DEF` (`MainDefinition` on Lapis) — after a card is
+  added, `services::card` generates a ≤2-second gloss from the note's word +
+  sentence in the background and writes it to that field. Needs
+  `KOTODEX_ANTHROPIC_API_KEY`; set the field name empty to disable. Without a key
+  the field gets the first dictionary sense instead.
+- `KOTODEX_AUTO_CAPTURE_ON_ADD` (default **on**) — fire `vn-capture.sh` after
+  any card add (audio + picture, best-effort). This *is* mining now; there
   is no button. Set to `0` on a machine that serves the dashboard but doesn't
   run the VN — where the capture script is simply absent it already no-ops with
   a warning.
 - `KOTODEX_SUDACHI_DICT_PATH` (default `system_full.dic` in the working dir)
-- `KOTODEX_VN_CAPTURE_SH` (default `../vn-mine/vn-capture.sh` relative to the
-  crate) — what the proxy runs after a card add. It needs the desktop session's
-  environment (`spectacle` screenshots the active window), so read-stats has to
-  be started from within the session, as `scripts/start-all.sh` does.
-- `KOTODEX_ANTHROPIC_API_KEY` — enables `#read`'s ℹ explain last line button; unset
-  leaves it disabled. `KOTODEX_LLM_MODEL` (default `claude-haiku-4-5`) — the
-  model it asks. Both are shared with yt-mine, so a root `.env` covers both.
+- `KOTODEX_VN_CAPTURE_SH` (default `vn-mine/vn-capture.sh` under
+  `jp_core::install::install_root()`) — what `services::card` runs after a card
+  add. It needs the desktop session's environment, since it takes a screenshot,
+  so read-stats has to be started from within the session — which is what the
+  Kotodex launcher and `scripts/start-all.sh` both do.
+- `KOTODEX_ANTHROPIC_API_KEY` — enables the ℹ explain button on both reading
+  surfaces, and the card's CompactDef gloss; unset leaves the button undrawn and
+  the gloss falls back to the first dictionary sense. Shared with yt-mine, so a
+  root `.env` covers both. **The models are pinned in code, not configurable**:
+  explain is Sonnet 5 (`services::llm`), a short lookup read once and thrown
+  away, and the gloss is Opus 5 (`jp_mine_core::compactdef`), which is written
+  onto a card and kept.
 - `KOTODEX_WHISPER_URL` (default `http://localhost:8100`) — whisper-service,
   probed only to light the reader's **✂ off** hint. read-stats never calls it
   directly; `vn-capture.sh` does (its own `VN_WHISPER_URL`), and the mine works
   whether or not it's up.
+- `KOTODEX_LOCAL_AUDIO_URL` (default `http://127.0.0.1:5050`) — the Local Audio
+  Server add-on beside Anki, proxied for the popup's ♪. Numeric for the same
+  reason as `KOTODEX_ANKI_URL`. Down or absent draws no button.
+- `KOTODEX_ROOT` — where the assets are, overriding
+  `jp_core::install::install_root()`. The Kotodex launcher sets it for every
+  child, since the binaries are relocatable and the path they were built in is
+  not.
+- `KOTODEX_DEMO=1` — refuse every request that is not a GET, and skip the
+  boot-time writes. `KOTODEX_DEMO_TODAY=YYYY-MM-DD` pins the clock to a day the
+  seed has reading on, since a frozen history walks off the end of a real one.
+  Both are `demo/`'s; see its README.
 
 ## Extending to new sources
 

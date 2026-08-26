@@ -162,7 +162,8 @@ and a ledger row cannot disagree):
   otherwise 知る splits across しる, しら and しっ.
 - **One word, one row, spelt the way the master dictionary spells it.** Terms
   key on Sudachi's _normalized_ form. Where Sudachi and Sankoku disagree,
-  Sankoku wins (`written_form`).
+  Sankoku wins — `identity_ladder` is the rung order that decides it, and the
+  rung that won is what `#tokenize` prints as the identity's `rule`.
   **Except where the reader's own spelling is a Sankoku headword too** — then it
   wins, because there is nothing left to decide: 綺麗 and 奇麗 are both listed,
   the page said one of them, and normalising 検死 to 検屍 or 上手く to 旨い
@@ -456,8 +457,11 @@ Mining:
 - **Mining is implicit.** Every card path — the overlay's `reader/mine`, and
   Yomitan's `addNote` through `routes/ankiproxy` — adds through
   `services::card::add_note`, which fires vn-capture.sh once Anki accepts the
-  note. There is no mine button, and the overlay has no popup button either — a
-  side mouse button mines the word under the pointer, and another judges it.
+  note. `#read` has no mine button at all — a card added there is Yomitan's. In
+  the overlay a side mouse button mines the word under the pointer and another
+  judges it, without opening anything; the popup head carries the same two as
+  ✓ ✗ ＋ for a reader who has no side buttons, and retracts the lookup that
+  reaching them cost (see below).
 - **The popup can overrule the tokenizer about a position.** It scans the raw
   line from the clicked word rightwards (`reader/define::expand`) and shows a
   chip per `(term, reading)` a dictionary holds for a prefix of it, longest
@@ -523,23 +527,26 @@ Mining:
   so the delete leaves a `reader_marks` row at the lookup's own timestamp**:
   the popup was not a lookup, but the reader was demonstrably at the screen, and
   without the mark the surrounding gap would quietly stop counting as reading.
-- **`VocabDefFull` carries Yomitan's per-dictionary wrappers**, not just the
-  glossary: the note type styles `.dict-<slug>-title` and `.dict-<slug>-body`,
-  and `.dict-jitendex-body > div > ol > li` is what hides Jitendex's star and
-  its ① ② numbering.
-- **The card's dictionaries and the popup's are two lists.** `CARD_DICTIONARIES`
-  is Sankoku and Jitendex, because those are the two the note type has CSS for
-  and a third would land on the card unstyled. The popup shows everything
-  installed and opens on the master, with `jp_core::define::SECOND_PAGE` next. Adding a dictionary changes the
-  popup; it changes the card only when the note type gets a rule for it.
-- **The class name is fixed per dictionary, never derived from its title.**
-  `CARD_DICTIONARIES` pairs a title prefix with the class (`sanseido`,
-  `jitendex`), because both titles carry a version the release moves — Sankoku's
-  edition, and Jitendex's date in Yomitan's own copy of it
+- **Which dictionaries reach the card is the note type's decision, not this
+  app's** (`jp_mine_core::card::Style`, `KOTODEX_ANKI_STYLE`). Lapis — the
+  default — styles Yomitan's `.yomitan-glossary` directly and takes every
+  dictionary holding a definition, so its list and the popup's are the same one
+  and a dictionary added later appears on cards without a code change. Legacy
+  styles per dictionary and reaches *through* a wrapper, so it takes only the
+  two `LEGACY_DICTIONARIES` names — Sankoku and Jitendex — and drops the rest: a
+  third would land unstyled. The popup shows everything installed either way, in
+  `dictionaries.priority` order — which is the reader's own, set by
+  `jp-dict priority <id> <n>`, and is why nothing in `define` pins the master in
+  front any more.
+- **Under the legacy style the class name is fixed per dictionary, never derived
+  from its title.** `LEGACY_DICTIONARIES` pairs a title *prefix* with the class
+  (`sanseido`, `jitendex`), because both titles carry a version the release moves
+  — Sankoku's edition, and Jitendex's date in Yomitan's own copy of it
   (`Jitendex.org [2026-02-05]`). A slug built from the title stops matching on
   the next update, and the star and ① ② rules are written against
   `.dict-jitendex-body` alone, so the block would come back unstyled with the
-  field still looking full.
+  field still looking full. The nesting is load-bearing for the same reason: the
+  glossary has to be the body div's *child*.
 - **A capture is anchored at the add, not at the capture.** `card::add_note`
   stamps `now_ts()` before forwarding and passes it as `VN_ANCHOR_TS`. Nothing may
   be awaited in front of the capture: in `enrich_added_note` the CompactDef call

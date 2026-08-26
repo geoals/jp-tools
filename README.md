@@ -84,8 +84,9 @@ Not part of the release, but sharing the same language layer:
   dictionaries and the vocabulary ledger; the card's fields and its gloss.
 - **[whisper-service/](whisper-service/)**, **[manga-ocr-service/](manga-ocr-service/)**
   — the two Python services those two need.
-- **[scripts/start-all.sh](scripts/start-all.sh)** — start, stop or restart the
-  whole stack, or one service by name.
+- **[scripts/start-all.sh](scripts/start-all.sh)** — start, stop or restart every
+  service in the repository, or one by name. A development tool: Kotodex itself
+  runs what it needs and is not in here.
 
 ## Licence
 
