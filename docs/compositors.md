@@ -19,7 +19,6 @@ rules.
 | session | stays above fullscreen | click-through | xdotool geometry | verdict |
 |---|---|---|---|---|
 | KDE Wayland | yes (layer-shell) | yes | yes | supported — the development target |
-| KDE Wayland, X11 backend forced | **no** | yes | yes | KWin puts an *active fullscreen* window above keep-above ones. Not a defect: KDE has layer-shell. |
 | GNOME Wayland | yes (X11 backend) | untested | yes | supported via the X11 backend |
 | Hyprland | expected yes (layer-shell) | — | — | untested; wlroots implements the protocol |
 | GNOME Xorg | — | — | — | no such session; GNOME has dropped X11 |
