@@ -72,7 +72,8 @@ doctor` prints your machine's version of that table.
 
 Kotodex is `kotodex/` (the launcher), `kotodex-server/` (the server, the dashboard
 and the overlay page), `layer-overlay/` (the Qt shell that puts a web page over
-a fullscreen window) and `vn-mine/` (the capture daemon and the line logger).
+a fullscreen window), `capture/` (the audio ring buffer and the media a card
+needs) and `sources/` (what hands captured text to the ledger).
 
 Not part of the release, but sharing the same language layer:
 

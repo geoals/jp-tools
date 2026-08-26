@@ -35,7 +35,7 @@ pub struct Config {
     pub auto_capture_on_add: bool,
     /// Sudachi system dictionary for tokenizing the line stream.
     pub sudachi_dict_path: PathBuf,
-    /// vn-mine's capture script, fired by the reader view's mine button.
+    /// `capture/vn-capture.sh`, fired by the reader's mine button.
     pub vn_capture_script: PathBuf,
     /// Anthropic API key for the reader's "explain this line" button. When
     /// unset the button is disabled rather than the server failing a request.
@@ -100,7 +100,7 @@ impl Config {
             vn_capture_script: std::env::var("KOTODEX_VN_CAPTURE_SH")
                 .map(Into::into)
                 .unwrap_or_else(|_| {
-                    jp_core::install::install_root().join("vn-mine/vn-capture.sh")
+                    jp_core::install::install_root().join("capture/vn-capture.sh")
                 }),
             anthropic_api_key: std::env::var("KOTODEX_ANTHROPIC_API_KEY").ok(),
             whisper_url: std::env::var("KOTODEX_WHISPER_URL")

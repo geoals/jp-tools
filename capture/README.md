@@ -1,4 +1,4 @@
-# vn-mine
+# capture — audio and screenshots for a mined card
 
 Single-hotkey visual novel sentence mining: attach the last voiceline's audio
 and a screenshot of the game to the most recently added note of the configured
@@ -13,31 +13,14 @@ silero-VAD finds where the speech ends.
 ## Components
 
 - `kotodex-capture` — daemon: ffmpeg ring buffer (60 × 5s WAV segments from the
-  default sink monitor) + `vn-ws-logger.py` hooked-line logger, both in
-  `$XDG_RUNTIME_DIR/vn-mine/`. Started and stopped by the Kotodex launcher;
+  default sink monitor) plus the Textractor source
+  (`sources/textractor/vn-ws-logger.py`), both writing into
+  `$XDG_RUNTIME_DIR/kotodex/`. It runs the source as well as the ring buffer
+  because a capture needs the line's timestamp and the audio to have been
+  taken by the same process — one daemon, one clock. Started and stopped by
+  the Kotodex launcher;
   `kotodex-capture {run|stop|restart|status}` drives it by hand, and delegates
   to the systemd unit when there is one.
-- `vn-ws-logger.py` — connects to the Textractor WebSocket server
-  (`ws://localhost:6677`, override with `VN_WS_URL`) and appends each hooked
-  Japanese line to `lines.log` with a timestamp. Auto-reconnects if Textractor
-  restarts. Also posts each line to the ledger's ingest endpoint
-  (`POST /api/lines` on `http://127.0.0.1:3200`, override with
-  `KOTODEX_SERVER_URL`) so reading time/chars are tracked automatically —
-  best-effort, never blocks mining; disable with `KOTODEX_INGEST_DISABLE=1`.
-
-  **It never opens a database.** It is one source among several, and it owns
-  only what is specific to Textractor: the hooker's junk, a continuation split
-  across two text boxes, the dedup. The character count, the work stamped on
-  the line and whether capture is paused at all are the ledger's answers — so a
-  second source cannot arrive at a different number for the same reading, and
-  a source on a phone can do the same job. Started before the server it logs to
-  `lines.log` alone and retries every 30s, so a first boot loses nothing.
-
-  **Restarting the logger with Textractor attached is safe** as long as it goes
-  through SIGTERM: `run()` sends a close frame before exiting, and the
-  capture-pause path reuses the same `ws.close()`. What the WS plugin cannot
-  survive is an **abortive** disconnect (`kill -9`, or a crash that skips the
-  close frame) — so don't hard-kill it, and don't drop the signal handler.
 - `vn-capture.sh` — bind to a hotkey. Screenshots the VN's window, cuts
   audio from the last hooked line's timestamp to the VAD speech end, encodes
   Ogg Vorbis, uploads both via AnkiConnect into the note type's image and audio
@@ -55,21 +38,10 @@ silero-VAD finds where the speech ends.
   at the matched span. Falls back to anchoring on the vocab field and expanding
   to punctuation/silence boundaries; on any failure the VAD-trimmed clip is
   kept unchanged. Needs whisper-service running on :8100.
-- `test_ws_logger.py` — the logger's tests, which are the only check on the
-  cleaning, the ruby split and the dedup. `pytest` is a development dependency
-  and deliberately not
-  in `requirements.txt`, so it is not in the venv `setup.sh` builds:
-
-  ```sh
-  pip install --user pytest
-  ~/.local/share/kotodex/venv/bin/python -m pytest vn-mine
-  ```
-
-  The venv's interpreter, because the module imports `websockets`.
-
-Everything above is on one path: the daemon runs the ring buffer and the
-logger, and a capture reads what they left. Nothing here is optional and
-nothing is a spare copy.
+Everything here is on one path: the daemon keeps the ring buffer, the source
+timestamps the lines beside it, and a capture reads what they left. This is
+Linux-only and optional — the ledger, the dashboard and the reader all work
+without it, and a card made without it simply has no audio or screenshot.
 
 ## Reading over the game
 
@@ -91,7 +63,7 @@ The badge in its corner reports exactly that.
 
 ```sh
 python3 -m venv ~/.local/share/kotodex/venv
-~/.local/share/kotodex/venv/bin/pip install -r vn-mine/requirements.txt
+~/.local/share/kotodex/venv/bin/pip install -r capture/requirements.txt
 curl -sL -o ~/.local/share/kotodex/silero_vad.onnx \
   https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx
 

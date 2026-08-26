@@ -7,7 +7,7 @@
 //! a second implementation of those could not be compared with the ledger.
 //!
 //! Input is plain text, one line per line of script, so any source works —
-//! `vn-mine/cs2-script.py`, a texthooker dump, a book. Getting the text out of
+//! `scripts/cs2-script.py`, a texthooker dump, a book. Getting the text out of
 //! a game is the extractor's job, not this one's.
 //!
 //!     jp-script profile <work> <file.txt>    derive and store the profile

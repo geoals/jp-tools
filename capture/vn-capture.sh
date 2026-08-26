@@ -29,7 +29,7 @@
 #                      Unset, it is asked for: kotodex-server holds it per work.
 #      KOTODEX_SERVER_URL  where to ask (default http://localhost:3200)
 
-RUNDIR="${VN_RUNDIR:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/vn-mine}"
+RUNDIR="${VN_RUNDIR:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kotodex}"
 SEGDIR="$RUNDIR/seg"
 LINES_LOG="$RUNDIR/lines.log"
 BPS=192000 # 48000 Hz * 2 ch * 2 bytes/sample

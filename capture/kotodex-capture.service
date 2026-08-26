@@ -7,7 +7,7 @@ After=graphical-session.target pipewire.service
 # The installed binary, not a checkout: the repo can be anywhere, and a unit
 # naming one directory is a unit that works on one machine. Running from a
 # checkout means linking it in:
-#   ln -sf "$PWD/vn-mine/kotodex-capture" ~/.local/bin/kotodex-capture
+#   ln -sf "$PWD/capture/kotodex-capture" ~/.local/bin/kotodex-capture
 ExecStart=%h/.local/bin/kotodex-capture run
 Restart=on-failure
 RestartSec=3

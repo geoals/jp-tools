@@ -1,4 +1,4 @@
-//! Firing vn-mine's capture script, and finding the window to point it at.
+//! Firing `capture/vn-capture.sh`, and finding the window to point it at.
 //!
 //! kotodex-server does not record audio or take screenshots; `vn-capture.sh` does,
 //! on the machine running the VN. This module is the boundary: build the

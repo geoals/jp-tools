@@ -44,12 +44,16 @@ any Kotodex in it; everything that is the product carries it.
   `yt-mine/CLAUDE.md` for why
 - `manga-mine/` — physical manga sentence mining (photo inbox → crop → OCR →
   Anki, stateless). See `manga-mine/CLAUDE.md`
-- `vn-mine/` — visual novel voiceline capture (bash/python, no Cargo member):
-  `kotodex-capture` ring-buffer daemon + Textractor line logger + silero-VAD hotkey script →
-  Anki. **It is a dependency of kotodex-server, not a peer**: kotodex-server runs
-  `vn-capture.sh` on every card path (`services::capture`), and
-  `vn-ws-logger.py` is one *source*: it posts the lines it hooks to
-  `POST /api/lines` like any other. See `vn-mine/README.md`
+- `sources/` — what hands captured text to the ledger. One job, one contract:
+  `POST /api/lines`. `sources/textractor/` is the first and posts what
+  Textractor's WebSocket plugin hooks; a source needs neither Rust nor this
+  machine. See `sources/README.md`
+- `capture/` — the audio and screenshot a mined card needs (bash/python, no
+  Cargo member): `kotodex-capture` ring-buffer daemon + silero-VAD hotkey
+  script → Anki. **It is a dependency of kotodex-server, not a peer**:
+  kotodex-server runs `vn-capture.sh` on every card path
+  (`services::capture`). Linux-only and optional — a card made without it has
+  no media. See `capture/README.md`
 - `kotodex-server/` — the ledger and everything served over it (Axum + SQLite +
   Preact, port 3200): the dashboard, `POST /api/lines` where every source hands
   its text over, the two reader surfaces, and the AnkiConnect proxy Yomitan
@@ -133,7 +137,7 @@ Only the reader writes its `status` column, and `new` (never judged) is not
 halves must not be unified.** yt-mine and manga-mine build the card themselves
 through `jp-mine-core`, because a YouTube transcript or an OCR crop has no
 texthooker to hover a word in. VN reading in a browser has one, so Yomitan
-authors the card and vn-mine only attaches the media Yomitan cannot reach.
+authors the card and `capture/` only attaches the media Yomitan cannot reach.
 Routing that through `jp-mine-core` would throw away the popup; routing
 yt/manga through Yomitan is impossible.
 
@@ -179,7 +183,7 @@ What puts it over a
 fullscreen window — a layer surface, an input region, a tracked window's
 geometry — is `layer-overlay/`, which has no Japanese in it and takes a URL.
 Keeping those in one directory is what made the overlay look like a third
-project: half of it was generic and half of it was not vn-mine's.
+project: half of it was generic and half of it was not the capture pipeline's.
 
 **Term identity is dictionary-gated, which is why `dictionary` and `knowledge`
 are one subsystem in jp-core rather than separable data.** The ledger keys on a

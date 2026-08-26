@@ -3,7 +3,7 @@
 
 Fixtures are real captures from a reading session (opening, an H-scene skipped
 at speed, combat, and menu navigation) with the hook HS932#-C@289F60:main.bin.
-Run: python3 vn-mine/test_ws_logger.py
+Run: python3 sources/textractor/test_ws_logger.py
 """
 import asyncio
 import importlib.util
@@ -191,7 +191,7 @@ class RealLogInvariants(unittest.TestCase):
 
     def setUp(self):
         self.log = os.path.expanduser(
-            os.environ.get("VN_RUNDIR", f"/run/user/{os.getuid()}/vn-mine")
+            os.environ.get("VN_RUNDIR", f"/run/user/{os.getuid()}/kotodex")
             + "/lines.log"
         )
         if not os.path.exists(self.log) or os.path.getsize(self.log) == 0:

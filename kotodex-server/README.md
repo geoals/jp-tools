@@ -1,7 +1,7 @@
 # kotodex-server
 
 Automatic daily reading tracker: characters read and active reading time,
-derived from the raw line stream `vn-mine/vn-ws-logger.py` already captures — no
+derived from the raw line stream `sources/textractor/vn-ws-logger.py` already captures — no
 manual copying, no counters to reset.
 
 Two reading surfaces sit over the same API. `#read` is the live line feed read
@@ -99,7 +99,7 @@ works the same way.
 - **Mining has no button.** Yomitan's `addNote` goes through `/anki-proxy`, which
   hands it to `services::card::add_note` — the one seam every card path calls,
   the overlay's `POST /api/reader/mine` included. That runs
-  `vn-mine/vn-capture.sh` once Anki accepts the note, so audio and a screenshot
+  `capture/vn-capture.sh` once Anki accepts the note, so audio and a screenshot
   attach to every mine. whisper-service is *optional* here — it only narrows the
   clip to the mined sentence within a multi-sentence line. When it is down the
   VAD-trimmed clip is attached instead and the bar shows a muted **✂ off** hint.
@@ -165,9 +165,9 @@ cargo run -p kotodex-server     # http://localhost:3200
 
 Or as part of the stack: `scripts/start-all.sh`, which takes service names
 (`start-all.sh restart kotodex-server`). Launching Kotodex starts this and the
-`kotodex-capture` ingestion daemon together; `vn-mine/kotodex-capture
+`kotodex-capture` ingestion daemon together; `capture/kotodex-capture
 {run|stop|restart|status}` drives that one by hand, and there is an optional
-systemd user unit for keeping it up independently (`vn-mine/README.md`).
+systemd user unit for keeping it up independently (`capture/README.md`).
 
 ## API
 
@@ -498,7 +498,7 @@ curl -X POST localhost:3200/api/sessions -H 'Content-Type: application/json' \
   run the VN — where the capture script is simply absent it already no-ops with
   a warning.
 - `KOTODEX_SUDACHI_DICT_PATH` (default `system_full.dic` in the working dir)
-- `KOTODEX_VN_CAPTURE_SH` (default `vn-mine/vn-capture.sh` under
+- `KOTODEX_VN_CAPTURE_SH` (default `capture/vn-capture.sh` under
   `jp_core::install::install_root()`) — what `services::card` runs after a card
   add. It needs the desktop session's environment, since it takes a screenshot,
   so kotodex-server has to be started from within the session — which is what the

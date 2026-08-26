@@ -88,7 +88,7 @@ if [ "$UNINSTALL" = 1 ]; then
 
   # Nothing here installs this unit — the launcher starts the capture daemon and
   # adopts one already running, so it is optional. It is removed anyway because
-  # vn-mine/README.md tells the reader to install it by hand for capture at
+  # capture/README.md tells the reader to install it by hand for capture at
   # login, and uninstall has to clean up what the docs told them to create.
   unit="$HOME/.config/systemd/user/kotodex-capture.service"
   if [ -f "$unit" ]; then
@@ -243,7 +243,7 @@ fi
 # dependencies, and `--system-site-packages` keeps everything else — including a
 # packaged PySide6 — coming from the distribution.
 step "Python packages"
-REQS="$HERE/vn-mine/requirements.txt"
+REQS="$HERE/capture/requirements.txt"
 VENV_PYTHON="$KOTODEX_VENV/bin/python"
 venv_imports() { "$VENV_PYTHON" -c "import websockets, onnxruntime, numpy" >/dev/null 2>&1; }
 

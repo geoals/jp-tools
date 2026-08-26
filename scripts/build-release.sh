@@ -56,13 +56,14 @@ copy scripts/kotodex-doctor.sh
 # tarball it is four failures for things that were never shipped. The launcher
 # runs kotodex-server itself.
 
-# vn-mine by name rather than wholesale: the directory also holds tests, a
-# game-specific script and a stale shim.
-mkdir -p "$STAGE/vn-mine"
+# By name rather than wholesale: both directories also hold tests.
+mkdir -p "$STAGE/capture" "$STAGE/sources/textractor"
 for f in kotodex-capture kotodex-capture.service vn-capture.sh vn-trim.py vn-vad.py \
-         vn-ws-logger.py requirements.txt README.md; do
-  cp "$REPO/vn-mine/$f" "$STAGE/vn-mine/$f"
+         requirements.txt README.md; do
+  cp "$REPO/capture/$f" "$STAGE/capture/$f"
 done
+cp "$REPO/sources/textractor/vn-ws-logger.py" "$STAGE/sources/textractor/"
+cp "$REPO/sources/README.md" "$STAGE/sources/README.md"
 
 find "$STAGE" -name '__pycache__' -type d -prune -exec rm -rf {} +
 find "$STAGE" -name '*.pyc' -delete

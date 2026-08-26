@@ -72,7 +72,7 @@ def kotodex_server_up() -> bool:
 
 
 def capture_binary() -> str:
-    return shutil.which("kotodex-capture") or str(REPO / "vn-mine" / "kotodex-capture")
+    return shutil.which("kotodex-capture") or str(REPO / "capture" / "kotodex-capture")
 
 
 def capture_up() -> bool:

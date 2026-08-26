@@ -35,7 +35,7 @@ path SIGTERM takes — because an abortive disconnect crashes Textractor's WS
 plugin and takes Textractor with it.
 
 Env:
-  VN_RUNDIR                   run dir (default: $XDG_RUNTIME_DIR/vn-mine or /run/user/$UID/...)
+  VN_RUNDIR                   run dir (default: $XDG_RUNTIME_DIR/kotodex or /run/user/$UID/...)
   VN_WS_URL                   WebSocket URL, overriding settings.line_source_ws_url
   KOTODEX_SERVER_URL          kotodex-server (default: http://127.0.0.1:3200)
   KOTODEX_INGEST_DISABLE       set to 1 to skip the ledger entirely
@@ -55,7 +55,7 @@ import urllib.request
 import websockets
 
 RUNDIR = os.environ.get("VN_RUNDIR") or os.path.join(
-    os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}", "vn-mine"
+    os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}", "kotodex"
 )
 LINES_LOG = os.path.join(RUNDIR, "lines.log")
 # What Textractor actually sent, before any cleaning. The only place a defect in

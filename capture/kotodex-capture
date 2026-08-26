@@ -5,7 +5,7 @@
 # server) with a timestamp. vn-capture.sh reads both to cut out the last
 # voiceline. Started by the Kotodex launcher.
 
-RUNDIR="${VN_RUNDIR:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/vn-mine}"
+RUNDIR="${VN_RUNDIR:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kotodex}"
 SEGDIR="$RUNDIR/seg"
 LINES_LOG="$RUNDIR/lines.log"
 SEG_TIME=5

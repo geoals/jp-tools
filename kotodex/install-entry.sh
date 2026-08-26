@@ -30,7 +30,7 @@ fi
 
 mkdir -p "$BIN" "$APPS" "$ICONS/scalable/apps"
 ln -sf "$HERE/kotodex" "$BIN/kotodex"
-ln -sf "$REPO/vn-mine/kotodex-capture" "$BIN/kotodex-capture"
+ln -sf "$REPO/capture/kotodex-capture" "$BIN/kotodex-capture"
 
 for size in 48 64 128 256 512; do
   mkdir -p "$ICONS/${size}x${size}/apps"
