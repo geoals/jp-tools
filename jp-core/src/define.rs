@@ -69,13 +69,13 @@ pub struct Definition {
     /// pill row at all. Taken over the spelling alone, so where a spelling has
     /// several readings this is the commonest of them.
     pub frequencies: Vec<FrequencyRank>,
-    /// Master dictionary first, then the rest in install order. A dictionary
-    /// holding nothing for this term is absent rather than empty.
+    /// In `dictionaries.priority` order, which is the reader's own — nothing
+    /// here pins the master in front, or the column could not move it. A
+    /// dictionary holding nothing for this term is absent rather than empty.
     pub sources: Vec<Source>,
     /// From the pitch dictionary, or any dictionary carrying accent rows where
     /// none has the role. Empty draws no accent at all rather than a gap.
-    /// Narrowed
-    /// to the asked-for reading when it lists it, since the accent is a
+    /// Narrowed to the asked-for reading when it lists it, since the accent is a
     /// property of the reading and 空/そら's is not 空/から's.
     pub pitch: Vec<Pitch>,
     /// The lookup row this popup was recorded as, for the client to hand back
@@ -141,10 +141,9 @@ pub async fn define(
                 .collect(),
         });
     }
-    // Priority order, which is the order they arrive in. Which definition is
-    // worth reading first is the reader's call and `priority` is where they say
-    // so, so nothing here overrides it — the master used to be pinned in front,
-    // which meant the column could not move it.
+    // `sources` is left in the order `list_dictionaries` returns, which is
+    // `priority`: which definition is worth reading first is the reader's call,
+    // and that column is where they say so.
 
     // The pitch dictionaries first, then anything else carrying accent rows —
     // so a dictionary given the role answers even where an older one happens to

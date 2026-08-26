@@ -13,6 +13,8 @@
 //!     jp-dict import <zip>...      import named zips
 //!     jp-dict list                 what is cached, and what each is for
 //!     jp-dict reimport <id>        re-parse a cached zip after a parser fix
+//!     jp-dict remove <id>          forget a cached dictionary and its entries
+//!     jp-dict priority <id> <n>    who answers first
 //!     jp-dict set-role <id> <role> master | standard | name | frequency |
 //!                                  pitch | reference
 
@@ -46,6 +48,13 @@ options:
                  else <repo>/dictionaries)
   --db <path>    knowledge.db (default: $KOTODEX_KNOWLEDGE_DB_PATH,
                  else ~/.local/share/kotodex/knowledge.db)
+
+environment:
+  KOTODEX_MASTER_DICTIONARY   title to promote to master when none is set yet,
+                              matched as a substring. The master is the
+                              vocabulary scale — which dictionary deserves to be
+                              it is a judgement, so this only ever picks the
+                              first one; `set-role` is how it is changed after.
 ";
 
 fn main() -> std::process::ExitCode {
@@ -212,8 +221,6 @@ async fn run() -> Result<(), String> {
     }
 }
 
-/// Import every zip that is not cached yet, and repoint any whose file has
-/// moved. Both are keyed on `source_path`, which is the cache key.
 /// What a freshly imported zip is for, from what it turned out to contain.
 ///
 /// A frequency list and a pitch dictionary hold no term entries at all, which
@@ -241,6 +248,8 @@ async fn guess_role(pool: &sqlx::SqlitePool, id: i64) -> Result<Role, sqlx::Erro
     Ok(Role::Reference)
 }
 
+/// Import every zip that is not cached yet, and repoint any whose file has
+/// moved. Both are keyed on `source_path`, which is the cache key.
 async fn import_all(
     pool: &sqlx::SqlitePool,
     zips: &[PathBuf],

@@ -1,7 +1,7 @@
 //! `lookups` — every Yomitan dictionary popup made *while reading*, as observed
 //! by the proxy.
 //!
-//! Written by [`crate::ankiproxy`], which sits between Yomitan and AnkiConnect
+//! Written by [`crate::routes::ankiproxy`], which sits between Yomitan and AnkiConnect
 //! and counts the duplicate checks Yomitan fires while *displaying* a
 //! definition. That makes "I didn't know this word" an observable event without
 //! Yomitan cooperating in any way.

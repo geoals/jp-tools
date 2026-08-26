@@ -79,7 +79,7 @@ impl Status {
 
     /// `learning` and `name` were removed: `learning` duplicated `mined`, and
     /// names never reach the ledger. Either still in the database reads back as
-    /// `new` via [`parse`].
+    /// `new` via [`Status::parse`].
     pub const ALL: [Status; 4] = [
         Status::New,
         Status::Known,
@@ -1995,10 +1995,6 @@ mod tests {
                 .status,
             Status::New
         );
-    }
-
-    async fn get(k: &Knowledge, term: &Term) -> VocabRow {
-        fetch(k, term).await.unwrap().expect("row exists")
     }
 
     /// A reference dictionary that spells おじぎ two ways under one entry, and a

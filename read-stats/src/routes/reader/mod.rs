@@ -16,14 +16,15 @@
 //! |---|---|
 //! | [`stream`] | the SSE line feed, resumable by `Last-Event-ID` |
 //! | [`highlight`] | which words in a line are worth marking, and where |
-//! | [`lines`] | clearing lines from the figures, and undoing that |
-//! | [`capture`] | the mine button, and the window picker behind it |
+//! | [`lines`] | clearing lines from the figures, undoing that, and paging back |
+//! | [`capture`] | which window is the game, and the picker that says so |
 //! | [`define`] | what a word means, for the overlay's popup |
 //! | [`audio`] | what a word sounds like, from the audio server beside Anki |
 //! | [`mine`] | making a card from the overlay, as Yomitan makes one |
 //! | [`mined`] | whether a word is already a card, and the way to it |
 //! | [`explain`] | "what does this line say", via the model |
 //! | [`fonts`] | which Japanese fonts this machine has, for the overlay |
+//! | [`capabilities`] | every optional part, probed — `docs/degradation.md` at runtime |
 //! | [`state`] | what the page can do, in one round trip on open |
 
 pub mod audio;

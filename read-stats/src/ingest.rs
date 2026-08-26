@@ -257,10 +257,6 @@ async fn watermark(state: &AppState, key: &str) -> Result<i64, AppError> {
         .unwrap_or(0))
 }
 
-/// Named in jp-core, because yt-mine's cards are ranked on the same claim and
-/// two copies of it would drift.
-pub(crate) use jp_core::knowledge::dictionaries::READER_FREQUENCY;
-
 /// Each spelling as the ingest would key it — the resolved ledger key.
 ///
 /// The bridge between a deck or a popup and the ledger: a card is spelt the way

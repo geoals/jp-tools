@@ -14,8 +14,8 @@
 //! | [`capture`] | vn-mine's `vn-capture.sh`, and `xdotool` for window titles |
 //! | [`notify`] | `notify-send` — the one report a finished mine makes |
 //! | [`llm`] | the Anthropic API |
-//! | [`compactdef`] | — (builds the prompt [`llm`] sends, then the field value) |
-//! | [`tags`] | — (the two-axis tag rubric both prompts share) |
+//! | [`jp_mine_core::compactdef`] | — (builds the prompt [`llm`] sends, then the field value) |
+//! | [`jp_mine_core::tags`] | — (the two-axis tag rubric both prompts share) |
 //! | [`covers`] | fetches and stores work cover images |
 //! | [`vndb`] | vndb.org, for the cover a work's art comes from |
 

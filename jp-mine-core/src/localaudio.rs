@@ -79,7 +79,7 @@ impl AudioSource {
     /// many cards ask for it, and never a collision between two readings.
     ///
     /// The source is taken from the URL path rather than from `name`, which is
-    /// a display string carrying the accent notation ("NHK16 アヤマ＼チ [3]").
+    /// a display string carrying the accent notation ("NHK16 アヤマ＼チ \[3\]").
     pub fn media_filename(&self, term: &str, reading: &str) -> String {
         let ext = self
             .url

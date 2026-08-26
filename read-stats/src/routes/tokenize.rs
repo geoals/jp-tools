@@ -7,7 +7,7 @@
 //! word that was never asked about. Pasting the line here says what Sudachi
 //! made of it, in the same terms the ledger is keyed on.
 //!
-//! It answers with [`reader::highlight::analyze`] and nothing of its own — a
+//! It answers with [`super::reader::highlight::analyze`] and nothing of its own — a
 //! page for testing the pipeline that ran a second, subtly different pipeline
 //! would be worse than no page. That is also why the excluded tokens come back
 //! rather than being filtered as the feed filters them: what was dropped, and

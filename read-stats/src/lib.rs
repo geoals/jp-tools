@@ -13,11 +13,13 @@
 //! - [`clock`] — the only two impure inputs ([`clock::now_ts`],
 //!   [`clock::tz_offset_secs`]), so their reach is greppable.
 //!
-//! Side channels that don't fit the stack: [`anki`] (AnkiConnect client),
-//! [`card`] (the one seam every card path adds through), [`ankiproxy`] (the
-//! endpoint Yomitan points at, which is how lookups become observable),
-//! [`llm`] + [`compactdef`] + [`tags`] (card enrichment),
-//! [`covers`] + [`vndb`] (work art), [`ingest`] (tokenizing new lines).
+//! Side channels that don't fit the stack, all under [`services`] unless said
+//! otherwise: [`services::anki`] (AnkiConnect client), [`services::card`] (the
+//! one seam every card path adds through), [`routes::ankiproxy`] (the endpoint
+//! Yomitan points at, which is how lookups become observable),
+//! [`services::llm`] plus `jp_mine_core::compactdef` and `jp_mine_core::tags`
+//! (card enrichment), [`services::covers`] + [`services::vndb`] (work art),
+//! [`ingest`] (tokenizing new lines), [`books`] (an epub as byte offsets).
 //!
 //! Character counting is **not** here — it is `jp_core::text`, shared with the
 //! other tools, because a character counted by this crate's speed figures has
