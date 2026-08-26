@@ -147,16 +147,24 @@ pkg_install_cmd() {
 # from the distribution and only PySide6 is pip's.
 KOTODEX_VENV="${KOTODEX_VENV:-$HOME/.local/share/kotodex/venv}"
 
-# The interpreter that can import PySide6: the venv when it has it, else the
-# system one. Everything drawing Qt — the launcher, the overlay — resolves
-# through this, so a machine with a pip PySide6 and one with a packaged PySide6
-# run the same code.
+# **The** interpreter every Python part of Kotodex runs under: the launcher, the
+# overlay, the line logger and the VAD. One answer, because a second one drifts
+# from it exactly when it matters — a doctor that probes a different interpreter
+# from the one the overlay will use reports on a machine nobody is running.
+#
+# The venv `setup.sh` builds, which is where `requirements.txt` lands and, on a
+# distribution that packages no PySide6, where pip's goes too. Built with
+# `--system-site-packages`, so it can import everything the system interpreter
+# can *plus* its own — which is why there is no import check here and no
+# fallback worth having: anything the venv cannot import, python3 cannot either.
+# The bare name is only for a machine setup.sh has never been run on.
+# Always an absolute path: callers test the answer with `-x`, which a bare name
+# fails whatever is on PATH.
 kotodex_python() {
-  if [ -x "$KOTODEX_VENV/bin/python" ] \
-     && "$KOTODEX_VENV/bin/python" -c "import PySide6.QtWebEngineQuick" >/dev/null 2>&1; then
+  if [ -x "$KOTODEX_VENV/bin/python" ]; then
     echo "$KOTODEX_VENV/bin/python"
   else
-    echo python3
+    command -v python3 || echo /usr/bin/python3
   fi
 }
 
