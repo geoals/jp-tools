@@ -51,7 +51,10 @@ copy read-stats/static
 copy read-stats/overlay
 copy scripts/lib
 copy scripts/kotodex-doctor.sh
-copy scripts/start-all.sh
+# start-all.sh is deliberately absent. It manages yt-mine, manga-mine,
+# whisper-service and the OCR service as well, none of which is in here, so in a
+# tarball it is four failures for things that were never shipped. The launcher
+# runs read-stats itself.
 
 # vn-mine by name rather than wholesale: the directory also holds tests, a
 # game-specific script and a stale shim.

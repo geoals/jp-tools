@@ -6,18 +6,18 @@ once and keep the overlay on screen instead of hiding it.
 """
 
 import json
+import shutil
 import subprocess
 import urllib.error
 import urllib.request
 import webbrowser
-from pathlib import Path
 
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
-REPO = Path(__file__).resolve().parent.parent
-OVERLAY = REPO / "read-stats" / "overlay" / "vn-overlay.sh"
-ICON = REPO / "kotodex" / "kotodex.svg"
+# From the launcher, not rebuilt here: "where is the overlay script" is one
+# answer, and a tray that reached for its own copy is the one that goes stale.
+from kotodex import DOCTOR_SH, ICON, OVERLAY_SH, REPO
 
 
 class Tray:
@@ -76,10 +76,10 @@ class Tray:
         # `ensure`, not `start`: this is also where a second launch of the
         # desktop entry lands, and restarting a running overlay would throw
         # away the page the reader is looking at.
-        subprocess.Popen([str(OVERLAY), "ensure"], cwd=REPO)
+        subprocess.Popen([OVERLAY_SH, "ensure"], cwd=REPO)
 
     def hide_overlay(self):
-        subprocess.run([str(OVERLAY), "stop"], cwd=REPO, capture_output=True)
+        subprocess.run([OVERLAY_SH, "stop"], cwd=REPO, capture_output=True)
 
     def open_stats(self):
         webbrowser.open(self.url)
@@ -125,9 +125,17 @@ class Tray:
         self.restart_here()
 
     def doctor(self):
-        script = REPO / "scripts" / "kotodex-doctor.sh"
-        for term in ("konsole", "gnome-terminal", "xterm"):
-            if subprocess.run(["which", term], capture_output=True).returncode == 0:
-                subprocess.Popen([term, "-e", "bash", "-c", f"{script}; read -r"])
-                return
+        # `--` for the terminals that want it and `-e` for the one that does not:
+        # gnome-terminal dropped `-e` and konsole never took `--`, so each gets
+        # the form it accepts rather than one form that half of them refuse.
+        for term, flag in (
+            ("konsole", "-e"),
+            ("gnome-terminal", "--"),
+            ("xfce4-terminal", "-x"),
+            ("xterm", "-e"),
+        ):
+            if shutil.which(term) is None:
+                continue
+            subprocess.Popen([term, flag, "bash", "-c", f"{DOCTOR_SH}; read -r"])
+            return
         self.log("no terminal to show the doctor in; run scripts/kotodex-doctor.sh")

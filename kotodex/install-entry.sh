@@ -44,7 +44,12 @@ for size in 48 64 128 256 512; do
   rm -f "$ICONS/${size}x${size}/apps/kotodex.png"
 done
 rm -f "$ICONS/scalable/apps/kotodex.svg"
-cp -f "$HERE/$APP_ID.desktop" "$APPS/$APP_ID.desktop"
+# Exec is rewritten to the absolute path rather than left as the bare name. A
+# desktop entry is launched by the session's own systemd/DE, whose PATH is not
+# the shell's — on a distribution that does not add ~/.local/bin there, a bare
+# name is an entry that does nothing at all when clicked, with nowhere to see
+# why. The `|` delimiter because the path contains slashes.
+sed "s|^Exec=kotodex$|Exec=$BIN/kotodex|" "$HERE/$APP_ID.desktop" >"$APPS/$APP_ID.desktop"
 
 command -v update-desktop-database >/dev/null && update-desktop-database "$APPS" || true
 command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -qtf "$ICONS" || true

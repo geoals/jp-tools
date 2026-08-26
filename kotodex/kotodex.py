@@ -17,6 +17,7 @@ surface driven by QML, and merging a widgets tray into it buys nothing.
 """
 
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -31,12 +32,22 @@ REPO = Path(__file__).resolve().parent.parent
 # compiled in is not, so every child is told rather than left to guess — see
 # jp_core::install::install_root.
 os.environ.setdefault("KOTODEX_ROOT", str(REPO))
-READ_STATS_URL = os.environ.get("KOTODEX_READ_STATS_URL", "http://127.0.0.1:3200")
+READ_STATS_PORT = int(os.environ.get("KOTODEX_READ_STATS_PORT", "3200"))
+READ_STATS_URL = os.environ.get(
+    "KOTODEX_READ_STATS_URL", f"http://127.0.0.1:{READ_STATS_PORT}"
+)
 # Reverse-DNS off kotodex.com, and the same string as the desktop entry's
 # filename: on Wayland Qt uses it as the app_id, which is how the compositor
 # matches the window to the entry.
 APP_ID = "com.kotodex.Kotodex"
 SOCKET_NAME = APP_ID
+
+# The three components' entry points, named once. `tray.py` imports these rather
+# than rebuilding them, so "where is the overlay script" has one answer.
+OVERLAY_SH = str(REPO / "read-stats" / "overlay" / "vn-overlay.sh")
+READ_STATS_BIN = REPO / "target" / "release" / "read-stats"
+DOCTOR_SH = REPO / "scripts" / "kotodex-doctor.sh"
+ICON = REPO / "kotodex" / "kotodex.svg"
 
 # How long read-stats gets to answer before it is called down. The launcher
 # never builds it — see --no-build — so this covers the migrations it runs
@@ -84,8 +95,7 @@ def overlay_up() -> bool:
     overlay. There is one answer to this and it is not here.
     """
     return subprocess.run(
-        [str(REPO / "read-stats" / "overlay" / "vn-overlay.sh"), "status"],
-        capture_output=True,
+        [OVERLAY_SH, "status"], capture_output=True
     ).returncode == 0
 
 
@@ -99,19 +109,27 @@ class Child:
 
     def __init__(
         self, name, probe, start_cmd, stop_cmd=None, restart_cmd=None,
-        detaches=False, supervised=True
+        detaches=False, supervised=True, log_file=None, stop_adopted=None
     ):
         self.name = name
         self.probe = probe
         self.start_cmd = start_cmd
         self.stop_cmd = stop_cmd
+        # Where this child's output goes. `None` discards it, which is right for
+        # a component that keeps its own log; read-stats does not.
+        self.log_file = log_file
         # How to make an *adopted* one pick up new code. Stopping it is what
         # adoption promises not to do, so this asks it to restart itself.
         self.restart_cmd = restart_cmd or start_cmd
+        # For a component that has no "restart yourself" to ask: a bare binary
+        # cannot be told, and starting a second one only fails to bind. Set, an
+        # explicit restart *takes the component over* — it is stopped here and
+        # comes back as this process's child. Quitting still never does that.
+        self.stop_adopted = stop_adopted
         # Whether start_cmd *is* the component or merely launches it.
-        # start-all.sh and vn-overlay.sh background the real process and return
-        # 0, so for those the exit status says nothing and the probe is the
-        # only thing that knows whether the component is alive.
+        # vn-overlay.sh backgrounds the real process and returns 0, so its exit
+        # status says nothing and the probe is the only thing that knows whether
+        # the component is alive. capture and read-stats are the process.
         self.detaches = detaches
         # Whether the launcher keeps this one alive. The overlay is not
         # supervised: the tray shows and hides it, so it being gone is a state
@@ -146,13 +164,24 @@ class Child:
     def spawn(self, log):
         log(f"{self.name}: starting")
         self.started_at = time.time()
-        self.proc = subprocess.Popen(
-            self.start_cmd,
-            cwd=REPO,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
+        # Appended, not truncated: a component that has already been restarted
+        # once this session has its earlier failure in here, which is the thing
+        # worth reading.
+        sink = subprocess.DEVNULL
+        if self.log_file is not None:
+            self.log_file.parent.mkdir(parents=True, exist_ok=True)
+            sink = self.log_file.open("a")
+        try:
+            self.proc = subprocess.Popen(
+                self.start_cmd,
+                cwd=REPO,
+                stdout=sink,
+                stderr=subprocess.STDOUT if sink is not subprocess.DEVNULL else sink,
+                start_new_session=True,
+            )
+        finally:
+            if sink is not subprocess.DEVNULL:
+                sink.close()
 
     def check(self, log) -> bool:
         """Restart a child that exited on its own, with a backoff, and give up
@@ -206,7 +235,6 @@ class Child:
 def children():
     """In start order. Stopping walks it backwards."""
     capture = capture_binary()
-    overlay = str(REPO / "read-stats" / "overlay" / "vn-overlay.sh")
     return [
         Child(
             "capture",
@@ -217,24 +245,25 @@ def children():
         Child(
             "read-stats",
             read_stats_up,
-            # Clicking the desktop entry must never wait on cargo: a launch
-            # that builds is a launch that takes minutes and looks hung.
-            [str(REPO / "scripts" / "start-all.sh"), "--no-build", "read-stats"],
-            # The wrapper it is started through exits at once, so there is no
-            # process here to terminate — stopping it has to go back through
-            # start-all.sh, or quitting the launcher would leave it running.
-            stop_cmd=[str(REPO / "scripts" / "start-all.sh"), "stop", "read-stats"],
-            restart_cmd=[
-                str(REPO / "scripts" / "start-all.sh"), "--no-build", "restart", "read-stats"
-            ],
-            detaches=True,
+            # The binary directly. It is an ordinary foreground process, so the
+            # launcher owns it the way it owns the capture daemon: `stop` is a
+            # SIGTERM to its own child and nothing else has to be asked.
+            #
+            # `scripts/start-all.sh` can run it too, and this adopts one that
+            # already answers — but that script is the manual multi-service tool
+            # (yt-mine, manga-mine, whisper, the OCR service) and starting one
+            # service is not worth taking a dependency on all of them. It also
+            # never builds: clicking the desktop entry must not wait on cargo.
+            [str(READ_STATS_BIN)],
+            log_file=REPO / "logs" / "read-stats.log",
+            stop_adopted=lambda: stop_port(READ_STATS_PORT),
         ),
         Child(
             "overlay",
             overlay_up,
-            [overlay, "start"],
-            stop_cmd=[overlay, "stop"],
-            restart_cmd=[overlay, "restart"],
+            [OVERLAY_SH, "start"],
+            stop_cmd=[OVERLAY_SH, "stop"],
+            restart_cmd=[OVERLAY_SH, "restart"],
             detaches=True,
             supervised=False,
         ),
@@ -299,6 +328,75 @@ def quit_command() -> int:
     return 0
 
 
+def port_pid(port: int) -> int | None:
+    """The pid listening on `port`, or None.
+
+    Resolved from the *port* and never from the process name: `dev-instance.sh`
+    runs the same binary from the same path on 3299, so a name match would take
+    out a reading session's server while someone worked on a copy of it.
+    """
+    out = subprocess.run(["ss", "-ltnp"], capture_output=True, text=True)
+    for line in out.stdout.splitlines():
+        fields = line.split()
+        if len(fields) < 4 or not fields[3].endswith(f":{port}"):
+            continue
+        found = re.search(r"pid=(\d+)", line)
+        if found:
+            return int(found.group(1))
+    return None
+
+
+def stop_port(port: int) -> None:
+    """SIGTERM whatever is listening on `port`, and wait for it to let go."""
+    pid = port_pid(port)
+    if pid is None:
+        return
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    for _ in range(20):
+        if port_pid(port) is None:
+            return
+        time.sleep(0.5)
+
+
+def start_read_stats(log=print) -> subprocess.Popen | None:
+    """Run the server, its output appended to `logs/read-stats.log`."""
+    if not READ_STATS_BIN.is_file():
+        log(f"{READ_STATS_BIN} is missing — run setup.sh")
+        return None
+    log_path = REPO / "logs" / "read-stats.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("a") as sink:
+        return subprocess.Popen(
+            [str(READ_STATS_BIN)],
+            cwd=REPO,
+            stdout=sink,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+
+
+def restart_read_stats() -> bool:
+    """Stop whatever is serving read-stats and start it again.
+
+    Deliberately not adoption-safe, unlike quitting: picking up new code is the
+    whole point of a restart, so it has to reach a server this process did not
+    start. Nothing else can — `start-all.sh` is the multi-service tool and the
+    launcher no longer goes through it.
+    """
+    stop_port(READ_STATS_PORT)
+    if start_read_stats() is None:
+        return False
+    deadline = time.time() + READY_TIMEOUT
+    while time.time() < deadline:
+        if read_stats_up():
+            return True
+        time.sleep(1)
+    return False
+
+
 def restart_components() -> int:
     """Pick up new code in everything, whoever started it.
 
@@ -307,18 +405,19 @@ def restart_components() -> int:
     an update has no way to become live short of knowing which of three things
     started each piece — which is exactly what this hides.
     """
-    steps = [
-        ("capture", [str(REPO / "vn-mine" / "kotodex-capture"), "restart"]),
-        ("read-stats",
-         [str(REPO / "scripts" / "start-all.sh"), "--no-build", "restart", "read-stats"]),
-        ("overlay", [str(REPO / "read-stats" / "overlay" / "vn-overlay.sh"), "restart"]),
-    ]
     failed = 0
-    for name, cmd in steps:
-        print(f"restarting {name}")
-        if subprocess.run(cmd, cwd=REPO).returncode != 0:
-            print(f"  {name} did not restart cleanly")
-            failed += 1
+    print("restarting capture")
+    if subprocess.run([capture_binary(), "restart"], cwd=REPO).returncode != 0:
+        print("  capture did not restart cleanly")
+        failed += 1
+    print("restarting read-stats")
+    if not restart_read_stats():
+        print("  read-stats did not restart cleanly")
+        failed += 1
+    print("restarting overlay")
+    if subprocess.run([OVERLAY_SH, "restart"], cwd=REPO).returncode != 0:
+        print("  overlay did not restart cleanly")
+        failed += 1
     return 1 if failed else 0
 
 
@@ -328,7 +427,7 @@ def main() -> int:
         status_report()
         return 0
     if args and args[0] == "doctor":
-        return subprocess.run([str(REPO / "scripts" / "kotodex-doctor.sh")]).returncode
+        return subprocess.run([str(DOCTOR_SH), *args[1:]]).returncode
     if args and args[0] == "restart":
         return restart_command()
     if args and args[0] == "quit":
@@ -394,13 +493,19 @@ def main() -> int:
         log("restarting everything")
         restarting["until"] = time.time() + 120
         for child in reversed(kids):
-            if child.adopted:
+            if not child.adopted:
+                child.stop(log)
+            elif child.stop_adopted is not None:
+                # Nothing to ask: a bare binary has no "restart yourself", and
+                # starting a second one only fails to bind. So an explicit
+                # restart takes it over — see `Child.stop_adopted`.
+                log(f"{child.name}: taking over on restart")
+                child.stop_adopted()
+            else:
                 # Someone else's — a systemd unit, a start-all.sh run. Told to
                 # restart itself rather than stopped, since stopping it is
                 # exactly what adoption promises not to do.
                 subprocess.run(child.restart_cmd, cwd=REPO, capture_output=True)
-            else:
-                child.stop(log)
         for child in kids:
             child.proc = None
             child.adopted = False
@@ -408,10 +513,9 @@ def main() -> int:
             child.failed = False
             # A restarted child answers its probe later than its restart command
             # returns — the capture daemon's `restart` detaches — so give it
-            # time to come back before probing it, or `ensure` reads the
-            # restart as a down component and
-            # starts a second one. read-stats waits for its own port in
-            # start-all.sh, so it is back before this runs.
+            # time to come back before probing it, or `ensure` reads the restart
+            # as a down component and starts a second one. read-stats has no such
+            # gap: it was stopped above and `ensure` spawns it here.
             if child.name == "capture":
                 child.wait_ready(log, CAPTURE_READY)
             if child.name == "overlay" and not serving:

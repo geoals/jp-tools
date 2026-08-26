@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 #
-# start-all.sh — start the full jp-tools stack with one command.
+# start-all.sh — start every service in this repository with one command.
+#
+# **A development tool, and not in the release tarball.** Reading a VN needs only
+# read-stats, which the Kotodex launcher runs itself; everything else here is
+# yt-mine's and manga-mine's. A launcher that came through this script would take
+# a dependency on four services it has nothing to do with, and in a tarball that
+# ships none of them it would report four failures.
+#
+# It still adopts cleanly in the other direction: a read-stats started here
+# answers on :3200, and the launcher leaves an already-answering one alone.
 #
 #   scripts/start-all.sh              start everything (asks before restarting
 #                                     services that are already running)

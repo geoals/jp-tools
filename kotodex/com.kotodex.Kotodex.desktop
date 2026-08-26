@@ -7,6 +7,8 @@ Icon=com.kotodex.Kotodex
 Terminal=false
 Categories=Education;Languages;
 Keywords=japanese;visual novel;dictionary;anki;
-# The launcher's own Qt window class, so the tray and the taskbar associate
-# with this entry rather than showing a second nameless python entry.
-StartupWMClass=kotodex
+# What the launcher's window identifies itself as, so the taskbar associates it
+# with this entry rather than showing a second nameless python one. It has to be
+# the app id, because that is what Qt sets from `setDesktopFileName` — the file's
+# own name, not the binary's.
+StartupWMClass=com.kotodex.Kotodex

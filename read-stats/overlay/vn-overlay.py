@@ -80,7 +80,7 @@ def check_dependencies(page_url: str) -> None:
     except (urllib.error.URLError, OSError, ValueError) as e:
         print(
             f"read-stats not answering on {api} ({e}) — the strip stays empty "
-            "until it does. scripts/start-all.sh start read-stats",
+            "until it does. Start Kotodex, which runs it.",
             file=sys.stderr,
         )
 
