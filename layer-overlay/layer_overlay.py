@@ -21,6 +21,7 @@ Qt's own copy — and to connect to the object registered as `shell`:
     shell.setWindowName(name)          track this window's rectangle
     shell.geometry(x, y, w, h)         where it is now, or zeros
     shell.userToggled()                SIGUSR2 reached the page
+    shell.quit()                       close; `run` returns QUIT_REQUESTED
 
 `SIGUSR1` makes the *whole* surface take input, for selecting text rather than
 clicking through. `SIGUSR2` is the page's to define. Both are sent by name:
@@ -61,6 +62,11 @@ from PySide6.QtWebEngineQuick import QtWebEngineQuick
 _HERE = Path(__file__).resolve().parent
 QML = str(_HERE / ("Overlay.qml" if BACKEND == backend.LAYER_SHELL else "OverlayX11.qml"))
 
+#: [`run`] returns this when the page called `shell.quit()`. What it means is
+#: the caller's to decide — this only distinguishes it from a clean exit the
+#: page did not ask for.
+QUIT_REQUESTED = 3
+
 #: Only for the fallback, and only for *finding* a window. Where X can be
 #: watched, a window that has been found reports its own moves — see [`xwatch`].
 GEOMETRY_POLL_MS = 300
@@ -71,8 +77,16 @@ GEOMETRY_POLL_MS = 300
 DISCOVERY_POLL_MS = 1000
 
 
-def _rects(region):
-    return [(r.x(), r.y(), r.width(), r.height()) for r in region]
+def _rects(region, scale=1.0):
+    return [
+        (
+            round(r.x() * scale),
+            round(r.y() * scale),
+            round(r.width() * scale),
+            round(r.height() * scale),
+        )
+        for r in region
+    ]
 
 
 class Overlay(QObject):
@@ -267,13 +281,17 @@ class Overlay(QObject):
 
     @Slot()
     def quit(self) -> None:
-        """The page asking to be closed. Exit 0 says *deliberate*, which is how
-        whatever started this tells a close apart from a crash."""
+        """The page asking to be closed.
+
+        Exits [`QUIT_REQUESTED`] rather than 0, so the caller can tell the page
+        asking from the process being stopped from outside — a stop is also a
+        clean exit, and the two want opposite responses.
+        """
         from PySide6.QtGui import QGuiApplication
 
         app = QGuiApplication.instance()
         if app is not None:
-            app.exit(0)
+            app.exit(QUIT_REQUESTED)
 
     def apply(self) -> None:
         if self._window is None or self._window.height() <= 0:
@@ -295,8 +313,13 @@ class Overlay(QObject):
             # clickable area should do. The X11 input region reads an empty list
             # the way it looks, so this costs it only one dead pixel.
             region = QRegion(0, 0, 1, 1)
-        if self._input is not None and self._input.available:
-            self._input.apply(int(self._window.winId()), _rects(region))
+        # X speaks device pixels and everything above is in the page's logical
+        # ones, so the region has to be scaled on the way out. `setMask` is given
+        # the logical rectangles because Qt converts them itself.
+        on_x = self._input is not None and self._input.available
+        scale = self._scale() if on_x else 1.0
+        if on_x:
+            self._input.apply(int(self._window.winId()), _rects(region, scale))
         else:
             self._window.setMask(region)
         # The region reaches the compositor on the surface's next commit, and a
@@ -305,8 +328,8 @@ class Overlay(QObject):
         # clicks until something else happens to repaint.
         self._window.requestUpdate()
         if os.environ.get("LAYER_OVERLAY_DEBUG"):
-            rects = " ".join(f"{x},{y} {w}x{h}" for x, y, w, h in _rects(region))
-            print(f"mask [{len(self._hits)}] {rects}", flush=True)
+            rects = " ".join(f"{x},{y} {w}x{h}" for x, y, w, h in _rects(region, scale))
+            print(f"mask [{len(self._hits)}] @{scale} {rects}", flush=True)
         self._window.setProperty("interactive", self.interactive)
 
 

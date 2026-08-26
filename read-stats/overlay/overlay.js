@@ -149,7 +149,7 @@ fetch("/api/reader/state")
   .catch(() => {});
 
 function applyCapabilities() {
-  // No key, no ℹ. The button, not the box: the box is the whole control bar,
+  // No key, no explain button. The button, not the box: the box is the whole bar,
   // and pause and the type settings work without a key.
   explainBtnEl.hidden = !can("explain");
   // Nowhere to add a card, no ＋ in the popup.
@@ -692,6 +692,10 @@ handleEl.addEventListener("click", () => {
 // is also what the widget is dragged by. Only the handle opens and shuts it.
 function showBar(open) {
   buttonsEl.hidden = !open;
+  // The warning belongs beside the controls for the thing it is about, so a shut
+  // bar takes it with it — on its own over the art it is just a chip the reader
+  // cannot act on.
+  explainBoxEl.toggleAttribute("data-shut", !open);
   if (!open) closeBarPanels(null);
   report();
 }
@@ -1064,9 +1068,10 @@ mobileBtnEl.addEventListener("click", () => {
 const pauseBtnEl = document.getElementById("pause-btn");
 
 function showPaused(paused) {
-  // A glyph, not a phrase: it sits in the row of square buttons over the game
-  // now, and the tooltip is where the sentence goes.
-  pauseBtnEl.textContent = paused ? "▶" : "⏸";
+  // An icon, not a phrase: it sits in the row of square buttons over the game
+  // now, and the tooltip is where the sentence goes. Which of the button's two
+  // icons shows is CSS off this class.
+  pauseBtnEl.classList.toggle("paused", paused);
   tip(pauseBtnEl, paused ? "Resume capture" : "Pause capture");
 }
 
@@ -1167,6 +1172,7 @@ try {
 }
 
 const settingsBtnEl = document.getElementById("settings-btn");
+const quitBtnEl = document.getElementById("quit-btn");
 const settingsPanelEl = document.getElementById("settings-panel");
 const fontBoxEl = document.getElementById("set-font");
 let fontBtnEls = [];
@@ -1606,7 +1612,9 @@ function report() {
   // sticking out would take no clicks — they would land on the game and
   // advance it under the panel being read.
   if (scrollbackOpen()) rects.push(scrollbackEl.getBoundingClientRect());
-  if (!boxEl.hidden) rects.push(lineEl.getBoundingClientRect());
+  // `#line:empty` is display:none, so its rectangle is at the origin and would
+  // put a padding-sized hit region in the corner of the screen.
+  if (!boxEl.hidden && lineEl.firstChild) rects.push(lineEl.getBoundingClientRect());
   if (!popupEl.hidden) rects.push(popupEl.getBoundingClientRect());
   // Flat `x, y, w, h, ...` rather than nested: an array of arrays reaches Qt
   // as opaque QJSValues, while an array of plain numbers converts cleanly.
@@ -1697,6 +1705,11 @@ if (window.qt?.webChannelTransport) {
     shell = channel.objects.shell;
     shell.geometry.connect(onGeometry);
     shell.userToggled.connect(toggleGhost);
+    // Only under the shell: opened in a browser the page has no process to end.
+    // This quits Kotodex, not just this window — the shell turns it into that,
+    // and on a desktop with no system tray it is the only way out.
+    quitBtnEl.hidden = false;
+    quitBtnEl.addEventListener("click", () => shell.quit());
     // The status event that carried it has usually already been and gone.
     if (windowName) shell.setWindowName(windowName);
     report();

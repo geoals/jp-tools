@@ -40,6 +40,7 @@ strip grows with the type; `VN_OVERLAY_HEIGHT` still wins if it is set.
 import argparse
 import json
 import os
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -116,7 +117,15 @@ def main() -> int:
             url += f"&font={quote(font)}"
 
     check_dependencies(url)
-    return layer_overlay.run(url, scope=SCOPE, storage=STORAGE, qt_args=qt_args)
+    code = layer_overlay.run(url, scope=SCOPE, storage=STORAGE, qt_args=qt_args)
+    if code == layer_overlay.QUIT_REQUESTED:
+        # The overlay's ✕ means quit Kotodex, not just close this window: on a
+        # desktop with no system tray it is the only way out of the launcher.
+        # Handed to the launcher rather than done here — it owns read-stats and
+        # the capture daemon, and knows which of them it started.
+        subprocess.run([str(Path(__file__).resolve().parents[2] / "kotodex" / "kotodex"), "quit"])
+        return 0
+    return code
 
 
 if __name__ == "__main__":

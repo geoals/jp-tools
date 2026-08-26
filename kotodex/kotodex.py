@@ -280,6 +280,25 @@ def restart_command() -> int:
     return restart_components()
 
 
+def quit_command() -> int:
+    """`kotodex quit`, and what the overlay's ✕ reaches.
+
+    Only a running launcher can do this: it is the one that knows which
+    components it started and so which ones quitting is allowed to stop.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    from single_instance import SingleInstance
+
+    app = QApplication(sys.argv)  # noqa: F841 — QLocalSocket needs an app
+    instance = SingleInstance(SOCKET_NAME)
+    if not instance.already_running():
+        print("kotodex: not running")
+        return 0
+    instance.send("quit")
+    return 0
+
+
 def restart_components() -> int:
     """Pick up new code in everything, whoever started it.
 
@@ -312,6 +331,8 @@ def main() -> int:
         return subprocess.run([str(REPO / "scripts" / "kotodex-doctor.sh")]).returncode
     if args and args[0] == "restart":
         return restart_command()
+    if args and args[0] == "quit":
+        return quit_command()
     if args and args[0] == "anki":
         # The field map lives in AnkiConfig, so the check is a Rust binary
         # rather than a second list of field names here.
@@ -404,6 +425,8 @@ def main() -> int:
     def on_message(msg):
         if msg == "restart":
             restart_here()
+        elif msg == "quit":
+            app.quit()
         else:
             tray.show_overlay()
 
