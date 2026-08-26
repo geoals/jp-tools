@@ -652,13 +652,17 @@ class StatsSink:
         if not self.ready():
             return
         stuck = len(lines) > 1
+        # The lines held from an earlier failure, which is one fewer than the
+        # request carries: the newest is being written now, not stuck. Counting
+        # it painted the reader's badge as stalled for a beat after every line.
+        backlog = len(lines) - 1 if stuck else 0
         try:
             post_json(
                 "/api/lines",
                 {
                     "source": SOURCE,
                     "lines": lines,
-                    "status": {"attached": self.attached, "pending": len(lines)},
+                    "status": {"attached": self.attached, "pending": backlog},
                 },
             )
         except (OSError, ValueError) as e:
