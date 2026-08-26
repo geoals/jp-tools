@@ -1,8 +1,8 @@
 # vn-mine
 
 Single-hotkey visual novel sentence mining: attach the last voiceline's audio
-and a screenshot of the active window to the most recently added
-"Japanese sentences" Anki note.
+and a screenshot of the game to the most recently added note of the configured
+note type (`KOTODEX_ANKI_MODEL`, Lapis by default).
 
 Works without any in-game voice replay: a daemon keeps the last 300s of
 desktop audio in a tmpfs ring buffer and timestamps every Japanese line
@@ -12,7 +12,7 @@ silero-VAD finds where the speech ends.
 
 ## Components
 
-- `kotodex-capture` (was `vn-buffer.sh`) — daemon: ffmpeg ring buffer (60 × 5s WAV segments from the
+- `kotodex-capture` — daemon: ffmpeg ring buffer (60 × 5s WAV segments from the
   default sink monitor) + `vn-ws-logger.py` hooked-line logger, both in
   `$XDG_RUNTIME_DIR/vn-mine/`. Started and stopped by the Kotodex launcher;
   `kotodex-capture {run|stop|restart|status}` drives it by hand, and delegates
@@ -41,7 +41,9 @@ silero-VAD finds where the speech ends.
   close frame) — so don't hard-kill it, and don't drop the signal handler.
 - `vn-capture.sh` — bind to a hotkey. Screenshots the VN's window, cuts
   audio from the last hooked line's timestamp to the VAD speech end, encodes
-  Ogg Vorbis, uploads both via AnkiConnect (`Image` / `SentAudio` fields).
+  Ogg Vorbis, uploads both via AnkiConnect into the note type's image and audio
+  fields (`KOTODEX_ANKI_FIELD_IMAGE` / `_AUDIO`, the same map the Rust side
+  reads, so one note type is described in one place).
   Which window that is comes from read-stats (`GET /api/vn/window`), not from
   the database — the hotkey and the mine button have to aim at the same one, and
   two implementations of that rule means the one you forget captures the last
@@ -50,11 +52,20 @@ silero-VAD finds where the speech ends.
 - `vn-trim.py` — trims the clip to the mined sentence. A hooked line can hold
   several sentences while Yomitan mines one; this transcribes the clip with
   word timestamps (whisper-service `?words=true`), difflib-aligns the note's
-  `SentKanji` against the transcript (tolerant of wrong-kanji ASR), and cuts
-  at the matched span. Falls back to anchoring on `VocabKanji` and expanding
+  sentence field against the transcript (tolerant of wrong-kanji ASR), and cuts
+  at the matched span. Falls back to anchoring on the vocab field and expanding
   to punctuation/silence boundaries; on any failure the VAD-trimmed clip is
   kept unchanged. Needs whisper-service running on :8100.
-- `test_ws_logger.py` — the logger's tests. `python3 -m pytest vn-mine`.
+- `test_ws_logger.py` — the logger's tests, which are the only check on the one
+  producer of `lines`. `pytest` is a development dependency and deliberately not
+  in `requirements.txt`, so it is not in the venv `setup.sh` builds:
+
+  ```sh
+  pip install --user pytest
+  ~/.local/share/kotodex/venv/bin/python -m pytest vn-mine
+  ```
+
+  The venv's interpreter, because the module imports `websockets`.
 
 Everything above is on one path: the daemon runs the ring buffer and the
 logger, and a capture reads what they left. Nothing here is optional and
@@ -103,10 +114,11 @@ launcher — never started twice, and never stopped on the way out — so with t
 unit enabled, quitting Kotodex leaves capture running and picking up new code
 means `kotodex restart` rather than relaunching.
 
-Bind `vn-capture.sh` to a KDE shortcut. Requires: ffmpeg, pactl
-(pipewire-pulse), spectacle, curl, jq; Textractor with a WebSocket server
-extension on `ws://localhost:6677` (the feed the texthooker-ui reads); Anki
-with AnkiConnect on :8765.
+Bind `vn-capture.sh` to a desktop shortcut. Requires: ffmpeg, pactl
+(pipewire-pulse), curl, jq, and one screenshot tool — grim, spectacle,
+gnome-screenshot or ImageMagick's `import`, whichever the desktop has;
+Textractor with a WebSocket server extension on `ws://localhost:6677` (the feed
+the texthooker-ui reads); Anki with AnkiConnect on :8765.
 
 ## Usage
 

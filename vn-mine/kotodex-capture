@@ -11,8 +11,11 @@ LINES_LOG="$RUNDIR/lines.log"
 SEG_TIME=5
 SEG_WRAP=60 # 60 x 5s = 300s ring
 
-WS_PYTHON="$HOME/.local/share/kotodex/venv/bin/python"
-WS_LOGGER="$(dirname "$(readlink -f "$0")")/vn-ws-logger.py"
+HERE="$(dirname "$(readlink -f "$0")")"
+# One answer to "which python", from platform.sh — see kotodex_python there.
+source "$HERE/../scripts/lib/platform.sh"
+WS_PYTHON="$(kotodex_python)"
+WS_LOGGER="$HERE/vn-ws-logger.py"
 
 # The unit that owns this daemon, if one does — optional, and only where the
 # reader installed it to keep capture up across launcher restarts.

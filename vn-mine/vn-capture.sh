@@ -4,7 +4,8 @@
 # of the last Japanese line Textractor hooked, end = silero-VAD end of speech,
 # never past the *next* hooked line), screenshots the active window, and
 # attaches both to the most recently added note of the configured note type.
-# Requires: kotodex-capture running, curl, jq, spectacle, ffmpeg
+# Requires: kotodex-capture running, curl, jq, ffmpeg, and one screenshot tool
+# (grim, spectacle, gnome-screenshot or ImageMagick's import)
 # Env: VN_DRY=1        build the clip + screenshot but skip Anki, keep files
 #                      (also skips the sentence trim — it needs the note)
 #      VN_JSON=1       print a JSON result object instead of notifying the
@@ -65,7 +66,9 @@ if [ -f "$REPO_ENV" ]; then
 fi
 ANKI_CONNECT_URL="${KOTODEX_ANKI_URL:-http://127.0.0.1:8765}"
 WHISPER_URL="${VN_WHISPER_URL:-http://localhost:8100}"
-VAD_PYTHON="$HOME/.local/share/kotodex/venv/bin/python"
+# One answer to "which python", from platform.sh — see kotodex_python there.
+source "$SCRIPT_DIR/../scripts/lib/platform.sh"
+VAD_PYTHON="$(kotodex_python)"
 VAD_SCRIPT="$SCRIPT_DIR/vn-vad.py"
 TRIM_SCRIPT="$SCRIPT_DIR/vn-trim.py"
 VN_WINDOW="${VN_WINDOW:-}"
@@ -91,9 +94,17 @@ die() {
   exit 1
 }
 
-for cmd in curl jq spectacle ffmpeg; do
+for cmd in curl jq ffmpeg; do
   command -v "$cmd" &>/dev/null || die "$cmd is not installed"
 done
+
+# The screenshot tool is whichever one the desktop has — spectacle on KDE, grim
+# on wlroots, gnome-screenshot on GNOME, ImageMagick's import wherever X is.
+# Required as a set rather than by name: any one of them takes the picture, and
+# naming one fails every capture — audio included — on a desktop with another.
+command -v import &>/dev/null || command -v grim &>/dev/null ||
+  command -v gnome-screenshot &>/dev/null || command -v spectacle &>/dev/null ||
+  die "no screenshot tool — install grim (wlroots), spectacle (KDE), gnome-screenshot or imagemagick"
 
 # Unset — fired by hotkey rather than by read-stats — so ask read-stats which
 # window is the VN, and aim at the same one the mine button does. Resolving it
@@ -114,11 +125,16 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 # The note type's field names, the same variables the Rust side reads so one
 # note type is described in one place. The defaults are Lapis's.
+#
+# `${VAR-default}` and not `${VAR:-default}`: unset means "use the default",
+# empty means "this note type has no such field" — the same two answers
+# `AnkiConfig::from_env` gives. Collapsing them would write a Lapis field name
+# onto a note type that was configured not to have one.
 ANKI_MODEL="${KOTODEX_ANKI_MODEL:-Lapis}"
-FIELD_VOCAB="${KOTODEX_ANKI_FIELD_VOCAB:-Expression}"
-FIELD_SENTENCE="${KOTODEX_ANKI_FIELD_SENTENCE:-Sentence}"
-FIELD_IMAGE="${KOTODEX_ANKI_FIELD_IMAGE:-Picture}"
-FIELD_AUDIO="${KOTODEX_ANKI_FIELD_AUDIO:-SentenceAudio}"
+FIELD_VOCAB="${KOTODEX_ANKI_FIELD_VOCAB-Expression}"
+FIELD_SENTENCE="${KOTODEX_ANKI_FIELD_SENTENCE-Sentence}"
+FIELD_IMAGE="${KOTODEX_ANKI_FIELD_IMAGE-Picture}"
+FIELD_AUDIO="${KOTODEX_ANKI_FIELD_AUDIO-SentenceAudio}"
 
 # === LOCATE THE VOICELINE START (before the screenshot — anchor the line at
 # the press so advancing to the next line immediately after can't re-anchor) ===
@@ -194,17 +210,21 @@ if [ -n "$VN_WINDOW" ]; then
 else
   SHOT_NOTE=" (⚠ no window name on this work — captured the focused window)"
 fi
-# The X root before spectacle. The overlay is a Wayland layer surface, so an X
-# grab cannot see it while spectacle's "active window" *is* it whenever the mine
-# came from the overlay — the fallback would capture the reader, never the game.
-if [ ! -s "$TMP/$SCREENSHOT_FILE" ] && command -v import &>/dev/null; then
+# The whole screen with whatever this desktop ships, first tool that produces a
+# file. `import -window root` leads, and spectacle comes last, for the same
+# reason: the overlay is a Wayland layer surface, so an X grab cannot see it,
+# while spectacle's "active window" *is* it whenever the mine came from the
+# overlay — that path captures the reader and never the game.
+try_shot() { # command...
+  [ -s "$TMP/$SCREENSHOT_FILE" ] && return 0
+  command -v "$1" &>/dev/null || return 1
   rm -f "$TMP/$SCREENSHOT_FILE"
-  import -silent -window root "$TMP/$SCREENSHOT_FILE" 2>/dev/null
-fi
-if [ ! -s "$TMP/$SCREENSHOT_FILE" ]; then
-  rm -f "$TMP/$SCREENSHOT_FILE"
-  spectacle -bneo "$TMP/$SCREENSHOT_FILE" -a
-fi
+  "$@" 2>/dev/null
+}
+try_shot import -silent -window root "$TMP/$SCREENSHOT_FILE"
+try_shot grim "$TMP/$SCREENSHOT_FILE"
+try_shot gnome-screenshot -f "$TMP/$SCREENSHOT_FILE"
+try_shot spectacle -bneo "$TMP/$SCREENSHOT_FILE" -a
 [ -s "$TMP/$SCREENSHOT_FILE" ] || die "Failed to take screenshot"
 
 # Snapshot the ring: fractional mtime + size per segment, oldest first
@@ -454,24 +474,29 @@ upload_media "$SCREENSHOT_FILE" "$TMP/$SCREENSHOT_FILE"
 [ -z "$NO_AUDIO" ] && upload_media "$AUDIO_FILE" "$TMP/$AUDIO_FILE"
 
 # === UPDATE NOTE ===
-# The audio field is left out entirely when there was no speech, rather than set
-# to an empty string: whatever the note already holds is better than nothing.
+# A field is left out entirely rather than set to an empty string, twice over:
+# when there was no speech, because whatever the note already holds beats
+# nothing, and when the note type has no such field at all, because an empty
+# name is not a field Anki can be asked to write.
 FIELDS=$(jq -nc --arg img "<img src='$SCREENSHOT_FILE'>" \
   --arg audio "${AUDIO_FILE:+[sound:$AUDIO_FILE]}" \
   --arg fimg "$FIELD_IMAGE" --arg faud "$FIELD_AUDIO" \
-  '{($fimg): $img} + (if $audio == "" then {} else {($faud): $audio} end)')
-UPDATE_RESULT=$(curl -s -X POST "$ANKI_CONNECT_URL" -d "{
-    \"action\": \"updateNoteFields\",
-    \"version\": 6,
-    \"params\": {
-        \"note\": {
-            \"id\": $NOTE_ID,
-            \"fields\": $FIELDS
-        }
-    }
-}")
-if echo "$UPDATE_RESULT" | jq -e '.error != null' >/dev/null; then
-  die "Error updating note: $(echo "$UPDATE_RESULT" | jq -r '.error')"
+  '(if $fimg == "" then {} else {($fimg): $img} end)
+   + (if $faud == "" or $audio == "" then {} else {($faud): $audio} end)')
+if [ "$FIELDS" != "{}" ]; then
+  UPDATE_RESULT=$(curl -s -X POST "$ANKI_CONNECT_URL" -d "{
+      \"action\": \"updateNoteFields\",
+      \"version\": 6,
+      \"params\": {
+          \"note\": {
+              \"id\": $NOTE_ID,
+              \"fields\": $FIELDS
+          }
+      }
+  }")
+  if echo "$UPDATE_RESULT" | jq -e '.error != null' >/dev/null; then
+    die "Error updating note: $(echo "$UPDATE_RESULT" | jq -r '.error')"
+  fi
 fi
 
 rm -rf "$TMP"
