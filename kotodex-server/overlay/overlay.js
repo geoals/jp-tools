@@ -175,6 +175,21 @@ stream.onmessage = (e) => draw(JSON.parse(e.data));
 
 stream.addEventListener("status", (e) => {
   const { capture, paused, vn_window } = JSON.parse(e.data);
+// What each capture state says to a reader who is looking at the game, not at
+// a log. `live` never reaches here.
+//
+// Read off the status event and nothing else: whether a source is attached is
+// a fact about this second, and `capabilities` is fetched once when the page
+// opens. The overlay comes up beside the daemon it is reporting on, so that
+// answer is taken before the source has connected and then never changes —
+// which is how the bar said there was no line source into a session that was
+// capturing fine. `capture === "live"` already means one is attached.
+const CAPTURE_FAULT = {
+  unhooked: "no line source — is Textractor running with its WebSocket plugin?",
+  down: "capture is not running — start Kotodex, or `kotodex-capture restart`",
+  stalled: "lines are not reaching the ledger — is kotodex-server up?",
+};
+
   // Nothing while paused: the reader chose it, the pause button already says
   // so, and every fault here is about lines not arriving — which is the point
   // of pausing, not a problem with it. Routing a chosen state through the fault
@@ -188,12 +203,10 @@ stream.addEventListener("status", (e) => {
     paused
       ? ""
       : capture !== "live"
-        ? capture
-        : !can("lines_source")
-          ? "no line source — run Textractor with its WebSocket plugin"
-          : vn_window
-            ? ""
-            : "no window name on this work",
+        ? CAPTURE_FAULT[capture] ?? capture
+        : vn_window
+          ? ""
+          : "no window name on this work",
   );
   // The flag, not `capture`: the logger takes a poll to close its socket, so
   // `capture` still reads `live` right after a pause and would flip the button

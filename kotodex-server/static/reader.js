@@ -610,7 +610,7 @@ export function Reader() {
     ],
     down: [
       "logger down",
-      "vn-ws-logger is not running — nothing is being captured. Restart it: systemctl --user restart vn-buffer",
+      "The capture daemon is not running — nothing is being captured. Restart it: kotodex-capture restart",
     ],
     paused: ["paused", "Capture is paused — nothing is being recorded"],
     offline: ["reconnecting…", "Not connected — is kotodex-server reachable?"],
