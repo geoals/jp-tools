@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
 # Set Kotodex up on this machine, and say what is still missing when it ends.
 #
-#   ./setup.sh [--yes] [--dry-run] [--uninstall] [--help]
+#   ./setup.sh [--core] [--yes] [--dry-run] [--uninstall] [--help]
+#
+# Two tiers. The default installs everything: the ledger and the reader, plus
+# reading a VN on this machine — the Qt overlay, the audio ring buffer behind a
+# mined card's voiceline, and the Textractor source.
+#
+# --core installs the ledger and the reader alone: the server, the dashboard,
+# the dictionaries and the reader in a browser. No Qt, no audio, no window
+# tools. That is the tier for a machine that is only keeping the log — text
+# arrives from a source elsewhere (see sources/README.md), which is also the
+# only tier that makes sense off Linux.
 #
 # Re-runnable: every step checks before it acts, so a second run is a no-op and
 # a run after installing something picks that up. Nothing needs root — the
@@ -23,6 +33,8 @@ fi
 ASSUME_YES=0
 DRY_RUN=0
 UNINSTALL=0
+# full | core. See --core in the header.
+TIER=full
 
 DATA="$HOME/.local/share/kotodex"
 ENV_FILE="$HERE/.env"
@@ -59,6 +71,11 @@ confirm() {
   case "$answer" in [nN]*) return 1 ;; *) return 0 ;; esac
 }
 
+# True when this install reads on this machine — the overlay, the audio capture
+# and the Textractor source. Every step that only exists for those asks, so
+# --core is one condition rather than a second script that would drift.
+reading_here() { [ "$TIER" = full ]; }
+
 # Everything that changes the machine goes through this, so --dry-run is one
 # check rather than one per step.
 run() {
@@ -71,6 +88,7 @@ run() {
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --core) TIER=core ;;
     --yes|-y) ASSUME_YES=1 ;;
     --dry-run|-n) DRY_RUN=1 ;;
     --uninstall) UNINSTALL=1 ;;
@@ -126,6 +144,11 @@ fi
 
 step "This machine"
 say "$(_os_release_field PRETTY_NAME 2>/dev/null || echo "unknown system")"
+if reading_here; then
+  say "installing everything: the ledger, the reader, and reading a VN here"
+else
+  say "installing the ledger and the reader only (--core)"
+fi
 MGR="$(pkg_manager || echo unknown)"
 if [ "$MGR" = unknown ]; then
   skip "no package manager recognised — install commands below are generic"
@@ -155,8 +178,12 @@ require curl curl
 require jq jq
 require unzip unzip
 require python3 python
-require ffmpeg ffmpeg
-require pactl pactl
+if reading_here; then
+  require ffmpeg ffmpeg
+  require pactl pactl
+fi
+
+if reading_here; then
 
 # A pip PySide6 carries its own Qt and cannot load the system layer-shell
 # plugin, so the packaged one is what the layer-shell backend needs. Where the
@@ -223,6 +250,8 @@ else
   skip "overlay backend undecided — layer-overlay/backend.py did not answer"
 fi
 
+fi  # reading_here
+
 # One line covering both lists, so the optional packages are installed in the
 # same paste rather than discovered on a later run.
 if [ ${#REQUIRED_MISSING[@]} -gt 0 ]; then
@@ -238,7 +267,7 @@ fi
 
 # ---------------------------------------------------------- python packages --
 
-# websockets for the Textractor logger, onnxruntime and numpy for the VAD.
+# websockets for the Textractor source, onnxruntime and numpy for the VAD.
 # A venv rather than the system python: these are the interpreter's own
 # dependencies, and `--system-site-packages` keeps everything else — including a
 # packaged PySide6 — coming from the distribution.
@@ -247,7 +276,9 @@ REQS="$HERE/capture/requirements.txt"
 VENV_PYTHON="$KOTODEX_VENV/bin/python"
 venv_imports() { "$VENV_PYTHON" -c "import websockets, onnxruntime, numpy" >/dev/null 2>&1; }
 
-if [ -x "$VENV_PYTHON" ] && venv_imports; then
+if ! reading_here; then
+  skip "nothing to install — the server needs no Python"
+elif [ -x "$VENV_PYTHON" ] && venv_imports; then
   good "websockets, onnxruntime, numpy (in $KOTODEX_VENV)"
 elif [ "$DRY_RUN" = 1 ]; then
   say "would create $KOTODEX_VENV and install $REQS (~70 MB)"
@@ -351,7 +382,9 @@ else
 fi
 
 VAD="$DATA/silero_vad.onnx"
-if [ -f "$VAD" ]; then
+if ! reading_here; then
+  skip "silero VAD model — only needed for a mined card's audio"
+elif [ -f "$VAD" ]; then
   good "silero VAD model"
 elif [ "$DRY_RUN" = 1 ]; then
   say "would download silero_vad.onnx (2.2 MB, MIT)"
@@ -491,7 +524,9 @@ fi
 # asserted: it said "no whisper" to a reader with the service running, while
 # doctor two steps later said "reachable" off the same endpoint.
 WHISPER_URL="${KOTODEX_WHISPER_URL:-http://localhost:8100}"
-if curl -fsS --max-time 2 "$WHISPER_URL/health" >/dev/null 2>&1; then
+if ! reading_here; then
+  :
+elif curl -fsS --max-time 2 "$WHISPER_URL/health" >/dev/null 2>&1; then
   good "whisper answering on $WHISPER_URL"
 else
   skip "no whisper — required for trimming card audio to the mined sentence"
@@ -501,9 +536,22 @@ fi
 # ----------------------------------------------------------- application --
 
 step "Application entry"
-run "$HERE/kotodex/install-entry.sh"
+# The launcher's job is the three things reading a VN needs — capture, the
+# server and the overlay — so a core install has no use for it and would get a
+# menu entry that starts two things it does not have.
+if reading_here; then
+  run "$HERE/kotodex/install-entry.sh"
+else
+  skip "no launcher — start the server with target/release/kotodex-server"
+fi
 
 # ------------------------------------------------------------------ doctor --
+
+# Recorded so the doctor asks the same questions this run answered. Without it
+# a core install is told its missing overlay is a fault, on every later run.
+if [ "$DRY_RUN" != 1 ]; then
+  mkdir -p "$DATA" && printf '%s\n' "$TIER" >"$DATA/install-tier"
+fi
 
 step "Anything still missing"
 if [ "$DRY_RUN" = 1 ]; then
@@ -531,7 +579,12 @@ fi
 # Restated because they scrolled past: each of these was mentioned once, in the
 # middle of a step that was doing something else at the time.
 printf '\n'
-printf '  %-20s %s\n' "start it" "kotodex — or from the application menu"
+if reading_here; then
+  printf '  %-20s %s\n' "start it" "kotodex — or from the application menu"
+else
+  printf '  %-20s %s\n' "start it" "target/release/kotodex-server, then open :3200"
+  printf '  %-20s %s\n' "send it text" "sources/README.md — POST /api/lines"
+fi
 printf '  %-20s %s\n' "check what works" "scripts/kotodex-doctor.sh"
 printf '  %-20s %s\n' "add a dictionary" "drop a Yomitan zip in dictionaries/, then ./setup.sh again"
 printf '  %-20s %s\n' "uninstall" "./setup.sh --uninstall"

@@ -3,6 +3,9 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/geoals/kotodex/master/install.sh | sh
 #
+# Arguments are passed to setup.sh, so `... | sh -s -- --core` installs the
+# ledger and the reader without the parts that read a VN on this machine.
+#
 # POSIX sh and only curl, tar and sha256sum: this runs before setup.sh has
 # checked anything, on a machine that may have none of the rest.
 #

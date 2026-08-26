@@ -79,6 +79,12 @@ any Kotodex in it; everything that is the product carries it.
   (port 8200)
 - `whisper-service/` — Python FastAPI transcription service for yt-mine
   (port 8100)
+- `setup.sh` — two tiers. The default installs everything; `--core` installs the
+  ledger and the reader alone — no Qt, no audio, no window tools — for a machine
+  that only keeps the log while text arrives from a source elsewhere. It records
+  which tier ran in `~/.local/share/kotodex/install-tier`, so the doctor asks
+  the same questions rather than reporting a deliberately absent overlay as a
+  fault.
 - `scripts/start-all.sh` — start/stop/restart/status for the whole stack, or for
   named services (`restart kotodex-server`); see `--help`. Runs `jp-dict sync`
   before starting anything. **A development tool, not in the tarball**: the

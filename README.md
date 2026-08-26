@@ -21,6 +21,21 @@ Linux only. The rest of this repository is the tooling it grew out of.
   as you read, and a reading tracker behind it counts characters, hours,
   lookups and the size of your vocabulary over time.
 
+## Two tiers
+
+**The ledger** is the server, the dashboard and the reader: what you have read,
+line by line, and what you know, word by word. It needs a machine and nothing
+else, and text reaches it through one endpoint — `POST /api/lines` — so
+whatever is capturing can be another tool, another machine, or a phone. See
+[sources/README.md](sources/README.md).
+
+**Reading a VN here** is the rest of what is listed above: the overlay over a
+fullscreen game, the audio ring buffer behind a mined card, and the Textractor
+source. This part is Linux, and it is optional.
+
+`./setup.sh --core` installs the first tier alone. The requirements below are
+the second tier's; the first needs only curl, jq and unzip.
+
 ## Requirements
 
 - A compositor with `zwlr_layer_shell_v1` — KDE, Hyprland, any wlroots one —
@@ -39,12 +54,16 @@ Linux only. The rest of this repository is the tooling it grew out of.
 ```
 tar xf kotodex-<version>-linux-x86_64.tar.gz
 cd kotodex-<version>
-./setup.sh
+./setup.sh          # or: ./setup.sh --core
 ```
 
 It downloads SudachiDict and the VAD model, imports any dictionary zip you have
 put in `dictionaries/`, and puts Kotodex in your application menu. Re-run it any
 time — it is a no-op for whatever is already done.
+
+`--core` skips the Qt overlay, the audio capture and everything that only
+exists to read a VN on this machine; start it with `kotodex-server` and point
+a source at it.
 
 `./setup.sh --dry-run` prints what it would do. `./setup.sh --uninstall` removes
 it, and asks separately before touching your reading history.

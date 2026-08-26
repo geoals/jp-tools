@@ -2,6 +2,7 @@
 # What works here, what does not, and the one command that fixes each.
 #
 #   scripts/kotodex-doctor.sh [--url http://localhost:3200] [--only-problems]
+#                             [--core | --full]
 #
 # `--only-problems` prints just the rows that need something and the sections
 # holding them, which is what setup.sh ends with: a reader who has just watched
@@ -30,13 +31,28 @@ fi
 
 URL="http://localhost:${SERVER_PORT:-3200}"
 ONLY_PROBLEMS=0
+
+# Which tier setup.sh installed. Absent means full, which is what every install
+# made before the tiers existed is — reporting a missing overlay as a fault on
+# one of those is right.
+TIER_FILE="${KOTODEX_DATA:-$HOME/.local/share/kotodex}/install-tier"
+TIER="$( [ -r "$TIER_FILE" ] && cat "$TIER_FILE" || echo full )"
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --url) URL="$2"; shift ;;
     --only-problems) ONLY_PROBLEMS=1 ;;
+    --core) TIER=core ;;
+    --full) TIER=full ;;
   esac
   shift
 done
+
+# A core install reads nothing on this machine: no game window to screenshot,
+# no speakers to record, no overlay to draw. Checking for those would report
+# every one of them as broken on a machine doing exactly what it was set up to
+# do.
+reading_here() { [ "$TIER" = full ]; }
 
 bold=$'\033[1m'; red=$'\033[31m'; yellow=$'\033[33m'; green=$'\033[32m'; off=$'\033[0m'
 [ -t 1 ] || { bold=""; red=""; yellow=""; green=""; off=""; }
@@ -142,6 +158,7 @@ else
     "start Kotodex from the application menu — the rows below need it" critical
 fi
 
+if reading_here; then
 section "Capture"
 binary_row pactl pactl
 binary_row ffmpeg ffmpeg
@@ -160,6 +177,7 @@ cap capture_running "ring buffer"
 cap lines_source "line source"
 cap vad_model "VAD model"
 cap whisper "whisper"
+fi  # reading_here
 
 section "Dictionaries"
 cap dict_master "master"
@@ -171,8 +189,9 @@ cap vocabulary_ledger "ledger"
 section "Anki"
 cap anki "AnkiConnect"
 cap anki_note_type "note type"
-cap screenshot_tool "screenshot tool"
+reading_here && cap screenshot_tool "screenshot tool"
 
+if reading_here; then
 section "Overlay"
 src="$(pyside6_source 2>/dev/null || true)"
 if [ "$src" = pip ]; then
@@ -187,6 +206,7 @@ else
 fi
 cap overlay_backend "backend"
 cap xdotool "window tracking"
+fi  # reading_here
 
 section "Extras"
 cap explain "explain"
