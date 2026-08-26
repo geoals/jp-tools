@@ -1,26 +1,5 @@
 # kotodex
 
-> ## TODO: regenerate the golden fixtures once, on the reading machine
->
-> The golden tokenizer test is failing on `master`, and the cause was
-> `examples/golden.rs` writing `preferences.tsv` filtered to master headwords
-> while building the expected output from the unfiltered map — so the fixture
-> could not reproduce its own snapshot. The generator is fixed; the fixtures
-> still have to be rewritten by a machine with a real `knowledge.db`:
->
-> ```sh
-> cargo run --release --example golden -p jp-core --features test-support -- \
->   ~/.local/share/kotodex/knowledge.db jp-core/tests/golden/corpus.txt $PWD/system_full.dic
->
-> KOTODEX_SUDACHI_DICT_PATH=$PWD/system_full.dic \
->   cargo test -p jp-core --features test-support -- --ignored
-> ```
->
-> `preferences.tsv` should grow and `何それ/なにそれ` should stay joined. Anything
-> else that moves is a real regression — read it before committing.
->
-> **Delete this block once the test passes.**
-
 Cargo workspace for Japanese language learning tools, named after the product
 it ships. `jp-core` and `jp-mine-core` keep their own names, because neither has
 any Kotodex in it; everything that is the product carries it.
