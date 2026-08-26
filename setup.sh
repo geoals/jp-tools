@@ -559,54 +559,43 @@ if [ "$DRY_RUN" != 1 ]; then
   mkdir -p "$DATA" && printf '%s\n' "$TIER" >"$DATA/install-tier"
 fi
 
-step "Starting kotodex-server"
+step "Checking with the server"
 # The doctor asks the server what it can do, so almost every row below is
 # unanswerable while it is down — and a fresh install has never started it, so
-# a clean run reported itself as broken. Started here, the closing check is a
-# real answer. The launcher adopts a running server rather than starting a
-# second one, so leaving this up costs nothing.
+# a clean run reported itself as broken. This starts it only for that check and
+# stops it again below, leaving the machine as this run found it: an install
+# that had ended with half of Kotodex running would then have told the reader
+# to start Kotodex.
 SERVER_LOG="$DATA/kotodex-server.log"
+SERVER_STARTED_HERE=0
 server_answering() { curl -s --max-time 2 "http://localhost:3200/api/reader/state" >/dev/null 2>&1; }
 if [ "$DRY_RUN" = 1 ]; then
-  say "would start target/release/kotodex-server"
+  say "would start target/release/kotodex-server for the check, then stop it"
 elif server_answering; then
-  # This run has just built the binaries. A server still running the previous
-  # ones answers the doctor below with what was installed last time, so an
-  # upgrade looked like it had changed nothing.
+  # Already up is somebody else's process — the launcher's, or one started by
+  # hand. It is left alone, running and stopped both.
   pid="$(pgrep -x kotodex-server | head -1)"
   uptime_s="$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')"
   built_s="$(( $(date +%s) - $(stat -c %Y "$HERE/target/release/kotodex-server") ))"
-  if [ -z "$pid" ] || [ -z "$uptime_s" ] || [ "$built_s" -ge "$uptime_s" ]; then
-    good "already running"
-  elif pgrep -f "[k]otodex\.py" >/dev/null; then
-    # The launcher owns its own child, so killing it here would leave the
-    # launcher holding a process that no longer exists.
-    skip "running an older build — run 'kotodex restart' to pick this one up"
+  if [ -n "$uptime_s" ] && [ "$built_s" -lt "$uptime_s" ]; then
+    # Otherwise the rows below report what was installed last time, and an
+    # upgrade looks like it changed nothing.
+    skip "already running, on an older build — 'kotodex restart' picks this one up"
   else
-    say "restarting it on the build just made"
-    kill "$pid" 2>/dev/null
-    for _ in $(seq 20); do server_answering || break; sleep 0.5; done
-    setsid "$HERE/target/release/kotodex-server" >>"$SERVER_LOG" 2>&1 &
-    for _ in $(seq 40); do server_answering && break; sleep 0.5; done
-    if server_answering; then
-      good "answering on http://localhost:3200"
-    else
-      fail "did not come back up — see $SERVER_LOG"
-    fi
+    good "already running"
   fi
 elif [ ! -x "$HERE/target/release/kotodex-server" ]; then
   fail "target/release/kotodex-server is missing"
 else
   mkdir -p "$DATA"
-  # setsid so it outlives this script, and the log so a failure to start has
-  # somewhere to say why.
   setsid "$HERE/target/release/kotodex-server" >>"$SERVER_LOG" 2>&1 &
   for _ in $(seq 40); do
     server_answering && break
     sleep 0.5
   done
   if server_answering; then
-    good "answering on http://localhost:3200"
+    SERVER_STARTED_HERE=1
+    say "started it for the check"
   else
     fail "did not come up — see $SERVER_LOG"
   fi
@@ -614,14 +603,22 @@ fi
 
 step "Anything still missing"
 if [ "$DRY_RUN" = 1 ]; then
-  say "would run scripts/kotodex-doctor.sh --only-problems"
+  say "would run scripts/kotodex-doctor.sh --only-problems --installing"
   doctor=0
 else
   # Only the problems: every step above has just reported itself, and repeating
   # the whole table buries the two rows that need something. The full table is
   # scripts/kotodex-doctor.sh.
-  "$HERE/scripts/kotodex-doctor.sh" --only-problems
+  "$HERE/scripts/kotodex-doctor.sh" --only-problems --installing
   doctor=$?
+fi
+
+# Back to how this run found the machine. The reader starts Kotodex from the
+# application menu, and that starts the server along with the rest of it.
+if [ "$SERVER_STARTED_HERE" = 1 ]; then
+  pkill -x kotodex-server 2>/dev/null
+  printf '\n'
+  say "stopped the server again — it was up only for the check"
 fi
 
 printf '\n'

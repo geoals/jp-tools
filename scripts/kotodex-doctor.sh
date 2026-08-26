@@ -31,6 +31,11 @@ fi
 
 URL="http://localhost:${SERVER_PORT:-3200}"
 ONLY_PROBLEMS=0
+# Run from setup.sh, which deliberately leaves Kotodex stopped. A row whose
+# only remedy is starting it is then the expected state of every fresh install,
+# and listing it under "anything still missing" made a finished install read as
+# a broken one.
+INSTALLING=0
 
 # Which tier setup.sh installed. Absent means full, which is what every install
 # made before the tiers existed is — reporting a missing overlay as a fault on
@@ -42,6 +47,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --url) URL="$2"; shift ;;
     --only-problems) ONLY_PROBLEMS=1 ;;
+    --installing) INSTALLING=1 ;;
     --core) TIER=core ;;
     --full) TIER=full ;;
   esac
@@ -89,6 +95,7 @@ row() {
     printf '  %s✓%s %-18s %s\n' "$green" "$off" "$name" "$detail"
     return
   fi
+  case "$INSTALLING$fix" in 1"start Kotodex"*) return ;; esac
   flush_section
   if [ -n "$critical" ]; then
     printf '  %s✗%s %-18s %s\n' "$red" "$off" "$name" "$detail"
