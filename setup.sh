@@ -570,7 +570,30 @@ server_answering() { curl -s --max-time 2 "http://localhost:3200/api/reader/stat
 if [ "$DRY_RUN" = 1 ]; then
   say "would start target/release/kotodex-server"
 elif server_answering; then
-  good "already running"
+  # This run has just built the binaries. A server still running the previous
+  # ones answers the doctor below with what was installed last time, so an
+  # upgrade looked like it had changed nothing.
+  pid="$(pgrep -x kotodex-server | head -1)"
+  uptime_s="$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')"
+  built_s="$(( $(date +%s) - $(stat -c %Y "$HERE/target/release/kotodex-server") ))"
+  if [ -z "$pid" ] || [ -z "$uptime_s" ] || [ "$built_s" -ge "$uptime_s" ]; then
+    good "already running"
+  elif pgrep -f "[k]otodex\.py" >/dev/null; then
+    # The launcher owns its own child, so killing it here would leave the
+    # launcher holding a process that no longer exists.
+    skip "running an older build — run 'kotodex restart' to pick this one up"
+  else
+    say "restarting it on the build just made"
+    kill "$pid" 2>/dev/null
+    for _ in $(seq 20); do server_answering || break; sleep 0.5; done
+    setsid "$HERE/target/release/kotodex-server" >>"$SERVER_LOG" 2>&1 &
+    for _ in $(seq 40); do server_answering && break; sleep 0.5; done
+    if server_answering; then
+      good "answering on http://localhost:3200"
+    else
+      fail "did not come back up — see $SERVER_LOG"
+    fi
+  fi
 elif [ ! -x "$HERE/target/release/kotodex-server" ]; then
   fail "target/release/kotodex-server is missing"
 else
