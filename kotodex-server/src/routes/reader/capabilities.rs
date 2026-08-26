@@ -66,7 +66,7 @@ fn run_dir() -> PathBuf {
         let base = std::env::var_os("XDG_RUNTIME_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(format!("/run/user/{}", real_uid())));
-        base.join("capture")
+        base.join("kotodex")
     })
 }
 

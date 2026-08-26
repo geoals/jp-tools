@@ -314,8 +314,14 @@ if [ -f "$HERE/Cargo.toml" ] && have cargo; then
   say "building — the first time takes a few minutes"
   # The same three the tarball ships. Building the whole workspace would pull
   # in yt-mine and manga-mine, which have no part in reading a VN.
-  run bash -c "cd '$HERE' && cargo build --release -p kotodex-server \
-    -p jp-core --bin jp-dict -p jp-mine-core --bin anki-setup" \
+  #
+  # Every one named with its own --bin: the flag filters across the whole
+  # selection, not per package, so `-p kotodex-server` with a --bin naming
+  # something else silently builds no server at all.
+  run bash -c "cd '$HERE' && cargo build --release \
+    -p kotodex-server --bin kotodex-server \
+    -p jp-core --bin jp-dict \
+    -p jp-mine-core --bin anki-setup" \
     || { fail "build failed"; exit 1; }
   good "built"
 elif [ -x "$HERE/target/release/kotodex-server" ] && [ -x "$HERE/target/release/jp-dict" ]; then
