@@ -18,17 +18,27 @@ not on a CDN.
 
 ## Downloaded by `setup.sh`
 
+Nothing here is redistributed: each is fetched from whoever publishes it, at the
+version they publish today, which is also why the URLs are resolved rather than
+pinned.
+
 | what | used for | size | licence |
 |---|---|---|---|
 | SudachiDict full (`system_full.dic`), WorksApplications | tokenizing Japanese at all | 127 MB | Apache-2.0 |
 | silero-vad ONNX model, snakers4/silero-vad | trimming a card's clip to the spoken line | 2.2 MB | MIT |
+| Jitendex (`jitendex-yomitan.zip`), stephenmk | the popup's Japanese–English definitions | ~39 MB | CC BY-SA 4.0 |
+| the Jiten frequency list, jiten.moe | which words are common in fiction — the underline, the rank pill, the sweep's order | ~8 MB | see <https://jiten.moe> |
+
+Both dictionaries are offered because without them the product is broken rather
+than smaller: no definitions means an empty popup, and no ranks means nothing is
+underlined or ordered.
 
 ## Loaded at run time, not distributed
 
 - **Yomitan dictionary zips** the reader supplies in `dictionaries/`. Their terms
-  are the dictionary's own. Kotodex ships none and downloads none — Jitendex is
-  CC BY-SA 4.0 and freely redistributable, and the commercial monolinguals are
-  not, which is why the installer only says where to get them.
+  are the dictionary's own. The commercial monolinguals — Sankoku, 明鏡, 小学館 —
+  are not redistributable, so the installer neither ships nor fetches one and the
+  vocabulary scale is simply not offered until the reader supplies a master.
 - **The Anki note type.** Cards are written into whichever note type is
   configured; Lapis is the default field map. Its templates and CSS are not
   vendored here.
@@ -40,8 +50,11 @@ not on a CDN.
 
 ## Scope note
 
-Everything binds to loopback. The AnkiConnect proxy in read-stats forwards to
-`127.0.0.1:8765` and is reachable only from this machine; nothing in the stack
-listens on a public interface or sends reading data anywhere. The one outbound
-call is to the Anthropic API, and only when an API key is set and the explain
-button is pressed.
+**Nothing sends reading data anywhere.** The one outbound call is to the
+Anthropic API, and only when an API key is set and the explain button is pressed.
+
+read-stats listens on `0.0.0.0:3200` on purpose, so a phone beside the screen can
+open the same reading surface — `KOTODEX_STATS_LISTEN_ADDR` narrows it to
+`127.0.0.1:3200` where that is not wanted. There is no authentication, so treat
+it as trusted-network only. Everything it talks *to* is loopback: AnkiConnect on
+`127.0.0.1:8765`, the Local Audio Server on `:5050`, whisper-service on `:8100`.
