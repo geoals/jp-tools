@@ -1,5 +1,26 @@
 # kotodex
 
+> ## TODO: regenerate the golden fixtures once, on the reading machine
+>
+> The golden tokenizer test is failing on `master`, and the cause was
+> `examples/golden.rs` writing `preferences.tsv` filtered to master headwords
+> while building the expected output from the unfiltered map — so the fixture
+> could not reproduce its own snapshot. The generator is fixed; the fixtures
+> still have to be rewritten by a machine with a real `knowledge.db`:
+>
+> ```sh
+> cargo run --release --example golden -p jp-core --features test-support -- \
+>   ~/.local/share/kotodex/knowledge.db jp-core/tests/golden/corpus.txt $PWD/system_full.dic
+>
+> KOTODEX_SUDACHI_DICT_PATH=$PWD/system_full.dic \
+>   cargo test -p jp-core --features test-support -- --ignored
+> ```
+>
+> `preferences.tsv` should grow and `何それ/なにそれ` should stay joined. Anything
+> else that moves is a real regression — read it before committing.
+>
+> **Delete this block once the test passes.**
+
 Cargo workspace for Japanese language learning tools, named after the product
 it ships. The crates keep their own names — `read-stats` is still the server
 and `read-stats.db` still its database.
@@ -44,7 +65,9 @@ and `read-stats.db` still its database.
   read-stats and the overlay, plus the tray, the single-instance socket, the
   icon and the desktop entry. **Adopt, never duplicate**: each component is
   probed before it is started, so this coexists with `start-all.sh` and with a
-  systemd-managed capture daemon, and quitting stops only what it started
+  systemd-managed capture daemon, and quitting stops only what it started.
+  It runs all three itself and goes through no other script — the three things
+  reading a VN needs are not the same set as "every service in the repo"
 - `layer-overlay/` — the Qt shell that puts a web page above fullscreen windows
   and makes it clickable only where the page has drawn. Knows nothing about
   Japanese, reading or read-stats; `read-stats/overlay/` is its one caller.
@@ -55,7 +78,8 @@ and `read-stats.db` still its database.
   (port 8100)
 - `scripts/start-all.sh` — start/stop/restart/status for the whole stack, or for
   named services (`restart read-stats`); see `--help`. Runs `jp-dict sync`
-  before starting anything
+  before starting anything. **A development tool, not in the tarball**: the
+  launcher owns the three components reading needs, and this owns the other four
 - `web-shared/` — front-end code more than one app draws: the dictionary popup
   (`popup.js` + `popup.css`). read-stats and yt-mine both `ServeDir` it at
   `/shared/`, so the two pages load the identical file — there is no build step
@@ -150,8 +174,9 @@ lookup is a reading-session event and there is no session. It is vanilla DOM
 because one host is a plain page and the other is Preact.
 
 **The overlay is a read-stats surface, and the Qt shell that shows it is not.**
-The page (`read-stats/overlay/`) calls eight `/api` routes and nothing else can
-answer one of them, so it lives with the app that serves it. What puts it over a
+Every route the page (`read-stats/overlay/`) calls is a read-stats route and
+nothing else can answer one of them, so it lives with the app that serves it.
+What puts it over a
 fullscreen window — a layer surface, an input region, a tracked window's
 geometry — is `layer-overlay/`, which has no Japanese in it and takes a URL.
 Keeping those in one directory is what made the overlay look like a third

@@ -150,9 +150,14 @@ async fn main() {
     let all_prefs = dictionaries::preferred_readings(pool, master_dict.id, jitendex.id, bccwj.id)
         .await
         .unwrap();
+    // The whole map, *not* narrowed to `lexicon` like the fixtures above it.
+    // Every other input is written out as the same value the snapshot below is
+    // built from; this one was written filtered and snapshotted whole, so the
+    // fixture could not reproduce its own expected output. The keys the filter
+    // dropped are exactly the non-master ones — the terms the snapshot marks
+    // `?` — and a run of them is a join the test then has no way to make.
     let mut prefs: Vec<String> = all_prefs
         .iter()
-        .filter(|(term, _)| lexicon.contains(*term))
         .map(|(term, p)| {
             let mut ok: Vec<&str> = p.acceptable.iter().map(String::as_str).collect();
             ok.sort();
