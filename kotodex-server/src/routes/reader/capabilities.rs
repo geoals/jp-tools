@@ -141,7 +141,7 @@ async fn lines_source(state: &AppState) -> Capability {
         ),
         _ => off(
             "ws, no producer",
-            "in Textractor, point its WebSocket plugin at vn-ws-logger.py",
+            "start Kotodex — it runs the logger that reads Textractor's WebSocket",
         ),
     }
 }

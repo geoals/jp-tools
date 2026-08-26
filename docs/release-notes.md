@@ -1,4 +1,4 @@
-# Kotodex — first release
+# Kotodex
 
 Read a Japanese visual novel with the line, its dictionary and your own
 vocabulary history drawn over the game — fullscreen included — and mine a card
@@ -18,7 +18,7 @@ and the silero VAD model, offers Jitendex and the Jiten frequency list, checks
 Anki and can install the Lapis note type, and installs the application entry.
 It is re-runnable, and takes `--dry-run`, `--yes` and `--uninstall`.
 
-## In this release
+## What it does
 
 - **The overlay.** Layer surface where the compositor has `zwlr_layer_shell_v1`
   — KDE, Hyprland, wlroots — and an always-on-top X11 window elsewhere,

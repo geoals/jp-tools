@@ -55,11 +55,12 @@ git fetch -q origin
 behind="$(git rev-list --count "HEAD..origin/master")"
 [ "$behind" = 0 ] || die "origin/master is $behind commits ahead — pull first"
 
-# Every release takes its notes from this one file, so a second release would
-# otherwise ship the first one's text.
+# The workflow prepends this file to the notes GitHub generates from the
+# commits since the last tag, so what is new in a release is never something to
+# remember to write. The file itself says what Kotodex is and how to install it,
+# which does not change between releases.
 notes="docs/release-notes.md"
-[ -r "$notes" ] || die "$notes is missing — the workflow publishes it as the release notes"
-say "notes: $(head -1 "$notes")"
+[ -r "$notes" ] || die "$notes is missing — the workflow prepends it to the release notes"
 
 if [ "$DRY_RUN" = 1 ]; then
   say "would tag $TAG and push it, then publish the draft"
