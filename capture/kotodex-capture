@@ -61,6 +61,27 @@ status)
   ;;
 
 run)
+  # One daemon per machine, held for as long as this one runs. Two of them each
+  # start a logger, both hook Textractor, and every line lands in the ledger
+  # twice. They race whenever something restarts capture out from under the
+  # launcher: `restart` detaches a new `run` while the launcher's watchdog sees
+  # its child die and spawns its own.
+  #
+  # The loser waits rather than exiting: the launcher reads a child exiting as
+  # capture crashing, and would either burn its restart budget or take the whole
+  # launcher down with it. Waiting also leaves it ready to take the role over
+  # when the holder stops.
+  #
+  # Before anything below, which clears the ring and rotates the line log — the
+  # loser doing that would wipe them under the daemon that is running.
+  mkdir -p "$RUNDIR"
+  exec 9>"$RUNDIR/capture.lock"
+  if ! flock -n 9; then
+    echo "another capture daemon is running — waiting for it to stop"
+    flock 9
+    echo "took over the capture lock"
+  fi
+
   for cmd in pactl ffmpeg; do
     if ! command -v "$cmd" &>/dev/null; then
       echo "Error: $cmd is not installed"
