@@ -7,9 +7,6 @@
 -- encounter count is derived from `lines`, a kotodex encounter map aggregates by
 -- `works`, and "have I mined this" is `anki_notes`. read-stats writes into this
 -- database; it is not a pure reader, and that is by design.
---
--- Keep in sync with the schema bootstrap in vn-mine/vn-ws-logger.py — either
--- process may create the DB first, so both use CREATE ... IF NOT EXISTS.
 
 -- The source dimension: one row per VN, book or article. Joined to
 -- lines.work / manual_sessions.work by exact title string, because the

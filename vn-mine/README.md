@@ -20,19 +20,18 @@ silero-VAD finds where the speech ends.
 - `vn-ws-logger.py` — connects to the Textractor WebSocket server
   (`ws://localhost:6677`, override with `VN_WS_URL`) and appends each hooked
   Japanese line to `lines.log` with a timestamp. Auto-reconnects if Textractor
-  restarts. Also inserts each line into the shared knowledge DB
-  (`~/.local/share/kotodex/knowledge.db`, override with
-  `KOTODEX_KNOWLEDGE_DB_PATH`) so reading time/chars are tracked
-  automatically — best-effort, never blocks mining; disable with
-  `KOTODEX_STATS_DISABLE=1`. read-stats' own DB is attached alongside for the
-  `current_work` setting, which is the title stamped on each line.
+  restarts. Also posts each line to the ledger's ingest endpoint
+  (`POST /api/lines` on `http://127.0.0.1:3200`, override with
+  `KOTODEX_SERVER_URL`) so reading time/chars are tracked automatically —
+  best-effort, never blocks mining; disable with `KOTODEX_STATS_DISABLE=1`.
 
-  **It creates neither database.** The schema is jp-core's migrations and
-  read-stats'; this checks that the columns in `REQUIRED` are there and waits if
-  they are not, retrying every 30s. Started before the migrations have run it
-  logs to `lines.log` alone and picks the databases up when they appear, so a
-  first boot loses nothing. Adding a column here means adding it to `REQUIRED`
-  too, or the insert fails mid-session.
+  **It never opens a database.** It is one source among several, and it owns
+  only what is specific to Textractor: the hooker's junk, a continuation split
+  across two text boxes, the dedup. The character count, the work stamped on
+  the line and whether capture is paused at all are the ledger's answers — so a
+  second source cannot arrive at a different number for the same reading, and
+  a source on a phone can do the same job. Started before the server it logs to
+  `lines.log` alone and retries every 30s, so a first boot loses nothing.
 
   **Restarting the logger with Textractor attached is safe** as long as it goes
   through SIGTERM: `run()` sends a close frame before exiting, and the
@@ -56,8 +55,9 @@ silero-VAD finds where the speech ends.
   at the matched span. Falls back to anchoring on the vocab field and expanding
   to punctuation/silence boundaries; on any failure the VAD-trimmed clip is
   kept unchanged. Needs whisper-service running on :8100.
-- `test_ws_logger.py` — the logger's tests, which are the only check on the one
-  producer of `lines`. `pytest` is a development dependency and deliberately not
+- `test_ws_logger.py` — the logger's tests, which are the only check on the
+  cleaning, the ruby split and the dedup. `pytest` is a development dependency
+  and deliberately not
   in `requirements.txt`, so it is not in the venv `setup.sh` builds:
 
   ```sh
@@ -82,7 +82,7 @@ and the shell takes a URL.
 read-stats/overlay/vn-overlay.sh          # start, or restart what is up
 ```
 
-What the two halves do share is a database. `vn-ws-logger.py` writes the lines
+What the two halves do share is the ledger. `vn-ws-logger.py` posts the lines
 the overlay reads, and every card the overlay makes fires `vn-capture.sh` for
 its audio and screenshot — so the overlay is only as live as this daemon is.
 The badge in its corner reports exactly that.

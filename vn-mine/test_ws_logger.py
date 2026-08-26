@@ -8,8 +8,8 @@ Run: python3 vn-mine/test_ws_logger.py
 import asyncio
 import importlib.util
 import io
+import json
 import os
-import sqlite3
 import sys
 import tempfile
 import types
@@ -219,96 +219,129 @@ class RealLogInvariants(unittest.TestCase):
         self.assertGreater(kept, 0, "expected at least some dialogue in the log")
 
 
-def make_databases(tmp, paused=None):
-    """Both databases as the migrations leave them, with only what the sink
-    needs — built from `REQUIRED`, so a column added there without one added
-    here fails loudly rather than at the first insert of a session."""
-    lines = ", ".join(sorted(wl.REQUIRED["lines"]))
-    knowledge = os.path.join(tmp, "knowledge.db")
-    db = sqlite3.connect(knowledge, isolation_level=None)
-    db.execute(f"CREATE TABLE lines (id INTEGER PRIMARY KEY, {lines})")
-    db.close()
+class FakeLedger:
+    """kotodex-server as the sink sees it: the settings it reads, and a record
+    of every request it made.
 
-    stats = os.path.join(tmp, "read-stats.db")
-    db = sqlite3.connect(stats, isolation_level=None)
-    db.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
-    if paused is not None:
-        db.execute("INSERT INTO settings VALUES ('capture_paused', ?)", (paused,))
-    db.close()
-    return knowledge, stats
+    Stands in for the endpoint rather than for a database, which is the point of
+    the change it tests — the sink no longer knows what a column is.
+    """
+
+    def __init__(self, paused=False, unreachable=False):
+        self.settings = {
+            "capture_paused": paused,
+            "line_source": "ws",
+            "line_source_ws_url": "ws://localhost:6677",
+        }
+        self.unreachable = unreachable
+        self.lines = []
+        self.posts = []
+
+    def get(self, path):
+        if self.unreachable:
+            raise OSError("connection refused")
+        assert path == "/api/settings", path
+        return dict(self.settings)
+
+    def post(self, path, payload):
+        if self.unreachable:
+            raise OSError("connection refused")
+        # Copied because the sink clears `pending` in place once the request
+        # lands, and a real request would have serialized it by then.
+        payload = json.loads(json.dumps(payload))
+        self.posts.append((path, payload))
+        if path == "/api/lines/retract":
+            for line in reversed(self.lines):
+                if not line["discarded"]:
+                    line["discarded"] = 1
+                    return {"id": id(line)}
+            return {"id": None}
+        assert path == "/api/lines", path
+        if self.settings["capture_paused"]:
+            return {"ids": [], "paused": True}
+        ids = []
+        for line in payload["lines"]:
+            ids.append(len(self.lines) + 1)
+            self.lines.append({**line, "discarded": 0})
+        return {"ids": ids, "paused": False}
+
+    def texts(self):
+        """`(text, discarded)` per line, in the order they were accepted."""
+        return [(line["text"], line["discarded"]) for line in self.lines]
+
+
+def fake_ledger(case, **kwargs):
+    """Point the module's two HTTP calls at a `FakeLedger` for one test."""
+    ledger = FakeLedger(**kwargs)
+    old = (wl.get_json, wl.post_json)
+    wl.get_json, wl.post_json = ledger.get, ledger.post
+    case.addCleanup(lambda: setattr(wl, "get_json", old[0]))
+    case.addCleanup(lambda: setattr(wl, "post_json", old[1]))
+    case.addCleanup(os.environ.pop, "KOTODEX_STATS_DISABLE", None)
+    os.environ.pop("KOTODEX_STATS_DISABLE", None)
+    return ledger
 
 
 class CapturePausedFlag(unittest.TestCase):
-    """The one contract shared with read-stats: it writes the flag, this reads
-    it. A regression here doesn't fail loudly — it silently keeps capturing."""
+    """The one contract shared with read-stats: it owns the flag, this reads it.
+    A regression here doesn't fail loudly — it silently keeps capturing."""
 
-    def sink(self, value):
-        tmp = tempfile.mkdtemp()
-        knowledge, stats = make_databases(tmp, paused=value)
-        self.addCleanup(os.environ.pop, "KOTODEX_STATS_DISABLE", None)
-        os.environ.pop("KOTODEX_STATS_DISABLE", None)
-        old = (wl.KNOWLEDGE_DB, wl.STATS_DB)
-        wl.KNOWLEDGE_DB, wl.STATS_DB = knowledge, stats
-        self.addCleanup(lambda: setattr(wl, "KNOWLEDGE_DB", old[0]))
-        self.addCleanup(lambda: setattr(wl, "STATS_DB", old[1]))
+    def sink(self, **kwargs):
+        self.ledger = fake_ledger(self, **kwargs)
         return wl.StatsSink()
 
-    def test_paused_when_flag_is_one(self):
-        self.assertTrue(self.sink("1").capture_paused())
+    def test_paused_when_the_flag_is_set(self):
+        self.assertTrue(self.sink(paused=True).capture_paused())
 
-    def test_not_paused_when_flag_is_zero(self):
-        self.assertFalse(self.sink("0").capture_paused())
+    def test_not_paused_when_the_flag_is_clear(self):
+        self.assertFalse(self.sink(paused=False).capture_paused())
 
-    def test_not_paused_when_row_absent(self):
-        self.assertFalse(self.sink(None).capture_paused())
-
-    def test_fails_open_with_no_database(self):
-        sink = self.sink("1")
-        sink.db = None
+    def test_fails_open_when_the_server_is_unreachable(self):
+        sink = self.sink(paused=True, unreachable=True)
         self.assertFalse(
             sink.capture_paused(), "an unreadable flag must keep capturing"
         )
 
-
-class SchemaIsNotOurs(unittest.TestCase):
-    """The schema belongs to jp-core's migrations and read-stats'. This daemon
-    checks for it and waits; it must never create or alter a table, or the copy
-    it creates becomes the one that goes stale."""
-
-    def setUp(self):
-        self.tmp = tempfile.mkdtemp()
-        os.environ.pop("KOTODEX_STATS_DISABLE", None)
-        self.addCleanup(os.environ.pop, "KOTODEX_STATS_DISABLE", None)
-        old = (wl.KNOWLEDGE_DB, wl.STATS_DB)
-        wl.KNOWLEDGE_DB = os.path.join(self.tmp, "knowledge.db")
-        wl.STATS_DB = os.path.join(self.tmp, "read-stats.db")
-        self.addCleanup(lambda: setattr(wl, "KNOWLEDGE_DB", old[0]))
-        self.addCleanup(lambda: setattr(wl, "STATS_DB", old[1]))
-
-    def test_no_database_creates_none(self):
+    def test_the_endpoint_drops_what_arrives_while_paused(self):
+        # The source stops too, but the endpoint is the one that has to hold:
+        # a source on another machine cannot watch a setting.
+        ledger = fake_ledger(self, paused=True)
         sink = wl.StatsSink()
-        self.assertIsNone(sink.db)
-        self.assertFalse(os.path.exists(wl.KNOWLEDGE_DB), "created a database")
-
-    def test_a_missing_column_is_refused(self):
-        db = sqlite3.connect(wl.KNOWLEDGE_DB, isolation_level=None)
-        db.execute("CREATE TABLE lines (id INTEGER PRIMARY KEY, ts REAL, chars INTEGER)")
-        db.close()
-        db = sqlite3.connect(wl.STATS_DB, isolation_level=None)
-        db.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
-        db.close()
-        self.assertIsNone(wl.StatsSink().db, "wrote against a schema it cannot satisfy")
-
-    def test_it_opens_once_the_migrations_have_run(self):
-        sink = wl.StatsSink()
-        self.assertIsNone(sink.db)
-        make_databases(self.tmp)
-        sink._next_try = 0
-        self.assertTrue(sink.ready(), "a sink that gave up loses the whole sitting")
         sink.add(1.0, "テスト")
+        self.assertEqual(ledger.texts(), [])
+
+
+class TheSchemaIsNotOurs(unittest.TestCase):
+    """The sink talks to an endpoint, never to a database. It cannot name a
+    column, so it cannot hold a copy of the schema that goes stale."""
+
+    def test_it_opens_no_database(self):
+        self.assertFalse(hasattr(wl, "KNOWLEDGE_DB"))
+        self.assertFalse(hasattr(wl, "REQUIRED"))
+        self.assertNotIn("sqlite3", wl.__dict__)
+
+    def test_a_line_says_only_what_it_is(self):
+        # No `chars`: counting is the ledger's rule, and two implementations of
+        # it drift into two different answers for chars/h.
+        ledger = fake_ledger(self)
+        wl.StatsSink().add(1.0, "テスト", ruby=[[0, 2, "て"]])
         self.assertEqual(
-            sink.db.execute("SELECT text FROM lines").fetchall(), [("テスト",)]
+            ledger.posts[0][1]["lines"],
+            [{"ts": 1.0, "text": "テスト", "ruby": [[0, 2, "て"]]}],
         )
+        self.assertEqual(ledger.posts[0][1]["source"], "vn")
+
+    def test_a_sink_that_gave_up_would_lose_the_sitting(self):
+        ledger = fake_ledger(self, unreachable=True)
+        sink = wl.StatsSink()
+        sink.add(1.0, "テスト")
+        self.assertEqual(len(sink.pending), 1, "the line is held, not dropped")
+
+        ledger.unreachable = False
+        sink._next_try = 0
+        sink.flush()
+        self.assertEqual(ledger.texts(), [("テスト", 0)])
+        self.assertEqual(sink.pending, [])
 
 
 class SplitCaptureRejoined(unittest.TestCase):
@@ -321,28 +354,16 @@ class SplitCaptureRejoined(unittest.TestCase):
     ]
     WHOLE = "「今僕は、その理由を聞かせてもらおうとしている。\n後学のためにね」"
 
-    def sink(self):
-        tmp = tempfile.mkdtemp()
-        knowledge, stats = make_databases(tmp)
-        self.addCleanup(os.environ.pop, "KOTODEX_STATS_DISABLE", None)
-        os.environ.pop("KOTODEX_STATS_DISABLE", None)
-        old = (wl.KNOWLEDGE_DB, wl.STATS_DB)
-        wl.KNOWLEDGE_DB, wl.STATS_DB = knowledge, stats
-        self.addCleanup(lambda: setattr(wl, "KNOWLEDGE_DB", old[0]))
-        self.addCleanup(lambda: setattr(wl, "STATS_DB", old[1]))
-        return wl.StatsSink()
-
     def drain(self, captures):
-        sink = self.sink()
+        ledger = fake_ledger(self)
+        sink = wl.StatsSink()
 
         async def ws():
             for c in captures:
                 yield c
 
         asyncio.run(wl.read_lines(ws(), io.StringIO(), sink, (None, [])))
-        return sink.db.execute(
-            "SELECT text, discarded FROM lines ORDER BY id"
-        ).fetchall()
+        return ledger.texts()
 
     def test_the_feed_ends_on_the_whole_line(self):
         rows = self.drain(self.HALVES)

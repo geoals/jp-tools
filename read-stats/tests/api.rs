@@ -1602,3 +1602,162 @@ async fn a_book_already_part_read_is_caught_up_without_logging_it() {
     assert_eq!(status, 200, "{logged}");
     assert_eq!(logged["session"]["chars"], 7, "雨が降っていた alone");
 }
+
+#[tokio::test]
+async fn ingest_counts_the_characters_rather_than_trusting_the_source() {
+    let app = TestApp::new().await;
+    let (status, body) = app
+        .send(
+            "POST",
+            "/api/lines",
+            json!({
+                "source": "vn",
+                "lines": [{ "ts": today_start() + 3600.0, "text": "「ねえ、聞いてる？」" }]
+            }),
+        )
+        .await;
+    assert_eq!(status, 200);
+    assert_eq!(body["ids"].as_array().unwrap().len(), 1);
+
+    // Six counted codepoints, not the ten the line is written with: the
+    // brackets and the punctuation are not reading.
+    let s = app.get("/api/summary").await;
+    assert_eq!(s["today"]["chars"], 6);
+}
+
+#[tokio::test]
+async fn ingest_stamps_the_work_the_dashboard_is_reading() {
+    let app = TestApp::new().await;
+    read_stats::db::save_setting(&app.local, "current_work", "ハミダシクリエイティブ")
+        .await
+        .unwrap();
+
+    app.send(
+        "POST",
+        "/api/lines",
+        json!({ "lines": [{ "ts": today_start() + 3600.0, "text": "あいうえお" }] }),
+    )
+    .await;
+    // A source may name its own instead — a bridge knows which video or book
+    // it is on, and the dashboard's field is about the VN.
+    app.send(
+        "POST",
+        "/api/lines",
+        json!({
+            "source": "ttsu",
+            "work": "余生",
+            "lines": [{ "ts": today_start() + 3700.0, "text": "かきくけこ" }]
+        }),
+    )
+    .await;
+
+    let works: Vec<String> = app
+        .get("/api/works")
+        .await
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|w| w["work"].as_str().unwrap_or_default().to_string())
+        .collect();
+    assert!(works.iter().any(|w| w == "ハミダシクリエイティブ"));
+    assert!(works.iter().any(|w| w == "余生"));
+}
+
+#[tokio::test]
+async fn ingest_drops_lines_while_capture_is_paused() {
+    let app = TestApp::new().await;
+    app.send("POST", "/api/capture/pause", json!({})).await;
+
+    let (status, body) = app
+        .send(
+            "POST",
+            "/api/lines",
+            json!({ "lines": [{ "text": "あいうえお" }] }),
+        )
+        .await;
+    // Accepted and dropped, not refused: a 4xx would make a source hold the
+    // line and flush it the moment capture resumed.
+    assert_eq!(status, 200);
+    assert_eq!(body["paused"], true);
+    assert_eq!(body["ids"].as_array().unwrap().len(), 0);
+    assert_eq!(app.get("/api/summary").await["today"]["chars"], 0);
+}
+
+#[tokio::test]
+async fn a_source_retracts_only_its_own_last_line() {
+    let app = TestApp::new().await;
+    let base = today_start() + 3600.0;
+    app.send(
+        "POST",
+        "/api/lines",
+        json!({ "source": "vn", "lines": [{ "ts": base, "text": "あいうえお" }] }),
+    )
+    .await;
+    let (_, other) = app
+        .send(
+            "POST",
+            "/api/lines",
+            json!({ "source": "ttsu", "lines": [{ "ts": base + 10.0, "text": "かきくけこ" }] }),
+        )
+        .await;
+    let other_id = other["ids"][0].clone();
+
+    // The continuation case: the box that followed turned out to be the rest
+    // of the same sentence, so the half already sent has to come back out.
+    let (status, body) = app
+        .send("POST", "/api/lines/retract", json!({ "source": "vn" }))
+        .await;
+    assert_eq!(status, 200);
+    assert_ne!(body["id"], other_id, "another source's line is not touched");
+
+    let lines = app.get("/api/lines/before?before=999999").await;
+    let texts: Vec<&str> = lines["lines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l["text"].as_str().unwrap())
+        .collect();
+    assert_eq!(texts, vec!["かきくけこ"]);
+}
+
+#[tokio::test]
+async fn ingest_rejects_a_source_name_that_is_not_a_plain_token() {
+    let app = TestApp::new().await;
+    let (status, _) = app
+        .send(
+            "POST",
+            "/api/lines",
+            json!({ "source": "vn'; DROP", "lines": [] }),
+        )
+        .await;
+    assert_eq!(status, 400);
+}
+
+#[tokio::test]
+async fn a_status_only_post_keeps_the_capture_badge_alive() {
+    let app = TestApp::new().await;
+
+    // A source with nothing to send still has something to say: the badge is
+    // otherwise the browser's own connection, which stays perfectly healthy
+    // while nothing at all is being captured.
+    let (status, body) = app
+        .send(
+            "POST",
+            "/api/lines",
+            json!({ "lines": [], "status": { "attached": true, "pending": 3 } }),
+        )
+        .await;
+    assert_eq!(status, 200);
+    assert_eq!(body["ids"].as_array().unwrap().len(), 0);
+
+    let beat: serde_json::Value = serde_json::from_str(
+        &read_stats::db::get_setting_raw(&app.local, "vn_logger_heartbeat")
+            .await
+            .unwrap()
+            .expect("the beat is published where the badge reads it"),
+    )
+    .unwrap();
+    assert_eq!(beat["ws"], true);
+    assert_eq!(beat["pending"], 3);
+    assert_eq!(beat["source"], "vn");
+}

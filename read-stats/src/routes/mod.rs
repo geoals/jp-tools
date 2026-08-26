@@ -24,6 +24,7 @@ pub mod anki;
 pub mod ankiproxy;
 pub mod books;
 pub mod days;
+pub mod ingest;
 pub mod json;
 pub mod kanji;
 pub mod lookups;

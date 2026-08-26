@@ -156,7 +156,8 @@ async fn opening_batch(
     db::fetch_recent_lines(&state.knowledge, n).await
 }
 
-/// What vn-ws-logger.py last said about itself, as `settings.vn_logger_heartbeat`.
+/// What the capturing source last said about itself, as
+/// `settings.vn_logger_heartbeat`.
 #[derive(serde::Deserialize)]
 pub(super) struct Heartbeat {
     ts: f64,

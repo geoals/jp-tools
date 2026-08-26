@@ -18,16 +18,15 @@ copies too, so a sentence copied for a lookup enters the log as if it were
 dialogue, and whatever was already on the clipboard at startup would replay —
 guarded below, but not fixable in general.
 
-Every logged line is also inserted into the shared knowledge SQLite DB
+Every logged line is also posted to kotodex-server's ingest endpoint
 (durable, unlike the tmpfs lines.log) so reading time and character counts can
-be derived without any manual tracking. Stats failures never block mining.
+be derived without any manual tracking. Ledger failures never block mining.
 
-Two databases are involved, and the split is jp-core's: `lines` is knowledge,
-shared with every tool that asks
-what has been read, while `settings.current_work` — the title stamped on each
-line — is read-stats' own. The knowledge DB is the connection; read-stats' is
-attached read-only-in-practice for two settings: `current_work` and
-`capture_paused`.
+This is one source among several, and it owns only what is specific to
+Textractor: the hooker's junk, a continuation split across two text boxes, the
+dedup. The character count, which work a line belongs to and whether capture is
+paused at all are the ledger's, answered by the server — so a second source
+cannot arrive at a different number for the same reading.
 
 Pausing is a *source* stop, not a filter. While `settings.capture_paused` is
 set, this closes the Textractor connection and stays disconnected, so nothing
@@ -38,9 +37,8 @@ plugin and takes Textractor with it.
 Env:
   VN_RUNDIR                   run dir (default: $XDG_RUNTIME_DIR/vn-mine or /run/user/$UID/...)
   VN_WS_URL                   WebSocket URL, overriding settings.line_source_ws_url
-  KOTODEX_KNOWLEDGE_DB_PATH  shared knowledge DB (default: ~/.local/share/kotodex/knowledge.db)
-  KOTODEX_STATS_DB_PATH      read-stats DB (default: ~/.local/share/kotodex/read-stats.db)
-  KOTODEX_STATS_DISABLE      set to 1 to skip the stats sink entirely
+  KOTODEX_SERVER_URL          kotodex-server (default: http://127.0.0.1:3200)
+  KOTODEX_STATS_DISABLE       set to 1 to skip the ledger entirely
 """
 import asyncio
 import json
@@ -48,10 +46,11 @@ import os
 import re
 import shutil
 import signal
-import sqlite3
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 
 import websockets
 
@@ -462,97 +461,131 @@ def split_ruby(text):
     out.append(RUBY_STRAY.sub("", text[at:]))
     return "".join(out), spans
 
-KNOWLEDGE_DB = os.environ.get("KOTODEX_KNOWLEDGE_DB_PATH") or os.path.expanduser(
-    "~/.local/share/kotodex/knowledge.db"
-)
-STATS_DB = os.environ.get("KOTODEX_STATS_DB_PATH") or os.path.expanduser(
-    "~/.local/share/kotodex/read-stats.db"
-)
+SERVER_URL = (
+    os.environ.get("KOTODEX_SERVER_URL") or "http://127.0.0.1:3200"
+).rstrip("/")
 
-# The columns this writes. Checked rather than created: the schema belongs to
-# jp-core's migrations and read-stats', and a second copy of it here is a copy
-# that goes stale silently — a column added there and missed here fails at the
-# insert, mid-session, with lines already hooked.
-REQUIRED = {
-    "lines": {"ts", "chars", "text", "source", "work", "discarded", "ruby"},
-    "stats.settings": {"key", "value"},
-}
+# This source's name in the `lines` table, and what a retract addresses.
+SOURCE = "vn"
 
-# How long to wait before trying the databases again. Nothing here creates
-# them, so a first-ever run has to sit out whatever starts read-stats.
+# How long a request to the server may take before the capture loop gives up on
+# it. Short because the call is synchronous: a line is held and retried rather
+# than waited on, and the reading feed's latency is the point of the pipeline.
+HTTP_TIMEOUT = 2.0
+
+# How long to wait before trying the server again after it has refused a
+# connection. A first-ever run has to sit out whatever starts the server.
 RETRY_SECS = 30
 
+# How stale the cached settings may get. Pause, the chosen source and the
+# WebSocket address are all read from this rather than per poll: the pause loop
+# asks several times a second and none of those answers changes that fast.
+SETTINGS_TTL = 2.0
 
-def _columns(db, table):
-    """The columns of `table`, empty when there is no such table."""
-    schema, _, name = table.rpartition(".")
-    rows = db.execute(f"PRAGMA {schema or 'main'}.table_info({name})").fetchall()
-    return {r[1] for r in rows}
+
+def get_json(path):
+    """GET and decode. Raises OSError or ValueError if the server did not answer."""
+    with urllib.request.urlopen(f"{SERVER_URL}{path}", timeout=HTTP_TIMEOUT) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def post_json(path, payload):
+    """POST and decode. Raises OSError or ValueError if the server did not take it."""
+    req = urllib.request.Request(
+        f"{SERVER_URL}{path}",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+        return json.loads(resp.read().decode("utf-8"))
 
 
 class StatsSink:
-    """Best-effort writer into the read-stats DB; never interferes with mining.
+    """Best-effort client for the ledger's ingest endpoint.
 
-    A write that fails goes to `pending` and is retried on the next line rather
-    than dropped. The failure this exists for is a batch job elsewhere holding
-    the single SQLite write lock for longer than `busy_timeout`: transient, but
-    it once ran the whole session's lines into the ground because the sink gave
-    up permanently after a handful of errors.
+    HTTP rather than SQLite: the schema belongs to jp-core's migrations, and a
+    writer that knows the column list is a copy of it that goes stale silently.
+    It also means this daemon does not have to be on the machine holding the
+    database.
+
+    A request that fails goes to `pending` and is retried on the next line
+    rather than dropped. The failure this exists for is the server being
+    restarted mid-session: transient, but it once ran a whole sitting's lines
+    into the ground because the sink gave up permanently after a handful of
+    errors.
     """
 
     MAX_PENDING = 2000
 
     def __init__(self):
-        self.db = None
         self.pending = []
         self.disabled = bool(os.environ.get("KOTODEX_STATS_DISABLE"))
+        self.attached = False
+        self._settings = {}
+        self._settings_at = 0.0
         self._next_try = 0.0
         self._complained = False
-        self.ready()
 
     def ready(self):
-        """Open both databases if they are not open yet, at most every
-        `RETRY_SECS`.
+        """Whether it is worth making a request at all.
 
-        Retried rather than settled at startup because this daemon does not
-        create the schema and may well win the race to it: `kotodex-capture.service`
-        comes up with the session, `start-all.sh` runs the migrations. Giving up
-        on the first attempt would mean a whole sitting logged to `lines.log`
-        and nowhere else.
+        There is no connection to open, so this is only the backoff: after a
+        refusal, stay quiet for `RETRY_SECS` instead of a failed request per
+        captured line.
         """
-        if self.db is not None:
-            return True
-        if self.disabled or time.time() < self._next_try:
-            return False
+        return not self.disabled and time.time() >= self._next_try
+
+    def _unreachable(self, e, what):
         self._next_try = time.time() + RETRY_SECS
-        db = None
+        if not self._complained:
+            self._complained = True
+            log(f"{what} ({e}) — lines.log still has everything")
+
+    def _reached(self):
+        self._next_try = 0.0
+        if self._complained:
+            self._complained = False
+            log(f"ledger reachable again at {SERVER_URL}")
+
+    def settings(self):
+        """The reader's settings, cached for `SETTINGS_TTL`.
+
+        Stale settings fail *open*: an unreachable server reads as not paused,
+        on the same rule as before — losing lines is silent and unrecoverable,
+        capturing a few that should have been paused is visible and clearable
+        from the reader.
+        """
+        if self.disabled:
+            return {}
+        now = time.time()
+        if self._settings and now - self._settings_at < SETTINGS_TTL:
+            return self._settings
+        if now < self._next_try:
+            return self._settings
         try:
-            for path in (KNOWLEDGE_DB, STATS_DB):
-                if not os.path.exists(path):
-                    raise sqlite3.OperationalError(f"no {path} yet")
-            db = sqlite3.connect(KNOWLEDGE_DB, isolation_level=None)
-            db.execute("PRAGMA busy_timeout=5000")
-            # read-stats' own DB, for the current_work and capture_paused
-            # settings only.
-            db.execute("ATTACH DATABASE ? AS stats", (STATS_DB,))
-            missing = [
-                f"{table}.{column}"
-                for table, columns in REQUIRED.items()
-                for column in sorted(columns - _columns(db, table))
-            ]
-            if missing:
-                raise sqlite3.OperationalError(f"missing {', '.join(missing)}")
-        except (OSError, sqlite3.Error) as e:
-            if db is not None:
-                db.close()
-            if not self._complained:
-                self._complained = True
-                log(f"stats sink waiting ({e}) — lines.log still has everything")
-            return False
-        self.db = db
-        self._complained = False
-        log(f"stats sink: {KNOWLEDGE_DB} (+ settings from {STATS_DB})")
-        return True
+            self._settings = get_json("/api/settings")
+            self._settings_at = now
+            self._reached()
+        except (OSError, ValueError) as e:
+            self._unreachable(e, "ledger settings unreadable")
+        return self._settings
+
+    def capture_paused(self):
+        return bool(self.settings().get("capture_paused"))
+
+    def line_source(self):
+        """`ws` or `clipboard`. Anything else is a setting written by hand and
+        is read as the default rather than as no source at all."""
+        source = self.settings().get("line_source") or "ws"
+        return source if source in ("ws", "clipboard") else "ws"
+
+    def ws_url(self):
+        return (
+            WS_URL_ENV
+            or self.settings().get("line_source_ws_url")
+            or WS_URL_FALLBACK
+        )
 
     def heartbeat(self, ws_up):
         """Publish what only this process knows: that it is alive, whether
@@ -561,83 +594,24 @@ class StatsSink:
         `#read`'s live badge is otherwise the browser's own SSE connection,
         which stays perfectly healthy while nothing at all is being captured.
         """
-        if not self.ready():
-            return
-        beat = {"ts": time.time(), "ws": bool(ws_up), "pending": len(self.pending)}
-        try:
-            self.db.execute(
-                "INSERT INTO stats.settings (key, value)"
-                " VALUES ('vn_logger_heartbeat', ?)"
-                " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                (json.dumps(beat),),
-            )
-        except sqlite3.Error:
-            pass  # a heartbeat that cannot be written is itself the outage
-
-    def capture_paused(self):
-        """Whether the dashboard has capture switched off.
-
-        Fails *open* — an unreadable flag means keep capturing. Losing lines to
-        a database hiccup would be silent and unrecoverable; capturing a few
-        that should have been paused is visible and clearable from the reader.
-        """
-        if self.db is None:
-            return False
-        try:
-            row = self.db.execute(
-                "SELECT value FROM stats.settings WHERE key = 'capture_paused'"
-            ).fetchone()
-            return bool(row) and row[0] == "1"
-        except sqlite3.Error as e:
-            log(f"pause flag unreadable ({e}) — continuing to capture")
-            return False
-
-    def _setting(self, key, default=None):
-        if self.db is None:
-            return default
-        try:
-            row = self.db.execute(
-                "SELECT value FROM stats.settings WHERE key = ?", (key,)
-            ).fetchone()
-            return row[0] if row and row[0] else default
-        except sqlite3.Error:
-            return default
-
-    def line_source(self):
-        """`ws` or `clipboard`. Anything else is a setting written by hand and
-        is read as the default rather than as no source at all."""
-        source = self._setting("line_source", "ws")
-        return source if source in ("ws", "clipboard") else "ws"
-
-    def ws_url(self):
-        return WS_URL_ENV or self._setting("line_source_ws_url", WS_URL_FALLBACK)
-
-    def current_work(self):
-        """Title set via the dashboard's "now reading" field; read per line so a
-        change applies immediately without restarting the daemon."""
-        if self.db is None:
-            return None
-        try:
-            row = self.db.execute(
-                "SELECT value FROM stats.settings WHERE key = 'current_work'"
-            ).fetchone()
-            return row[0] if row and row[0] else None
-        except sqlite3.Error:
-            return None
+        self.attached = bool(ws_up)
+        if not self.pending:
+            self._send([])
 
     def add(self, ts, text, ruby=None):
-        if not self.ready():
+        """One captured line, on its way to the ledger.
+
+        The character count is deliberately not computed here: it is the
+        ledger's rule, and two implementations of it drift into two different
+        answers for chars/h.
+        """
+        if self.disabled:
             return
-        chars = len(NOT_COUNTED.sub("", text))
-        # clean_line() already dropped UI, skip-through and runaway captures, so
-        # everything reaching here is real dialogue: insert not discarded. The
-        # discarded column stays for the reader's manual clear button.
         self.pending.append(
-            (ts, chars, text, self.current_work(), json.dumps(ruby, ensure_ascii=False) if ruby else None)
+            {"ts": ts, "text": text, "ruby": ruby or None}
         )
-        # Under a lock held for minutes this keeps the newest lines; the oldest
-        # are the ones already in lines.log the longest, so they stay
-        # recoverable from there.
+        # Under an outage this keeps the newest lines; the oldest are the ones
+        # already in lines.log the longest, so they stay recoverable from there.
         del self.pending[: -self.MAX_PENDING]
         self.flush()
 
@@ -649,36 +623,44 @@ class StatsSink:
         if self.pending:
             self.pending.pop()
             return
-        if self.db is None:
+        if not self.ready():
             return
         try:
-            self.db.execute(
-                "UPDATE lines SET discarded = 1 WHERE id ="
-                " (SELECT MAX(id) FROM lines WHERE source = 'vn')"
-            )
-        except sqlite3.Error as e:
+            post_json("/api/lines/retract", {"source": SOURCE})
+        except (OSError, ValueError) as e:
             log(f"could not retract the split line ({e}) — both halves stand")
 
     def flush(self):
         if not self.pending:
             return
-        stuck = len(self.pending) > 1
-        try:
-            self.db.execute("BEGIN IMMEDIATE")
-            self.db.executemany(
-                "INSERT INTO lines (ts, chars, text, source, work, discarded, ruby)"
-                " VALUES (?, ?, ?, 'vn', ?, 0, ?)",
-                self.pending,
-            )
-            self.db.execute("COMMIT")
-        except sqlite3.Error as e:
-            if self.db.in_transaction:
-                self.db.rollback()
-            if not stuck:
-                log(f"stats insert failed ({e}) — holding lines for retry")
+        self._send(self.pending)
+
+    def _send(self, lines):
+        """One request carrying whatever is held, plus this process's health.
+
+        The health rides along rather than going in its own request: every
+        flush is already saying the source is alive, and a separate beat would
+        double the traffic to say it again.
+        """
+        if not self.ready():
             return
+        stuck = len(lines) > 1
+        try:
+            post_json(
+                "/api/lines",
+                {
+                    "source": SOURCE,
+                    "lines": lines,
+                    "status": {"attached": self.attached, "pending": len(lines)},
+                },
+            )
+        except (OSError, ValueError) as e:
+            if not stuck:
+                self._unreachable(e, "ledger unreachable")
+            return
+        self._reached()
         if stuck:
-            log(f"stats sink recovered, wrote {len(self.pending)} held lines")
+            log(f"ledger recovered, wrote {len(lines)} held lines")
         self.pending.clear()
 
 

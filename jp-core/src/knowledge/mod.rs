@@ -75,8 +75,8 @@ pub struct Knowledge(SqlitePool);
 impl Knowledge {
     /// Open (creating if absent) and migrate.
     pub async fn open(db_path: &str) -> Result<Self, sqlx::Error> {
-        // WAL + busy_timeout: vn-ws-logger.py appends to `lines` concurrently,
-        // and yt-mine/manga-mine read the dictionaries from their own
+        // WAL + busy_timeout: read-stats appends to `lines` as sources post
+        // them, and yt-mine/manga-mine read the dictionaries from their own
         // processes.
         //
         // Both go on the *connect options*, not through a `PRAGMA` run against
@@ -450,7 +450,7 @@ mod tests {
     /// setting, so setting it with a `PRAGMA` against the pool reached one
     /// connection and left the rest at zero — and a write that happened to
     /// land on one of those failed with "database is locked" the moment
-    /// vn-ws-logger.py held the write lock, instead of waiting five seconds.
+    /// another process held the write lock, instead of waiting five seconds.
     #[tokio::test]
     async fn every_pooled_connection_waits_for_a_busy_database() {
         let k = temp_knowledge().await;

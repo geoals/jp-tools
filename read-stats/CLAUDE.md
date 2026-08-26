@@ -31,10 +31,10 @@ databases. Port 3200.
 ## The shape of the thing
 
 ```
-                  vn-ws-logger.py                     Yomitan
-                        │ appends                        │ AnkiConnect
+            sources (vn-ws-logger.py, …)              Yomitan
+                        │ POST /api/lines                │ AnkiConnect
                         ▼                                ▼
-                 knowledge.db: lines            routes/ankiproxy.rs
+              routes/ingest.rs ──► lines       routes/ankiproxy.rs
                         │                                │ records
                         ▼                                ▼
    history.rs  ◄─── one load per request ───►   knowledge.db: lookups
@@ -55,7 +55,8 @@ talks to.
 
 `knowledge.db` is shared and its schema is owned by `jp_core::knowledge`
 (`lines`, `works`, `manual_sessions`, `anki_notes`, `word_days`, `lookups`,
-`vocabulary`, the dictionary cache). `read-stats.db` is this app's own:
+`vocabulary`, the dictionary cache). Only this app writes `lines`, through
+`POST /api/lines` — see `routes/ingest.rs`. `read-stats.db` is this app's own:
 `settings`, `reader_marks`, `work_covers`. `db` functions take a `Knowledge`
 handle or a bare `SqlitePool`, so passing the wrong database is a compile error.
 The two places that straddle the line — the current work's capture window and
@@ -103,9 +104,12 @@ The line stream:
 
 - **Nothing is deleted.** A line that shouldn't count gets `discarded = 1`,
   filtered on read.
-- **Pausing stops capture, it does not filter.** vn-ws-logger.py polls
-  `settings.capture_paused` and closes its Textractor WebSocket while it is set,
-  so a paused span simply has no lines in it.
+- **Pausing stops capture, it does not filter.** `routes/ingest` drops what
+  arrives while `settings.capture_paused` is set, and a source that can watch
+  the flag stops at the source too — vn-ws-logger.py closes its Textractor
+  WebSocket. Either way a paused span simply has no lines in it. The endpoint is
+  the one that has to hold: a source on another machine cannot watch a setting,
+  and a source that could would still be a second implementation of the rule.
 - **A lookup only exists if it happened while reading.** Yomitan fires the proxy
   for anything looked up anywhere, so `ankiproxy::record` records only when a
   line arrived within `session_gap_secs`. The guard is at the write and nowhere
@@ -412,9 +416,11 @@ The reading view:
   the report, and a failed write is the mark coming back. It is hit-tested with
   `caretPositionFromPoint`, and **nothing in the feed is made clickable**: an
   interactive layer would sit between the reader and the text Yomitan scans.
-- **The live badge reports the writer, not the connection.** vn-ws-logger.py
-  publishes `settings.vn_logger_heartbeat` (its Textractor WS state and its
-  unwritten backlog) and the SSE stream republishes a verdict every 2s. The
+- **The live badge reports the writer, not the connection.** A source reports
+  its own health on the ingest request (whether anything is feeding it, and its
+  unsent backlog), `routes/ingest` publishes that as
+  `settings.vn_logger_heartbeat`, and the SSE stream republishes a verdict every
+  2s. A source with nothing to send posts the health alone. The
   badge was once the `EventSource` alone, which sat on "live" through three
   hours of capturing nothing: this stream is healthy whenever read-stats is up,
   and knows nothing about the two hops in front of it.

@@ -8,9 +8,10 @@
 //! the LAN as well, so a second device beside the screen works the same way.
 //!
 //! Lines are read out of the `lines` table rather than from Textractor's
-//! WebSocket directly: vn-ws-logger.py is already writing them there, and its
-//! WS plugin can crash Textractor when a client disconnects abortively, so a
-//! second WS client is a risk with nothing to gain.
+//! WebSocket directly: a source has already posted them to `POST /api/lines`,
+//! the feed is the same whichever source that was, and Textractor's WS plugin
+//! can crash it when a client disconnects abortively — so a second WS client
+//! is a risk with nothing to gain.
 //!
 //! | module | does |
 //! |---|---|

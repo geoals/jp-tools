@@ -13,8 +13,8 @@ use tower_http::set_header::SetResponseHeaderLayer;
 
 use crate::routes::ankiproxy;
 use crate::routes::{
-    anki, books, days, kanji, lookups, reader, sessions, settings, summary, timeline, tokenize,
-    vocab, works,
+    anki, books, days, ingest, kanji, lookups, reader, sessions, settings, summary, timeline,
+    tokenize, vocab, works,
 };
 
 const SPA_HTML: &str = include_str!("../templates/spa.html");
@@ -175,6 +175,12 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/api/settings",
             get(settings::get_settings).put(settings::put_settings),
+        )
+        // The ledger's front door: any source, over HTTP, from any machine.
+        .route("/api/lines", axum::routing::post(ingest::ingest_lines))
+        .route(
+            "/api/lines/retract",
+            axum::routing::post(ingest::retract_line),
         )
         // Reading view: live line feed + the mine trigger.
         .route("/api/lines/stream", get(reader::stream::lines_stream))

@@ -48,9 +48,8 @@ and `read-stats.db` still its database.
   `kotodex-capture` ring-buffer daemon + Textractor line logger + silero-VAD hotkey script →
   Anki. **It is a dependency of read-stats, not a peer**: read-stats runs
   `vn-capture.sh` on every card path (`services::capture`), and
-  `vn-ws-logger.py` is the only producer of the `lines` read-stats serves.
-  Nothing here calls read-stats except to ask which window is the game. See
-  `vn-mine/README.md`
+  `vn-ws-logger.py` is one *source*: it posts the lines it hooks to
+  `POST /api/lines` like any other. See `vn-mine/README.md`
 - `read-stats/` — daily reading tracker (Axum + SQLite + Preact, port 3200), the
   two reading surfaces over it, and the AnkiConnect proxy Yomitan points at.
   Shown to the reader as **コトデックス**, a proposed name only the page title
@@ -116,13 +115,13 @@ Two rules for writing to them, both from one "database is locked":
   the pool: `busy_timeout` is per connection, so a pragma sets it on one pooled
   connection and leaves the rest at zero.
 
-**The migrations are the only thing that creates a table.** `vn-ws-logger.py`
-writes `lines` and once carried its own `CREATE TABLE` under a "keep in sync"
-comment, which is how the `ruby` column came to exist in Python and in
-`knowledge::migrate` and in no migration at all. A non-Rust writer now names
-the columns it needs (`REQUIRED`), checks for them, and waits — a daemon that
-starts before the migrations sits out a retry instead of creating a schema that
-drifts. Nothing outside jp-core and read-stats may `CREATE` or `ALTER`.
+**The migrations are the only thing that creates a table, and only Rust opens
+the database at all.** `vn-ws-logger.py` used to write `lines` itself and once
+carried its own `CREATE TABLE` under a "keep in sync" comment, which is how the
+`ruby` column came to exist in Python and in `knowledge::migrate` and in no
+migration at all. Every source now posts to `POST /api/lines` instead, so no
+writer outside jp-core and read-stats knows the column list, and one on a phone
+never could.
 
 `vocabulary` is the ledger of what is known, one row per `(headword, reading)`.
 Only the reader writes its `status` column, and `new` (never judged) is not

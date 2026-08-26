@@ -1,7 +1,7 @@
 //! `lines` — the raw hooked line stream, and the four shapes it is read in.
 //!
-//! vn-ws-logger.py appends here as Textractor hooks each text box; read-stats
-//! only ever reads and flags. Nothing is deleted: a line that shouldn't count
+//! Sources append through `POST /api/lines`; nothing outside this module
+//! writes the table. Nothing is deleted either: a line that shouldn't count
 //! gets `discarded = 1` and every read filters it out.
 //!
 //! Four shapes, because the callers need different columns and fetching them
@@ -12,6 +12,7 @@
 //!   derivations.
 //! - [`crate::stats::WorkLine`] — time + chars + work, for per-VN totals.
 //! - [`IngestLine`] — id + text, for tokenizing into `word_days`.
+//! - [`NewLine`] — what a source hands over, on the way in.
 
 use jp_core::knowledge::Knowledge;
 use sqlx::Row;
@@ -345,4 +346,72 @@ pub async fn fetch_line_texts_by_id(
         .iter()
         .map(|r| (r.get("id"), r.get("text")))
         .collect())
+}
+
+/// A line as a source hands it over, ready to store.
+///
+/// `chars` is not on it: the count is the ledger's rule
+/// ([`jp_core::text::chars::count_chars`]), not the source's, so a new source cannot
+/// drift the figure every rate is derived from.
+pub struct NewLine {
+    pub ts: f64,
+    pub text: String,
+    pub work: Option<String>,
+    pub ruby: Option<serde_json::Value>,
+}
+
+/// Append captured lines, returning their ids in the order given.
+///
+/// One transaction for the batch: a source that has been holding lines through
+/// an outage flushes them as a unit, and a partial flush would leave it unable
+/// to say where to resume from.
+pub async fn insert_lines(
+    k: &Knowledge,
+    source: &str,
+    lines: &[NewLine],
+) -> Result<Vec<i64>, sqlx::Error> {
+    if lines.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut tx = k.pool().begin().await?;
+    let mut ids = Vec::with_capacity(lines.len());
+    for line in lines {
+        let ruby = line
+            .ruby
+            .as_ref()
+            .map(|v| serde_json::to_string(v).unwrap_or_default());
+        let row = sqlx::query(
+            "INSERT INTO lines (ts, chars, text, source, work, discarded, ruby)
+             VALUES (?, ?, ?, ?, ?, 0, ?) RETURNING id",
+        )
+        .bind(line.ts)
+        .bind(jp_core::text::chars::count_chars(&line.text))
+        .bind(&line.text)
+        .bind(source)
+        .bind(line.work.as_deref())
+        .bind(ruby)
+        .fetch_one(&mut *tx)
+        .await?;
+        ids.push(row.get("id"));
+    }
+    tx.commit().await?;
+    Ok(ids)
+}
+
+/// Flag the newest line from `source` as discarded — a source taking back a
+/// line it has already handed over, because the next capture turned out to
+/// continue it.
+///
+/// Discarded rather than deleted, for the same reason as
+/// [`set_lines_discarded`]: an id already handed to `term_surfaces` or crossed
+/// by an ingest watermark has to stay resolvable.
+pub async fn retract_last_line(k: &Knowledge, source: &str) -> Result<Option<i64>, sqlx::Error> {
+    let row = sqlx::query(
+        "UPDATE lines SET discarded = 1
+         WHERE id = (SELECT MAX(id) FROM lines WHERE source = ?) RETURNING id",
+    )
+    .bind(source)
+    .fetch_optional(k.pool())
+    .await?;
+    Ok(row.map(|r| r.get("id")))
 }

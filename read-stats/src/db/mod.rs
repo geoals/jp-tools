@@ -55,10 +55,10 @@ pub use anki_notes::{
 pub use books::{Book, fetch_book, fetch_books, fetch_text as fetch_book_text, insert_book};
 pub use covers::{clear_work_cover_vndb, fetch_work_covers, set_work_cover_vndb};
 pub use lines::{
-    IngestLine, ReaderLine, WorkedLine, fetch_current_session_lines, fetch_kanji_lines,
+    IngestLine, NewLine, ReaderLine, WorkedLine, fetch_current_session_lines, fetch_kanji_lines,
     fetch_line_events, fetch_line_texts, fetch_line_texts_by_id, fetch_lines_after,
     fetch_lines_after_id, fetch_lines_before_id, fetch_recent_lines, fetch_worked_lines,
-    line_within, max_line_id, set_lines_discarded,
+    insert_lines, line_within, max_line_id, retract_last_line, set_lines_discarded,
 };
 pub use lookups::{
     LookupTerm, fetch_lookup_events, fetch_lookup_keys, fetch_lookup_terms, insert_lookup,
