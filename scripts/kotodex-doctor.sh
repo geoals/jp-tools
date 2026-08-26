@@ -174,15 +174,12 @@ if reading_here; then
 section "Capture"
 binary_row pactl pactl
 binary_row ffmpeg ffmpeg
-# Installed is not enough: the ring buffer reads the speaker monitor through
-# ffmpeg's PulseAudio input, and a distribution can build ffmpeg without it —
-# Fedora's own package does.
 if have ffmpeg; then
-  if ffmpeg -hide_banner -devices 2>/dev/null | grep -qw pulse; then
+  if ffmpeg_records_pulse; then
     row true "ffmpeg audio in" "pulse" ""
   else
-    row false "ffmpeg audio in" "this ffmpeg has no pulse input" \
-      "install an ffmpeg built with PulseAudio support (on Fedora, the rpmfusion build) — required for anki cards to get the voice clip of the line being mined"
+    row false "ffmpeg audio in" "$(command -v ffmpeg) has no pulse input" \
+      "put an ffmpeg with PulseAudio support first on PATH (on Fedora, the rpmfusion build) — required for anki cards to get the voice clip of the line being mined"
   fi
 fi
 cap capture_running "ring buffer"

@@ -178,8 +178,16 @@ require curl curl
 require jq jq
 require unzip unzip
 require python3 python
+FFMPEG_NO_PULSE=0
 if reading_here; then
   require ffmpeg ffmpeg
+  # There is no package to paste for this one — the ffmpeg that answered is
+  # installed, it just cannot record — so it gets its own flag and its own line
+  # at the end of the step.
+  if have ffmpeg && ! ffmpeg_records_pulse; then
+    FFMPEG_NO_PULSE=1
+    fail "ffmpeg pulse input — $(command -v ffmpeg) has none, required for anki cards to get the voice clip of the line being mined"
+  fi
   require pactl pactl
 fi
 
@@ -258,6 +266,12 @@ if [ ${#REQUIRED_MISSING[@]} -gt 0 ]; then
   printf '\n'
   fail "Install these, then run setup.sh again:"
   printf '\n      %s\n\n' "$(pkg_install_cmd "${REQUIRED_MISSING[@]}" "${OPTIONAL_MISSING[@]}")"
+  exit 1
+elif [ "$FFMPEG_NO_PULSE" = 1 ]; then
+  printf '\n'
+  fail "Put an ffmpeg with PulseAudio support first on PATH, then run setup.sh again."
+  say "On Fedora that is the rpmfusion ffmpeg; another one already installed here"
+  say "may have it, and only the first on PATH is used."
   exit 1
 elif [ ${#OPTIONAL_MISSING[@]} -gt 0 ]; then
   printf '\n'

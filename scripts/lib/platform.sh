@@ -202,3 +202,14 @@ distro_packages_pyside6() {
     *) return 0 ;;
   esac
 }
+
+# Whether the ffmpeg on PATH can record from PulseAudio. Installed is not
+# enough: the ring buffer reads the speaker's monitor through `-f pulse`, and an
+# ffmpeg built without it — Fedora's own package, and the static builds people
+# put in ~/bin for other tools — dies on the first frame.
+#
+# The demuxer list, not `-devices`: a build with pulse output only appears there
+# and still cannot record.
+ffmpeg_records_pulse() {
+  ffmpeg -hide_banner -demuxers 2>/dev/null | grep -qw pulse
+}

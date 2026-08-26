@@ -115,8 +115,9 @@ class Child:
         self.probe = probe
         self.start_cmd = start_cmd
         self.stop_cmd = stop_cmd
-        # Where this child's output goes. `None` discards it, which is right for
-        # a component that keeps its own log; kotodex-server does not.
+        # Where this child's output goes. `None` discards it, which is right
+        # only for a component whose own log says why it stopped — the overlay
+        # script's does.
         self.log_file = log_file
         # How to make an *adopted* one pick up new code. Stopping it is what
         # adoption promises not to do, so this asks it to restart itself.
@@ -241,6 +242,10 @@ def children():
             capture_up,
             [capture, "run"],
             restart_cmd=[capture, "restart"],
+            # The daemon's own log holds the lines it hooks, not why it refused
+            # to start. Without this, a missing dependency is discarded and the
+            # reader is left with a status bar saying capture is down.
+            log_file=REPO / "logs" / "kotodex-capture.log",
         ),
         Child(
             "kotodex-server",

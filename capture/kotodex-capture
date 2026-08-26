@@ -67,6 +67,12 @@ run)
       exit 1
     fi
   done
+  if ! ffmpeg_records_pulse; then
+    echo "Error: $(command -v ffmpeg) has no pulse input"
+    echo "  an ffmpeg with PulseAudio support is required to record the audio"
+    echo "  a mined card's voice clip is cut from"
+    exit 1
+  fi
   if ! [ -x "$WS_PYTHON" ] || ! "$WS_PYTHON" -c 'import websockets' 2>/dev/null; then
     echo "Error: $WS_PYTHON with the 'websockets' package is required"
     echo "  $WS_PYTHON -m pip install websockets"
