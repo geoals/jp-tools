@@ -118,6 +118,7 @@ fn env_var_for(what: &str) -> &'static str {
         "source" => "KOTODEX_ANKI_FIELD_SOURCE",
         "furigana" => "KOTODEX_ANKI_FIELD_FURIGANA",
         "reading" => "KOTODEX_ANKI_FIELD_READING",
+        "word audio" => "KOTODEX_ANKI_FIELD_VOCAB_AUDIO",
         "pitch position" => "KOTODEX_ANKI_FIELD_PITCH_NUM",
         "pitch pattern" => "KOTODEX_ANKI_FIELD_PITCH_PATTERN",
         "frequency" => "KOTODEX_ANKI_FIELD_FREQUENCY",
@@ -253,6 +254,21 @@ async fn main() -> ExitCode {
             println!("unknown command: {other}");
             println!("usage: anki-setup [check | install-lapis]");
             ExitCode::FAILURE
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every field the check can report missing has to name the variable that
+    /// renames it. A field added to `AnkiConfig` and missed here prints
+    /// `KOTODEX_ANKI_FIELD_?`, which is a fix that does nothing.
+    #[test]
+    fn every_configured_field_has_a_variable() {
+        for (what, _) in AnkiConfig::default().configured_fields() {
+            assert_ne!(env_var_for(what), "KOTODEX_ANKI_FIELD_?", "{what}");
         }
     }
 }

@@ -203,10 +203,6 @@ pub fn build_router(state: AppState) -> Router {
             "/api/lines/undiscard",
             axum::routing::post(reader::lines::undiscard_lines),
         )
-        .route(
-            "/api/vn/capture",
-            axum::routing::post(reader::capture::vn_capture),
-        )
         .route("/api/vn/windows", get(reader::capture::vn_windows))
         .route("/api/vn/window", get(reader::capture::vn_window))
         .route(

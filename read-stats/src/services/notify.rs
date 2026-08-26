@@ -33,8 +33,20 @@ pub fn mine_complete(word: &str) {
     } else {
         format!("{word} — card complete")
     };
+    // The product's name and its desktop-entry id: the first is what the
+    // notification is labelled with, the second is what a notification daemon
+    // looks the icon up under.
     match tokio::process::Command::new("notify-send")
-        .args(["-a", "read-stats", "-t", TIMEOUT_MS, "✅ Mined", &body])
+        .args([
+            "-a",
+            "Kotodex",
+            "-i",
+            "com.kotodex.Kotodex",
+            "-t",
+            TIMEOUT_MS,
+            "✅ Mined",
+            &body,
+        ])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

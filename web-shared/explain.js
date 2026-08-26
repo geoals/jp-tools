@@ -13,10 +13,12 @@ export async function streamExplain({ context, focus = "", onText }) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ context, focus }),
   });
-  // A failure before the stream opens is still an ordinary HTTP error.
+  // A failure before the stream opens is still an ordinary HTTP error. The body
+  // is the message itself — read-stats writes its errors as plain text, so
+  // parsing it as JSON threw the reason away and left "Bad Request" on screen
+  // where "no Anthropic API key set" was what happened.
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error ?? res.statusText);
+    throw new Error((await res.text().catch(() => "")) || res.statusText);
   }
 
   const reader = res.body.getReader();
