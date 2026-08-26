@@ -474,8 +474,12 @@ SOURCE = "vn"
 HTTP_TIMEOUT = 2.0
 
 # How long to wait before trying the server again after it has refused a
-# connection. A first-ever run has to sit out whatever starts the server.
-RETRY_SECS = 30
+# connection, doubling from the first to the second on each further refusal.
+# The launcher starts this daemon before the server, so the first refusal is
+# usually a server that is still coming up and is over in a second; a server
+# that is genuinely absent settles at the cap rather than a request per line.
+RETRY_MIN_SECS = 1.0
+RETRY_MAX_SECS = 30.0
 
 # How stale the cached settings may get. Pause, the chosen source and the
 # WebSocket address are all read from this rather than per poll: the pause loop
@@ -525,25 +529,28 @@ class StatsSink:
         self._settings = {}
         self._settings_at = 0.0
         self._next_try = 0.0
+        self._retry = RETRY_MIN_SECS
         self._complained = False
 
     def ready(self):
         """Whether it is worth making a request at all.
 
         There is no connection to open, so this is only the backoff: after a
-        refusal, stay quiet for `RETRY_SECS` instead of a failed request per
+        refusal, stay quiet until it expires instead of a failed request per
         captured line.
         """
         return not self.disabled and time.time() >= self._next_try
 
     def _unreachable(self, e, what):
-        self._next_try = time.time() + RETRY_SECS
+        self._next_try = time.time() + self._retry
+        self._retry = min(self._retry * 2, RETRY_MAX_SECS)
         if not self._complained:
             self._complained = True
             log(f"{what} ({e}) — lines.log still has everything")
 
     def _reached(self):
         self._next_try = 0.0
+        self._retry = RETRY_MIN_SECS
         if self._complained:
             self._complained = False
             log(f"ledger reachable again at {SERVER_URL}")
