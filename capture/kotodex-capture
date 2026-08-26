@@ -15,7 +15,11 @@ HERE="$(dirname "$(readlink -f "$0")")"
 # One answer to "which python", from platform.sh — see kotodex_python there.
 source "$HERE/../scripts/lib/platform.sh"
 WS_PYTHON="$(kotodex_python)"
-WS_LOGGER="$HERE/vn-ws-logger.py"
+# The Textractor source lives under sources/, not here: what it does is turn a
+# hooker's output into lines, which is nothing to do with audio. This daemon
+# still runs it, because a capture needs the line's timestamp and the audio
+# taken against one clock.
+WS_LOGGER="$HERE/../sources/textractor/vn-ws-logger.py"
 
 # The unit that owns this daemon, if one does — optional, and only where the
 # reader installed it to keep capture up across launcher restarts.
