@@ -65,17 +65,29 @@ fn run_dir() -> PathBuf {
     std::env::var_os("VN_RUNDIR").map(PathBuf::from).unwrap_or_else(|| {
         let base = std::env::var_os("XDG_RUNTIME_DIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(format!("/run/user/{}", unsafe { libc_getuid() })));
+            .unwrap_or_else(|| PathBuf::from(format!("/run/user/{}", real_uid())));
         base.join("vn-mine")
     })
 }
 
 /// `getuid` without a libc dependency: the runtime directory is only a fallback
 /// path, and `XDG_RUNTIME_DIR` is set in every session that matters.
-fn libc_getuid() -> u32 {
-    std::fs::read_to_string("/proc/self/loginuid")
+///
+/// `/proc/self/status`, not `/proc/self/loginuid` — that one is the audit login
+/// id and reads `4294967295` wherever auditing is off, which is a directory
+/// nobody has.
+fn real_uid() -> u32 {
+    std::fs::read_to_string("/proc/self/status")
         .ok()
-        .and_then(|s| s.trim().parse().ok())
+        .and_then(|status| {
+            status
+                .lines()
+                .find_map(|line| line.strip_prefix("Uid:"))?
+                .split_whitespace()
+                .next()?
+                .parse()
+                .ok()
+        })
         .unwrap_or(1000)
 }
 
@@ -103,18 +115,26 @@ fn capture_running() -> Capability {
 
 /// Where the lines being read come from, and whether the producer is writing.
 ///
-/// The setting is which source was *chosen*; `lines.log` is whether one is
-/// actually running. Both are worth saying: a reader who has picked the
+/// The setting is which source was *chosen*; the logger's heartbeat is whether
+/// one is actually attached. Both are worth saying: a reader who has picked the
 /// clipboard and sees nothing needs to know which of the two is missing.
+///
+/// Asked of the heartbeat rather than of `lines.log`, which is created on the
+/// first run and then outlives every producer — so a file check answers `ok` on
+/// a machine with nothing hooked at all.
 async fn lines_source(state: &AppState) -> Capability {
-    let chosen = crate::db::load_settings(&state.local)
-        .await
-        .map(|s| s.line_source)
-        .unwrap_or_else(|_| "ws".into());
-    if run_dir().join("lines.log").is_file() {
-        return on(chosen);
+    let settings = crate::db::load_settings(&state.local).await.unwrap_or_default();
+    let beat = super::stream::heartbeat(state).await;
+    if beat.as_ref().is_some_and(|b| b.attached()) {
+        return on(settings.line_source);
     }
-    match chosen.as_str() {
+    // Paused is a state the reader chose. The logger disconnects on purpose
+    // there, so reporting it as a missing producer would be a fault row for
+    // something working exactly as asked.
+    if settings.capture_paused && beat.as_ref().is_some_and(|b| b.running()) {
+        return on(format!("{}, paused", settings.line_source));
+    }
+    match settings.line_source.as_str() {
         "clipboard" => off(
             "clipboard, no producer",
             "start Kotodex — it runs the capture daemon that watches the clipboard",
@@ -155,31 +175,45 @@ fn xdotool() -> Capability {
     if on_path("xdotool") {
         on("installed")
     } else {
+        // Continued with a backslash, not a bare line break: a Rust string
+        // literal keeps the newline *and* the indentation after it, and this
+        // sentence is printed as one line by the doctor and the overlay both.
         off(
             "not installed",
-            "install xdotool — required for anki cards to get a screenshot of the right
-             window, and for positioning of the overlay",
+            "install xdotool — required for anki cards to get a screenshot of the \
+             right window, and for positioning of the overlay",
         )
     }
 }
 
-/// The interpreter the overlay runs under: the venv setup.sh makes where the
-/// distribution packages no PySide6, else the system one. It has to be the same
-/// one, because which Qt is installed decides whether layer-shell is loadable.
-/// Kept in step with `kotodex_python` in `scripts/lib/platform.sh`.
+/// The interpreter the overlay runs under, **asked of `kotodex_python` in
+/// `scripts/lib/platform.sh`** rather than worked out again here.
+///
+/// It has to be the same interpreter the overlay will actually use: which Qt is
+/// installed decides whether layer-shell is loadable, so a probe that resolved
+/// its own answer would report on a machine nobody is running. That is not a
+/// hypothetical — this was a second copy of the rule, and it was the one without
+/// the venv check.
 fn overlay_python() -> std::path::PathBuf {
-    let venv = dirs_home()
-        .join(".local/share/kotodex/venv/bin/python");
-    if venv.is_file() {
-        return venv;
+    let platform = jp_core::install::install_root().join("scripts/lib/platform.sh");
+    let asked = std::process::Command::new("sh")
+        .arg("-c")
+        // The path as `$1` rather than interpolated into the script, so a
+        // directory with a quote or a space in it cannot end the command.
+        .arg(". \"$1\" && kotodex_python")
+        .arg("sh")
+        .arg(&platform)
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
+        .filter(|path| !path.is_empty());
+    match asked {
+        Some(path) => std::path::PathBuf::from(path),
+        // platform.sh unreadable — a broken install rather than a machine to
+        // report on. `backend.py` then fails too and the row says so.
+        None => std::path::PathBuf::from("python3"),
     }
-    std::path::PathBuf::from("python3")
-}
-
-fn dirs_home() -> std::path::PathBuf {
-    std::env::var("HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_default()
 }
 
 /// Which backend the overlay will pick. Asks `layer-overlay/backend.py` rather
@@ -202,7 +236,7 @@ fn overlay_backend() -> Capability {
             } else if why.is_empty() {
                 on(name)
             } else {
-                on(&format!("{name} — {why}"))
+                on(format!("{name} — {why}"))
             }
         }
         _ => off("unknown", "could not run layer-overlay/backend.py"),
@@ -253,7 +287,7 @@ async fn anki(state: &AppState) -> (Capability, Capability) {
         );
     };
     let want = jp_mine_core::config::AnkiConfig::from_env().model_name;
-    let note_type = if models.iter().any(|m| *m == want) {
+    let note_type = if models.contains(&want) {
         on(want)
     } else {
         off(
@@ -285,8 +319,8 @@ async fn dictionaries(state: &AppState) -> Value {
     let frequency = match count(Role::Frequency) {
         0 => off(
             "none",
-            "import a frequency list — required for underlining common words, the rank
-             in the popup, and review order",
+            "import a frequency list — required for underlining common words, \
+             the rank in the popup, and review order",
         ),
         n => on(format!("{n}")),
     };
@@ -297,8 +331,8 @@ async fn dictionaries(state: &AppState) -> Value {
     let defs = match definitions {
         0 => off(
             "none",
-            "drop a Yomitan zip in dictionaries/ and run setup.sh again — required for
-             any definitions",
+            "drop a Yomitan zip in dictionaries/ and run setup.sh again — \
+             required for any definitions",
         ),
         n => on(format!("{n}")),
     };
@@ -331,8 +365,8 @@ fn explain(state: &AppState) -> Capability {
     } else {
         off(
             "no API key",
-            "set KOTODEX_ANTHROPIC_API_KEY — required for AI generated explanation of
-             lines, and word definitions",
+            "set KOTODEX_ANTHROPIC_API_KEY — required for AI generated \
+             explanation of lines, and word definitions",
         )
     }
 }

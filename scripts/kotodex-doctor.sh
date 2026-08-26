@@ -7,9 +7,11 @@
 # holding them, which is what setup.sh ends with: a reader who has just watched
 # every step succeed does not need the same list again.
 #
-# Exit 0 when the core works: a tokenizer dictionary, at least one definition
-# dictionary, and a line source. Everything else is reported and forgiven — the
-# product degrades rather than fails, and this is the page that says how far.
+# Exit 0 when the core works: curl, jq, a tokenizer dictionary, a read-stats
+# answering, at least one definition dictionary, and a PySide6 to draw the
+# overlay with. Everything else is reported and forgiven — the product degrades
+# rather than fails, and this is the page that says how far. A row is `critical`
+# here exactly when `docs/degradation.md` calls it required.
 #
 # The rows come from read-stats' capability probe, which is the same table
 # `docs/degradation.md` describes and the reading surfaces draw from. One

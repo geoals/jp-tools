@@ -43,7 +43,9 @@ fail()  { printf '    %s✗%s %s\n' "$red" "$off" "$1"; }
 have()  { command -v "$1" >/dev/null 2>&1; }
 
 usage() {
-  sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'
+  # The header comment down to the first line that is not one, so adding a
+  # paragraph to it does not mean counting lines again.
+  sed -n '2,${/^#/!q; s/^# \?//p;}' "${BASH_SOURCE[0]}"
   exit 0
 }
 
@@ -430,6 +432,11 @@ step "Anki"
 ANKI_SETUP="$HERE/target/release/anki-setup"
 if [ "$DRY_RUN" = 1 ]; then
   say "would run anki-setup check"
+elif [ ! -x "$ANKI_SETUP" ]; then
+  # The binaries step above only insists on read-stats and jp-dict, so this is
+  # the one that can be absent. Reported rather than run — otherwise the check's
+  # own output is a "no such file" and reads as Anki being the problem.
+  skip "anki-setup is missing — re-download the tarball to set up mining"
 else
   report="$("$ANKI_SETUP" check 2>&1)"; ok=$?
   printf '%s\n' "$report" | sed 's/^/    /'
@@ -528,6 +535,6 @@ printf '  %-20s %s\n' "start it" "kotodex — or from the application menu"
 printf '  %-20s %s\n' "check what works" "scripts/kotodex-doctor.sh"
 printf '  %-20s %s\n' "add a dictionary" "drop a Yomitan zip in dictionaries/, then ./setup.sh again"
 printf '  %-20s %s\n' "uninstall" "./setup.sh --uninstall"
-printf '  %-20s %s\n' "guide" "TODO"
+printf '  %-20s %s\n' "what it does" "README.md, and docs/degradation.md for the optional parts"
 printf '\n'
 exit "$doctor"

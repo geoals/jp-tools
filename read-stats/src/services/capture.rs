@@ -4,9 +4,9 @@
 //! on the machine running the VN. This module is the boundary: build the
 //! environment the script expects, run it, parse the one JSON object it prints.
 //!
-//! Two callers: the reader's mine button, which marks presence itself, and the
-//! auto-capture on card add, which relies on the lookup that must have preceded
-//! it — Yomitan's popup, or the overlay's.
+//! One caller: the auto-capture on card add, which every mine goes through. It
+//! relies on the lookup that must have preceded it — Yomitan's popup, or the
+//! overlay's.
 
 use std::time::Duration;
 
@@ -136,12 +136,21 @@ pub async fn vn_window(state: &AppState) -> String {
         warn!(error = %e, "vn window: settings unreadable");
         Default::default()
     });
+    vn_window_for(state, &settings).await
+}
+
+/// The same answer for a caller that has already loaded the settings.
+///
+/// The reader's status event has: it is published every two seconds per open
+/// surface, so loading them twice for one event is a query per surface per
+/// second for nothing.
+pub async fn vn_window_for(state: &AppState, settings: &db::Settings) -> String {
     match db::current_work_vn_window(&state.knowledge, &settings.current_work).await {
         Ok(Some(w)) if !w.trim().is_empty() => w,
-        Ok(_) => settings.vn_window,
+        Ok(_) => settings.vn_window.clone(),
         Err(e) => {
             warn!(error = %e, "vn window: the work's own is unreadable");
-            settings.vn_window
+            settings.vn_window.clone()
         }
     }
 }

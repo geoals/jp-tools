@@ -158,12 +158,45 @@ async fn opening_batch(
 
 /// What vn-ws-logger.py last said about itself, as `settings.vn_logger_heartbeat`.
 #[derive(serde::Deserialize)]
-struct Heartbeat {
+pub(super) struct Heartbeat {
     ts: f64,
-    /// Textractor's WebSocket is attached.
+    /// A source is attached: Textractor's WebSocket is up, or the clipboard
+    /// watcher is polling. The logger publishes the same flag for both.
     ws: bool,
     /// Lines written but not yet accepted by the database.
     pending: i64,
+}
+
+impl Heartbeat {
+    fn age(&self) -> f64 {
+        crate::clock::now_ts() - self.ts
+    }
+
+    /// The logger process is still there.
+    pub(super) fn running(&self) -> bool {
+        self.age() <= HEARTBEAT_SECS * MISSED_BEATS
+    }
+
+    /// It is there *and* something is feeding it lines.
+    pub(super) fn attached(&self) -> bool {
+        self.running() && self.ws
+    }
+}
+
+/// The logger's own report, or `None` when it has never run against this
+/// database.
+///
+/// The one reader of that row: "is the logger alive" has to have one answer,
+/// since the reading surfaces draw a badge from it and the doctor prints a row.
+pub(super) async fn heartbeat(state: &AppState) -> Option<Heartbeat> {
+    db::get_setting_raw(&state.local, "vn_logger_heartbeat")
+        .await
+        .unwrap_or_else(|e| {
+            warn!(error = %e, "capture status: heartbeat unreadable");
+            None
+        })
+        .as_deref()
+        .and_then(|v| serde_json::from_str::<Heartbeat>(v).ok())
 }
 
 /// The capture pipeline's health, as the reading view receives it.
@@ -196,20 +229,13 @@ const MISSED_BEATS: f64 = 3.0;
 const HEARTBEAT_SECS: f64 = 2.0;
 
 async fn capture_status(state: &AppState) -> CaptureStatus {
-    let raw = db::get_setting_raw(&state.local, "vn_logger_heartbeat")
-        .await
-        .unwrap_or_else(|e| {
-            warn!(error = %e, "capture status: heartbeat unreadable");
-            None
-        });
-    let beat = raw
-        .as_deref()
-        .and_then(|v| serde_json::from_str::<Heartbeat>(v).ok());
+    let beat = heartbeat(state).await;
 
-    let paused = db::load_settings(&state.local)
-        .await
-        .is_ok_and(|s| s.capture_paused);
-    let vn_window = crate::services::capture::vn_window(state).await;
+    // Loaded once and handed on: `vn_window` would otherwise load them again,
+    // which is two queries per surface every two seconds for one answer.
+    let settings = db::load_settings(&state.local).await.unwrap_or_default();
+    let paused = settings.capture_paused;
+    let vn_window = crate::services::capture::vn_window_for(state, &settings).await;
     let vn_window = (!vn_window.is_empty()).then_some(vn_window);
 
     let Some(beat) = beat else {
@@ -221,10 +247,9 @@ async fn capture_status(state: &AppState) -> CaptureStatus {
             vn_window,
         };
     };
-    let age = crate::clock::now_ts() - beat.ts;
     // Paused outranks unhooked because a paused logger disconnects on purpose:
     // reporting that as a fault would train the reader to ignore the badge.
-    let capture = if age > HEARTBEAT_SECS * MISSED_BEATS {
+    let capture = if !beat.running() {
         "down"
     } else if beat.pending > 0 {
         "stalled"
@@ -236,7 +261,7 @@ async fn capture_status(state: &AppState) -> CaptureStatus {
     CaptureStatus {
         capture,
         paused,
-        age_secs: Some(age),
+        age_secs: Some(beat.age()),
         pending: beat.pending,
         vn_window,
     }
