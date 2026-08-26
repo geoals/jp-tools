@@ -320,7 +320,7 @@ async fn define_returns_the_popups_shape() {
     assert_eq!(body["sources"][0]["senses"][0]["reading"], "たべる");
     assert_eq!(body["sources"][0]["senses"][0]["definitions"][0], "to eat");
     assert_eq!(body["pitch"][0]["positions"][0], 2);
-    // Only read-stats records a lookup; there is no session here to record in.
+    // Only kotodex-server records a lookup; there is no session here to record in.
     assert!(body["lookup_id"].is_null());
 }
 

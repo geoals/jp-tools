@@ -2,7 +2,7 @@
 // `-`/`*` bullets, `**bold**` and `*italic*`.
 //
 // Shared because it is a claim about what the *model* writes, and both hosts
-// read the same `/api/reader/explain`. The rendering is not shared: read-stats
+// read the same `/api/reader/explain`. The rendering is not shared: kotodex-server
 // is Preact and builds vnodes, the overlay is a plain page and builds DOM. That
 // split is also what keeps this safe — neither host ever assembles HTML from
 // model output, so there is no innerHTML seam to escape.

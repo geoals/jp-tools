@@ -336,10 +336,10 @@ a.timestamp:hover {
   z-index: 40;
 }
 
-/* --- The ledger's tints, the same three read-stats paints --- */
+/* --- The ledger's tints, the same three kotodex-server paints --- */
 
 /* `known` is deliberately absent: the absence of a mark is what makes the
-   marks readable. Hue names the status, matching read-stats' scale. */
+   marks readable. Hue names the status, matching kotodex-server's scale. */
 .token.content-word.mark-new {
   background: hsl(211 40% 22%);
 }

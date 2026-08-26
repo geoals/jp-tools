@@ -71,7 +71,7 @@ export function SentenceRow({ sentence, videoId, jobId }) {
           // The tint is the ledger's, repainted from `judged` for anything
           // marked since the page loaded. `known` gets no tint at all — the
           // absence of a mark is what makes the marks readable, same as
-          // read-stats' feed.
+          // kotodex-server's feed.
           const status = statusOf(tok, marks);
           const cls = ['token content-word', status && status !== 'known' ? `mark-${status}` : '']
             .filter(Boolean)

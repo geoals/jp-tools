@@ -1,8 +1,8 @@
 # Release plan — a shareable Linux VN reading overlay
 
 Product name: **Kotodex / コトデックス**. `kotodex` is the binary, desktop-entry
-id and tray name. The crate, service and database names (`read-stats`,
-`read-stats.db`) do not change.
+id and tray name. The crate, service and database names (`kotodex-server`,
+`kotodex.db`) do not change.
 
 ## What "done" means
 
@@ -11,7 +11,7 @@ On ~90% of current desktop Linux installs:
 1. Download one tarball from a GitHub release.
 2. Run `./setup.sh`, answer a handful of yes/no prompts.
 3. Get an application entry with a name and an icon.
-4. Launch it → the capture daemon, the read-stats server and the overlay all
+4. Launch it → the capture daemon, the kotodex-server server and the overlay all
    come up. Launch it again → it detects the running instance and does nothing.
 5. The tray owns show/hide and quit.
 6. Anything missing degrades to a smaller working product with one clear
@@ -26,7 +26,7 @@ the ones in `docs/compositors.md`.
   verification passes.
 - **Never restart the live stack while a VN is being read.** Use
   `scripts/dev-instance.sh` (port 3299, copy of the data) for anything
-  read-stats-side. Overlay/static changes need `vn-overlay.sh restart`.
+  kotodex-server-side. Overlay/static changes need `vn-overlay.sh restart`.
 - **The golden corpus is the regression gate** for anything touching
   dictionaries, roles or the tokenizer:
 
@@ -59,11 +59,11 @@ the ones in `docs/compositors.md`.
   looking for the assets), else the build workspace. The compiled-in path is
   last because for a release it names a CI container.
 - **One Anki field map.** `jp_mine_core::config::AnkiConfig` — Lapis by default,
-  every name overridable through `KOTODEX_ANKI_FIELD_*`. read-stats' config,
+  every name overridable through `KOTODEX_ANKI_FIELD_*`. kotodex-server's config,
   the overlay's mine route and `vn-capture.sh` all read it; nothing spells a
   field name or the note type for itself. `KOTODEX_ANKI_STYLE` = `lapis`
   (default) | `legacy` picks the card markup.
-- **Capabilities.** `read-stats/src/routes/reader/capabilities.rs` is the one
+- **Capabilities.** `kotodex-server/src/routes/reader/capabilities.rs` is the one
   probe, served under `capabilities` on `/api/reader/state`; every row is
   `{ok, detail, fix}`. The overlay draws only controls that can work.
 - **Platform.** `scripts/lib/platform.sh` maps distro → package manager and
@@ -72,7 +72,7 @@ the ones in `docs/compositors.md`.
 - **Installer.** `setup.sh` — re-runnable, `--dry-run`, `--yes`, `--uninstall`.
   The API key goes in `.env`, the file every crate already loads through
   dotenvy.
-- **Launcher.** `kotodex/kotodex.py` adopts-or-starts capture, read-stats and
+- **Launcher.** `kotodex/kotodex.py` adopts-or-starts capture, kotodex-server and
   the overlay, single-instances on a `QLocalServer` socket and owns the tray.
 - **Release build.** `scripts/build-release.sh [version]` makes the tarball;
   `.github/workflows/release.yml` runs it in `rust:1-bookworm` on a `v*` tag,
@@ -147,7 +147,7 @@ workflow creates. Afterwards: the GitHub topics, once the repo is public —
 ## Verify by hand
 
 1. **A card through the overlay's mine, on the Lapis defaults.** Switch Anki to
-   a profile with Lapis, run read-stats from a directory with no `.env` so the
+   a profile with Lapis, run kotodex-server from a directory with no `.env` so the
    shipped defaults apply, and mine one. Check the fields land, then do the same
    under `.env` for the legacy note type.
 2. **The overlay on GNOME Wayland** over a fullscreen game: does it stay above,

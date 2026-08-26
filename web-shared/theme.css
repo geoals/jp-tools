@@ -13,7 +13,7 @@
  * Three states, the same pattern throughout: light on bare `:root`, dark under
  * the OS signal *unless* an explicit light stamp says otherwise, and dark again
  * under `[data-theme="dark"]` so the in-app toggle wins in both directions.
- * `read-stats/static/lib/theme.js` sets the stamp; the overlay sets it from the
+ * `kotodex-server/static/lib/theme.js` sets the stamp; the overlay sets it from the
  * same key.
  *
  * Two families of token:

@@ -33,7 +33,7 @@ pub struct Inputs {
     pub names: HashSet<String>,
 }
 
-/// Build the tokenizer exactly as `read-stats` ingest does.
+/// Build the tokenizer exactly as `kotodex-server` ingest does.
 pub fn tokenizer(dict_path: &Path, i: &Inputs) -> SudachiTokenizer {
     let lexicon: HashSet<String> = i.master.iter().map(|(t, _)| t.clone()).collect();
     // A non-empty deck is what puts it on the C→B→A path that production runs.

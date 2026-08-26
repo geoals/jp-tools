@@ -283,11 +283,11 @@ if [ -f "$HERE/Cargo.toml" ] && have cargo; then
   say "building — the first time takes a few minutes"
   # The same three the tarball ships. Building the whole workspace would pull
   # in yt-mine and manga-mine, which have no part in reading a VN.
-  run bash -c "cd '$HERE' && cargo build --release -p read-stats \
+  run bash -c "cd '$HERE' && cargo build --release -p kotodex-server \
     -p jp-core --bin jp-dict -p jp-mine-core --bin anki-setup" \
     || { fail "build failed"; exit 1; }
   good "built"
-elif [ -x "$HERE/target/release/read-stats" ] && [ -x "$HERE/target/release/jp-dict" ]; then
+elif [ -x "$HERE/target/release/kotodex-server" ] && [ -x "$HERE/target/release/jp-dict" ]; then
   good "shipped binaries"
 elif [ -f "$HERE/Cargo.toml" ]; then
   fail "no binaries, and no cargo to build this checkout with"
@@ -433,7 +433,7 @@ ANKI_SETUP="$HERE/target/release/anki-setup"
 if [ "$DRY_RUN" = 1 ]; then
   say "would run anki-setup check"
 elif [ ! -x "$ANKI_SETUP" ]; then
-  # The binaries step above only insists on read-stats and jp-dict, so this is
+  # The binaries step above only insists on kotodex-server and jp-dict, so this is
   # the one that can be absent. Reported rather than run — otherwise the check's
   # own output is a "no such file" and reads as Anki being the problem.
   skip "anki-setup is missing — re-download the tarball to set up mining"

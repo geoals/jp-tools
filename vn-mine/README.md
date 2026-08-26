@@ -23,7 +23,7 @@ silero-VAD finds where the speech ends.
   restarts. Also posts each line to the ledger's ingest endpoint
   (`POST /api/lines` on `http://127.0.0.1:3200`, override with
   `KOTODEX_SERVER_URL`) so reading time/chars are tracked automatically —
-  best-effort, never blocks mining; disable with `KOTODEX_STATS_DISABLE=1`.
+  best-effort, never blocks mining; disable with `KOTODEX_INGEST_DISABLE=1`.
 
   **It never opens a database.** It is one source among several, and it owns
   only what is specific to Textractor: the hooker's junk, a continuation split
@@ -43,7 +43,7 @@ silero-VAD finds where the speech ends.
   Ogg Vorbis, uploads both via AnkiConnect into the note type's image and audio
   fields (`KOTODEX_ANKI_FIELD_IMAGE` / `_AUDIO`, the same map the Rust side
   reads, so one note type is described in one place).
-  Which window that is comes from read-stats (`GET /api/vn/window`), not from
+  Which window that is comes from kotodex-server (`GET /api/vn/window`), not from
   the database — the hotkey and the mine button have to aim at the same one, and
   two implementations of that rule means the one you forget captures the last
   game. No answer falls back to whatever has focus.
@@ -73,13 +73,13 @@ nothing is a spare copy.
 
 ## Reading over the game
 
-The line and its dictionary drawn over the VN is `read-stats/overlay/`, and the
+The line and its dictionary drawn over the VN is `kotodex-server/overlay/`, and the
 Qt shell that puts it above a fullscreen window is `layer-overlay/`. Neither
-shares any code with the capture pipeline here: the page is a read-stats client
+shares any code with the capture pipeline here: the page is a kotodex-server client
 and the shell takes a URL.
 
 ```sh
-read-stats/overlay/vn-overlay.sh          # start, or restart what is up
+kotodex-server/overlay/vn-overlay.sh          # start, or restart what is up
 ```
 
 What the two halves do share is the ledger. `vn-ws-logger.py` posts the lines
@@ -126,10 +126,10 @@ Read the line → look things up → create the Anki card → **press the hotkey
 before advancing** (a new hooked line becomes "the last line"). Click back to
 the VN window first so the screenshot captures it.
 
-read-stats' `#read` view shows the same line feed and runs this script itself
+kotodex-server's `#read` view shows the same line feed and runs this script itself
 on every card add, so there is no hotkey to press there.
 
-Set `VN_WINDOW` (or the current work's window in read-stats) and the "click back
+Set `VN_WINDOW` (or the current work's window in kotodex-server) and the "click back
 first" step disappears: the screenshot then targets the VN window directly
 instead of whatever happens to be focused.
 
@@ -160,7 +160,7 @@ clips score ~1.00 standalone; the sound effect that prompted the check scored
 - `VN_DRY=1 ./vn-capture.sh` — build clip + screenshot, skip Anki, keep files.
 - `VN_JSON=1 ./vn-capture.sh` — print a result object
   (`{ok, note_id, duration, note, line}` or `{ok: false, error}`) on stdout and
-  suppress every `notify-send`. This is how read-stats runs the script: the
+  suppress every `notify-send`. This is how kotodex-server runs the script: the
   result goes back to the browser that mined, which may not be on this desktop.
 - `VN_WINDOW` — substring of the VN window's title. Set, the screenshot targets
   *that window by id* rather than whatever has focus, which is what makes mining
@@ -170,7 +170,7 @@ clips score ~1.00 standalone; the sound effect that prompted the check scored
   does not. Unset, unmatched or missing tools fall back to the active window and
   say so in the result.
 
-  **Unset, it falls back to the current work's `vn_window` in read-stats**, so
+  **Unset, it falls back to the current work's `vn_window` in kotodex-server**, so
   the hotkey and the `#read` mine button share one place to configure it. Set it
   from the dashboard's *Currently reading* card (under **edit**), which offers a
   picker of open windows. Tied to the work, so switching VNs switches the capture

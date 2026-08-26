@@ -5,7 +5,7 @@ clickable only where the page says it has drawn something.
 
 Nothing here knows what the page is for. There is no Japanese in it, no
 dictionary, no backend — give it a URL and it shows that page over everything.
-`read-stats/overlay/` is the one caller today.
+`kotodex-server/overlay/` is the one caller today.
 
 ```python
 import layer_overlay

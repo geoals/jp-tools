@@ -20,9 +20,9 @@ services:
       # Pinned to a day the seed has reading on. make-demo-data.py drops
       # everything after it, so nothing sits in the dashboard's future.
       - KOTODEX_DEMO_TODAY=2026-08-22
-      - KOTODEX_STATS_DB_PATH=/var/lib/kotodex/read-stats.db
+      - KOTODEX_SERVER_DB_PATH=/var/lib/kotodex/kotodex.db
       - KOTODEX_KNOWLEDGE_DB_PATH=/var/lib/kotodex/knowledge.db
-      - KOTODEX_STATS_LISTEN_ADDR=0.0.0.0:3299
+      - KOTODEX_SERVER_LISTEN_ADDR=0.0.0.0:3299
       # Port 9 is discard. Nothing here may reach a real service, and the
       # dashboard already draws every one of these as simply absent.
       - KOTODEX_ANKI_URL=http://127.0.0.1:9

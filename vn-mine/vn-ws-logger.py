@@ -38,7 +38,7 @@ Env:
   VN_RUNDIR                   run dir (default: $XDG_RUNTIME_DIR/vn-mine or /run/user/$UID/...)
   VN_WS_URL                   WebSocket URL, overriding settings.line_source_ws_url
   KOTODEX_SERVER_URL          kotodex-server (default: http://127.0.0.1:3200)
-  KOTODEX_STATS_DISABLE       set to 1 to skip the ledger entirely
+  KOTODEX_INGEST_DISABLE       set to 1 to skip the ledger entirely
 """
 import asyncio
 import json
@@ -96,9 +96,9 @@ PUNCT_ONLY = re.compile(
 )
 
 # Character counting matches texthooker-ui's isNotJapaneseRegex (an allowlist,
-# so punctuation and brackets don't count) — otherwise read-stats reports a
+# so punctuation and brackets don't count) — otherwise kotodex-server reports a
 # chars/h noticeably above what the texthooker shows for the same reading.
-# Keep in sync with read-stats/src/charcount.rs.
+# Keep in sync with kotodex-server/src/charcount.rs.
 _COUNTED = (
     "0-9A-Za-z"
     "○◯"  # ○ ◯
@@ -413,7 +413,7 @@ def clean_line(raw):
             return None
     # Strip the markup codes, having declined to drop the line for them. They
     # are the VN's, not the reader's, and Sudachi analyses them as words —
-    # \x05 and \x04 reached read-stats' vocabulary ledger as "e" and "d". No
+    # \x05 and \x04 reached kotodex-server's vocabulary ledger as "e" and "d". No
     # effect on the count: NOT_COUNTED is an allowlist and never counted them.
     return strip_speaker(RICH_TAG.sub("", BR.sub("\n", CONTROL.sub("", text))))
 
@@ -520,7 +520,7 @@ class StatsSink:
 
     def __init__(self):
         self.pending = []
-        self.disabled = bool(os.environ.get("KOTODEX_STATS_DISABLE"))
+        self.disabled = bool(os.environ.get("KOTODEX_INGEST_DISABLE"))
         self.attached = False
         self._settings = {}
         self._settings_at = 0.0

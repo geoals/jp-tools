@@ -2,7 +2,7 @@
 
 One row per optional part: what it gives, what happens when it is missing, and
 the one thing that turns it on. This is the specification for three
-implementations of it — `read-stats/src/routes/reader/capabilities.rs`
+implementations of it — `kotodex-server/src/routes/reader/capabilities.rs`
 (the probe), `setup.sh` (the installer) and `scripts/kotodex-doctor.sh` (`kotodex
 doctor`) — so a change belongs in this table first.
 

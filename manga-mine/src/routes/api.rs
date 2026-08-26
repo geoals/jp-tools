@@ -566,7 +566,7 @@ pub async fn export_card(
         .and_then(|_| state.tokenizer.tokenize(&sentence_text).ok());
 
     // The ledger's own reading for the pair — `Term::new` lowers it to hiragana
-    // and blanks it for a kana headword, which is the shape read-stats mines
+    // and blanks it for a kana headword, which is the shape kotodex-server mines
     // with and therefore the shape the dictionary is indexed against here.
     let reading = target_word
         .as_ref()
@@ -610,7 +610,7 @@ pub async fn export_card(
         vocab_pitch_pattern,
         vocab_frequency,
         sentence_html,
-        // manga-mine has no LLM configured; the gloss stays read-stats' and
+        // manga-mine has no LLM configured; the gloss stays kotodex-server's and
         // yt-mine's.
         compact_def: None,
     };

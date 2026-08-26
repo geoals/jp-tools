@@ -39,7 +39,7 @@ TrueNAS, as a Dockge stack in
 
 ```
 build/kotodex-<version>-linux-x86_64.tar.gz   the release, unpacked into the image
-seed/                                         knowledge.db, read-stats.db, covers/
+seed/                                         knowledge.db, kotodex.db, covers/
 ```
 
 The seed is mounted read-only and copied to scratch inside the container at

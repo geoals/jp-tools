@@ -679,7 +679,7 @@ impl Dictionary {
     /// under.
     ///
     /// Standalone rather than folded into [`Dictionary::load_or_import`], because
-    /// read-stats — which owns the ledger and is the only caller that needs
+    /// kotodex-server — which owns the ledger and is the only caller that needs
     /// lexemes — reads the dictionary cache from the database directly. Hung off
     /// the import path, the ids would appear only when yt-mine or manga-mine
     /// happened to boot.

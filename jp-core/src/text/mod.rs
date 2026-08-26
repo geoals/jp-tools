@@ -4,7 +4,7 @@
 //! These sit below [`crate::tokenize`] and [`crate::dictionary`]: they answer
 //! questions about the *characters*, not about the words. Everything here is
 //! shared across the tools because the answers have to agree — a character
-//! counted by read-stats' speed figures and a character counted anywhere else
+//! counted by kotodex-server's speed figures and a character counted anywhere else
 //! must be the same character.
 //!
 //! - [`chars`] — which codepoints count as Japanese text, matched to

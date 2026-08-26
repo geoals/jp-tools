@@ -448,7 +448,7 @@ def main() -> None:
 
     args.out.mkdir(parents=True, exist_ok=True)
 
-    for name in ("knowledge.db", "read-stats.db"):
+    for name in ("knowledge.db", "kotodex.db"):
         source = args.live_dir / name
         if not source.exists():
             sys.exit(f"no {name} in {args.live_dir}")
@@ -483,15 +483,15 @@ def main() -> None:
     knowledge.close()
     print("scrubbed knowledge.db")
 
-    stats = sqlite3.connect(args.out / "read-stats.db")
+    stats = sqlite3.connect(args.out / "kotodex.db")
     with stats:
         scrub_stats(stats)
     stats.execute("VACUUM")
     stats.close()
-    print("scrubbed read-stats.db")
+    print("scrubbed kotodex.db")
 
     verify(args.out, args.live_dir / "knowledge.db")
-    for name in ("knowledge.db", "read-stats.db"):
+    for name in ("knowledge.db", "kotodex.db"):
         size = (args.out / name).stat().st_size / 1e6
         print(f"{name}: {size:.1f} MB")
     print(f"seed written to {args.out}")

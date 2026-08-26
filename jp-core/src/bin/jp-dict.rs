@@ -1,7 +1,7 @@
 //! Dictionary management for the shared `knowledge.db`.
 //!
 //! Importing a Yomitan zip is cache warming, not a service's job: the result is
-//! shared state that yt-mine, manga-mine and read-stats all read. Owned by any
+//! shared state that yt-mine, manga-mine and kotodex-server all read. Owned by any
 //! one of them it becomes an ordering dependency between tools that are
 //! otherwise independent — which is how adding a dictionary for the VN overlay
 //! came to require booting yt-mine.

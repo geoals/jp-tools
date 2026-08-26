@@ -1,12 +1,12 @@
 //! The fields of a mined card, built the way Yomitan builds them.
 //!
-//! Shared because a card is a card: read-stats mines from the VN overlay and
+//! Shared because a card is a card: kotodex-server mines from the VN overlay and
 //! yt-mine from a transcript, but both write the same note type, and the
 //! markup here is the part the note type's CSS descends through. A second
 //! implementation of it would be a second thing to keep in step with a
 //! template nobody edits.
 //!
-//! What is *not* here is how a card reaches Anki. read-stats routes every add
+//! What is *not* here is how a card reaches Anki. kotodex-server routes every add
 //! through its own `services::card::add_note`, which fires vn-capture and the
 //! completion notification; yt-mine attaches a screenshot and an audio clip cut from the video.
 //! Those are two different pipelines and stay that way.

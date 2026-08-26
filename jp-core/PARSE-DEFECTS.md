@@ -84,7 +84,7 @@ by any rule, and its recorded cause was wrong twice over).
   is not*.
 
 **Not live.** The tokenizer changes below are committed but not running:
-`scripts/start-all.sh restart read-stats` picks them up and
+`scripts/start-all.sh restart kotodex-server` picks them up and
 `POST /api/vocab/rebuild` re-derives the ledger under them. Neither is safe to
 do mid-session while a VN is being read.
 
@@ -93,7 +93,7 @@ do mid-session while a VN is being read.
 # Next
 
 Ranked, with what has already been measured so it is not measured twice. The
-procedure for any of them is read-stats' CLAUDE.md under *Fixing one*; the
+procedure for any of them is kotodex-server's CLAUDE.md under *Fixing one*; the
 addition worth knowing is that a clean before/after needs a **baseline built
 from `HEAD` in a `git worktree`**, because several of these tools take their
 inputs from the live `knowledge.db` and it moves under you. Three env toggles
@@ -951,7 +951,7 @@ entirely (3,644 occurrences) and 42 shrank (5,230 more)** — 凪/なぎ from 2,
 All five works read have their cast now, and against the 32,353 lines already
 read that is **3,552 lines, every changed token a name or a fragment of one**:
 ナノカ ×461, ココ ×421, ミリア ×391, ノア ×324, メルル ×289, ゴクチョー ×220 —
-the "about 1,500 tokens" read-stats' CLAUDE.md had listed as unfixable — and
+the "about 1,500 tokens" kotodex-server's CLAUDE.md had listed as unfixable — and
 皆守 as 皆 + 守 across 185 lines of 素晴らしき日々. `POST /api/vocab/rebuild`
 pruned 109 ledger rows and carried 7 judgements across.
 

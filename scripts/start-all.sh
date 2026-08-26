@@ -3,12 +3,12 @@
 # start-all.sh — start every service in this repository with one command.
 #
 # **A development tool, and not in the release tarball.** Reading a VN needs only
-# read-stats, which the Kotodex launcher runs itself; everything else here is
+# kotodex-server, which the Kotodex launcher runs itself; everything else here is
 # yt-mine's and manga-mine's. A launcher that came through this script would take
 # a dependency on four services it has nothing to do with, and in a tarball that
 # ships none of them it would report four failures.
 #
-# It still adopts cleanly in the other direction: a read-stats started here
+# It still adopts cleanly in the other direction: a kotodex-server started here
 # answers on :3200, and the launcher leaves an already-answering one alone.
 #
 #   scripts/start-all.sh              start everything (asks before restarting
@@ -18,7 +18,7 @@
 #   scripts/start-all.sh restart      restart everything, no prompts
 #
 # Any command takes service names to act on just those, e.g.
-#   scripts/start-all.sh restart read-stats
+#   scripts/start-all.sh restart kotodex-server
 #   scripts/start-all.sh stop yt-mine manga-mine
 # A named service is restarted without asking (naming it is the confirmation).
 #
@@ -35,7 +35,7 @@
 #   whisper-service    docker compose (gpu|cpu)   :8100  (whisper)
 #   yt-mine            cargo-built binary         :3000  (yt)
 #   manga-mine         cargo-built binary         :3100  (manga)
-#   read-stats         cargo-built binary         :3200  (stats)
+#   kotodex-server         cargo-built binary         :3200  (stats)
 #
 # Logs for the native services go to logs/<name>.log; whisper logs live in
 # docker (docker logs -f whisper-service).
@@ -64,7 +64,7 @@ canonical_service() {
     whisper-service|whisper) echo "whisper-service" ;;
     yt-mine|yt)              echo "yt-mine" ;;
     manga-mine|manga)        echo "manga-mine" ;;
-    read-stats|stats)        echo "read-stats" ;;
+    kotodex-server|server|stats) echo "kotodex-server" ;;
   esac
 }
 
@@ -108,7 +108,7 @@ PORT_ocr=8200
 PORT_whisper=8100
 PORT_ytmine=3000
 PORT_mangamine=3100
-PORT_readstats=3200
+PORT_server=3200
 
 # ----------------------------------------------------------------- helpers --
 info()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -288,7 +288,7 @@ build_rust() {
     info "no cargo — running the binaries as shipped"
     return 0
   fi
-  for name in yt-mine manga-mine read-stats; do
+  for name in yt-mine manga-mine kotodex-server; do
     selected "$name" && { pkgs+=(-p "$name"); names+=("$name"); }
   done
   (( ${#pkgs[@]} == 0 )) && return 0
@@ -317,7 +317,7 @@ print_status() {
   printf '%-20s %-7s %-10s %s\n' "SERVICE" "PORT" "PID" "STATE"
   for entry in "manga-ocr-service:$PORT_ocr" "whisper-service:$PORT_whisper" \
                "yt-mine:$PORT_ytmine" "manga-mine:$PORT_mangamine" \
-               "read-stats:$PORT_readstats"; do
+               "kotodex-server:$PORT_server"; do
     name="${entry%%:*}" port="${entry##*:}"
     if port_listening "$port"; then
       pid="$(port_pid "$port")"
@@ -330,7 +330,7 @@ print_status() {
 }
 
 stop_all() {
-  selected "read-stats"        && stop_port "read-stats" "$PORT_readstats" || true
+  selected "kotodex-server"        && stop_port "kotodex-server" "$PORT_server" || true
   selected "manga-mine"        && stop_port "manga-mine" "$PORT_mangamine" || true
   selected "yt-mine"           && stop_port "yt-mine" "$PORT_ytmine" || true
   selected "manga-ocr-service" && stop_port "manga-ocr-service" "$PORT_ocr" || true
@@ -356,13 +356,13 @@ start_all() {
   selected "manga-ocr-service" && start_ocr || true
   selected "yt-mine"    && start_rust "yt-mine" "$PORT_ytmine" "yt-mine" || true
   selected "manga-mine" && start_rust "manga-mine" "$PORT_mangamine" "manga-mine" || true
-  selected "read-stats" && start_rust "read-stats" "$PORT_readstats" "read-stats" || true
+  selected "kotodex-server" && start_rust "kotodex-server" "$PORT_server" "kotodex-server" || true
   echo
   print_status
   echo
   selected "yt-mine"    && ok "yt-mine:     http://localhost:$PORT_ytmine" || true
   selected "manga-mine" && ok "manga-mine:  http://localhost:$PORT_mangamine" || true
-  selected "read-stats" && ok "read-stats:  http://localhost:$PORT_readstats" || true
+  selected "kotodex-server" && ok "kotodex-server:  http://localhost:$PORT_server" || true
   return 0
 }
 

@@ -70,7 +70,7 @@ doctor` prints your machine's version of that table.
 
 ## Also in this repository
 
-Kotodex is `kotodex/` (the launcher), `read-stats/` (the server, the dashboard
+Kotodex is `kotodex/` (the launcher), `kotodex-server/` (the server, the dashboard
 and the overlay page), `layer-overlay/` (the Qt shell that puts a web page over
 a fullscreen window) and `vn-mine/` (the capture daemon and the line logger).
 

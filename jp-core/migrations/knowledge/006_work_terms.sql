@@ -12,7 +12,7 @@
 -- — the join key everything else in the workspace already uses.
 --
 -- Additive, like `word_days`: counts are incremented behind a watermark of
--- their own (`vocab_works_through_line_id` / `_session_id` in read-stats'
+-- their own (`vocab_works_through_line_id` / `_session_id` in kotodex-server'
 -- settings), which is what makes a rebuild able to re-derive this sink without
 -- double-counting the others.
 CREATE TABLE IF NOT EXISTS work_terms (

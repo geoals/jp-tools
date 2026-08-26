@@ -184,7 +184,7 @@ Three changes to `recompose`/`join_run`, keeping `MAX_COMPOUND_PARTS = 3` (そ�
 3. Plumbing: `knowledge::dictionaries` gets
    `frequency_ranks(pool, dict_title_or_id, terms: &[String]) -> HashMap<String, i64>`
    (batched `IN` queries, `idx_dictionary_frequency_lookup` covers it). In
-   `read-stats/src/ingest.rs`, compute the ambiguous-headword set (expose it
+   `kotodex-server/src/ingest.rs`, compute the ambiguous-headword set (expose it
    from the tokenizer or recompute from `master_readings`), fetch ranks for
    just those terms **before** `spawn_blocking`, pass the map in. Both call
    sites in ingest.rs (~line 278 and ~356) get the same treatment.
@@ -200,7 +200,7 @@ Three changes to `recompose`/`join_run`, keeping `MAX_COMPOUND_PARTS = 3` (そ�
    334 should collapse to near zero **for newly ingested lines**.
 4. Update `TOKENIZER.md`: fix the stale BCCWJ claim, move fixed defects into
    "what works", leave §5 (mimetics) and 私 (until stage 7) as open.
-5. Restart read-stats via `scripts/start-all.sh` — not during a VN session; use
+5. Restart kotodex-server via `scripts/start-all.sh` — not during a VN session; use
    `scripts/dev-instance.sh` to verify endpoints first.
 
 **Open decision for the user (ask, do not assume): re-harvest history?** The

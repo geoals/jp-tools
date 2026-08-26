@@ -83,7 +83,7 @@ pub struct Definition {
     ///
     /// [`define`] always leaves this `None` and the caller fills it, because
     /// whether opening a popup is a *lookup* is not a dictionary question: it
-    /// is one only while a reading session is running, which is read-stats'
+    /// is one only while a reading session is running, which is kotodex-server'
     /// business alone. yt-mine has no session and leaves it unset.
     pub lookup_id: Option<i64>,
 }

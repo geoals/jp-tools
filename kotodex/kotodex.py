@@ -1,7 +1,7 @@
 """The Kotodex launcher: one process that owns the others.
 
 Three things have to be running for a reading session — the capture daemon, the
-read-stats server, the overlay — and starting them by hand is three terminals
+kotodex-server server, the overlay — and starting them by hand is three terminals
 and an order to remember. This starts them in that order, keeps them up, and
 stops them together.
 
@@ -32,9 +32,9 @@ REPO = Path(__file__).resolve().parent.parent
 # compiled in is not, so every child is told rather than left to guess — see
 # jp_core::install::install_root.
 os.environ.setdefault("KOTODEX_ROOT", str(REPO))
-READ_STATS_PORT = int(os.environ.get("KOTODEX_READ_STATS_PORT", "3200"))
-READ_STATS_URL = os.environ.get(
-    "KOTODEX_READ_STATS_URL", f"http://127.0.0.1:{READ_STATS_PORT}"
+SERVER_PORT = int(os.environ.get("KOTODEX_SERVER_PORT", "3200"))
+SERVER_URL = os.environ.get(
+    "KOTODEX_SERVER_URL", f"http://127.0.0.1:{SERVER_PORT}"
 )
 # Reverse-DNS off kotodex.com, and the same string as the desktop entry's
 # filename: on Wayland Qt uses it as the app_id, which is how the compositor
@@ -44,12 +44,12 @@ SOCKET_NAME = APP_ID
 
 # The three components' entry points, named once. `tray.py` imports these rather
 # than rebuilding them, so "where is the overlay script" has one answer.
-OVERLAY_SH = str(REPO / "read-stats" / "overlay" / "vn-overlay.sh")
-READ_STATS_BIN = REPO / "target" / "release" / "read-stats"
+OVERLAY_SH = str(REPO / "kotodex-server" / "overlay" / "vn-overlay.sh")
+SERVER_BIN = REPO / "target" / "release" / "kotodex-server"
 DOCTOR_SH = REPO / "scripts" / "kotodex-doctor.sh"
 ICON = REPO / "kotodex" / "kotodex.svg"
 
-# How long read-stats gets to answer before it is called down. The launcher
+# How long kotodex-server gets to answer before it is called down. The launcher
 # never builds it — see --no-build — so this covers the migrations it runs
 # against knowledge.db on the way up, not a compile.
 READY_TIMEOUT = 60.0
@@ -63,9 +63,9 @@ SPAWN_GRACE = 10.0
 MAX_RESTARTS = 3
 
 
-def read_stats_up() -> bool:
+def kotodex_server_up() -> bool:
     try:
-        with urllib.request.urlopen(f"{READ_STATS_URL}/api/reader/state", timeout=1) as r:
+        with urllib.request.urlopen(f"{SERVER_URL}/api/reader/state", timeout=1) as r:
             return r.status == 200
     except (urllib.error.URLError, OSError):
         return False
@@ -116,7 +116,7 @@ class Child:
         self.start_cmd = start_cmd
         self.stop_cmd = stop_cmd
         # Where this child's output goes. `None` discards it, which is right for
-        # a component that keeps its own log; read-stats does not.
+        # a component that keeps its own log; kotodex-server does not.
         self.log_file = log_file
         # How to make an *adopted* one pick up new code. Stopping it is what
         # adoption promises not to do, so this asks it to restart itself.
@@ -129,7 +129,7 @@ class Child:
         # Whether start_cmd *is* the component or merely launches it.
         # vn-overlay.sh backgrounds the real process and returns 0, so its exit
         # status says nothing and the probe is the only thing that knows whether
-        # the component is alive. capture and read-stats are the process.
+        # the component is alive. capture and kotodex-server are the process.
         self.detaches = detaches
         # Whether the launcher keeps this one alive. The overlay is not
         # supervised: the tray shows and hides it, so it being gone is a state
@@ -243,8 +243,8 @@ def children():
             restart_cmd=[capture, "restart"],
         ),
         Child(
-            "read-stats",
-            read_stats_up,
+            "kotodex-server",
+            kotodex_server_up,
             # The binary directly. It is an ordinary foreground process, so the
             # launcher owns it the way it owns the capture daemon: `stop` is a
             # SIGTERM to its own child and nothing else has to be asked.
@@ -254,9 +254,9 @@ def children():
             # (yt-mine, manga-mine, whisper, the OCR service) and starting one
             # service is not worth taking a dependency on all of them. It also
             # never builds: clicking the desktop entry must not wait on cargo.
-            [str(READ_STATS_BIN)],
-            log_file=REPO / "logs" / "read-stats.log",
-            stop_adopted=lambda: stop_port(READ_STATS_PORT),
+            [str(SERVER_BIN)],
+            log_file=REPO / "logs" / "kotodex-server.log",
+            stop_adopted=lambda: stop_port(SERVER_PORT),
         ),
         Child(
             "overlay",
@@ -270,20 +270,20 @@ def children():
     ]
 
 
-def wait_for_read_stats(log):
+def wait_for_kotodex_server(log):
     deadline = time.time() + READY_TIMEOUT
     while time.time() < deadline:
-        if read_stats_up():
+        if kotodex_server_up():
             return True
         time.sleep(1)
-    log("read-stats: no answer — not starting the overlay")
+    log("kotodex-server: no answer — not starting the overlay")
     return False
 
 
 def status_report():
     for name, probe in (
         ("capture", capture_up),
-        ("read-stats", read_stats_up),
+        ("kotodex-server", kotodex_server_up),
         ("overlay", overlay_up),
     ):
         print(f"{'running' if probe() else 'stopped':>8}  {name}")
@@ -292,7 +292,7 @@ def status_report():
 def restart_command() -> int:
     """`kotodex restart` from a terminal.
 
-    Handed to a running launcher when there is one: it supervises read-stats,
+    Handed to a running launcher when there is one: it supervises kotodex-server,
     and a restart done behind its back looks like a crash for the three seconds
     the port is closed — which it answers by starting a second one.
     """
@@ -361,16 +361,16 @@ def stop_port(port: int) -> None:
         time.sleep(0.5)
 
 
-def start_read_stats(log=print) -> subprocess.Popen | None:
-    """Run the server, its output appended to `logs/read-stats.log`."""
-    if not READ_STATS_BIN.is_file():
-        log(f"{READ_STATS_BIN} is missing — run setup.sh")
+def start_kotodex_server(log=print) -> subprocess.Popen | None:
+    """Run the server, its output appended to `logs/kotodex-server.log`."""
+    if not SERVER_BIN.is_file():
+        log(f"{SERVER_BIN} is missing — run setup.sh")
         return None
-    log_path = REPO / "logs" / "read-stats.log"
+    log_path = REPO / "logs" / "kotodex-server.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a") as sink:
         return subprocess.Popen(
-            [str(READ_STATS_BIN)],
+            [str(SERVER_BIN)],
             cwd=REPO,
             stdout=sink,
             stderr=subprocess.STDOUT,
@@ -378,20 +378,20 @@ def start_read_stats(log=print) -> subprocess.Popen | None:
         )
 
 
-def restart_read_stats() -> bool:
-    """Stop whatever is serving read-stats and start it again.
+def restart_kotodex_server() -> bool:
+    """Stop whatever is serving kotodex-server and start it again.
 
     Deliberately not adoption-safe, unlike quitting: picking up new code is the
     whole point of a restart, so it has to reach a server this process did not
     start. Nothing else can — `start-all.sh` is the multi-service tool and the
     launcher no longer goes through it.
     """
-    stop_port(READ_STATS_PORT)
-    if start_read_stats() is None:
+    stop_port(SERVER_PORT)
+    if start_kotodex_server() is None:
         return False
     deadline = time.time() + READY_TIMEOUT
     while time.time() < deadline:
-        if read_stats_up():
+        if kotodex_server_up():
             return True
         time.sleep(1)
     return False
@@ -410,9 +410,9 @@ def restart_components() -> int:
     if subprocess.run([capture_binary(), "restart"], cwd=REPO).returncode != 0:
         print("  capture did not restart cleanly")
         failed += 1
-    print("restarting read-stats")
-    if not restart_read_stats():
-        print("  read-stats did not restart cleanly")
+    print("restarting kotodex-server")
+    if not restart_kotodex_server():
+        print("  kotodex-server did not restart cleanly")
         failed += 1
     print("restarting overlay")
     if subprocess.run([OVERLAY_SH, "restart"], cwd=REPO).returncode != 0:
@@ -465,21 +465,21 @@ def main() -> int:
 
     kids = children()
 
-    # The overlay draws a read-stats page, so starting it before the port
+    # The overlay draws a kotodex-server page, so starting it before the port
     # answers puts a browser error page over the whole screen with no way to
-    # dismiss it. If read-stats never comes up the tray is how it is retried.
+    # dismiss it. If kotodex-server never comes up the tray is how it is retried.
     serving = True
     for child in kids:
         if child.name == "overlay" and not serving:
             continue
         child.ensure(log)
-        if child.name == "read-stats":
-            serving = wait_for_read_stats(log)
+        if child.name == "kotodex-server":
+            serving = wait_for_kotodex_server(log)
 
-    tray = Tray(app, kids, READ_STATS_URL, log)
+    tray = Tray(app, kids, SERVER_URL, log)
 
     # Set while a restart is in flight, so the watchdog does not read the gap
-    # where read-stats' port is closed as a crash and start a second one.
+    # where kotodex-server's port is closed as a crash and start a second one.
     restarting = {"until": 0.0}
 
     def restart_here():
@@ -514,15 +514,15 @@ def main() -> int:
             # A restarted child answers its probe later than its restart command
             # returns — the capture daemon's `restart` detaches — so give it
             # time to come back before probing it, or `ensure` reads the restart
-            # as a down component and starts a second one. read-stats has no such
+            # as a down component and starts a second one. kotodex-server has no such
             # gap: it was stopped above and `ensure` spawns it here.
             if child.name == "capture":
                 child.wait_ready(log, CAPTURE_READY)
             if child.name == "overlay" and not serving:
                 continue
             child.ensure(log)
-            if child.name == "read-stats":
-                serving = wait_for_read_stats(log)
+            if child.name == "kotodex-server":
+                serving = wait_for_kotodex_server(log)
         restarting["until"] = 0.0
         log("restarted")
 

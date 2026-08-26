@@ -21,7 +21,7 @@ say() { printf '\033[1m==>\033[0m %s\n' "$1"; }
 
 say "building"
 cd "$REPO"
-cargo build --release -p read-stats
+cargo build --release -p kotodex-server
 cargo build --release -p jp-core --bin jp-dict
 cargo build --release -p jp-mine-core --bin anki-setup
 
@@ -32,7 +32,7 @@ rm -rf "$STAGE"
 mkdir -p "$STAGE/target/release" "$STAGE/dictionaries"
 
 say "collecting"
-for bin in read-stats jp-dict anki-setup; do
+for bin in kotodex-server jp-dict anki-setup; do
   cp "$REPO/target/release/$bin" "$STAGE/target/release/$bin"
   strip "$STAGE/target/release/$bin" 2>/dev/null || true
 done
@@ -47,14 +47,14 @@ copy docs
 copy web-shared
 copy layer-overlay
 copy kotodex
-copy read-stats/static
-copy read-stats/overlay
+copy kotodex-server/static
+copy kotodex-server/overlay
 copy scripts/lib
 copy scripts/kotodex-doctor.sh
 # start-all.sh is deliberately absent. It manages yt-mine, manga-mine,
 # whisper-service and the OCR service as well, none of which is in here, so in a
 # tarball it is four failures for things that were never shipped. The launcher
-# runs read-stats itself.
+# runs kotodex-server itself.
 
 # vn-mine by name rather than wholesale: the directory also holds tests, a
 # game-specific script and a stale shim.

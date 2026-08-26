@@ -21,10 +21,10 @@ from kotodex import DOCTOR_SH, ICON, OVERLAY_SH, REPO
 
 
 class Tray:
-    def __init__(self, app, children, read_stats_url, log):
+    def __init__(self, app, children, kotodex_server_url, log):
         self.app = app
         self.children = children
-        self.url = read_stats_url
+        self.url = kotodex_server_url
         self.log = log
         self.available = QSystemTrayIcon.isSystemTrayAvailable()
         # Set by kotodex.main: the restart has to happen in the process that
@@ -95,7 +95,7 @@ class Tray:
     def toggle_capture(self):
         result = self._api("/api/capture/pause", method="POST")
         if result is None:
-            self.log("capture: read-stats did not answer the pause toggle")
+            self.log("capture: kotodex-server did not answer the pause toggle")
             return
         self._set_pause_label(result.get("paused", False))
 
@@ -116,7 +116,7 @@ class Tray:
         touches, and the capture daemon is usually systemd's.
 
         Done in this process, not as a child: it is the one that supervises
-        read-stats, and the gap where the port is closed must not read as a
+        kotodex-server, and the gap where the port is closed must not read as a
         crash. `kotodex.main` sets the callback.
         """
         if self.restart_here is None:

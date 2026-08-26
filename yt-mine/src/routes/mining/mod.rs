@@ -63,7 +63,7 @@ pub(crate) async fn build_sentence_views(
 
 /// One sentence's tokens, as the reader's own pipeline sees them.
 ///
-/// `analyze` is the same call read-stats' feed makes, so a word is segmented,
+/// `analyze` is the same call kotodex-server's feed makes, so a word is segmented,
 /// keyed and judged identically whether it was met in a VN or in a transcript.
 /// Without a highlighter — fake mode — it falls back to the bare tokenizer,
 /// which gives the surfaces and no ledger verdict.

@@ -3,7 +3,7 @@
 //! something readable in under 2 seconds (~8 Japanese characters).
 //!
 //! Shared by every surface that mines a card, because the gloss is a property
-//! of the card and not of where it came from: read-stats writes one after
+//! of the card and not of where it came from: kotodex-server writes one after
 //! Yomitan or the overlay adds a note, and yt-mine writes one on export.
 
 use std::sync::LazyLock;
@@ -31,7 +31,7 @@ const MODEL: &str = "claude-opus-5";
 
 /// Built once from the shared tag rubric ([`crate::tags`]) plus the CompactDef-
 /// specific framing and output format. The FAMILIARITY/FLAVOR definitions live
-/// in `tags.rs` so this and read-stats' explain prompt can never drift apart
+/// in `tags.rs` so this and kotodex-server's explain prompt can never drift apart
 /// again — and so yt-mine cannot grow a third paraphrase of them, which is
 /// exactly what its old `LlmDefiner` was.
 static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {

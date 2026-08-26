@@ -7,13 +7,13 @@
 # holding them, which is what setup.sh ends with: a reader who has just watched
 # every step succeed does not need the same list again.
 #
-# Exit 0 when the core works: curl, jq, a tokenizer dictionary, a read-stats
+# Exit 0 when the core works: curl, jq, a tokenizer dictionary, a kotodex-server
 # answering, at least one definition dictionary, and a PySide6 to draw the
 # overlay with. Everything else is reported and forgiven — the product degrades
 # rather than fails, and this is the page that says how far. A row is `critical`
 # here exactly when `docs/degradation.md` calls it required.
 #
-# The rows come from read-stats' capability probe, which is the same table
+# The rows come from kotodex-server's capability probe, which is the same table
 # `docs/degradation.md` describes and the reading surfaces draw from. One
 # implementation: the installer's closing summary is this script.
 set -uo pipefail
@@ -28,7 +28,7 @@ else
   _os_release_field() { return 1; }
 fi
 
-URL="http://localhost:${READ_STATS_PORT:-3200}"
+URL="http://localhost:${SERVER_PORT:-3200}"
 ONLY_PROBLEMS=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -136,9 +136,9 @@ else
   row false "SudachiDict" "missing" "run setup.sh — required for reading any Japanese text" critical
 fi
 if [ -n "$CAPS" ]; then
-  row true "read-stats" "answering on $URL" ""
+  row true "kotodex-server" "answering on $URL" ""
 else
-  row false "read-stats" "not answering on $URL" \
+  row false "kotodex-server" "not answering on $URL" \
     "start Kotodex from the application menu — the rows below need it" critical
 fi
 

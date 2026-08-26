@@ -22,8 +22,8 @@
 > **Delete this block once the test passes.**
 
 Cargo workspace for Japanese language learning tools, named after the product
-it ships. The crates keep their own names — `read-stats` is still the server
-and `read-stats.db` still its database.
+it ships. `jp-core` and `jp-mine-core` keep their own names, because neither has
+any Kotodex in it; everything that is the product carries it.
 
 - `jp-core/` — the language layer, shared by everything: `text` (character
   counting, sentence segmentation, the kanji grade and BCCWJ frequency tables —
@@ -37,7 +37,7 @@ and `read-stats.db` still its database.
 - `jp-mine-core/` — shared mining back half: `card` (the note's fields, in
   Yomitan's markup), `compactdef` + `tags` (the gloss and its two-axis rubric),
   `lookup`, and `export` (AnkiConnect). yt-mine and manga-mine use all of it;
-  read-stats uses `card`, `compactdef` and `tags` and **must not** use `export`
+  kotodex-server uses `card`, `compactdef` and `tags` and **must not** use `export`
   — see the card-authoring rule below
 - `yt-mine/` — YouTube sentence mining (Axum JSON API + Preact SPA, SQLite, Anki
   export). Whisper over the whole video, never YouTube's auto-captions — see
@@ -46,22 +46,22 @@ and `read-stats.db` still its database.
   Anki, stateless). See `manga-mine/CLAUDE.md`
 - `vn-mine/` — visual novel voiceline capture (bash/python, no Cargo member):
   `kotodex-capture` ring-buffer daemon + Textractor line logger + silero-VAD hotkey script →
-  Anki. **It is a dependency of read-stats, not a peer**: read-stats runs
+  Anki. **It is a dependency of kotodex-server, not a peer**: kotodex-server runs
   `vn-capture.sh` on every card path (`services::capture`), and
   `vn-ws-logger.py` is one *source*: it posts the lines it hooks to
   `POST /api/lines` like any other. See `vn-mine/README.md`
-- `read-stats/` — daily reading tracker (Axum + SQLite + Preact, port 3200), the
-  two reading surfaces over it, and the AnkiConnect proxy Yomitan points at.
-  Shown to the reader as **コトデックス**, a proposed name only the page title
-  and the dashboard heading carry — the crate, the binary, the service name and
-  `read-stats.db` are all still `read-stats`, and the two names mean the same
-  thing. See `read-stats/CLAUDE.md`. The surfaces:
-  - `#read` — the live line feed read *beside* the VN in a browser, which is
-    the only one Yomitan is over
-  - `overlay/` — the same feed and its own dictionary drawn *over* the game,
-    fullscreen included, launched by `overlay/vn-overlay.sh`
+- `kotodex-server/` — the ledger and everything served over it (Axum + SQLite +
+  Preact, port 3200): the dashboard, `POST /api/lines` where every source hands
+  its text over, the two reader surfaces, and the AnkiConnect proxy Yomitan
+  points at. Shown to the reader as **コトデックス**. See
+  `kotodex-server/CLAUDE.md`. **One reader, two surfaces** — same feed, same
+  popup, same card path, so both are **Kotodex Reader**:
+  - `#read` — the reader in a browser *beside* the VN, which is the only one
+    Yomitan is over
+  - `overlay/` — the reader drawn *over* the game, fullscreen included,
+    launched by `overlay/vn-overlay.sh`
 - `kotodex/` — the launcher: one Qt process that owns the capture daemon,
-  read-stats and the overlay, plus the tray, the single-instance socket, the
+  kotodex-server and the overlay, plus the tray, the single-instance socket, the
   icon and the desktop entry. **Adopt, never duplicate**: each component is
   probed before it is started, so this coexists with `start-all.sh` and with a
   systemd-managed capture daemon, and quitting stops only what it started.
@@ -69,23 +69,23 @@ and `read-stats.db` still its database.
   reading a VN needs are not the same set as "every service in the repo"
 - `layer-overlay/` — the Qt shell that puts a web page above fullscreen windows
   and makes it clickable only where the page has drawn. Knows nothing about
-  Japanese, reading or read-stats; `read-stats/overlay/` is its one caller.
+  Japanese, reading or kotodex-server; `kotodex-server/overlay/` is its one caller.
   See `layer-overlay/README.md`
 - `manga-ocr-service/` — Python FastAPI wrapper around kha-white's manga-ocr
   (port 8200)
 - `whisper-service/` — Python FastAPI transcription service for yt-mine
   (port 8100)
 - `scripts/start-all.sh` — start/stop/restart/status for the whole stack, or for
-  named services (`restart read-stats`); see `--help`. Runs `jp-dict sync`
+  named services (`restart kotodex-server`); see `--help`. Runs `jp-dict sync`
   before starting anything. **A development tool, not in the tarball**: the
   launcher owns the three components reading needs, and this owns the other four
 - `web-shared/` — front-end code more than one app draws: the dictionary popup
-  (`popup.js` + `popup.css`). read-stats and yt-mine both `ServeDir` it at
+  (`popup.js` + `popup.css`). kotodex-server and yt-mine both `ServeDir` it at
   `/shared/`, so the two pages load the identical file — there is no build step
   to copy it with, and a copy is what it exists to prevent
 - `dictionaries/` — the Yomitan zips (gitignored). Dropping one in and
   restarting the stack is how a dictionary is added
-- `scripts/dev-instance.sh` — run read-stats in isolation (copy of the data,
+- `scripts/dev-instance.sh` — run kotodex-server in isolation (copy of the data,
   port 3299) and diff its endpoints before/after a change. Use this instead of
   restarting the live one.
 
@@ -94,7 +94,7 @@ and `read-stats.db` still its database.
 | file            | holds                                                                                                             | owner                |
 | --------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------- |
 | `knowledge.db`  | dictionary cache (+ role), `works`, `lines`, `manual_sessions`, `anki_notes`, `word_days`, `lookups`, `vocabulary`, `term_surfaces`, `work_names`, `books` | `jp_core::knowledge` |
-| `read-stats.db` | `settings`, `reader_marks`, `work_covers`                                                                          | read-stats           |
+| `kotodex.db` | `settings`, `reader_marks`, `work_covers`                                                                          | kotodex-server           |
 | `yt-mine.db`    | `mining_jobs`, `mining_sentences`                                                                                  | yt-mine              |
 
 All under `~/.local/share/kotodex/`. The split is by what the data *is*, not by
@@ -103,7 +103,7 @@ been read, what was looked up, what the dictionaries say, what is known — is
 shared. Everything else is the app's own.
 
 The *schema* for the shared tables is jp-core's, since it has to have one owner,
-but the query helpers still live in read-stats (`db/`) because it is still their
+but the query helpers still live in kotodex-server (`db/`) because it is still their
 only caller. They move when a second consumer appears; the tables won't have to.
 
 Two rules for writing to them, both from one "database is locked":
@@ -120,12 +120,12 @@ the database at all.** `vn-ws-logger.py` used to write `lines` itself and once
 carried its own `CREATE TABLE` under a "keep in sync" comment, which is how the
 `ruby` column came to exist in Python and in `knowledge::migrate` and in no
 migration at all. Every source now posts to `POST /api/lines` instead, so no
-writer outside jp-core and read-stats knows the column list, and one on a phone
+writer outside jp-core and kotodex-server knows the column list, and one on a phone
 never could.
 
 `vocabulary` is the ledger of what is known, one row per `(headword, reading)`.
 Only the reader writes its `status` column, and `new` (never judged) is not
-`unknown` — see `read-stats/CLAUDE.md`, which owns the rules.
+`unknown` — see `kotodex-server/CLAUDE.md`, which owns the rules.
 
 ## Two architectural rules
 
@@ -140,7 +140,7 @@ yt/manga through Yomitan is impossible.
 What the two halves *do* share is what a card is made of, not how it is added:
 `jp_mine_core::card` builds the note type's fields — `dict_block`'s nesting is
 what its CSS descends through — and `jp_mine_core::compactdef` writes the gloss.
-One note type, one implementation of its markup. read-stats therefore depends on
+One note type, one implementation of its markup. kotodex-server therefore depends on
 jp-mine-core, and the line it must not cross is `jp_mine_core::export`: an
 overlay card that went out that way would lose vn-capture, the deck mirror and
 the completion notification.
@@ -172,8 +172,8 @@ lookup on open and retracts it when ✓ is used; yt-mine does neither, because a
 lookup is a reading-session event and there is no session. It is vanilla DOM
 because one host is a plain page and the other is Preact.
 
-**The overlay is a read-stats surface, and the Qt shell that shows it is not.**
-Every route the page (`read-stats/overlay/`) calls is a read-stats route and
+**The overlay is a kotodex-server surface, and the Qt shell that shows it is not.**
+Every route the page (`kotodex-server/overlay/`) calls is a kotodex-server route and
 nothing else can answer one of them, so it lives with the app that serves it.
 What puts it over a
 fullscreen window — a layer surface, an input region, a tracked window's
@@ -194,7 +194,7 @@ is not merely untagged but *split*, so 世凪 arrives as 世 + 凪 and both halv
 enter the ledger. `work_names` holds the cast per work, imported from VNDB by
 `jp-script names <work>` and extended by hand with `names <work> add`; the
 tokenizer takes the union of every work's, keeps those names whole, tags them,
-and spells them the way the text did. read-stats' CLAUDE.md carries the rules,
+and spells them the way the text did. kotodex-server's CLAUDE.md carries the rules,
 including the frequency veto that keeps 母 a word.
 
 **Text from outside the tokenizer is spelt the way it was written, and joining
@@ -213,7 +213,7 @@ exactly what that two-signal rule exists to prevent.
 So: **any table holding a spelling from outside carries its resolved ledger key
 in its own column, and joins go through that column.** `anki_notes.headword` and
 `lookups.headword` are the two, both filled by
-`read_stats::ingest::normalized_spellings`, both falling back to the raw
+`kotodex_server::ingest::normalized_spellings`, both falling back to the raw
 spelling while empty. The raw column stays — the kanji grid and the per-work
 mined list want what is actually on the card. A new table of this shape needs
 the same pair, and a new join needs to ask which column it is on.
@@ -256,7 +256,7 @@ boolean:
 A role is the coarsest knob on the tokenizer and the way to back one of these
 out: `jp-dict set-role <id> reference` takes a dictionary out of segmentation
 without touching anything else, and `POST /api/vocab/rebuild` re-derives the
-ledger under whatever the rules are now. read-stats' CLAUDE.md has the full
+ledger under whatever the rules are now. kotodex-server's CLAUDE.md has the full
 procedure for a wrong token, under "Fixing one".
 
 **Sankoku is the master dictionary** and its ~82k terms are a real vocabulary
@@ -297,10 +297,10 @@ threshold means roughly the same thing under either.
   through later in a batch rather than fixed on the spot.
 - **Don't restart the stack or touch `~/.local/share/kotodex` while a VN is
   being read** — nothing breaks, but it interrupts the session, and
-  `scripts/dev-instance.sh` exists so read-stats can be worked on regardless.
+  `scripts/dev-instance.sh` exists so kotodex-server can be worked on regardless.
   Otherwise restart the affected services after a change so it is live
   immediately.
-- In the Preact/htm SPAs (`read-stats`, `yt-mine`), never let literal text and
+- In the Preact/htm SPAs (`kotodex-server`, `yt-mine`), never let literal text and
   `${...}` straddle a line break inside an `html` template — htm collapses the
   whitespace, which silently rendered `snapshot 0 min ago` as `snapshot0
   minago`. Build the string in JS and interpolate it whole:
@@ -377,5 +377,5 @@ and the cause is the point.
   technical meaning. If a sentence can be cut in half without losing
   information, cut it.
 
-The trace strings in `jp_core::tokenize::trace` and `read-stats`'s `#tokenize`
+The trace strings in `jp_core::tokenize::trace` and `kotodex-server`'s `#tokenize`
 panel are the worked example of all of this.

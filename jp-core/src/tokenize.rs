@@ -12,9 +12,9 @@
 //! 其れ; see `Role::Standard`.
 //!
 //! **Changing a rule is a measurement, not an argument.** `#tokenize` in
-//! read-stats renders [`trace`] for one line, `jp-core/examples/tokens.rs`
+//! kotodex-server renders [`trace`] for one line, `jp-core/examples/tokens.rs`
 //! dumps the corpus for a before/after diff, and `tests/golden.rs` fails on any
-//! movement so the diff gets read. read-stats' CLAUDE.md walks the whole
+//! movement so the diff gets read. kotodex-server's CLAUDE.md walks the whole
 //! procedure under "Fixing one".
 
 use std::collections::{HashMap, HashSet};

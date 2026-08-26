@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run read-stats in isolation — a copy of the databases, a different port —
+# Run kotodex-server in isolation — a copy of the databases, a different port —
 # so it can be exercised while the real one keeps tracking a reading session.
 #
 #   run                 boot on :3299 against the frozen copy (^C to stop)
@@ -25,7 +25,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK="$REPO/target/dev-instance"
 PORT="${DEV_PORT:-3299}"
-LIVE_STATS="${KOTODEX_STATS_DB_PATH:-$HOME/.local/share/kotodex/read-stats.db}"
+LIVE_STATS="${KOTODEX_SERVER_DB_PATH:-$HOME/.local/share/kotodex/kotodex.db}"
 LIVE_KNOWLEDGE="${KOTODEX_KNOWLEDGE_DB_PATH:-$HOME/.local/share/kotodex/knowledge.db}"
 
 say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
@@ -36,11 +36,11 @@ die() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 # database, and safe to run while it is being written.
 freeze() {
   mkdir -p "$WORK/frozen"
-  if [ -f "$WORK/frozen/read-stats.db" ] && [ -z "${REFRESH:-}" ]; then
+  if [ -f "$WORK/frozen/kotodex.db" ] && [ -z "${REFRESH:-}" ]; then
     return 0
   fi
   rm -f "$WORK"/frozen/*.db*
-  [ -f "$LIVE_STATS" ] && sqlite3 "$LIVE_STATS" ".backup '$WORK/frozen/read-stats.db'"
+  [ -f "$LIVE_STATS" ] && sqlite3 "$LIVE_STATS" ".backup '$WORK/frozen/kotodex.db'"
   [ -f "$LIVE_KNOWLEDGE" ] ||
     die "no knowledge database at $LIVE_KNOWLEDGE — nothing to freeze"
   sqlite3 "$LIVE_KNOWLEDGE" ".backup '$WORK/frozen/knowledge.db'"
@@ -52,7 +52,7 @@ freeze() {
 fresh_dbs() {
   freeze
   rm -f "$WORK"/run.db* "$WORK"/run-knowledge.db*
-  cp "$WORK/frozen/read-stats.db" "$WORK/run.db"
+  cp "$WORK/frozen/kotodex.db" "$WORK/run.db"
   cp "$WORK/frozen/knowledge.db" "$WORK/run-knowledge.db"
 }
 
@@ -65,14 +65,14 @@ fresh_dbs() {
 # requests from a database that has since been replaced.
 serve() {
   exec env -i HOME="$HOME" PATH="$PATH" \
-    KOTODEX_STATS_DB_PATH="$WORK/run.db" \
+    KOTODEX_SERVER_DB_PATH="$WORK/run.db" \
     KOTODEX_KNOWLEDGE_DB_PATH="$WORK/run-knowledge.db" \
-    KOTODEX_STATS_LISTEN_ADDR="127.0.0.1:$PORT" \
+    KOTODEX_SERVER_LISTEN_ADDR="127.0.0.1:$PORT" \
     KOTODEX_ANKI_URL="http://127.0.0.1:9" \
     KOTODEX_WHISPER_URL="http://127.0.0.1:9" \
     KOTODEX_ANTHROPIC_API_KEY="" \
     KOTODEX_AUTO_CAPTURE_ON_ADD=0 \
-    "$REPO/target/debug/read-stats" "$@"
+    "$REPO/target/debug/kotodex-server" "$@"
 }
 
 # A leftover instance from an earlier run would answer on this port and the
@@ -101,7 +101,7 @@ wait_up() {
   die "instance did not come up — see $WORK/server.log"
 }
 
-build() { (cd "$REPO" && cargo build -p read-stats 2>&1 | tail -3); }
+build() { (cd "$REPO" && cargo build -p kotodex-server 2>&1 | tail -3); }
 
 cmd_run() {
   build; require_port_free; fresh_dbs
@@ -235,7 +235,7 @@ cmd_browser() {
   for view in settings tokenize; do
     "$CHROME" --headless --disable-gpu --no-sandbox --dump-dom --virtual-time-budget=15000 \
       "http://127.0.0.1:$PORT/#$view" >"$WORK/dom-$view.html" 2>>"$WORK/console.log"
-    for want in "read-stats" "$view"; do
+    for want in "kotodex-server" "$view"; do
       grep -qF "$want" "$WORK/dom-$view.html" || die "$view view is missing: $want"
     done
     # The capture control, whichever way round it is: the frozen copy carries
@@ -294,11 +294,11 @@ print(urllib.parse.quote(rows[0]["work"]) if rows else "")')
   local fail=0
   while read -r file spec; do
     local dir url code
-    dir=$(dirname "${file#"$REPO"/read-stats/static/}")
+    dir=$(dirname "${file#"$REPO"/kotodex-server/static/}")
     url=$(python3 -c 'import posixpath,sys; print(posixpath.normpath(posixpath.join(*sys.argv[1:3])))' "$dir" "$spec")
     code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$PORT/static/$url" || true)
     [ "$code" = 200 ] || { echo "unresolved import in $file: $spec"; fail=1; }
-  done < <(grep -rnoE 'from "(\.[^"]+)"' "$REPO/read-stats/static" --include="*.js" |
+  done < <(grep -rnoE 'from "(\.[^"]+)"' "$REPO/kotodex-server/static" --include="*.js" |
            sed -E 's/:[0-9]+:from "/ /; s/"$//')
   # Only now: the loop above serves every specifier off the running instance,
   # and stopping first turned the whole check into 000s reported as failures.

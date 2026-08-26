@@ -14,7 +14,7 @@ export async function streamExplain({ context, focus = "", onText }) {
     body: JSON.stringify({ context, focus }),
   });
   // A failure before the stream opens is still an ordinary HTTP error. The body
-  // is the message itself — read-stats writes its errors as plain text, so
+  // is the message itself — kotodex-server writes its errors as plain text, so
   // parsing it as JSON threw the reason away and left "Bad Request" on screen
   // where "no Anthropic API key set" was what happened.
   if (!res.ok) {

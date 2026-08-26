@@ -84,7 +84,7 @@ pub fn build_router(state: AppState) -> Router {
         // The frontend has no build step, so nothing in a URL changes when a
         // module does. `no-cache` is revalidation, not "don't cache": the
         // browser keeps the bytes and `ServeDir` answers 304 off
-        // `if-modified-since` until the file actually changes. read-stats
+        // `if-modified-since` until the file actually changes. kotodex-server
         // serves `/shared` under the same rule.
         .layer(SetResponseHeaderLayer::if_not_present(
             CACHE_CONTROL,

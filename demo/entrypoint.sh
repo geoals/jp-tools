@@ -11,8 +11,8 @@ set -e
 SCRATCH=/var/lib/kotodex
 rm -rf "$SCRATCH"
 mkdir -p "$SCRATCH/covers"
-cp /seed/knowledge.db /seed/read-stats.db "$SCRATCH/"
+cp /seed/knowledge.db /seed/kotodex.db "$SCRATCH/"
 cp /seed/covers/*.jpg "$SCRATCH/covers/" 2>/dev/null || true
 chmod -R u+w "$SCRATCH"
 
-exec /app/target/release/read-stats
+exec /app/target/release/kotodex-server

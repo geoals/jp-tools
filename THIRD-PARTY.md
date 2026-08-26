@@ -53,8 +53,8 @@ underlined or ordered.
 **Nothing sends reading data anywhere.** The one outbound call is to the
 Anthropic API, and only when an API key is set and the explain button is pressed.
 
-read-stats listens on `0.0.0.0:3200` on purpose, so a phone beside the screen can
-open the same reading surface — `KOTODEX_STATS_LISTEN_ADDR` narrows it to
+kotodex-server listens on `0.0.0.0:3200` on purpose, so a phone beside the screen can
+open the same reading surface — `KOTODEX_SERVER_LISTEN_ADDR` narrows it to
 `127.0.0.1:3200` where that is not wanted. There is no authentication, so treat
 it as trusted-network only. Everything it talks *to* is loopback: AnkiConnect on
 `127.0.0.1:8765`, the Local Audio Server on `:5050`, whisper-service on `:8100`.

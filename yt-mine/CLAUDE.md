@@ -59,7 +59,7 @@ line as soon as transcription reaches it.
 ## Key design decisions
 
 - **The tokenizer is `jp_core::highlight`'s, all seven inputs** — the same
-  pipeline read-stats' reader and ingest use, not a bare Sudachi with the
+  pipeline kotodex-server's reader and ingest use, not a bare Sudachi with the
   headword list. A transcript and a hooked VN line have to segment the same
   way, or a word mined here lands on a ledger key `#read` never produces. It
   also means `analyze` gives each token its ledger status for free
@@ -100,7 +100,7 @@ surface:
   the Preact tree, so it stays on its word as the page scrolls instead of
   hanging in the viewport where the word used to be.
 
-Tokens carry their ledger status, and the three tints are read-stats' own —
+Tokens carry their ledger status, and the three tints are kotodex-server's own —
 `known` is deliberately not one of them, because the absence of a mark is what
 makes the marks readable.
 
@@ -162,7 +162,7 @@ Via env vars, loaded from `.env` (repo root) via `dotenvy`. See `config.rs` and
 
 Anki export fields are all configurable via `KOTODEX_ANKI_*` vars (model, deck,
 field mapping). Defaults match the "Japanese sentences" Yomitan note type — and
-are now the same fields read-stats writes: the glossary goes to `VocabDefFull`
+are now the same fields kotodex-server writes: the glossary goes to `VocabDefFull`
 in Yomitan's per-dictionary markup (`VocabDef` is Yomitan's own short gloss and
 not ours to overwrite), the pitch to `VocabPitchNum` + `VocabPitchPattern` as
 markup rather than a bare number, and the LLM gloss to `CompactDef`.

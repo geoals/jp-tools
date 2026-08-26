@@ -63,7 +63,7 @@ Window {
 
         Component.onCompleted: channel.registerObject("shell", overlay)
 
-        // read-stats may still be starting, and a failed load puts Chromium's
+        // kotodex-server may still be starting, and a failed load puts Chromium's
         // error page over the whole screen with nothing to dismiss it. So the
         // error page is off — a failed load leaves the surface as it was — and
         // the view retries until the server answers.

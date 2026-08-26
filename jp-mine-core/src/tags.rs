@@ -1,6 +1,6 @@
 //! The canonical two-axis tag rubric (FAMILIARITY + FLAVOR) shared by every LLM
 //! call that emits it: the CompactDef gloss ([`crate::compactdef`]) and
-//! read-stats' explain button. Both used to carry their own paraphrase of these
+//! kotodex-server's explain button. Both used to carry their own paraphrase of these
 //! definitions and had already drifted apart; this is the single source of truth
 //! so a wording change lands everywhere at once.
 //!

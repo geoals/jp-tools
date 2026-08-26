@@ -913,7 +913,7 @@ pub async fn master(pool: &SqlitePool) -> Result<Option<Dictionary>, sqlx::Error
 }
 
 /// The frequency list every *reader-facing* rank comes from — the underline in
-/// read-stats' feed, both halves of its frequency triage, the popup, and the
+/// kotodex-server's feed, both halves of its frequency triage, the popup, and the
 /// rank on a mined card. Whichever dictionary holds [`Role::Frequency`], lowest
 /// id first where several do.
 ///

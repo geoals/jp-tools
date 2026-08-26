@@ -9,12 +9,12 @@
 # Env: VN_DRY=1        build the clip + screenshot but skip Anki, keep files
 #                      (also skips the sentence trim — it needs the note)
 #      VN_JSON=1       print a JSON result object instead of notifying the
-#                      desktop — for read-stats' reader view, which shows the
+#                      desktop — for kotodex-server's reader view, which shows the
 #                      result in the browser that mined
 #      VN_MAX_LEN=10   max seconds of audio considered after the line appears
 #      VN_ANCHOR_TS    epoch seconds; anchor on the newest hooked line at *that*
 #                      instant rather than at the moment this script runs. What
-#                      read-stats passes when a card add triggers the capture,
+#                      kotodex-server passes when a card add triggers the capture,
 #                      so reading on while the capture works can't move the
 #                      anchor onto the next line.
 #      VN_NOTE_ID      attach to this note instead of the most recently added
@@ -25,9 +25,9 @@
 #      VN_WHISPER_URL  whisper-service for sentence trim (default :8100)
 #      VN_WINDOW       name (substring) of the VN's window — capture it by id
 #                      instead of whatever has focus. Needed when mining from
-#                      read-stats' #read page, where the browser is focused.
-#                      Unset, it is asked for: read-stats holds it per work.
-#      KOTODEX_READ_STATS_URL  where to ask (default http://localhost:3200)
+#                      kotodex-server's #read page, where the browser is focused.
+#                      Unset, it is asked for: kotodex-server holds it per work.
+#      KOTODEX_SERVER_URL  where to ask (default http://localhost:3200)
 
 RUNDIR="${VN_RUNDIR:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/vn-mine}"
 SEGDIR="$RUNDIR/seg"
@@ -76,7 +76,7 @@ VN_ANCHOR_TS="${VN_ANCHOR_TS:-}"
 VN_NOTE_ID="${VN_NOTE_ID:-}"
 SHOT_NOTE=""
 
-READ_STATS_URL="${KOTODEX_READ_STATS_URL:-http://localhost:3200}"
+SERVER_URL="${KOTODEX_SERVER_URL:-http://localhost:3200}"
 
 TMP=$(mktemp -d "$RUNDIR/cap.XXXXXX" 2>/dev/null) || TMP=$(mktemp -d)
 
@@ -106,17 +106,17 @@ command -v import &>/dev/null || command -v grim &>/dev/null ||
   command -v gnome-screenshot &>/dev/null || command -v spectacle &>/dev/null ||
   die "no screenshot tool — install grim (wlroots), spectacle (KDE), gnome-screenshot or imagemagick"
 
-# Unset — fired by hotkey rather than by read-stats — so ask read-stats which
+# Unset — fired by hotkey rather than by kotodex-server — so ask kotodex-server which
 # window is the VN, and aim at the same one the mine button does. Resolving it
 # here in SQL instead made this a second implementation of a rule that must have
 # exactly one: switching VNs would mean updating two places, and the one you
 # forget silently captures the last game.
 #
 # No answer means no window, and the screenshot falls back to whatever has
-# focus. That is what read-stats being down looks like, and it beats failing a
+# focus. That is what kotodex-server being down looks like, and it beats failing a
 # capture over it.
 if [ -z "$VN_WINDOW" ]; then
-  VN_WINDOW=$(curl -s --max-time 2 "$READ_STATS_URL/api/vn/window" 2>/dev/null |
+  VN_WINDOW=$(curl -s --max-time 2 "$SERVER_URL/api/vn/window" 2>/dev/null |
     jq -r '.window // empty' 2>/dev/null)
 fi
 
@@ -167,7 +167,7 @@ NEXT_TS=$(LC_ALL=C awk -F'\t' -v t="$LINE_TS" '$1 > t { print $1; exit }' "$LINE
 
 # === SCREENSHOT (capture the window state at the moment of the press) ===
 # `spectacle -a` grabs whatever has focus, which is only the VN when the hotkey
-# was pressed with the VN focused. Mining from read-stats' #read page focuses
+# was pressed with the VN focused. Mining from kotodex-server's #read page focuses
 # the browser instead, so the default would capture the browser.
 #
 # VN_WINDOW sidesteps focus entirely: find the VN's window by name and grab it

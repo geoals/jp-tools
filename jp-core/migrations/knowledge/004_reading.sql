@@ -1,11 +1,11 @@
 -- The reading side of knowledge.db: what has been read, and what was looked up
 -- while reading it.
 --
--- These tables were read-stats' until spec/knowledge-db.md placed them here.
--- The reason is not that read-stats stopped needing them but that they are the
+-- These tables were kotodex-server's until spec/knowledge-db.md placed them here.
+-- The reason is not that kotodex-server stopped needing them but that they are the
 -- raw material every other tool's questions are asked against: a word's
 -- encounter count is derived from `lines`, a kotodex encounter map aggregates by
--- `works`, and "have I mined this" is `anki_notes`. read-stats writes into this
+-- `works`, and "have I mined this" is `anki_notes`. kotodex-server writes into this
 -- database; it is not a pure reader, and that is by design.
 
 -- The source dimension: one row per VN, book or article. Joined to

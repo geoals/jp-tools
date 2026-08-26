@@ -6,7 +6,7 @@
 //!
 //! | fact | writer | shape |
 //! |---|---|---|
-//! | encounters | [`record_encounters`], from read-stats' watermarked ingest | incremental |
+//! | encounters | [`record_encounters`], from kotodex-server's watermarked ingest | incremental |
 //! | mined | [`sync_mined`], from the `anki_notes` snapshot | wholesale |
 //! | lookups | [`sync_lookup_counts`], from `lookups` | wholesale |
 //! | dictionary flags | [`refresh_dictionary_flags`] | wholesale |

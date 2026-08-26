@@ -114,7 +114,7 @@ pub enum BuildError {
 /// while ingest files the same token under 窺う and counts it.
 ///
 /// This existed three times over before it lived here: once for the reader's
-/// [`Highlighter`] and twice inside read-stats' ingest.
+/// [`Highlighter`] and twice inside kotodex-server's ingest.
 pub struct Pipeline {
     pub tokenizer: SudachiTokenizer,
     pub lexicon: HashSet<String>,

@@ -544,12 +544,12 @@ pub async fn export_sentences(
             .and_then(|_| state.tokenizer.tokenize(&sentence.text).ok());
 
         // The card's fields, built by `jp_mine_core::card` — the same builders
-        // read-stats mines with, so a transcript card and a VN card are one
+        // kotodex-server mines with, so a transcript card and a VN card are one
         // note type rather than two shapes of it.
         //
         // The ledger's own reading for the pair, not the raw one Sudachi gave:
         // `Term::new` lowers it to hiragana and blanks it for a kana headword,
-        // and read-stats mines with exactly that. Asking the dictionary a
+        // and kotodex-server mines with exactly that. Asking the dictionary a
         // differently-shaped question is how a card silently loses its pitch.
         let reading = sent_reading.unwrap_or_else(|| {
             target_word

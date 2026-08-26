@@ -277,13 +277,13 @@ def fake_ledger(case, **kwargs):
     wl.get_json, wl.post_json = ledger.get, ledger.post
     case.addCleanup(lambda: setattr(wl, "get_json", old[0]))
     case.addCleanup(lambda: setattr(wl, "post_json", old[1]))
-    case.addCleanup(os.environ.pop, "KOTODEX_STATS_DISABLE", None)
-    os.environ.pop("KOTODEX_STATS_DISABLE", None)
+    case.addCleanup(os.environ.pop, "KOTODEX_INGEST_DISABLE", None)
+    os.environ.pop("KOTODEX_INGEST_DISABLE", None)
     return ledger
 
 
 class CapturePausedFlag(unittest.TestCase):
-    """The one contract shared with read-stats: it owns the flag, this reads it.
+    """The one contract shared with kotodex-server: it owns the flag, this reads it.
     A regression here doesn't fail loudly — it silently keeps capturing."""
 
     def sink(self, **kwargs):

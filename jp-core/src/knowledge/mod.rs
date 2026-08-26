@@ -8,7 +8,7 @@
 //! that answer. Split in two, the ledger could not join what it is keyed on.
 //!
 //! [`dictionaries`] lives here because three tools call it. The reading tables
-//! are defined here (shared schema needs one owner) but queried from read-stats,
+//! are defined here (shared schema needs one owner) but queried from kotodex-server,
 //! their only consumer so far.
 
 pub mod dictionaries;
@@ -64,7 +64,7 @@ pub fn ensure_parent_dir(db_path: &str) -> Result<(), sqlx::Error> {
 /// A connection pool for `knowledge.db`.
 ///
 /// A newtype rather than a bare `SqlitePool` so that a program holding more
-/// than one database — read-stats holds this and its own — cannot pass the
+/// than one database — kotodex-server holds this and its own — cannot pass the
 /// wrong one by accident. Both are `SqlitePool`, both are `create_if_missing`,
 /// and the failure mode is silent: the query succeeds against a freshly created
 /// empty table and the data appears to have vanished. The compiler can rule
@@ -75,7 +75,7 @@ pub struct Knowledge(SqlitePool);
 impl Knowledge {
     /// Open (creating if absent) and migrate.
     pub async fn open(db_path: &str) -> Result<Self, sqlx::Error> {
-        // WAL + busy_timeout: read-stats appends to `lines` as sources post
+        // WAL + busy_timeout: kotodex-server appends to `lines` as sources post
         // them, and yt-mine/manga-mine read the dictionaries from their own
         // processes.
         //

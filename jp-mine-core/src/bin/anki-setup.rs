@@ -243,7 +243,7 @@ async fn import_dir(client: &reqwest::Client) -> std::path::PathBuf {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
-    // The same file read-stats loads, so the check is against the field map the
+    // The same file kotodex-server loads, so the check is against the field map the
     // exporter will actually use rather than the Lapis defaults.
     dotenvy::dotenv().ok();
     let client = reqwest::Client::new();
