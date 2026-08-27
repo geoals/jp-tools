@@ -1,7 +1,12 @@
 #!/usr/bin/env pwsh
 # Set Kotodex up on Windows, and say what is still missing when it ends.
 #
-#   .\setup.ps1
+#   powershell -ExecutionPolicy Bypass -File .\setup.ps1
+#
+# Through -ExecutionPolicy because Windows refuses to run an unsigned script by
+# default. `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` allows it once
+# and for good; a cloned file is not marked as downloaded, so it needs no
+# Unblock-File.
 #
 # This is `setup.sh --core` for Windows: the ledger and the reader alone — the
 # server, the dashboard, the dictionaries, and the reader in a browser. There is
