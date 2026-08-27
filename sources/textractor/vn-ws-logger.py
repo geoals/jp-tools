@@ -35,7 +35,8 @@ path SIGTERM takes — because an abortive disconnect crashes Textractor's WS
 plugin and takes Textractor with it.
 
 Env:
-  VN_RUNDIR                   run dir (default: $XDG_RUNTIME_DIR/kotodex or /run/user/$UID/...)
+  VN_RUNDIR                   run dir (default: $XDG_RUNTIME_DIR/kotodex, or the
+                              temporary directory on Windows)
   VN_WS_URL                   WebSocket URL, overriding settings.line_source_ws_url
   KOTODEX_SERVER_URL          kotodex-server (default: http://127.0.0.1:3200)
   KOTODEX_INGEST_DISABLE       set to 1 to skip the ledger entirely
@@ -48,15 +49,38 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
 
 import websockets
 
-RUNDIR = os.environ.get("VN_RUNDIR") or os.path.join(
-    os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}", "kotodex"
-)
+def _rundir():
+    """Where lines.log and raw.log go: volatile, per boot, not backed up.
+
+    `os.getuid` does not exist on Windows, so this was an import-time crash there
+    rather than a wrong path. The temporary directory is that platform's answer to
+    XDG_RUNTIME_DIR — and `vn-capture.sh`, the one thing that reads lines.log, is
+    Linux-only anyway, so on Windows these two files are only ever a record to
+    read afterwards.
+    """
+    if override := os.environ.get("VN_RUNDIR"):
+        return override
+    if sys.platform == "win32":
+        return os.path.join(tempfile.gettempdir(), "kotodex")
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    return os.path.join(runtime, "kotodex")
+
+
+RUNDIR = _rundir()
+
+if sys.platform == "win32":
+    # A redirected stderr encodes as the machine's ANSI codepage, which has no
+    # Japanese in it - so a log line quoting a capture would end the session with
+    # a UnicodeEncodeError. backslashreplace because a log line is never worth
+    # losing a sitting's lines over.
+    sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
 LINES_LOG = os.path.join(RUNDIR, "lines.log")
 # What Textractor actually sent, before any cleaning. The only place a defect in
 # Textractor's own filters (repeat removal against a ruby tag) is visible at all.
@@ -487,9 +511,16 @@ RETRY_MAX_SECS = 30.0
 SETTINGS_TTL = 2.0
 
 
+# No proxy, ever. The ledger is on this machine or on the reader's own network,
+# so nothing in between has any business carrying the request - and Windows takes
+# its proxy from the system settings, where one configured for the internet
+# swallowed the request to localhost and reported the server as down.
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
 def get_json(path):
     """GET and decode. Raises OSError or ValueError if the server did not answer."""
-    with urllib.request.urlopen(f"{SERVER_URL}{path}", timeout=HTTP_TIMEOUT) as resp:
+    with _OPENER.open(f"{SERVER_URL}{path}", timeout=HTTP_TIMEOUT) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -501,7 +532,7 @@ def post_json(path, payload):
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+    with _OPENER.open(req, timeout=HTTP_TIMEOUT) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -872,14 +903,31 @@ async def beat(stats, state):
         await asyncio.sleep(HEARTBEAT_SECS)
 
 
-async def run(out, stats):
-    # On SIGTERM/SIGINT, send the server a proper close frame before exiting:
-    # an abortive disconnect (plain process kill) can crash Textractor's
-    # WebSocket plugin, taking Textractor down with it.
-    stop = asyncio.Event()
-    loop = asyncio.get_running_loop()
+def arm_stop(loop, stop):
+    """Ask to be told when this is being shut down.
+
+    Whatever the platform, the point is to reach `ws.close()` and send a proper
+    close frame: an abortive disconnect can crash Textractor's WebSocket plugin
+    and take Textractor with it. That matters most on Windows, which is where
+    Textractor runs.
+
+    `loop.add_signal_handler` raises NotImplementedError on the Windows event
+    loop, and Windows delivers no SIGTERM at all, so there the two console
+    signals are taken the plain way and handed across with
+    `call_soon_threadsafe`. Neither is delivered by `taskkill /F`, which no
+    handler can answer.
+    """
+    if sys.platform == "win32":
+        for sig in (signal.SIGINT, signal.SIGBREAK):
+            signal.signal(sig, lambda *_: loop.call_soon_threadsafe(stop.set))
+        return
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, stop.set)
+
+
+async def run(out, stats):
+    stop = asyncio.Event()
+    arm_stop(asyncio.get_running_loop(), stop)
 
     state = {"ws": None}
     pump_task = asyncio.create_task(pump(out, stats, state))

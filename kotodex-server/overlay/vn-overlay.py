@@ -63,6 +63,11 @@ _DATA_ROOT = (
 )
 STORAGE = _DATA_ROOT / "kotodex/overlay"
 
+# No proxy for either check below: both addresses are on this machine. Windows
+# takes its proxy from the system settings, and one configured for the internet
+# swallowed the localhost request and reported kotodex-server as down.
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
 
 def check_dependencies(page_url: str) -> None:
     """Say which of the overlay's dependencies are down, and keep going.
@@ -80,7 +85,7 @@ def check_dependencies(page_url: str) -> None:
     api = f"{origin.scheme}://{origin.netloc}"
 
     try:
-        with urllib.request.urlopen(f"{api}/api/settings", timeout=2) as r:
+        with _OPENER.open(f"{api}/api/settings", timeout=2) as r:
             json.load(r)
     except (urllib.error.URLError, OSError, ValueError) as e:
         print(
@@ -95,7 +100,7 @@ def check_dependencies(page_url: str) -> None:
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(request, timeout=2) as r:
+        with _OPENER.open(request, timeout=2) as r:
             json.load(r)
     except (urllib.error.URLError, OSError, ValueError) as e:
         print(
