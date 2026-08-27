@@ -11,7 +11,7 @@
 # the dictionaries and the reader in a browser. No Qt, no audio, no window
 # tools. That is the tier for a machine that is only keeping the log — text
 # arrives from a source elsewhere (see sources/README.md), which is also the
-# only tier that makes sense off Linux.
+# only tier that makes sense off Linux. setup.ps1 is that tier for Windows.
 #
 # Re-runnable: every step checks before it acts, so a second run is a no-op and
 # a run after installing something picks that up. Nothing needs root — the

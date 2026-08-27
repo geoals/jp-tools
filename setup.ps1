@@ -1,0 +1,175 @@
+#!/usr/bin/env pwsh
+# Set Kotodex up on Windows, and say what is still missing when it ends.
+#
+#   .\setup.ps1
+#
+# This is `setup.sh --core` for Windows: the ledger and the reader alone — the
+# server, the dashboard, the dictionaries, and the reader in a browser. There is
+# no overlay, no audio ring buffer and no Textractor source here, because all
+# three are Linux-only today; text arrives from a source elsewhere, which is
+# what the core tier is for (see sources/README.md).
+#
+# Re-runnable: every step checks before it acts, so a second run is a no-op and
+# a run after installing something picks that up.
+#
+# Needs Rust (https://rustup.rs) with the MSVC toolchain. A VM behind a proxy
+# that cannot reach a CRL endpoint fails the build with CRYPT_E_NO_REVOCATION_CHECK
+# — `git config --global http.schannelCheckRevoke false` and `check-revoke = false`
+# under `[http]` in %USERPROFILE%\.cargo\config.toml are the way out of that.
+
+$ErrorActionPreference = 'Stop'
+# Invoke-RestMethod draws a progress bar per chunk, which costs more than the
+# download on a slow link.
+$ProgressPreference = 'SilentlyContinue'
+
+$Here = $PSScriptRoot
+$SudachiUrl = 'http://sudachi.s3-website-ap-northeast-1.amazonaws.com/sudachidict/sudachi-dictionary-latest-full.zip'
+
+function Step($m) { Write-Host "`n==> $m" -ForegroundColor White }
+function Say($m)  { Write-Host "    $m" }
+function Good($m) { Write-Host "    " -NoNewline; Write-Host "OK " -ForegroundColor Green -NoNewline; Write-Host $m }
+function Skip($m) { Write-Host "    " -NoNewline; Write-Host "-- " -ForegroundColor Yellow -NoNewline; Write-Host $m }
+function Fail($m) { Write-Host "    " -NoNewline; Write-Host "XX " -ForegroundColor Red -NoNewline; Write-Host $m }
+
+# A truncated download is worse than none: it looks installed and fails later.
+function Fetch($url, $dest, $minBytes, $label) {
+    Say "downloading $label"
+    $tmp = "$dest.part"
+    curl.exe -sSL --max-time 900 -o $tmp $url
+    if (-not (Test-Path $tmp) -or (Get-Item $tmp).Length -lt $minBytes) {
+        Remove-Item -Force $tmp -ErrorAction SilentlyContinue
+        Fail "$label came back too small to be the real file"
+        return $false
+    }
+    Move-Item -Force $tmp $dest
+    Good $label
+    return $true
+}
+
+# ------------------------------------------------------------------ build --
+
+Step 'Binaries'
+if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+    Fail 'no cargo — install Rust from https://rustup.rs and run this again'
+    exit 1
+}
+Say 'building — the first time takes several minutes'
+# The same three the Linux tarball ships. Not the whole workspace: yt-mine and
+# manga-mine have no part in keeping the ledger, and they carry the expensive
+# image codecs. Every one named with its own --bin, since the flag filters
+# across the whole selection rather than per package.
+& cargo build --release --manifest-path (Join-Path $Here 'Cargo.toml') `
+    -p kotodex-server --bin kotodex-server `
+    -p jp-core --bin jp-dict `
+    -p jp-mine-core --bin anki-setup
+if ($LASTEXITCODE -ne 0) { Fail 'build failed'; exit 1 }
+Good 'built'
+
+$JpDict = Join-Path $Here 'target\release\jp-dict.exe'
+$Server = Join-Path $Here 'target\release\kotodex-server.exe'
+
+# ----------------------------------------------------------- the tokenizer --
+
+Step 'SudachiDict'
+$Dic = Join-Path $Here 'system_full.dic'
+if (Test-Path $Dic) {
+    Good 'SudachiDict (system_full.dic)'
+} else {
+    $zip = Join-Path $Here 'sudachi-dict.zip'
+    if (Fetch $SudachiUrl $zip 100000000 'SudachiDict full (~127 MB, Apache-2.0)') {
+        $tmp = Join-Path $Here 'sudachi-tmp'
+        Expand-Archive -Force -Path $zip -DestinationPath $tmp
+        # The zip nests the dictionary under a dated directory, so it is found
+        # rather than the path being guessed at.
+        $found = Get-ChildItem -Recurse -Path $tmp -Filter 'system_full.dic' | Select-Object -First 1
+        if ($found) { Move-Item -Force $found.FullName $Dic; Good 'SudachiDict unpacked' }
+        else { Fail 'no system_full.dic in the zip' }
+        Remove-Item -Recurse -Force $tmp, $zip
+    }
+}
+
+# ------------------------------------------------------------ dictionaries --
+
+Step 'Dictionaries'
+$DictDir = Join-Path $Here 'dictionaries'
+New-Item -ItemType Directory -Force -Path $DictDir | Out-Null
+
+# Nothing here is redistributed: each is fetched from whoever publishes it, at
+# the version they publish today. `source_path` is the cache key, so a second
+# copy under a second name is a duplicate row rather than a no-op — which is why
+# what is already imported counts as present.
+$imported = if (Test-Path $JpDict) { (& $JpDict list 2>$null) -join "`n" } else { '' }
+
+function Want($zipName, $match, $label) {
+    $zip = Join-Path $script:DictDir $zipName
+    if (Test-Path $zip) { Good "$label - already in dictionaries\"; return $false }
+    if ($script:imported -imatch $match) { Good "$label - already imported"; return $false }
+    return $true
+}
+
+# Both are free and neither is optional in practice: with no definitions the
+# popup is empty, and with no ranks nothing is underlined or ordered.
+if (Want 'jitendex-yomitan.zip' 'jitendex' 'Jitendex') {
+    $rel = Invoke-RestMethod 'https://api.github.com/repos/stephenmk/stephenmk.github.io/releases/latest'
+    $url = ($rel.assets | Where-Object { $_.name -eq 'jitendex-yomitan.zip' }).browser_download_url
+    if ($url) {
+        Fetch $url (Join-Path $DictDir 'jitendex-yomitan.zip') 10000000 `
+            'Jitendex - Japanese-English (~39 MB, CC BY-SA 4.0)' | Out-Null
+    } else {
+        Fail 'could not resolve the Jitendex release - get it from https://jitendex.org'
+    }
+}
+
+# jiten.moe ranks the media people actually read.
+if (Want 'jiten-frequency.zip' 'frequency' 'A frequency list') {
+    Fetch 'https://api.jiten.moe/api/frequency-list/download' `
+        (Join-Path $DictDir 'jiten-frequency.zip') 3000000 `
+        'Jiten frequency list - ranks fiction (~8 MB)' | Out-Null
+}
+
+Say 'importing what is in dictionaries\ - the first import takes a few minutes'
+& $JpDict sync
+if ($LASTEXITCODE -ne 0) { Fail 'jp-dict sync failed' } else { Good 'dictionaries imported' }
+
+# ------------------------------------------------------------------ doctor --
+
+Step 'Checking with the server'
+# The probes are answered by the server, so they are unanswerable while it is
+# down — and a fresh install has never started it. Started only for this check
+# and stopped again, leaving the machine as this run found it.
+$state = $null
+$startedHere = $null
+try { $state = Invoke-RestMethod -TimeoutSec 2 'http://localhost:3200/api/reader/state' } catch {}
+if ($state) {
+    Good 'already running'
+} else {
+    $startedHere = Start-Process -PassThru -WindowStyle Hidden -FilePath $Server
+    foreach ($i in 1..40) {
+        Start-Sleep -Milliseconds 500
+        try { $state = Invoke-RestMethod -TimeoutSec 2 'http://localhost:3200/api/reader/state'; break } catch {}
+    }
+    if ($state) { Good 'started for the check' } else { Fail 'the server did not answer' }
+}
+
+if ($state -and $state.capabilities) {
+    foreach ($name in ($state.capabilities.PSObject.Properties.Name | Sort-Object)) {
+        $c = $state.capabilities.$name
+        if ($c.ok) { Good "$name - $($c.detail)" }
+        else {
+            Skip "$name - $($c.detail)"
+            if ($c.fix) { Say "  $($c.fix)" }
+        }
+    }
+}
+
+# Stopped by the handle this script owns, never by matching a process name: the
+# name is shared with any other instance on this machine.
+if ($startedHere) { Stop-Process -Id $startedHere.Id -Force; Say 'stopped the server again' }
+
+Step 'Done'
+Say 'start it with:'
+Say "  $Server"
+Say 'then open http://localhost:3200'
+Say ''
+Say 'no text arrives on its own here - a source has to post to POST /api/lines.'
+Say 'see sources\README.md.'
