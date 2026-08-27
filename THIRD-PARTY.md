@@ -28,10 +28,12 @@ pinned.
 | silero-vad ONNX model, snakers4/silero-vad | trimming a card's clip to the spoken line | 2.2 MB | MIT |
 | Jitendex (`jitendex-yomitan.zip`), stephenmk | the popup's Japanese–English definitions | ~39 MB | CC BY-SA 4.0 |
 | the Jiten frequency list, jiten.moe | which words are common in fiction — the underline, the rank pill, the sweep's order | ~8 MB | see <https://jiten.moe> |
+| Kanjium pitch accents (`kanjium_pitch_accents.zip`), toasted-nutbread from mifunetoshiro/kanjium | the pitch notation in the popup | ~1 MB | CC BY-SA 4.0 |
 
-Both dictionaries are offered because without them the product is broken rather
-than smaller: no definitions means an empty popup, and no ranks means nothing is
-underlined or ordered.
+Definitions and ranks are offered because without them the product is broken
+rather than smaller: no definitions means an empty popup, and no ranks means
+nothing is underlined or ordered. Pitch is a megabyte and no monolingual gloss
+carries it.
 
 ## Loaded at run time, not distributed
 

@@ -51,16 +51,19 @@ fn off(detail: impl Into<String>, fix: impl Into<String>) -> Capability {
 
 /// Whether a command is on `PATH`. Cheaper than spawning `which`, and this runs
 /// on a request path.
+#[cfg(unix)]
 fn on_path(bin: &str) -> bool {
     std::env::var_os("PATH")
         .map(|paths| std::env::split_paths(&paths).any(|dir| dir.join(bin).is_file()))
         .unwrap_or(false)
 }
 
+#[cfg(unix)]
 fn first_on_path<'a>(bins: &[&'a str]) -> Option<&'a str> {
     bins.iter().copied().find(|b| on_path(b))
 }
 
+#[cfg(unix)]
 fn run_dir() -> PathBuf {
     std::env::var_os("VN_RUNDIR").map(PathBuf::from).unwrap_or_else(|| {
         let base = std::env::var_os("XDG_RUNTIME_DIR")
@@ -76,6 +79,7 @@ fn run_dir() -> PathBuf {
 /// `/proc/self/status`, not `/proc/self/loginuid` — that one is the audit login
 /// id and reads `4294967295` wherever auditing is off, which is a directory
 /// nobody has.
+#[cfg(unix)]
 fn real_uid() -> u32 {
     std::fs::read_to_string("/proc/self/status")
         .ok()
@@ -94,6 +98,7 @@ fn real_uid() -> u32 {
 /// The ring buffer is live if a segment was written in the last few seconds —
 /// ffmpeg rewrites one every 5s, so a stale directory means the daemon is gone
 /// even though its files are still there.
+#[cfg(unix)]
 fn capture_running() -> Capability {
     let seg = run_dir().join("seg");
     let fresh = std::fs::read_dir(&seg)
@@ -146,6 +151,7 @@ async fn lines_source(state: &AppState) -> Capability {
     }
 }
 
+#[cfg(unix)]
 fn vad_model() -> Capability {
     let path = std::env::var("VN_VAD_MODEL")
         .map(PathBuf::from)
@@ -160,6 +166,7 @@ fn vad_model() -> Capability {
     }
 }
 
+#[cfg(unix)]
 fn screenshot_tool() -> Capability {
     match first_on_path(&["spectacle", "grim", "gnome-screenshot", "import"]) {
         Some(bin) => on(bin),
@@ -170,6 +177,7 @@ fn screenshot_tool() -> Capability {
     }
 }
 
+#[cfg(unix)]
 fn xdotool() -> Capability {
     if on_path("xdotool") {
         on("installed")
@@ -193,6 +201,7 @@ fn xdotool() -> Capability {
 /// its own answer would report on a machine nobody is running. That is not a
 /// hypothetical — this was a second copy of the rule, and it was the one without
 /// the venv check.
+#[cfg(unix)]
 fn overlay_python() -> std::path::PathBuf {
     let platform = jp_core::install::install_root().join("scripts/lib/platform.sh");
     let asked = std::process::Command::new("sh")
@@ -221,6 +230,7 @@ fn overlay_python() -> std::path::PathBuf {
 ///
 /// Both backends work, so neither answer is a fault — layer-shell is above a
 /// fullscreen window by protocol, X11 by `_NET_WM_STATE_ABOVE`.
+#[cfg(unix)]
 fn overlay_backend() -> Capability {
     let backend_py = jp_core::install::install_root().join("layer-overlay/backend.py");
     let out = std::process::Command::new(overlay_python())
@@ -383,18 +393,26 @@ pub async fn probe(state: &AppState) -> Value {
 
     let (anki_up, note_type) = anki(state).await;
     let mut out = json!({
-        "capture_running": capture_running(),
         "lines_source": lines_source(state).await,
-        "vad_model": vad_model(),
-        "screenshot_tool": screenshot_tool(),
-        "xdotool": xdotool(),
-        "overlay_backend": overlay_backend(),
         "whisper": whisper(state).await,
         "anki": anki_up,
         "anki_note_type": note_type,
         "explain": explain(state),
         "vocabulary_ledger": vocabulary_ledger(state).await,
     });
+    // Capture and the overlay are Linux-only, and a row is a claim that the part
+    // could be here. Off with a `fix` naming a package that does not exist for
+    // this machine reads as a broken install rather than a smaller one, so the
+    // row is absent instead: `kotodex-doctor.sh`'s `cap` skips a key the server
+    // did not send, and a surface reading one gets nothing and draws nothing.
+    #[cfg(unix)]
+    if let Some(out) = out.as_object_mut() {
+        out.insert("capture_running".into(), json!(capture_running()));
+        out.insert("vad_model".into(), json!(vad_model()));
+        out.insert("screenshot_tool".into(), json!(screenshot_tool()));
+        out.insert("xdotool".into(), json!(xdotool()));
+        out.insert("overlay_backend".into(), json!(overlay_backend()));
+    }
     if let (Some(out), Some(dicts)) = (out.as_object_mut(), dictionaries(state).await.as_object()) {
         out.extend(dicts.clone());
     }

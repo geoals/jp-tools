@@ -465,6 +465,15 @@ if want_dictionary jiten-frequency.zip "frequency" "A frequency list"; then
     "Jiten frequency list — ranks fiction (~8 MB)"
 fi
 
+# Pitch is the one thing a monolingual gloss does not carry, and the zip is a
+# megabyte. Pinned to no version because the repo is archived — its one release
+# is what latest/download resolves to.
+if want_dictionary kanjium_pitch_accents.zip "pitch" "A pitch dictionary"; then
+  fetch "https://github.com/toasted-nutbread/yomichan-pitch-accent-dictionary/releases/latest/download/kanjium_pitch_accents.zip" \
+    "$HERE/dictionaries/kanjium_pitch_accents.zip" 500000 \
+    "Kanjium pitch accents (~1 MB, CC BY-SA 4.0)"
+fi
+
 zips=("$HERE"/dictionaries/*.zip)
 if [ -e "${zips[0]}" ]; then
   run "$JP_DICT" sync

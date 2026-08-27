@@ -8,7 +8,7 @@
 # and for good; a cloned file is not marked as downloaded, so it needs no
 # Unblock-File.
 #
-# This is `setup.sh --core` for Windows: the ledger and the reader alone — the
+# This is `setup.sh --core` for Windows: the ledger and the reader alone - the
 # server, the dashboard, the dictionaries, and the reader in a browser. There is
 # no overlay, no audio ring buffer and no Textractor source here, because all
 # three are Linux-only today; text arrives from a source elsewhere, which is
@@ -19,8 +19,8 @@
 #
 # Needs Rust (https://rustup.rs) with the MSVC toolchain.
 #
-# A machine that cannot reach a certificate revocation list — a proxy, or a
-# firewall allowing only 443, since a CRL is served over plain HTTP — fails the
+# A machine that cannot reach a certificate revocation list - a proxy, or a
+# firewall allowing only 443, since a CRL is served over plain HTTP - fails the
 # cargo build with CRYPT_E_NO_REVOCATION_CHECK. Cargo and git each need telling
 # once:
 #
@@ -33,6 +33,12 @@ $ErrorActionPreference = 'Stop'
 # Invoke-RestMethod draws a progress bar per chunk, which costs more than the
 # download on a slow link.
 $ProgressPreference = 'SilentlyContinue'
+# The server writes its own prose, and every fix line in it holds an em dash. A
+# legacy console renders those as mojibake, which is how a sentence about a pitch
+# dictionary came out with a stray a-circumflex in it. This file itself stays
+# ASCII: Windows PowerShell reads an unsigned script with no byte-order mark as
+# the machine's ANSI codepage, so a dash in a string here would mangle too.
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $Here = $PSScriptRoot
 $SudachiUrl = 'http://sudachi.s3-website-ap-northeast-1.amazonaws.com/sudachidict/sudachi-dictionary-latest-full.zip'
@@ -49,7 +55,7 @@ function Fetch($url, $dest, $minBytes, $label) {
     $tmp = "$dest.part"
     curl.exe -fsSL --max-time 900 -o $tmp $url
     # 35 is curl's TLS handshake failure, which on Windows is usually schannel
-    # refusing a certificate whose revocation list it could not reach — a CRL is
+    # refusing a certificate whose revocation list it could not reach - a CRL is
     # served over plain HTTP, and a firewall allowing only 443 breaks the lookup
     # for everything. Retried without that one question rather than passing
     # --ssl-no-revoke from the start: the signature, the chain, the hostname and
@@ -79,10 +85,10 @@ function Fetch($url, $dest, $minBytes, $label) {
 
 Step 'Binaries'
 if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
-    Fail 'no cargo — install Rust from https://rustup.rs and run this again'
+    Fail 'no cargo - install Rust from https://rustup.rs and run this again'
     exit 1
 }
-Say 'building — the first time takes several minutes'
+Say 'building - the first time takes several minutes'
 # The same three the Linux tarball ships. Not the whole workspace: yt-mine and
 # manga-mine have no part in keeping the ledger, and they carry the expensive
 # image codecs. Every one named with its own --bin, since the flag filters
@@ -125,7 +131,7 @@ New-Item -ItemType Directory -Force -Path $DictDir | Out-Null
 
 # Nothing here is redistributed: each is fetched from whoever publishes it, at
 # the version they publish today. `source_path` is the cache key, so a second
-# copy under a second name is a duplicate row rather than a no-op — which is why
+# copy under a second name is a duplicate row rather than a no-op - which is why
 # what is already imported counts as present.
 $imported = if (Test-Path $JpDict) { (& $JpDict list 2>$null) -join "`n" } else { '' }
 
@@ -155,6 +161,15 @@ if (Want 'jiten-frequency.zip' 'frequency' 'A frequency list') {
         'Jiten frequency list - ranks fiction (~8 MB)' | Out-Null
 }
 
+# Pitch is the one thing a monolingual gloss does not carry, and the zip is a
+# megabyte. Pinned to no version because the repo is archived - its one release
+# is what latest/download resolves to.
+if (Want 'kanjium_pitch_accents.zip' 'pitch' 'A pitch dictionary') {
+    Fetch 'https://github.com/toasted-nutbread/yomichan-pitch-accent-dictionary/releases/latest/download/kanjium_pitch_accents.zip' `
+        (Join-Path $DictDir 'kanjium_pitch_accents.zip') 500000 `
+        'Kanjium pitch accents (~1 MB, CC BY-SA 4.0)' | Out-Null
+}
+
 # Asked of the directory rather than of sync's exit code: sync succeeds with
 # nothing to do, so reporting off the exit code called a failed download an
 # import.
@@ -174,7 +189,7 @@ if ($zips.Count -eq 0 -and -not $imported) {
 
 Step 'Checking with the server'
 # The probes are answered by the server, so they are unanswerable while it is
-# down — and a fresh install has never started it. Started only for this check
+# down - and a fresh install has never started it. Started only for this check
 # and stopped again, leaving the machine as this run found it.
 $state = $null
 $startedHere = $null

@@ -9,6 +9,13 @@ doctor`) — so a change belongs in this table first.
 Install commands are written generically; `scripts/lib/platform.sh` maps the
 package names per distro.
 
+**A part that cannot exist on this machine has no row at all.** Audio capture and
+the overlay are Linux-only, so on Windows the probe sends nothing for them rather
+than sending them off with a `fix` line naming a package that will never be
+installable — that reads as a broken install instead of a smaller one. The doctor
+skips a key the server did not send, and a surface asking for one draws nothing.
+`setup.ps1` installs the tier that has none of them.
+
 ## Required — nothing works without these
 
 | part | gives | without it | turn it on |

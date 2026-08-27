@@ -14,7 +14,7 @@ cd kotodex-<version>
 
 The binaries are prebuilt; no Rust toolchain is needed. `setup.sh` checks the
 dependencies and prints the install line for your distro, downloads SudachiDict
-and the silero VAD model, offers Jitendex and the Jiten frequency list, checks
+and the silero VAD model, offers Jitendex, the Jiten frequency list and Kanjium pitch accents, checks
 Anki and can install the Lapis note type, and installs the application entry.
 It is re-runnable, and takes `--dry-run`, `--yes` and `--uninstall`.
 
