@@ -58,12 +58,10 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Self {
         let db_path = std::env::var("KOTODEX_SERVER_DB_PATH").unwrap_or_else(|_| {
-            let home = std::env::var("HOME").expect("HOME not set");
-            format!("{home}/.local/share/kotodex/kotodex.db")
+            jp_core::install::data_dir().join("kotodex.db").display().to_string()
         });
         let knowledge_db_path = std::env::var("KOTODEX_KNOWLEDGE_DB_PATH").unwrap_or_else(|_| {
-            let home = std::env::var("HOME").expect("HOME not set");
-            format!("{home}/.local/share/kotodex/knowledge.db")
+            jp_core::install::data_dir().join("knowledge.db").display().to_string()
         });
         let listen_addr = std::env::var("KOTODEX_SERVER_LISTEN_ADDR")
             .unwrap_or_else(|_| "0.0.0.0:3200".to_string());

@@ -429,8 +429,10 @@ fn resolve_dictionary_dir(flag: Option<String>) -> PathBuf {
 fn resolve_db_path(flag: Option<String>) -> String {
     flag.or_else(|| std::env::var("KOTODEX_KNOWLEDGE_DB_PATH").ok())
         .unwrap_or_else(|| {
-            let home = std::env::var("HOME").expect("HOME not set");
-            format!("{home}/.local/share/kotodex/knowledge.db")
+            jp_core::install::data_dir()
+                .join("knowledge.db")
+                .display()
+                .to_string()
         })
 }
 

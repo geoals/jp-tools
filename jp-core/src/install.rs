@@ -24,6 +24,25 @@ pub fn install_root() -> PathBuf {
     build_workspace()
 }
 
+/// The directory the data lives in: the two databases, the covers, the Sudachi
+/// dictionary and the VAD model that `setup.sh` downloads.
+///
+/// The per-file env vars (`KOTODEX_KNOWLEDGE_DB_PATH` and the rest) still win
+/// over this wherever they are read — this is only the default under them.
+pub fn data_dir() -> PathBuf {
+    user_data_root().join("kotodex")
+}
+
+#[cfg(windows)]
+fn user_data_root() -> PathBuf {
+    PathBuf::from(std::env::var("LOCALAPPDATA").expect("LOCALAPPDATA not set"))
+}
+
+#[cfg(not(windows))]
+fn user_data_root() -> PathBuf {
+    PathBuf::from(std::env::var("HOME").expect("HOME not set")).join(".local/share")
+}
+
 /// `<root>/target/release/jp-dict` → `<root>`, when that directory holds the
 /// assets. The layout check is what keeps a binary copied to `~/.local/bin`
 /// from claiming the home directory as the root.

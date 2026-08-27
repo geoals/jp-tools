@@ -147,10 +147,9 @@ async fn lines_source(state: &AppState) -> Capability {
 }
 
 fn vad_model() -> Capability {
-    let path = std::env::var("VN_VAD_MODEL").map(PathBuf::from).unwrap_or_else(|_| {
-        PathBuf::from(std::env::var("HOME").unwrap_or_default())
-            .join(".local/share/kotodex/silero_vad.onnx")
-    });
+    let path = std::env::var("VN_VAD_MODEL")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| jp_core::install::data_dir().join("silero_vad.onnx"));
     if path.is_file() {
         on(path.display().to_string())
     } else {
