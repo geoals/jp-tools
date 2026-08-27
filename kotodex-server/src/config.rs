@@ -93,8 +93,8 @@ impl Config {
                 .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
                 .unwrap_or(true),
             sudachi_dict_path: std::env::var("KOTODEX_SUDACHI_DICT_PATH")
-                .unwrap_or_else(|_| "system_full.dic".to_string())
-                .into(),
+                .map(Into::into)
+                .unwrap_or_else(|_| jp_core::install::install_root().join("system_full.dic")),
             vn_capture_script: std::env::var("KOTODEX_VN_CAPTURE_SH")
                 .map(Into::into)
                 .unwrap_or_else(|_| {
