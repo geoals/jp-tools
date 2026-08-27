@@ -19,10 +19,10 @@ silero-VAD finds where the speech ends.
                         │  5s WAV × 60 in tmpfs, wrapping ring      │
                         │  ≈ the last 300s always on disk           │
                         └───────────────────────┬───────────────────┘
-                                               │
-  Textractor ──▶ POST /api/lines ──▶ ledger    │  lines.log
-       (hooked line + timestamp)               │  ts ⇥ text
-                                               │       │
+                                                │
+  Textractor ──▶ POST /api/lines ──▶ ledger   │  lines.log
+       (hooked line + timestamp)                │  ts ⇥ text
+                                                │       │
                          ┌──────────────────────▼───────▼──────────┐
   hotkey / card add ───▶│           vn-capture.sh                 │
                          └─────────────────────┬───────────────────┘
