@@ -301,7 +301,7 @@ function PaperCard({ work, book, canTrack, onChanged }) {
         <h2>Bookmark</h2>
         <div class="card-controls">${(pct * 100).toFixed(1)}%</div>
       </div>
-      <${ProgressBar} pct=${pct} label=${`Progress through ${work}`} />
+      <${ProgressBar} pct=${pct * 100} label=${`Progress through ${work}`} />
       <div class="progress-caption"><span>${page}</span></div>
       <${PaperLog} book=${book} onLogged=${onChanged} />
     </div>
