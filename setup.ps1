@@ -37,10 +37,14 @@ function Skip($m) { Write-Host "    " -NoNewline; Write-Host "-- " -ForegroundCo
 function Fail($m) { Write-Host "    " -NoNewline; Write-Host "XX " -ForegroundColor Red -NoNewline; Write-Host $m }
 
 # A truncated download is worse than none: it looks installed and fails later.
+#
+# --ssl-no-revoke for the same reason cargo needs check-revoke = false: schannel
+# treats a CRL endpoint it cannot reach as a certificate it must reject, and a VM
+# behind a proxy frequently cannot reach one. The chain is still verified.
 function Fetch($url, $dest, $minBytes, $label) {
     Say "downloading $label"
     $tmp = "$dest.part"
-    curl.exe -sSL --max-time 900 -o $tmp $url
+    curl.exe -fsSL --ssl-no-revoke --max-time 900 -o $tmp $url
     if (-not (Test-Path $tmp) -or (Get-Item $tmp).Length -lt $minBytes) {
         Remove-Item -Force $tmp -ErrorAction SilentlyContinue
         Fail "$label came back too small to be the real file"
@@ -131,9 +135,20 @@ if (Want 'jiten-frequency.zip' 'frequency' 'A frequency list') {
         'Jiten frequency list - ranks fiction (~8 MB)' | Out-Null
 }
 
-Say 'importing what is in dictionaries\ - the first import takes a few minutes'
-& $JpDict sync
-if ($LASTEXITCODE -ne 0) { Fail 'jp-dict sync failed' } else { Good 'dictionaries imported' }
+# Asked of the directory rather than of sync's exit code: sync succeeds with
+# nothing to do, so reporting off the exit code called a failed download an
+# import.
+$zips = @(Get-ChildItem -Path $DictDir -Filter '*.zip' -ErrorAction SilentlyContinue)
+if ($zips.Count -eq 0 -and -not $imported) {
+    Fail 'no dictionaries - the popup will be empty and nothing will be ranked'
+    Say 'download them by hand into dictionaries\ and run this again:'
+    Say '  https://jitendex.org'
+    Say '  https://api.jiten.moe/api/frequency-list/download'
+} else {
+    Say 'importing what is in dictionaries\ - the first import takes a few minutes'
+    & $JpDict sync
+    if ($LASTEXITCODE -ne 0) { Fail 'jp-dict sync failed' } else { Good 'dictionaries imported' }
+}
 
 # ------------------------------------------------------------------ doctor --
 
@@ -143,16 +158,28 @@ Step 'Checking with the server'
 # and stopped again, leaving the machine as this run found it.
 $state = $null
 $startedHere = $null
-try { $state = Invoke-RestMethod -TimeoutSec 2 'http://localhost:3200/api/reader/state' } catch {}
+$log = Join-Path $Here 'setup-server.log'
+try { $state = Invoke-RestMethod -TimeoutSec 3 'http://localhost:3200/api/reader/state' } catch {}
 if ($state) {
     Good 'already running'
 } else {
-    $startedHere = Start-Process -PassThru -WindowStyle Hidden -FilePath $Server
-    foreach ($i in 1..40) {
-        Start-Sleep -Milliseconds 500
-        try { $state = Invoke-RestMethod -TimeoutSec 2 'http://localhost:3200/api/reader/state'; break } catch {}
+    # Output kept, because a server that never answers has said why somewhere and
+    # a hidden window throws it away.
+    $startedHere = Start-Process -PassThru -WindowStyle Hidden -FilePath $Server `
+        -RedirectStandardOutput $log -RedirectStandardError "$log.err"
+    Say 'waiting for the first boot - it recounts the line stream and loads the tokenizer'
+    foreach ($try in 1..30) {
+        Start-Sleep -Seconds 2
+        if ($startedHere.HasExited) { break }
+        try { $state = Invoke-RestMethod -TimeoutSec 3 'http://localhost:3200/api/reader/state'; break } catch {}
     }
-    if ($state) { Good 'started for the check' } else { Fail 'the server did not answer' }
+    if ($state) {
+        Good 'started for the check'
+    } else {
+        Fail 'the server did not answer in a minute'
+        Say "its output is in $log and $log.err"
+        Get-Content -Tail 15 "$log.err" -ErrorAction SilentlyContinue | ForEach-Object { Say "  $_" }
+    }
 }
 
 if ($state -and $state.capabilities) {
@@ -168,7 +195,10 @@ if ($state -and $state.capabilities) {
 
 # Stopped by the handle this script owns, never by matching a process name: the
 # name is shared with any other instance on this machine.
-if ($startedHere) { Stop-Process -Id $startedHere.Id -Force; Say 'stopped the server again' }
+if ($startedHere -and -not $startedHere.HasExited) {
+    Stop-Process -Id $startedHere.Id -Force
+    Say 'stopped the server again'
+}
 
 Step 'Done'
 Say 'start it with:'
