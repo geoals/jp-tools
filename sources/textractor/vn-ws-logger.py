@@ -706,12 +706,21 @@ class StatsSink:
         self.pending.clear()
 
 
+_START = time.monotonic()
+
+
 def log(msg):
-    print(f"vn-ws-logger: {msg}", file=sys.stderr, flush=True)
+    # Seconds since start, because the first thing a reader reports is that
+    # starting took ages and nothing here could say which part did.
+    print(f"vn-ws-logger: +{time.monotonic() - _START:6.2f}s {msg}", file=sys.stderr, flush=True)
 
 
 def normalize(msg):
-    text = msg.replace("\r", " ").replace("\n", " ").strip()
+    # A break the game put in the line is kept, whichever way the hook spells
+    # it — some engines send a real newline where others send <br> or \n, and
+    # all three are the same fact: where the game breaks the line. Collapsing
+    # it to a space drew a two-line capture as one long line.
+    text = msg.replace("\r\n", "\n").replace("\r", "\n").strip()
     return text[:4000]
 
 
@@ -951,6 +960,9 @@ async def run(out, stats):
 
 
 def main():
+    # First line out, so the gap between the process starting and this appearing
+    # is the frozen bundle's own load time and nothing else.
+    log("starting")
     os.makedirs(RUNDIR, exist_ok=True)
     stats = StatsSink()
     with open(LINES_LOG, "a", buffering=1, encoding="utf-8") as out:

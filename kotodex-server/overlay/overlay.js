@@ -1262,7 +1262,12 @@ function addFonts(families) {
 
 function applyType() {
   for (const row of fontBtnEls) row.classList.toggle("on", row.dataset.family === type.font);
-  root.setProperty("--line-font", `"${type.font || font || "Noto Sans CJK JP"}", sans-serif`);
+  // Nothing chosen and nothing launched with: the stylesheet's own stack, which
+  // is the only one that names a face on every platform. Naming a default here
+  // pinned it to one family and left Windows on generic `sans-serif`.
+  const chosen = type.font || font;
+  if (chosen) root.setProperty("--line-font", `"${chosen}", sans-serif`);
+  else root.removeProperty("--line-font");
   root.setProperty("--line-color", `hsl(${type.hue} ${type.sat}% ${type.light}%)`);
   // Centred on the glyphs rather than dropped below them: this sits over
   // artwork, and what the shadow is for is lifting the character off whatever

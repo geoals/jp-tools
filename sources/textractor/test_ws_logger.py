@@ -47,6 +47,13 @@ class CleanLine(unittest.TestCase):
             "（もしそんな魔法が魔女化によって強化され、\n　暴走したのだとしたら……）",
         )
 
+    def test_a_real_newline_is_a_break_too(self):
+        # 廃匿少女 sends the break as an actual newline rather than as markup.
+        self.assertEqual(wl.normalize("あ\nい"), "あ\nい")
+        self.assertEqual(wl.normalize("あ\r\nい"), "あ\nい")
+        self.assertEqual(wl.normalize("あ\rい"), "あ\nい")
+        self.assertEqual(wl.clean_line(wl.normalize("「あ\r\nい」")), "「あ\nい」")
+
     def test_soft_break_variants(self):
         self.assertEqual(wl.clean_line("あ<br/>い"), "あ\nい")
         self.assertEqual(wl.clean_line("あ<BR />い"), "あ\nい")

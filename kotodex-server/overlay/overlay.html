@@ -41,7 +41,10 @@
   :root {
     --backdrop: hsl(0 0% 0% / 82%);
     --strip: 300px;
-    --line-font: "Noto Sans CJK JP", "Noto Sans JP", sans-serif;
+    /* Meiryo and Yu Gothic are on every Windows install; generic `sans-serif`
+       there resolves to a bitmap-era face that reads badly at reading size. */
+    --line-font: "Noto Sans CJK JP", "Noto Sans JP", Meiryo, "Yu Gothic UI", "Yu Gothic",
+      sans-serif;
     /* `?scale=` — everything below is in `rem` or in `em` under something that
        is, so one root font-size takes the whole overlay with it. The few
        viewport-relative lengths carry the factor themselves. */
@@ -98,7 +101,8 @@
     overflow: hidden;
     background: transparent;
     color: var(--ink);
-    font-family: "Noto Sans CJK JP", "Noto Sans JP", sans-serif;
+    font-family: "Noto Sans CJK JP", "Noto Sans JP", Meiryo, "Yu Gothic UI", "Yu Gothic",
+      sans-serif;
   }
 
   /* Placed on top of where the VN draws its own text rather than near it,
