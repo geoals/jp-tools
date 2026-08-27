@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "c=$(jq -r \".tool_input.command // \\\"\\\"\"); echo \"$c\" | grep -Eq \"(^|[^a-z])(pkill|killall)([^a-z]|$)\" && echo \"$c\" | grep -qi kotodex && printf \"%s\" \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"pkill/killall on a kotodex process is banned (see kotodex-server/CLAUDE.md): the dev instance and the live :3200 service share one binary path, and the pattern also matches the shell command line running it. Resolve the PID from the port instead, e.g. ss -ltnp | grep :3299\\\"}}\"; true"
+          }
+        ]
+      }
+    ]
+  }
+}
