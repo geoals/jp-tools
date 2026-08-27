@@ -203,8 +203,30 @@ impl SudachiTokenizer {
                 dict_path.display()
             ))
         })?;
-        let config = Config::new(None, None, Some(abs_path))
-            .map_err(|e| TokenizeError::Failed(format!("failed to load Sudachi config: {e}")))?;
+        // The config and the resource directory are named explicitly. Passing None
+        // for either makes sudachi.rs fall back to `default_resource_dir()`, which
+        // is built from `env!("CARGO_MANIFEST_DIR")` — the path of the crate on
+        // whatever machine *compiled* the binary. That is a directory under
+        // ~/.cargo on a developer's machine and under the runner's home in CI, so
+        // every released binary looked for char.def somewhere that does not exist
+        // on the reader's machine and the highlighter silently never came up.
+        //
+        // Neither can be dropped: the embedded config still names char.def,
+        // unk.def and rewrite.def, and MeCabOovPlugin reads two of them. Swapping
+        // the OOV plugin for one that needs no files would change how unknown
+        // words are segmented, which is not a packaging decision.
+        let resources = crate::install::sudachi_resource_dir();
+        let config = Config::new(
+            Some(resources.join("sudachi.json")),
+            Some(resources.clone()),
+            Some(abs_path),
+        )
+        .map_err(|e| {
+            TokenizeError::Failed(format!(
+                "failed to load Sudachi config from {}: {e}",
+                resources.display()
+            ))
+        })?;
         let dict = JapaneseDictionary::from_cfg(&config).map_err(|e| {
             TokenizeError::Failed(format!("failed to load Sudachi dictionary: {e}"))
         })?;

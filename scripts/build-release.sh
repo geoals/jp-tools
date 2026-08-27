@@ -45,6 +45,10 @@ copy LICENSE
 copy THIRD-PARTY.md
 copy docs
 copy web-shared
+# Sudachi's own resource files. Shipped because sudachi.rs would otherwise
+# look for them under the path of the crate on the machine that compiled
+# this, which does not exist on the reader's.
+copy jp-core/sudachi-resources
 copy layer-overlay
 copy kotodex
 copy kotodex-server/static

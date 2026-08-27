@@ -67,7 +67,7 @@ function Start-Once($exe, $name) {
 # server. cmd gets its own hidden console and does the redirection inside it.
 function Start-Hidden($exe, $log) {
     Start-Process -WindowStyle Hidden -FilePath 'cmd.exe' `
-        -ArgumentList "/d /c """"$exe"" > ""$log"" 2>&1"""
+        -ArgumentList "/d /s /c """"$exe"" > ""$log"" 2>&1"""
 }
 
 if (Answering) {
@@ -80,13 +80,28 @@ if (Answering) {
     New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
     Start-Hidden $Server $Log
     Write-Host "started kotodex-server, logging to $Log"
+
+    # The other two now, not after the wait below. The overlay is a frozen Qt
+    # application over half a gigabyte of Chromium, and on a cold first run
+    # Defender reads all of it - a minute is normal. Starting it while the server
+    # is still counting its line stream spends both waits at once, and the overlay
+    # is built for a server that is not up yet: it retries the page, backing off,
+    # rather than showing an error.
+    Start-Once $Source 'kotodex-source'
+    Start-Once $Overlay 'kotodex-overlay'
+
     # The first boot recounts the line stream and loads the tokenizer, so the
     # browser is held back rather than opening on a connection refused.
+    # By name, because what was started is cmd's child rather than this script's -
+    # the price of not handing it this console. So absence has two meanings, and
+    # only the second is a failure: cmd has not spawned it yet, or it has died.
+    # Treating the first as the second exited here before the overlay was started.
+    $seen = $false
     foreach ($try in 1..30) {
         Start-Sleep -Seconds 1
-        # By name, because the process started is cmd's child and not this
-        # script's - which is the price of not handing it this console.
-        if (-not (Get-Process -Name 'kotodex-server' -ErrorAction SilentlyContinue)) {
+        if (Get-Process -Name 'kotodex-server' -ErrorAction SilentlyContinue) {
+            $seen = $true
+        } elseif ($seen) {
             Write-Host "the server exited - see $Log.err" -ForegroundColor Red
             Get-Content -Tail 15 "$Log.err" -ErrorAction SilentlyContinue
             exit 1
@@ -99,8 +114,8 @@ if (Answering) {
 }
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
-# The source before the overlay: it is what puts lines in the feed, and it costs
-# nothing while Textractor is absent - it retries the connection until one answers.
+# Adopted rather than started when the server was already up, which is the path
+# that skips the block above. Each is a no-op when it is already running.
 Start-Once $Source 'kotodex-source'
 Start-Once $Overlay 'kotodex-overlay'
 

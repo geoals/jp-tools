@@ -57,6 +57,8 @@ Take 'README.md'
 Take 'LICENSE'
 Take 'THIRD-PARTY.md'
 Take 'web-shared'
+# Sudachi's own resource files - see build-release.sh.
+Take 'jp-core\sudachi-resources'
 Take 'kotodex-server\static'
 Take 'kotodex-server\overlay'
 Take 'kotodex\kotodex-windows.ps1'
