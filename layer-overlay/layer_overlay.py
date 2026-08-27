@@ -40,9 +40,22 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import backend
+
+_START = time.monotonic()
+
+
+def since_start() -> str:
+    """Seconds since this module was imported, for the startup lines.
+
+    A reader reporting a slow start can say nothing useful about which part was
+    slow, and the answer is never the same part twice. Every line printed before
+    the surface exists carries this, so one log says where the time went.
+    """
+    return f"+{time.monotonic() - _START:6.2f}s"
 
 # Both the platform plugin and the shell integration are read once, when
 # QGuiApplication is constructed, so the backend has to be settled before any Qt
@@ -280,7 +293,8 @@ class Overlay(QObject):
         # landed on, and that is the first question every time. One line.
         screen = window.screen()
         print(
-            f"surface {window.x()},{window.y()} {window.width()}x{window.height()}"
+            f"{since_start()} surface {window.x()},{window.y()}"
+            f" {window.width()}x{window.height()}"
             f" dpr {window.devicePixelRatio()}"
             f" on {screen.name() if screen else '?'}",
             flush=True,
@@ -480,21 +494,26 @@ def run(url: str, *, scope: str, storage, qt_args=()) -> int:
     # helper processes go with it.
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
-    print(f"backend: {BACKEND} ({BACKEND_REASON})", flush=True)
+    print(f"{since_start()} backend: {BACKEND} ({BACKEND_REASON})", flush=True)
 
     QtWebEngineQuick.initialize()  # has to precede QGuiApplication
+    print(f"{since_start()} web engine initialized", flush=True)
     app = QGuiApplication([sys.argv[0], *qt_args])
+    print(f"{since_start()} application up", flush=True)
 
     # Every output, because the surface covers one of them and a reader with two
     # monitors looking at the wrong one sees nothing at all.
     for screen in app.screens():
         g = screen.geometry()
         print(
-            f"screen {screen.name()} {g.x()},{g.y()} {g.width()}x{g.height()}"
+            f"{since_start()} screen {screen.name()} {g.x()},{g.y()}"
+            f" {g.width()}x{g.height()}"
             f" dpr {screen.devicePixelRatio()}"
             f"{' primary' if screen is app.primaryScreen() else ''}",
             flush=True,
         )
+    if not app.screens():
+        print(f"{since_start()} no screens - nothing can be drawn on", flush=True)
 
     overlay = Overlay()
     surface = Surface(

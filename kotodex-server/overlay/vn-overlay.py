@@ -42,9 +42,11 @@ import json
 import os
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import NamedTuple
 from urllib.parse import quote, urlsplit
 
 # layer-overlay is a sibling directory rather than an installed package, so it has
@@ -73,6 +75,22 @@ STORAGE = _DATA_ROOT / "kotodex/overlay"
 _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
+class _Check(NamedTuple):
+    seconds: float
+    error: str
+
+
+def _timed_check(target) -> _Check:
+    """Open `target`, and say how long that took whether it worked or not."""
+    started = time.monotonic()
+    try:
+        with _OPENER.open(target, timeout=2) as r:
+            json.load(r)
+        return _Check(time.monotonic() - started, "")
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        return _Check(time.monotonic() - started, str(e))
+
+
 def check_dependencies(page_url: str) -> None:
     """Say which of the overlay's dependencies are down, and keep going.
 
@@ -88,30 +106,36 @@ def check_dependencies(page_url: str) -> None:
     origin = urlsplit(page_url)
     api = f"{origin.scheme}://{origin.netloc}"
 
-    try:
-        with _OPENER.open(f"{api}/api/settings", timeout=2) as r:
-            json.load(r)
-    except (urllib.error.URLError, OSError, ValueError) as e:
+    # Both checks are timed, because `timeout` does not bound all of what they
+    # do: it applies to the socket, never to resolving the name in front of it.
+    # A check that took far longer than its own timeout is the report that says
+    # so, and both of these run before anything is drawn.
+    took = _timed_check(f"{api}/api/settings")
+    if took.error:
         print(
-            f"kotodex-server not answering on {api} ({e}) — the strip stays empty "
+            f"{layer_overlay.since_start()} kotodex-server not answering on {api} "
+            f"({took.error}) after {took.seconds:.2f}s — the strip stays empty "
             "until it does. Start Kotodex, which runs it.",
             file=sys.stderr,
         )
+    else:
+        print(f"{layer_overlay.since_start()} kotodex-server answered", file=sys.stderr)
 
     request = urllib.request.Request(
         ANKI_URL,
         data=json.dumps({"action": "version", "version": 6}).encode(),
         headers={"Content-Type": "application/json"},
     )
-    try:
-        with _OPENER.open(request, timeout=2) as r:
-            json.load(r)
-    except (urllib.error.URLError, OSError, ValueError) as e:
+    took = _timed_check(request)
+    if took.error:
         print(
-            f"Anki not answering on {ANKI_URL} ({e}) — reading and lookups work, "
+            f"{layer_overlay.since_start()} Anki not answering on {ANKI_URL} "
+            f"({took.error}) after {took.seconds:.2f}s — reading and lookups work, "
             "mining will fail",
             file=sys.stderr,
         )
+    else:
+        print(f"{layer_overlay.since_start()} Anki answered", file=sys.stderr)
 
 
 def main() -> int:
