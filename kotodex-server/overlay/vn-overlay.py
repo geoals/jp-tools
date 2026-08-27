@@ -54,9 +54,14 @@ DEFAULT_URL = "http://localhost:3200/overlay/overlay.html"
 ANKI_URL = os.environ.get("KOTODEX_ANKI_URL", "http://127.0.0.1:8765")
 # Names the surface to the compositor and the page's localStorage.
 SCOPE = "vn-overlay"
-STORAGE = (
-    Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "kotodex/overlay"
+# Beside the databases, which is what jp_core::install::data_dir answers:
+# LOCALAPPDATA on Windows, XDG_DATA_HOME or its default elsewhere.
+_DATA_ROOT = (
+    Path(os.environ["LOCALAPPDATA"])
+    if sys.platform == "win32"
+    else Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
 )
+STORAGE = _DATA_ROOT / "kotodex/overlay"
 
 
 def check_dependencies(page_url: str) -> None:
@@ -122,8 +127,13 @@ def main() -> int:
         # The overlay's ✕ means quit Kotodex, not just close this window: on a
         # desktop with no system tray it is the only way out of the launcher.
         # Handed to the launcher rather than done here — it owns kotodex-server and
-        # the capture daemon, and knows which of them it started.
-        subprocess.run([str(Path(__file__).resolve().parents[2] / "kotodex" / "kotodex"), "quit"])
+        # the capture daemon, and knows which of them it started. There is no
+        # such launcher on Windows, where the ✕ closes the overlay alone and
+        # kotodex-server keeps running for the reader in the browser.
+        if sys.platform != "win32":
+            subprocess.run(
+                [str(Path(__file__).resolve().parents[2] / "kotodex" / "kotodex"), "quit"]
+            )
         return 0
     return code
 

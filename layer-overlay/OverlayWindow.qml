@@ -3,11 +3,16 @@ import QtQuick.Window
 import QtWebChannel
 import QtWebEngine
 
-// The same surface as Overlay.qml, kept above a fullscreen window by
-// _NET_WM_STATE_ABOVE instead of by the layer-shell protocol. Everything below
-// the window flags is identical on purpose — the page cannot tell which backend
-// is under it, and a difference here would be a difference only GNOME users
-// ever hit.
+// The same surface as Overlay.qml, as an ordinary always-on-top window rather
+// than a layer surface: _NET_WM_STATE_ABOVE under X11, WS_EX_TOPMOST on Windows,
+// both of which Qt asks for through the flags below. Everything under them is
+// identical to Overlay.qml on purpose — the page cannot tell which backend is
+// under it, and a difference here would be a difference only some users ever
+// hit.
+//
+// What differs between the two backends using this file is not the window but
+// what takes clicks, which is Python's: an XShape input region under X11, and a
+// WS_EX_TRANSPARENT toggle on Windows, which has no input region.
 Window {
     id: root
     visible: true

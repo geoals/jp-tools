@@ -1,13 +1,16 @@
 """Which mechanism puts the surface above a fullscreen window.
 
-Two exist, and which is available is a property of the compositor rather than
-of this program:
+Three exist, and which is available is a property of the display server rather
+than of this program:
 
 - **layer-shell** — `zwlr_layer_shell_v1`. A surface on the overlay layer is
   above everything by protocol, and the compositor takes the input region from
   `wl_surface.set_input_region`. KDE and wlroots offer it; GNOME does not.
 - **x11** — `_NET_WM_STATE_ABOVE` on an XWayland window, with the input region
   set through XShape. Works wherever XWayland does, which includes GNOME.
+- **windows** — a layered topmost window. Windows has no input region at all,
+  so [`wininput`] gets the same effect by toggling `WS_EX_TRANSPARENT` as the
+  cursor crosses into what the page has drawn.
 
 The choice has to be made **before `QGuiApplication` exists**: it decides the Qt
 platform plugin, and that is read once when the application is constructed. So
@@ -17,9 +20,11 @@ this is a probe of the environment, not of a running Qt.
 import os
 import shutil
 import subprocess
+import sys
 
 LAYER_SHELL = "layer-shell"
 X11 = "x11"
+WINDOWS = "windows"
 
 #: The interface whose presence *is* the layer-shell backend.
 PROTOCOL = "zwlr_layer_shell_v1"
@@ -81,8 +86,13 @@ def _qt_qml_paths() -> list[str]:
 def choose() -> tuple[str, str]:
     """The backend to use and one line saying why, for the log and the doctor."""
     forced = os.environ.get("LAYER_OVERLAY_BACKEND", "").strip().lower()
-    if forced in (LAYER_SHELL, X11):
+    if forced in (LAYER_SHELL, X11, WINDOWS):
         return forced, "set by LAYER_OVERLAY_BACKEND"
+
+    # Not a probe: there is one way to put a window above a fullscreen one here,
+    # and nothing to fall back to if it does not work.
+    if sys.platform == "win32":
+        return WINDOWS, "Windows"
 
     if not os.environ.get("WAYLAND_DISPLAY"):
         return X11, "no Wayland session"
@@ -114,6 +124,11 @@ def apply_environment(backend: str) -> None:
     page's own translucent backdrop arrives as solid black, and an overlay that
     is supposed to show the window underneath instead hides it completely.
     """
+    if backend == WINDOWS:
+        # Nothing: there is one platform plugin, it is the default, and a
+        # layered window keeps the page's alpha without asking Chromium for a
+        # visual.
+        return
     if backend == LAYER_SHELL:
         os.environ.setdefault("QT_WAYLAND_SHELL_INTEGRATION", "layer-shell")
         os.environ.setdefault("QT_QPA_PLATFORM", "wayland")

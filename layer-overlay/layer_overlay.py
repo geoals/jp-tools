@@ -43,14 +43,23 @@ import sys
 from pathlib import Path
 
 import backend
-import xwatch
-from xshape import InputRegion
 
 # Both the platform plugin and the shell integration are read once, when
 # QGuiApplication is constructed, so the backend has to be settled before any Qt
 # import that could pull one in.
 BACKEND, BACKEND_REASON = backend.choose()
 backend.apply_environment(BACKEND)
+
+# Which pair of these is importable is the platform's answer, not a choice: the
+# X11 modules need libX11 and the Windows ones need user32. Both pairs answer the
+# same two questions - where the tracked window is, and what takes clicks - so
+# everything below is written against the interface rather than against either.
+if BACKEND == backend.WINDOWS:
+    import wininput as inputregion
+    import winwatch as windowwatch
+else:
+    import xshape as inputregion
+    import xwatch as windowwatch
 
 from PySide6.QtCore import (
     QFile, QIODevice, QObject, QSocketNotifier, QTimer, QUrl, Signal, Slot,
@@ -63,7 +72,7 @@ from PySide6.QtWebEngineCore import QWebEngineScript
 from PySide6.QtWebEngineQuick import QtWebEngineQuick
 
 _HERE = Path(__file__).resolve().parent
-QML = str(_HERE / ("Overlay.qml" if BACKEND == backend.LAYER_SHELL else "OverlayX11.qml"))
+QML = str(_HERE / ("Overlay.qml" if BACKEND == backend.LAYER_SHELL else "OverlayWindow.qml"))
 
 #: [`run`] returns this when the page called `shell.quit()`. What it means is
 #: the caller's to decide — this only distinguishes it from a clean exit the
@@ -118,16 +127,31 @@ class Overlay(QObject):
         # Events where X can be watched, the subprocess and a timer where it
         # cannot. The page cannot tell which it got; the difference is whether
         # the line arrives with the window or up to an interval behind it.
-        self._watch = xwatch.WindowWatch()
+        self._watch = windowwatch.WindowWatch()
         self._notifier = None
-        if self._watch.available:
+        if self._watch.available and self._watch.fd is not None:
             self._notifier = QSocketNotifier(
                 self._watch.fd, QSocketNotifier.Type.Read
             )
             self._notifier.activated.connect(self._on_x_ready)
-        # Only the X11 backend needs one: under Wayland the mask already means
-        # the input region, and opening an X connection would be pointless.
-        self._input = InputRegion() if BACKEND == backend.X11 else None
+        # Windows delivers its window events through the thread's message queue,
+        # which Qt is already pumping, so there is no descriptor to wait on and
+        # the watcher calls back instead.
+        if self._watch.available and self._watch.fd is None:
+            self._watch.on_change = self._poll_geometry
+        # Every backend but layer-shell, where the mask already means the input
+        # region and there is nothing to set by hand.
+        self._input = (
+            inputregion.InputRegion() if BACKEND != backend.LAYER_SHELL else None
+        )
+        # Windows has no input region, so the one it emulates has to be
+        # re-evaluated as the cursor moves rather than set and forgotten.
+        self._cursor = None
+        if BACKEND == backend.WINDOWS:
+            self._cursor = QTimer()
+            self._cursor.setInterval(inputregion.POLL_MS)
+            self._cursor.timeout.connect(self._input.poll)
+            self._cursor.start()
         self._probe = QTimer()
         self._probe.setInterval(
             DISCOVERY_POLL_MS if self._watch.available else GEOMETRY_POLL_MS
@@ -183,7 +207,11 @@ class Overlay(QObject):
             if rect == self._rect and not force:
                 return
         self._rect = rect
-        self.geometry.emit(*(self._to_surface(rect) if rect else (0, 0, 0, 0)))
+        surface = self._to_surface(rect) if rect else (0, 0, 0, 0)
+        if os.environ.get("LAYER_OVERLAY_DEBUG"):
+            x, y, w, h = surface
+            print(f"window {self._name!r} {x},{y} {w}x{h}", flush=True)
+        self.geometry.emit(*surface)
 
     def _scale(self) -> float:
         """Device pixels per logical pixel, on the output the surface is on."""
@@ -326,12 +354,13 @@ class Overlay(QObject):
             # clickable area should do. The X11 input region reads an empty list
             # the way it looks, so this costs it only one dead pixel.
             region = QRegion(0, 0, 1, 1)
-        # X speaks device pixels and everything above is in the page's logical
-        # ones, so the region has to be scaled on the way out. `setMask` is given
-        # the logical rectangles because Qt converts them itself.
-        on_x = self._input is not None and self._input.available
-        scale = self._scale() if on_x else 1.0
-        if on_x:
+        # X and the Windows cursor both speak device pixels, and everything above
+        # is in the page's logical ones, so the region has to be scaled on the way
+        # out. `setMask` is given the logical rectangles because Qt converts them
+        # itself.
+        explicit = self._input is not None and self._input.available
+        scale = self._scale() if explicit else 1.0
+        if explicit:
             self._input.apply(int(self._window.winId()), _rects(region, scale))
         else:
             self._window.setMask(region)
@@ -463,13 +492,16 @@ def run(url: str, *, scope: str, storage, qt_args=()) -> int:
         print("QML failed to load", file=sys.stderr)
         return 1
 
-    signal.signal(signal.SIGUSR1, lambda *_: overlay.toggle())
-    signal.signal(signal.SIGUSR2, lambda *_: overlay.userToggled.emit())
-    # Python only runs a signal handler between bytecodes and Qt's event loop
-    # is C, so nothing above would ever land without a tick that returns to the
-    # interpreter. It has no other work.
-    wake = QTimer()
-    wake.start(200)
-    wake.timeout.connect(lambda: None)
+    # Windows has neither signal, so both toggles are the page's own there until
+    # something registers a hotkey for them.
+    if hasattr(signal, "SIGUSR1"):
+        signal.signal(signal.SIGUSR1, lambda *_: overlay.toggle())
+        signal.signal(signal.SIGUSR2, lambda *_: overlay.userToggled.emit())
+        # Python only runs a signal handler between bytecodes and Qt's event loop
+        # is C, so nothing above would ever land without a tick that returns to
+        # the interpreter. It has no other work.
+        wake = QTimer()
+        wake.start(200)
+        wake.timeout.connect(lambda: None)
 
     return app.exec()
