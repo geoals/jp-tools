@@ -4,8 +4,11 @@
 * text=auto eol=lf
 *.sh text eol=lf
 *.py text eol=lf
+# cmd.exe is the one interpreter that needs its own line ending: a label or a
+# goto in an LF batch file can be read wrong. PowerShell reads LF, so .ps1 is
+# left alone with everything else.
 *.bat text eol=crlf
-*.ps1 text eol=crlf
+*.cmd text eol=crlf
 
 # Binary, so git neither converts them nor tries to diff them.
 *.dic binary
