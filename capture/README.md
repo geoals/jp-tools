@@ -13,39 +13,39 @@ silero-VAD finds where the speech ends.
 ## The path
 
 ```
-                        ┌──────────────────────────────────────────┐
+                        ┌───────────────────────────────────────────┐
   desktop audio         │  kotodex-capture  (daemon, always on)     │
-  (sink monitor)  ─────▶│  ffmpeg -f segment                        │
+  (sink monitor)  ────▶│  ffmpeg -f segment                        │
                         │  5s WAV × 60 in tmpfs, wrapping ring      │
                         │  ≈ the last 300s always on disk           │
-                        └──────────────────────┬───────────────────┘
+                        └───────────────────────┬───────────────────┘
                                                │
   Textractor ──▶ POST /api/lines ──▶ ledger    │  lines.log
        (hooked line + timestamp)               │  ts ⇥ text
                                                │       │
-                        ┌──────────────────────▼───────▼──────────┐
-  hotkey / card add ───▶│            vn-capture.sh                 │
-                        └──────────────────────┬──────────────────┘
+                         ┌──────────────────────▼───────▼──────────┐
+  hotkey / card add ───▶│           vn-capture.sh                 │
+                         └─────────────────────┬───────────────────┘
                                                │
        ┌───────────────────────────────────────┴───────────────────┐
        │ 1. ANCHOR                                                 │
-       │    the newest line at the press (VN_ANCHOR_TS), not now    │
-       │    window = [line_ts , next_line_ts or +VN_MAX_LEN]        │
+       │    the newest line at the press (VN_ANCHOR_TS), not now   │
+       │    window = [line_ts , next_line_ts or +VN_MAX_LEN]       │
        └───────────────────────────────┬───────────────────────────┘
                                        │ cut the window out of the ring
                                        ▼
        ┌──────────────────────────────────────────────────────────┐
-       │ 2. FIND SPEECH   vn-vad.py  (silero-VAD v5 ONNX)          │
-       │    16k mono → first_start / last_end                      │
-       │    then peak ≥ VN_MIN_PEAK_DB and a cold-state rescore     │
+       │ 2. FIND SPEECH   vn-vad.py  (silero-VAD v5 ONNX)         │
+       │    16k mono → first_start / last_end                     │
+       │    then peak ≥ VN_MIN_PEAK_DB and a cold-state rescore   │
        └───────────────┬──────────────────────┬───────────────────┘
                        │ speech               │ no speech, or VAD failed
                        ▼                      ▼
-       ┌───────────────────────────────┐  ┌───────────────────────┐
-       │ 3. TRIM TO SENTENCE           │  │ screenshot only, or    │
-       │    vn-trim.py — only when the │  │ the untrimmed window   │
-       │    line holds several         │  └───────────┬───────────┘
-       │    sentences                  │              │
+       ┌────────────────────────────────┐ ┌───────────────────────┐
+       │ 3. TRIM TO SENTENCE            │ │ screenshot only, or   │
+       │    vn-trim.py — only when the  │ │ the untrimmed window  │
+       │    line holds several          │ └────────────┬──────────┘
+       │    sentences                   │              │
        │                                │              │
        │  whisper-service /transcribe   │              │
        │    ?words=true → word times    │              │
@@ -60,7 +60,7 @@ silero-VAD finds where the speech ends.
        │    yes │        │ no           │              │
        │        │        ▼              │              │
        │        │  anchor on the mined  │              │
-       │        │  word, expand to 。！？ │             │
+       │        │  word, expand to 。！？│              │
        │        │  or a ≥0.5s gap       │              │
        │        ▼        ▼              │              │
        │  snap the edges to a real VAD  │              │
@@ -72,9 +72,9 @@ silero-VAD finds where the speech ends.
        └────────────┬───────────────────┘              │
                     ▼                                  │
        ┌───────────────────────────────────────────────▼──────────┐
-       │ 4. ENCODE AND ATTACH                                      │
-       │    ffmpeg → Ogg Vorbis q3        screenshot → png         │
-       │    AnkiConnect storeMediaFile → updateNoteFields          │
+       │ 4. ENCODE AND ATTACH                                     │
+       │    ffmpeg → Ogg Vorbis q3        screenshot → png        │
+       │    AnkiConnect storeMediaFile → updateNoteFields         │
        └──────────────────────────────────────────────────────────┘
 ```
 
