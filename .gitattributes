@@ -1,0 +1,16 @@
+# A shell script or a python module checked out with CRLF does not run: the
+# kernel reads \r as part of the interpreter path. Windows needs these LF even
+# in a Windows checkout, so they are pinned rather than left to core.autocrlf.
+* text=auto eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary, so git neither converts them nor tries to diff them.
+*.dic binary
+*.onnx binary
+*.zip binary
+*.png binary
+*.jpg binary
+*.ogg binary
