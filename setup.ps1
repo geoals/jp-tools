@@ -33,11 +33,10 @@ $ErrorActionPreference = 'Stop'
 # Invoke-RestMethod draws a progress bar per chunk, which costs more than the
 # download on a slow link.
 $ProgressPreference = 'SilentlyContinue'
-# The server writes its own prose, and every fix line in it holds an em dash. A
-# legacy console renders those as mojibake, which is how a sentence about a pitch
-# dictionary came out with a stray a-circumflex in it. This file itself stays
-# ASCII: Windows PowerShell reads an unsigned script with no byte-order mark as
-# the machine's ANSI codepage, so a dash in a string here would mangle too.
+# So the Japanese and the dashes in what the server says reach the terminal
+# intact. The decoding on the way in matters too - see GetJson. This file itself
+# stays ASCII: Windows PowerShell reads an unsigned script with no byte-order
+# mark as the machine's ANSI codepage, so a dash in a string here would mangle.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $Here = $PSScriptRoot
@@ -48,6 +47,18 @@ function Say($m)  { Write-Host "    $m" }
 function Good($m) { Write-Host "    " -NoNewline; Write-Host "OK " -ForegroundColor Green -NoNewline; Write-Host $m }
 function Skip($m) { Write-Host "    " -NoNewline; Write-Host "-- " -ForegroundColor Yellow -NoNewline; Write-Host $m }
 function Fail($m) { Write-Host "    " -NoNewline; Write-Host "XX " -ForegroundColor Red -NoNewline; Write-Host $m }
+
+# Windows PowerShell decodes a response body as ISO-8859-1 unless the server
+# names a charset in Content-Type, and axum sends application/json without one.
+# That is what turned the em dash in the server's own fix lines into mojibake -
+# setting the console encoding cannot help, because the string is already wrong
+# by the time it is printed. Decoded from the bytes here instead.
+function GetJson($url, $timeout) {
+    $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec $timeout $url
+    $bytes = if ($r.RawContentStream) { $r.RawContentStream.ToArray() }
+             else { [System.Text.Encoding]::UTF8.GetBytes($r.Content) }
+    [System.Text.Encoding]::UTF8.GetString($bytes) | ConvertFrom-Json
+}
 
 # A truncated download is worse than none: it looks installed and fails later.
 function Fetch($url, $dest, $minBytes, $label) {
@@ -185,6 +196,27 @@ if ($zips.Count -eq 0 -and -not $imported) {
     if ($LASTEXITCODE -ne 0) { Fail 'jp-dict sync failed' } else { Good 'dictionaries imported' }
 }
 
+# ------------------------------------------------------------- application --
+
+Step 'Start Menu entry'
+# The Linux launcher is a Qt tray process owning three components; here there is
+# one to own, so the entry runs a script rather than a program of its own.
+$StartMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
+$Lnk = Join-Path $StartMenu 'Kotodex.lnk'
+$Launcher = Join-Path $Here 'kotodex\kotodex-windows.ps1'
+$shell = New-Object -ComObject WScript.Shell
+$sc = $shell.CreateShortcut($Lnk)
+$sc.TargetPath = 'powershell.exe'
+# -WindowStyle Hidden on the shortcut, not in the script: the console belongs to
+# powershell.exe and a script cannot hide the window it was started in.
+$sc.Arguments = "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Launcher`""
+$sc.WorkingDirectory = $Here
+$sc.IconLocation = "$Server,0"
+$sc.Description = 'Kotodex - the ledger and the reader'
+$sc.Save()
+Good "Kotodex in the Start Menu"
+Say 'it starts the server if nothing answers on 3200, then opens the reader'
+
 # ------------------------------------------------------------------ doctor --
 
 Step 'Checking with the server'
@@ -194,7 +226,7 @@ Step 'Checking with the server'
 $state = $null
 $startedHere = $null
 $log = Join-Path $Here 'setup-server.log'
-try { $state = Invoke-RestMethod -TimeoutSec 3 'http://localhost:3200/api/reader/state' } catch {}
+try { $state = GetJson 'http://localhost:3200/api/reader/state' 3 } catch {}
 if ($state) {
     Good 'already running'
 } else {
@@ -206,7 +238,7 @@ if ($state) {
     foreach ($try in 1..30) {
         Start-Sleep -Seconds 2
         if ($startedHere.HasExited) { break }
-        try { $state = Invoke-RestMethod -TimeoutSec 3 'http://localhost:3200/api/reader/state'; break } catch {}
+        try { $state = GetJson 'http://localhost:3200/api/reader/state' 3; break } catch {}
     }
     if ($state) {
         Good 'started for the check'

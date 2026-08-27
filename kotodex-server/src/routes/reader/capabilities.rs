@@ -139,6 +139,15 @@ async fn lines_source(state: &AppState) -> Capability {
     if settings.capture_paused && beat.as_ref().is_some_and(|b| b.running()) {
         return on(format!("{}, paused", settings.line_source));
     }
+    // The launcher and the logger it starts are Linux-only, so naming them off
+    // Linux would be advice nobody can take. What is true everywhere is that some
+    // source has to post to the endpoint.
+    #[cfg(not(unix))]
+    return off(
+        format!("{}, no producer", settings.line_source),
+        "no source is posting to /api/lines — see sources/README.md",
+    );
+    #[cfg(unix)]
     match settings.line_source.as_str() {
         "clipboard" => off(
             "clipboard, no producer",
@@ -359,12 +368,22 @@ async fn vocabulary_ledger(state: &AppState) -> Capability {
         .await
         .unwrap_or(0);
     if rows > 0 {
-        on(format!("{rows} words"))
+        return on(format!("{rows} words"));
+    }
+    // An install that has read nothing has an empty ledger because there was
+    // nothing to fill it with, which is not a fault to report on the run that
+    // created it. Empty with lines behind it is one: that is ingest not running.
+    //
+    // EXISTS rather than a count — `lines` is the biggest table here and the
+    // question is only whether it has a row.
+    let read_anything: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM lines)")
+        .fetch_one(state.knowledge.pool())
+        .await
+        .unwrap_or(false);
+    if read_anything {
+        off("empty", "run POST /api/vocab/rebuild — nothing has been ingested")
     } else {
-        off(
-            "empty",
-            "fills itself as you read — required for status marks",
-        )
+        on("empty, nothing read yet")
     }
 }
 
