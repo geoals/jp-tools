@@ -108,13 +108,15 @@
      moves the line by the same amount. */
   /* Lighter than theme.css's, which is drawn for panels on a page. These are
      small chips floating on artwork, and a 34px spread at 80% reads as a smear
-     of the game under them rather than as a raised edge.
+     of the game under them rather than as a raised edge. Light theme on a light
+     scene is the case that sets the ceiling: black under a pale panel shows far
+     more of itself than the same black under a dark one.
 
      Both selectors on purpose: theme.css sets this under
      `:root[data-theme="dark"]`, which outranks a bare `:root`. */
   :root,
   :root[data-theme] {
-    --shadow: 0 3px 10px hsl(0 0% 0% / 40%);
+    --shadow: 0 2px 7px hsl(0 0% 0% / 22%);
   }
 
   /* Positioning only — the backdrop is on #line, so it wraps the text itself
@@ -515,6 +517,11 @@
   #bar svg .ink {
     fill: currentColor;
     stroke: none;
+  }
+  /* Two bare bars read thinner than a glyph that closes a shape, so they need
+     a little more width to weigh the same as the rest of the row. */
+  #pause-btn svg {
+    stroke-width: 2.3;
   }
   /* Pause carries the state on the icon alone: two bars while capture is
      running, a triangle while it is stopped. */
