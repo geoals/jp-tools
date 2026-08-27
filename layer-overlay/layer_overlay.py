@@ -21,6 +21,7 @@ Qt's own copy — and to connect to the object registered as `shell`:
     shell.setWindowName(name)          track this window's rectangle
     shell.geometry(x, y, w, h)         where it is now, or zeros
     shell.userToggled()                SIGUSR2 reached the page
+    shell.openUrl(url)                 open an http(s) link in the browser
     shell.quit()                       close; `run` returns QUIT_REQUESTED
 
 `SIGUSR1` makes the *whole* surface take input, for selecting text rather than
@@ -54,7 +55,7 @@ backend.apply_environment(BACKEND)
 from PySide6.QtCore import (
     QFile, QIODevice, QObject, QSocketNotifier, QTimer, QUrl, Signal, Slot,
 )
-from PySide6.QtGui import QGuiApplication, QRegion
+from PySide6.QtGui import QDesktopServices, QGuiApplication, QRegion
 from PySide6.QtQml import QQmlApplicationEngine
 # Registers the qrc that webchannel_script() reads.
 from PySide6.QtWebChannel import QWebChannel  # noqa: F401
@@ -280,6 +281,18 @@ class Overlay(QObject):
         self.hidden = False
         if self._window is not None:
             self._window.setVisible(True)
+
+    @Slot(str)
+    def openUrl(self, url: str) -> None:
+        """Hand a link to the desktop's browser.
+
+        The surface is the page, so it cannot show one itself. http and https
+        only: this slot is reachable by whatever the page loads, and every other
+        scheme is a handler on this machine.
+        """
+        target = QUrl(url)
+        if target.scheme() in ("http", "https"):
+            QDesktopServices.openUrl(target)
 
     @Slot()
     def quit(self) -> None:

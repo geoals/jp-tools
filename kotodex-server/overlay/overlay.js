@@ -1099,6 +1099,16 @@ pauseBtnEl.addEventListener("click", async () => {
   pauseBtnEl.disabled = false;
 });
 
+// The dashboard, in a browser. Never in this view: the surface *is* the page,
+// so navigating it away would take the overlay with it — under the shell the
+// URL goes out to the desktop's browser, and in an ordinary browser a tab is a
+// tab.
+document.getElementById("stats-btn").addEventListener("click", () => {
+  const url = `${location.origin}/`;
+  if (shell) shell.openUrl(url);
+  else window.open(url, "_blank");
+});
+
 // The overlay's settings, in three tabs: how the line is set and sized, what
 // is marked on it, and where its lines come from.
 //

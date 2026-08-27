@@ -460,7 +460,8 @@
   #pause-btn,
   #quit-btn,
   #scrollback-btn,
-  #settings-btn {
+  #settings-btn,
+  #stats-btn {
     flex: none;
     /* Square, and all one size: they sit in a row over the game, and a glyph
        that happens to be wide must not make its button wider. */
@@ -970,6 +971,9 @@
       <button id="pause-btn" data-tip="Pause capture">
         <svg viewBox="0 0 24 24" class="when-running"><path d="M9.5 6v12M14.5 6v12"/></svg>
         <svg viewBox="0 0 24 24" class="when-paused"><path d="M7 5.8l10 6.2-10 6.2z" class="ink"/></svg>
+      </button>
+      <button id="stats-btn" data-tip="Reading stats — opens the dashboard in a browser">
+        <svg viewBox="0 0 24 24"><path d="M6 19V13M12 19V5M18 19V9"/></svg>
       </button>
       <button id="settings-btn" class="off" data-tip="Settings">
         <svg viewBox="0 0 24 24"><path d="M18.3 10.5 L20.9 10.5 L20.9 13.5 L18.3 13.5 L17.5 15.4 L19.3 17.2 L17.2 19.3 L15.4 17.5 L13.5 18.3 L13.5 20.9 L10.5 20.9 L10.5 18.3 L8.6 17.5 L6.8 19.3 L4.7 17.2 L6.5 15.4 L5.7 13.5 L3.1 13.5 L3.1 10.5 L5.7 10.5 L6.5 8.6 L4.7 6.8 L6.8 4.7 L8.6 6.5 L10.5 5.7 L10.5 3.1 L13.5 3.1 L13.5 5.7 L15.4 6.5 L17.2 4.7 L19.3 6.8 L17.5 8.6 Z"/><circle cx="12" cy="12" r="3.3"/></svg>

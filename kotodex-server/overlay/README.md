@@ -90,11 +90,14 @@ way to judge a word without asking what it means.
 
 **The controls live behind one handle.** ☰ at the top left is the bar shut: drag
 it to move the widget, click it to hide the row to its right — explain, hide the
-line, scrollback, pause capture, settings, and ✕ quit. It starts open, and only
-the handle opens and shuts it — nothing closes it on its own, so a button is
-never taken out from under the pointer reaching for it. The three panels that
-hang under the bar (scrollback, explain, settings) are alternatives rather than a
-stack: opening one closes the others.
+line, scrollback, pause capture, stats, settings, and ✕ quit. It starts open,
+and only the handle opens and shuts it — nothing closes it on its own, so a
+button is never taken out from under the pointer reaching for it. The three
+panels that hang under the bar (scrollback, explain, settings) are alternatives
+rather than a stack: opening one closes the others.
+
+Stats opens the dashboard in the desktop's browser, never in this view — the
+surface is the page, so navigating it away would take the overlay with it.
 
 Pause is its own button in that row rather than a row inside the settings:
 pausing is reached for mid-scene, and a control two clicks behind a cogwheel is

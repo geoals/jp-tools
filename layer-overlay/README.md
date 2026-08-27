@@ -76,6 +76,7 @@ of it. Connect to the object registered as `shell`:
 | `shell.setWindowName(name)` | track this window's rectangle, by title substring |
 | `shell.geometry(x, y, w, h)` | where it is now, zeros when it cannot be found |
 | `shell.userToggled()` | SIGUSR2 reached the page |
+| `shell.openUrl(url)` | open an `http`/`https` link in the desktop's browser |
 | `shell.quit()` | close; `run()` returns `QUIT_REQUESTED` rather than 0 |
 
 Push the hits **the instant the layout changes**. Any lag, and any gap between
