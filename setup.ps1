@@ -17,10 +17,17 @@
 # Re-runnable: every step checks before it acts, so a second run is a no-op and
 # a run after installing something picks that up.
 #
-# Needs Rust (https://rustup.rs) with the MSVC toolchain. A VM behind a proxy
-# that cannot reach a CRL endpoint fails the build with CRYPT_E_NO_REVOCATION_CHECK
-# — `git config --global http.schannelCheckRevoke false` and `check-revoke = false`
-# under `[http]` in %USERPROFILE%\.cargo\config.toml are the way out of that.
+# Needs Rust (https://rustup.rs) with the MSVC toolchain.
+#
+# A machine that cannot reach a certificate revocation list — a proxy, or a
+# firewall allowing only 443, since a CRL is served over plain HTTP — fails the
+# cargo build with CRYPT_E_NO_REVOCATION_CHECK. Cargo and git each need telling
+# once:
+#
+#   git config --global http.schannelCheckRevoke false
+#   # and check-revoke = false under [http] in %USERPROFILE%\.cargo\config.toml
+#
+# The downloads below handle it themselves, and say so when they do.
 
 $ErrorActionPreference = 'Stop'
 # Invoke-RestMethod draws a progress bar per chunk, which costs more than the
@@ -37,14 +44,27 @@ function Skip($m) { Write-Host "    " -NoNewline; Write-Host "-- " -ForegroundCo
 function Fail($m) { Write-Host "    " -NoNewline; Write-Host "XX " -ForegroundColor Red -NoNewline; Write-Host $m }
 
 # A truncated download is worse than none: it looks installed and fails later.
-#
-# --ssl-no-revoke for the same reason cargo needs check-revoke = false: schannel
-# treats a CRL endpoint it cannot reach as a certificate it must reject, and a VM
-# behind a proxy frequently cannot reach one. The chain is still verified.
 function Fetch($url, $dest, $minBytes, $label) {
     Say "downloading $label"
     $tmp = "$dest.part"
-    curl.exe -fsSL --ssl-no-revoke --max-time 900 -o $tmp $url
+    curl.exe -fsSL --max-time 900 -o $tmp $url
+    # 35 is curl's TLS handshake failure, which on Windows is usually schannel
+    # refusing a certificate whose revocation list it could not reach — a CRL is
+    # served over plain HTTP, and a firewall allowing only 443 breaks the lookup
+    # for everything. Retried without that one question rather than passing
+    # --ssl-no-revoke from the start: the signature, the chain, the hostname and
+    # the expiry are all still checked either way, but every other machine keeps
+    # the revocation check this one cannot make.
+    if ($LASTEXITCODE -eq 35) {
+        Skip 'TLS handshake failed - retrying without the certificate revocation check'
+        Say 'the network cannot reach a CRL endpoint (a proxy, or port 80 blocked)'
+        curl.exe -fsSL --ssl-no-revoke --max-time 900 -o $tmp $url
+    }
+    if ($LASTEXITCODE -ne 0) {
+        Remove-Item -Force $tmp -ErrorAction SilentlyContinue
+        Fail "$label did not download - curl exit $LASTEXITCODE"
+        return $false
+    }
     if (-not (Test-Path $tmp) -or (Get-Item $tmp).Length -lt $minBytes) {
         Remove-Item -Force $tmp -ErrorAction SilentlyContinue
         Fail "$label came back too small to be the real file"
