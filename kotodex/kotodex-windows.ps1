@@ -38,15 +38,36 @@ function Answering {
 # twice. By its own name rather than a shared one: these two executables are this
 # application's, unlike python.exe, which anything on the machine may be running.
 function Start-Once($exe, $name) {
-    if (-not (Test-Path $exe)) { return }
+    if (-not (Test-Path $exe)) {
+        Write-Host "$name is missing at $exe" -ForegroundColor Red
+        return
+    }
     if (Get-Process -Name $name -ErrorAction SilentlyContinue) {
         Write-Host "$name is already running"
         return
     }
     $log = Join-Path $LogDir "$name.log"
-    Start-Process -WindowStyle Hidden -FilePath $exe `
-        -RedirectStandardOutput $log -RedirectStandardError "$log.err"
-    Write-Host "started $name, logging to $log"
+    Start-Hidden $exe $log
+    # Whether it is still there a moment later, because the interesting failure is
+    # a component that starts and dies: without this the launcher reports success
+    # and the reader sees nothing at all.
+    Start-Sleep -Milliseconds 1500
+    if (Get-Process -Name $name -ErrorAction SilentlyContinue) {
+        Write-Host "started $name, logging to $log"
+    } else {
+        Write-Host "$name exited immediately - see $log.err" -ForegroundColor Red
+        Get-Content -Tail 10 "$log.err" -ErrorAction SilentlyContinue |
+            ForEach-Object { Write-Host "  $_" }
+    }
+}
+
+# Through cmd, and never with Start-Process's own redirection: redirecting makes
+# PowerShell start the child without ShellExecute, which hands it *this* console -
+# so closing the launcher's window sends the whole set a close event and stops the
+# server. cmd gets its own hidden console and does the redirection inside it.
+function Start-Hidden($exe, $log) {
+    Start-Process -WindowStyle Hidden -FilePath 'cmd.exe' `
+        -ArgumentList "/d /c """"$exe"" > ""$log"" 2>&1"""
 }
 
 if (Answering) {
@@ -57,14 +78,15 @@ if (Answering) {
         exit 1
     }
     New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
-    $p = Start-Process -PassThru -WindowStyle Hidden -FilePath $Server `
-        -RedirectStandardOutput $Log -RedirectStandardError "$Log.err"
-    Write-Host "started kotodex-server (pid $($p.Id)), logging to $Log"
+    Start-Hidden $Server $Log
+    Write-Host "started kotodex-server, logging to $Log"
     # The first boot recounts the line stream and loads the tokenizer, so the
     # browser is held back rather than opening on a connection refused.
     foreach ($try in 1..30) {
         Start-Sleep -Seconds 1
-        if ($p.HasExited) {
+        # By name, because the process started is cmd's child and not this
+        # script's - which is the price of not handing it this console.
+        if (-not (Get-Process -Name 'kotodex-server' -ErrorAction SilentlyContinue)) {
             Write-Host "the server exited - see $Log.err" -ForegroundColor Red
             Get-Content -Tail 15 "$Log.err" -ErrorAction SilentlyContinue
             exit 1

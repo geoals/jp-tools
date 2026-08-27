@@ -40,12 +40,14 @@ UninstallDisplayIcon={app}\kotodex\icons\kotodex.ico
 Source: "{#Stage}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-Name: "{autoprograms}\Kotodex"; Filename: "powershell.exe"; \
-    Parameters: "-ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\kotodex\kotodex-windows.ps1"""; \
+; wscript, not powershell: a shortcut to powershell.exe shows a console for as
+; long as the launcher runs, and the launcher waits for the server.
+Name: "{autoprograms}\Kotodex"; Filename: "wscript.exe"; \
+    Parameters: """{app}\kotodex\kotodex-windows.vbs"""; \
     WorkingDir: "{app}"; IconFilename: "{app}\kotodex\icons\kotodex.ico"; \
     Comment: "Kotodex - the ledger, the reader and the overlay"
-Name: "{autodesktop}\Kotodex"; Filename: "powershell.exe"; \
-    Parameters: "-ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\kotodex\kotodex-windows.ps1"""; \
+Name: "{autodesktop}\Kotodex"; Filename: "wscript.exe"; \
+    Parameters: """{app}\kotodex\kotodex-windows.vbs"""; \
     WorkingDir: "{app}"; IconFilename: "{app}\kotodex\icons\kotodex.ico"; \
     Tasks: desktopicon
 
@@ -60,9 +62,8 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Filename: "powershell.exe"; \
     Parameters: "-ExecutionPolicy Bypass -File ""{app}\setup.ps1"" -NoShortcut"; \
     WorkingDir: "{app}"; StatusMsg: "Downloading dictionaries (about 175 MB, once)..."; \
-    Flags: waituntilterminated
-Filename: "powershell.exe"; \
-    Parameters: "-ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\kotodex\kotodex-windows.ps1"""; \
+    Flags: waituntilterminated runhidden
+Filename: "wscript.exe"; Parameters: """{app}\kotodex\kotodex-windows.vbs"""; \
     WorkingDir: "{app}"; Description: "Start Kotodex"; Flags: postinstall nowait skipifsilent
 
 [UninstallDelete]

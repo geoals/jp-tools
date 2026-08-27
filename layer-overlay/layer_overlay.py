@@ -275,6 +275,16 @@ class Overlay(QObject):
         if self.hidden:
             window.setVisible(False)
         self._window = window
+        # Unconditional, not behind LAYER_OVERLAY_DEBUG: "the overlay never
+        # appeared" is answered by where the surface went and which output it
+        # landed on, and that is the first question every time. One line.
+        screen = window.screen()
+        print(
+            f"surface {window.x()},{window.y()} {window.width()}x{window.height()}"
+            f" dpr {window.devicePixelRatio()}"
+            f" on {screen.name() if screen else '?'}",
+            flush=True,
+        )
         # The compositor configures a layer surface after the window is
         # created, and a Plasma panel's exclusive zone shrinks it further, so
         # the height here is not the final one. Recompute when it settles.
@@ -474,6 +484,17 @@ def run(url: str, *, scope: str, storage, qt_args=()) -> int:
 
     QtWebEngineQuick.initialize()  # has to precede QGuiApplication
     app = QGuiApplication([sys.argv[0], *qt_args])
+
+    # Every output, because the surface covers one of them and a reader with two
+    # monitors looking at the wrong one sees nothing at all.
+    for screen in app.screens():
+        g = screen.geometry()
+        print(
+            f"screen {screen.name()} {g.x()},{g.y()} {g.width()}x{g.height()}"
+            f" dpr {screen.devicePixelRatio()}"
+            f"{' primary' if screen is app.primaryScreen() else ''}",
+            flush=True,
+        )
 
     overlay = Overlay()
     surface = Surface(

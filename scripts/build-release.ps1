@@ -60,6 +60,7 @@ Take 'web-shared'
 Take 'kotodex-server\static'
 Take 'kotodex-server\overlay'
 Take 'kotodex\kotodex-windows.ps1'
+Take 'kotodex\kotodex-windows.vbs'
 # The icon, which every shortcut and both frozen executables point at.
 Take 'kotodex\icons\kotodex.ico'
 # Left out on purpose: capture\, layer-overlay\, scripts\lib, kotodex-doctor.sh,

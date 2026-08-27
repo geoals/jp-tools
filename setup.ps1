@@ -8,11 +8,13 @@
 # and for good; a cloned file is not marked as downloaded, so it needs no
 # Unblock-File.
 #
-# This is `setup.sh --core` for Windows: the ledger and the reader alone - the
-# server, the dashboard, the dictionaries, and the reader in a browser. There is
-# no overlay, no audio ring buffer and no Textractor source here, because all
-# three are Linux-only today; text arrives from a source elsewhere, which is
-# what the core tier is for (see sources/README.md).
+# This is `setup.sh` for Windows: the server, the dashboard, the dictionaries and
+# the reader, and in a release the overlay and the Textractor source beside them,
+# frozen. What is not here is the audio ring buffer, so a card gets no voiceline -
+# that pipeline is Linux-only.
+#
+# It sets nothing up for those two itself: they are ordinary executables in the
+# install, started by kotodex-windows.ps1. This downloads what all of them need.
 #
 # Re-runnable: every step checks before it acts, so a second run is a no-op and
 # a run after installing something picks that up.
@@ -228,13 +230,15 @@ if ($NoShortcut) {
 } else {
     $StartMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
     $Lnk = Join-Path $StartMenu 'Kotodex.lnk'
-    $Launcher = Join-Path $Here 'kotodex\kotodex-windows.ps1'
+    $Launcher = Join-Path $Here 'kotodex\kotodex-windows.vbs'
     $shell = New-Object -ComObject WScript.Shell
     $sc = $shell.CreateShortcut($Lnk)
-    $sc.TargetPath = 'powershell.exe'
-    # -WindowStyle Hidden on the shortcut, not in the script: the console belongs
-    # to powershell.exe and a script cannot hide the window it was started in.
-    $sc.Arguments = "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Launcher`""
+    # wscript with the .vbs, not powershell with the .ps1: a shortcut to
+    # powershell.exe shows a console for as long as the launcher runs, and the
+    # launcher waits up to thirty seconds for the server. -WindowStyle Hidden does
+    # not help - the console is allocated before the script can hide it.
+    $sc.TargetPath = 'wscript.exe'
+    $sc.Arguments = "`"$Launcher`""
     $sc.WorkingDirectory = $Here
     # The .ico, not the exe: kotodex-server.exe carries no embedded icon, and a
     # shortcut pointing at it for one is blank.
