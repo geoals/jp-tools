@@ -77,6 +77,19 @@ pub async fn anki_refresh(
     })))
 }
 
+/// `GET /api/anki/up` — is AnkiConnect answering where cards are added?
+///
+/// `state.anki_url` alone, not [`services::anki::candidate_urls`]: this reports
+/// on the path a mine actually takes, and `services::card` posts there.
+///
+/// Its own endpoint rather than a field on the reader's status event, because
+/// the probe waits out its timeout whenever nothing answers and that event
+/// shares a loop with the line feed.
+pub async fn anki_up(State(state): State<AppState>) -> Json<Value> {
+    let up = crate::services::anki::reachable(&state.http, &state.anki_url).await;
+    Json(json!({ "up": up }))
+}
+
 /// `GET /api/anki/cards` — every mined card against what the reading knows.
 ///
 /// Read-only, and deliberately so: it reports what a sweep *would* act on. The

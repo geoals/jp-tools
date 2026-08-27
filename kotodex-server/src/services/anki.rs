@@ -62,7 +62,7 @@ async fn call(
     }
 }
 
-async fn reachable(client: &reqwest::Client, url: &str) -> bool {
+pub async fn reachable(client: &reqwest::Client, url: &str) -> bool {
     let body = json!({ "action": "version", "version": 6 });
     matches!(
         client.post(url).timeout(PROBE_TIMEOUT).json(&body).send().await,

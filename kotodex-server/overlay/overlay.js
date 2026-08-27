@@ -51,14 +51,46 @@ if (font) root.setProperty("--line-font", `"${font}", sans-serif`);
 const lineEl = document.getElementById("line");
 const warnEl = document.getElementById("warn");
 
-// The one line that says something is wrong. Status pushes rewrite it every two
-// seconds, so anything that has to be *read* — a mine Anki refused — holds it
-// for a while against them.
-let warnHeldUntil = 0;
-function warn(text, holdMs = 0) {
-  if (holdMs) warnHeldUntil = Date.now() + holdMs;
-  else if (Date.now() < warnHeldUntil) return;
-  warnEl.textContent = text;
+// What is wrong, one line per thing. Two faults are two lines in the one box
+// rather than one of them winning: a shut Anki and a dead capture are unrelated
+// problems, and ranking them means the loser is invisible until the winner is
+// fixed.
+//
+// Standing faults are keyed and rewritten in place — the poll that reports one
+// repeats every couple of seconds — while a one-off (a mine Anki refused) is a
+// line with a timer on it, since nothing is going to come back and clear it.
+const faults = new Map();
+// text -> the timer that clears it, so the same message twice is one line with
+// its clock restarted rather than two.
+const transient = new Map();
+
+function drawWarnings() {
+  warnEl.replaceChildren(
+    ...[...faults.values(), ...transient.keys()].map((text) => {
+      const line = document.createElement("div");
+      line.textContent = text;
+      return line;
+    }),
+  );
+}
+
+function setFault(key, text) {
+  if (faults.get(key) === (text || undefined)) return;
+  if (text) faults.set(key, text);
+  else faults.delete(key);
+  drawWarnings();
+}
+
+function warn(text, holdMs = 6000) {
+  clearTimeout(transient.get(text));
+  transient.set(
+    text,
+    setTimeout(() => {
+      transient.delete(text);
+      drawWarnings();
+    }, holdMs),
+  );
+  drawWarnings();
 }
 const popupEl = document.getElementById("popup");
 
@@ -195,19 +227,14 @@ const CAPTURE_FAULT = {
   // of pausing, not a problem with it. Routing a chosen state through the fault
   // line is what put the bare word "paused" on screen whenever capture stopped.
   //
-  // Otherwise a capture fault outranks the rest — no line at all is the bigger
-  // problem — and a missing window name is worth saying out loud, since the
-  // screenshot on a card then grabs the whole screen with the overlay on it and
-  // nothing else here reports that.
-  warn(
-    paused
-      ? ""
-      : capture !== "live"
-        ? CAPTURE_FAULT[capture] ?? capture
-        : vn_window
-          ? ""
-          : "no window name on this work",
+  // A missing window name is worth saying out loud on its own line: the
+  // screenshot on a card then grabs the whole screen with the overlay on it,
+  // and nothing else here reports that.
+  setFault(
+    "capture",
+    paused || capture === "live" ? "" : (CAPTURE_FAULT[capture] ?? capture),
   );
+  setFault("window", paused || vn_window ? "" : "no window name on this work");
   // The flag, not `capture`: the logger takes a poll to close its socket, so
   // `capture` still reads `live` right after a pause and would flip the button
   // back under the click that set it.
@@ -1607,8 +1634,32 @@ async function mine(word, target = null) {
   // something only the reader can fix — the wrong profile is open, the note
   // type was renamed.
   if (!note_id) warn(error ? `Anki: ${error}` : "Anki added no card", 12000);
+  // Ask again straight away: a mine is the one moment a shut Anki costs
+  // something, and the poll may be most of its interval away.
+  if (!note_id) checkAnki();
   return note_id;
 }
+
+// Whether Anki is answering where a card would be added. Polled, because
+// nothing else asks until a mine does — a shut Anki was invisible until the
+// mine that failed on it, which is the worst moment to find out.
+const ANKI_POLL_MS = 20_000;
+
+async function checkAnki() {
+  try {
+    const { up } = await (await fetch("/api/anki/up")).json();
+    setFault(
+      "anki",
+      up ? "" : "no Anki — start it with the AnkiConnect add-on; required for mining",
+    );
+  } catch {
+    // kotodex-server itself did not answer, which says nothing about Anki. The
+    // capture fault is the line that reports that.
+  }
+}
+
+checkAnki();
+setInterval(checkAnki, ANKI_POLL_MS);
 
 /** Tell the shell every rectangle on this page that should take a click.
  *
