@@ -21,3 +21,6 @@ __pycache__/
 
 # setup.ps1 keeps the check-run server output here
 setup-server.log*
+
+# A stray sidecar from a tool given ":memory:" as a database path
+:memory:*
