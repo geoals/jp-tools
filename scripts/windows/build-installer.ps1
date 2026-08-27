@@ -119,8 +119,13 @@ $keep = @('en', 'ja')
 Get-ChildItem (Join-Path $internal 'translations') -File -ErrorAction SilentlyContinue |
     Where-Object { $keep -notcontains ($_.BaseName -replace '^.*_', '') } |
     Remove-Item -Force
+# Its own list, because Chromium names these by full locale - en-US.pak, not
+# en.pak. Filtering them against the list above kept ja.pak alone and deleted
+# every English one, so an English machine shipped with no locale it could load.
+# en-US rather than en-GB or any other: it is Chromium's own fallback.
+$keepLocale = @('en-US', 'ja')
 Get-ChildItem (Join-Path $internal 'translations\qtwebengine_locales') -File -ErrorAction SilentlyContinue |
-    Where-Object { $keep -notcontains $_.BaseName } | Remove-Item -Force
+    Where-Object { $keepLocale -notcontains $_.BaseName } | Remove-Item -Force
 
 Say 'collecting into the tree'
 foreach ($pair in @(@('kotodex-overlay', 'overlay'), @('kotodex-source', 'source'))) {

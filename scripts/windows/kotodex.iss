@@ -14,6 +14,10 @@
 
 [Setup]
 AppName=Kotodex
+; Spelt out rather than left to default to AppName, which is what 0.2.0 shipped
+; with: the id is what makes a new version an upgrade of the old one instead of a
+; second entry in Installed apps, so it must not move when the name does.
+AppId=Kotodex
 AppVersion={#Version}
 AppPublisher=Kotodex
 DefaultDirName={localappdata}\Programs\Kotodex
@@ -35,6 +39,15 @@ UninstallDisplayName=Kotodex
 ; every shortcut pointing at it for one came out blank.
 SetupIconFile={#Stage}\kotodex\icons\kotodex.ico
 UninstallDisplayIcon={app}\kotodex\icons\kotodex.ico
+
+[InstallDelete]
+; An upgrade replaces the two frozen trees wholesale rather than writing over
+; them. PyInstaller onedir is about a thousand files, and a freeze against a new
+; PySide6 or Python leaves the old DLLs and .pyd files sitting beside the new
+; ones, still importable. Nothing else under {app} is touched, so the
+; dictionaries and system_full.dic survive and setup.ps1 skips its download.
+Type: filesandordirs; Name: "{app}\overlay"
+Type: filesandordirs; Name: "{app}\source"
 
 [Files]
 Source: "{#Stage}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
@@ -65,6 +78,34 @@ Filename: "powershell.exe"; \
     Flags: waituntilterminated runhidden
 Filename: "wscript.exe"; Parameters: """{app}\kotodex\kotodex-windows.vbs"""; \
     WorkingDir: "{app}"; Description: "Start Kotodex"; Flags: postinstall nowait skipifsilent
+
+[Code]
+// Windows will not replace a running executable, and Kotodex has no quit that
+// stops the server - the overlay's X closes the overlay alone. So an upgrade
+// installed over a running copy failed halfway through the tree. Restart Manager
+// cannot ask any of these to close either: all three run windowless. Stopping
+// them outright is safe - both databases are WAL and survive it, which a
+// half-written overlay tree does not.
+//
+// The overlay and the source first, so neither is left posting to a dead ledger.
+procedure StopKotodex;
+var
+  I, Code: Integer;
+  Names: array[0..2] of String;
+begin
+  Names[0] := 'kotodex-overlay.exe';
+  Names[1] := 'kotodex-source.exe';
+  Names[2] := 'kotodex-server.exe';
+  for I := 0 to 2 do
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM ' + Names[I], '',
+      SW_HIDE, ewWaitUntilTerminated, Code);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  StopKotodex;
+  Result := '';
+end;
 
 [UninstallDelete]
 ; Written after installation by the first run, so Inno does not know about them.
