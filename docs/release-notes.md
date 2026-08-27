@@ -2,9 +2,35 @@
 
 Read a Japanese visual novel with the line, its dictionary and your own
 vocabulary history drawn over the game — fullscreen included — and mine a card
-with the character's voice on it in one click. Linux only.
+with the character's voice on it in one click.
 
-## Install
+## Install — Windows
+
+Download `kotodex-<version>-windows-setup.exe` and run it. No administrator: it
+installs under your own user directory, so there is no elevation prompt.
+
+**Windows will say "Windows protected your PC".** The installer is not code-signed
+— a certificate costs real money — so click *More info*, then *Run anyway*.
+
+First run downloads about 175 MB: SudachiDict, and the dictionaries that are free
+but not ours to redistribute. It needs a network connection once.
+
+Two things the installer cannot do for you:
+
+- **Textractor**, with its WebSocket extension enabled. That is what hooks the
+  game's text, and without it the overlay stays empty. Kotodex listens on
+  `ws://localhost:6677`; the address is in the settings panel if yours differs.
+- **Anki** with the AnkiConnect add-on, if you want to mine cards. Reading and
+  lookups work without it.
+
+Then start Kotodex from the Start Menu. It starts the ledger, the line source and
+the overlay, and opens the dashboard — where you say which work you are reading
+and which window title the game has, so the overlay can follow it.
+
+Audio on cards is Linux-only for now: a Windows card gets the sentence, the
+definition and the frequency, without the voiceline.
+
+## Install — Linux
 
 ```
 tar xf kotodex-<version>-linux-x86_64.tar.gz
@@ -21,9 +47,9 @@ It is re-runnable, and takes `--dry-run`, `--yes` and `--uninstall`.
 ## What it does
 
 - **The overlay.** Layer surface where the compositor has `zwlr_layer_shell_v1`
-  — KDE, Hyprland, wlroots — and an always-on-top X11 window elsewhere,
-  including GNOME under `QT_QPA_PLATFORM=xcb`. Click-through everywhere it has
-  not drawn.
+  — KDE, Hyprland, wlroots — an always-on-top X11 window elsewhere, including
+  GNOME under `QT_QPA_PLATFORM=xcb`, and a layered topmost window on Windows.
+  Click-through everywhere it has not drawn.
 - **The dictionary popup**, over your own Yomitan dictionaries: definitions,
   pitch accent, two frequency ranks, one dictionary at a time.
 - **Scrollback**, paged back through the session with the same lookups and the
@@ -46,7 +72,12 @@ one of them, and [docs/degradation.md](degradation.md) is the full list.
 
 ## Known limits
 
-- Windows and macOS are not supported and are not planned.
+- macOS is not supported and is not planned.
+- **On Windows:** no card audio and no game screenshot, since the capture
+  pipeline is Linux-only. A game in DirectX *exclusive* fullscreen cannot be
+  overlaid at all — run it borderless windowed, which most engines do anyway.
+  The dashboard's window picker lists nothing, so type the game's window title in
+  by hand.
 - Whisper (used by the YouTube tooling in this repository) is not set up by the
   installer.
 - The GNOME X11 fallback is the least tested path; open an issue with your

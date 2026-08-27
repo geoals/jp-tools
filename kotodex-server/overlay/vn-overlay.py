@@ -47,7 +47,11 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "layer-overlay"))
+# layer-overlay is a sibling directory rather than an installed package, so it has
+# to be put on the path. Not when frozen: there is no repository beside the
+# executable then, and the module is already inside the bundle.
+if not getattr(sys, "frozen", False):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "layer-overlay"))
 import layer_overlay  # noqa: E402
 
 DEFAULT_URL = "http://localhost:3200/overlay/overlay.html"

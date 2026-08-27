@@ -30,6 +30,10 @@
 #
 # The downloads below handle it themselves, and say so when they do.
 
+# -NoShortcut when the installer is running this: it owns the Start Menu entry, so
+# that the uninstaller knows about it and takes it away again.
+param([switch]$NoShortcut)
+
 $ErrorActionPreference = 'Stop'
 # Invoke-RestMethod draws a progress bar per chunk, which costs more than the
 # download on a slow link.
@@ -217,23 +221,27 @@ if ($zips.Count -eq 0 -and -not $imported) {
 # ------------------------------------------------------------- application --
 
 Step 'Start Menu entry'
-# The Linux launcher is a Qt tray process owning three components; here there is
-# one to own, so the entry runs a script rather than a program of its own.
-$StartMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
-$Lnk = Join-Path $StartMenu 'Kotodex.lnk'
-$Launcher = Join-Path $Here 'kotodex\kotodex-windows.ps1'
-$shell = New-Object -ComObject WScript.Shell
-$sc = $shell.CreateShortcut($Lnk)
-$sc.TargetPath = 'powershell.exe'
-# -WindowStyle Hidden on the shortcut, not in the script: the console belongs to
-# powershell.exe and a script cannot hide the window it was started in.
-$sc.Arguments = "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Launcher`""
-$sc.WorkingDirectory = $Here
-$sc.IconLocation = "$Server,0"
-$sc.Description = 'Kotodex - the ledger and the reader'
-$sc.Save()
-Good "Kotodex in the Start Menu"
-Say 'it starts the server if nothing answers on 3200, then opens the reader'
+# The Linux launcher is a Qt tray process; here the entry runs a script rather
+# than a program of its own, and that script owns the same three components.
+if ($NoShortcut) {
+    Skip 'the installer owns the Start Menu entry'
+} else {
+    $StartMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
+    $Lnk = Join-Path $StartMenu 'Kotodex.lnk'
+    $Launcher = Join-Path $Here 'kotodex\kotodex-windows.ps1'
+    $shell = New-Object -ComObject WScript.Shell
+    $sc = $shell.CreateShortcut($Lnk)
+    $sc.TargetPath = 'powershell.exe'
+    # -WindowStyle Hidden on the shortcut, not in the script: the console belongs
+    # to powershell.exe and a script cannot hide the window it was started in.
+    $sc.Arguments = "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Launcher`""
+    $sc.WorkingDirectory = $Here
+    $sc.IconLocation = "$Server,0"
+    $sc.Description = 'Kotodex - the ledger, the reader and the overlay'
+    $sc.Save()
+    Good "Kotodex in the Start Menu"
+    Say 'it starts the server, the source and the overlay, then opens the dashboard'
+}
 
 # ------------------------------------------------------------------ doctor --
 

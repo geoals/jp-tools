@@ -55,18 +55,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-      - name: Build the zip
+      - name: Install what freezing needs
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check PySide6 websockets pyinstaller
+          choco install innosetup --no-progress -y
+
+      # One job for both artifacts: build-installer.ps1 runs build-release.ps1 for
+      # the tree it needs, so the zip falls out of the same Rust build rather than
+      # a second one.
+      - name: Build the zip and the installer
         shell: pwsh
         run: |
           $version = "${{ inputs.version }}"
           if (-not $version) { $version = "$env:GITHUB_REF_NAME" -replace '^v', '' }
-          scripts\build-release.ps1 $version
+          scripts\windows\build-installer.ps1 $version
 
       - uses: actions/upload-artifact@v4
         with:
           name: kotodex-windows
-          path: target/release-artifact/*.zip*
+          path: |
+            target/release-artifact/*.zip*
+            target/release-artifact/*setup.exe*
 
   # Separate from the build because the build container has no gh.
   attach:
