@@ -60,6 +60,8 @@ Take 'web-shared'
 Take 'kotodex-server\static'
 Take 'kotodex-server\overlay'
 Take 'kotodex\kotodex-windows.ps1'
+# The icon, which every shortcut and both frozen executables point at.
+Take 'kotodex\icons\kotodex.ico'
 # Left out on purpose: capture\, layer-overlay\, scripts\lib, kotodex-doctor.sh,
 # docs\ and every Python file. None of it runs on Windows, so shipping it is a
 # handful of failures for things that were never included - the same reasoning

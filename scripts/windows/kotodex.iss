@@ -31,7 +31,10 @@ ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
 DisableProgramGroupPage=yes
 UninstallDisplayName=Kotodex
-UninstallDisplayIcon={app}\target\release\kotodex-server.exe
+; The .ico rather than an exe: kotodex-server.exe carries no embedded icon, so
+; every shortcut pointing at it for one came out blank.
+SetupIconFile={#Stage}\kotodex\icons\kotodex.ico
+UninstallDisplayIcon={app}\kotodex\icons\kotodex.ico
 
 [Files]
 Source: "{#Stage}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
@@ -39,11 +42,11 @@ Source: "{#Stage}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs i
 [Icons]
 Name: "{autoprograms}\Kotodex"; Filename: "powershell.exe"; \
     Parameters: "-ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\kotodex\kotodex-windows.ps1"""; \
-    WorkingDir: "{app}"; IconFilename: "{app}\target\release\kotodex-server.exe"; \
+    WorkingDir: "{app}"; IconFilename: "{app}\kotodex\icons\kotodex.ico"; \
     Comment: "Kotodex - the ledger, the reader and the overlay"
 Name: "{autodesktop}\Kotodex"; Filename: "powershell.exe"; \
     Parameters: "-ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\kotodex\kotodex-windows.ps1"""; \
-    WorkingDir: "{app}"; IconFilename: "{app}\target\release\kotodex-server.exe"; \
+    WorkingDir: "{app}"; IconFilename: "{app}\kotodex\icons\kotodex.ico"; \
     Tasks: desktopicon
 
 [Tasks]

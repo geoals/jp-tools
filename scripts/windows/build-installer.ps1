@@ -72,11 +72,13 @@ if (-not (Test-Path $Stage)) { throw "build-release.ps1 left no tree at $Stage" 
 # resources are collected as data. So the pruning below happens after the build,
 # by deleting what is provably unused, rather than by asking PyInstaller not to
 # take it.
+$Icon = Join-Path $Repo 'kotodex\icons\kotodex.ico'
+
 function Freeze($name, $entry, $mode, $extra) {
     Say "freezing $name"
     $args = @(
         '-m', 'PyInstaller', '--noconfirm', '--onedir', $mode,
-        '--name', $name,
+        '--name', $name, '--icon', $Icon,
         '--distpath', (Join-Path $Work 'dist'),
         '--workpath', (Join-Path $Work 'work'),
         '--specpath', $Work

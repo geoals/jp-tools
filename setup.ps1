@@ -236,7 +236,9 @@ if ($NoShortcut) {
     # to powershell.exe and a script cannot hide the window it was started in.
     $sc.Arguments = "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Launcher`""
     $sc.WorkingDirectory = $Here
-    $sc.IconLocation = "$Server,0"
+    # The .ico, not the exe: kotodex-server.exe carries no embedded icon, and a
+    # shortcut pointing at it for one is blank.
+    $sc.IconLocation = Join-Path $Here 'kotodex\icons\kotodex.ico'
     $sc.Description = 'Kotodex - the ledger, the reader and the overlay'
     $sc.Save()
     Good "Kotodex in the Start Menu"
