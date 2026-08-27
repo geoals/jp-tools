@@ -23,6 +23,12 @@ jp-core = { path = "../jp-core" }
 # The card fields and the CompactDef gloss. NOT `jp_mine_core::export` — an
 # overlay card goes through `services::card::add_note` like every other.
 jp-mine-core = { path = "../jp-mine-core" }
+# The reader's font list and the mine notification, in process rather than by
+# shelling out to `fc-list` and `notify-send`: one fewer tool to have installed,
+# and neither of those two exists off Linux.
+fontdb = "0.24.0"
+ttf-parser = "0.25.1"
+notify-rust = "4.18.0"
 
 [dev-dependencies]
 # Drives the router directly in tests (`oneshot`), so an endpoint can be

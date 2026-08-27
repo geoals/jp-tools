@@ -13,14 +13,14 @@ use tracing::debug;
 
 /// Notification timeout in milliseconds. Long enough to catch out of the corner
 /// of the eye while reading, short enough not to sit on the game.
-const TIMEOUT_MS: &str = "2000";
+const TIMEOUT_MS: u32 = 2000;
 
 /// Report the finished card, if reporting is on.
 ///
 /// Detached and never awaited: a mine is finished whether or not a notification
 /// came out of it, and blocking the enrichment task on a notification daemon
-/// would be a strange way to find that out. A missing `notify-send` or no
-/// session bus is silence, logged at debug — this is feedback, not a feature
+/// would be a strange way to find that out. No notification daemon, or no
+/// session bus, is silence logged at debug — this is feedback, not a feature
 /// anything depends on.
 ///
 /// Set `KOTODEX_MINE_NOTIFY=0` to mine in silence.
@@ -33,33 +33,21 @@ pub fn mine_complete(word: &str) {
     } else {
         format!("{word} — card complete")
     };
-    // The product's name and its desktop-entry id: the first is what the
-    // notification is labelled with, the second is what a notification daemon
-    // looks the icon up under.
-    match tokio::process::Command::new("notify-send")
-        .args([
-            "-a",
-            "Kotodex",
-            "-i",
-            "com.kotodex.Kotodex",
-            "-t",
-            TIMEOUT_MS,
-            "✅ Mined",
-            &body,
-        ])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-    {
-        // Waited on in a task of its own rather than dropped on the floor: the
-        // caller does not block, and the child is still reaped instead of
-        // accumulating one zombie per mined card across a reading session.
-        Ok(mut child) => {
-            tokio::spawn(async move {
-                let _ = child.wait().await;
-            });
+    // Blocking: the session bus call is synchronous, so it goes on the blocking
+    // pool rather than holding an enrichment task's thread.
+    tokio::task::spawn_blocking(move || {
+        // The product's name and its desktop-entry id: the first is what the
+        // notification is labelled with, the second is what a notification
+        // daemon looks the icon up under.
+        if let Err(e) = notify_rust::Notification::new()
+            .appname("Kotodex")
+            .icon("com.kotodex.Kotodex")
+            .summary("✅ Mined")
+            .body(&body)
+            .timeout(notify_rust::Timeout::Milliseconds(TIMEOUT_MS))
+            .show()
+        {
+            debug!(error = %e, "could not send the mine notification");
         }
-        Err(e) => debug!(error = %e, "could not send the mine notification"),
-    }
+    });
 }

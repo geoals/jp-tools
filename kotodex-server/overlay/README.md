@@ -119,8 +119,8 @@ is still faint and stacking is what darkens it.
 **The colour and the font are both in-page.** A layer surface has nowhere to
 open a native window, so neither the browser's colour picker nor a `<select>`
 would appear at all: the colour is hue, saturation and lightness sliders in
-one box, and the font list is every Japanese-capable family `fc-list` reports,
-from `GET /api/reader/fonts` — the name in the panel's own face, since a display
+one box, and the font list is every Japanese-capable family installed, from
+`GET /api/reader/fonts` — the name in the panel's own face, since a display
 font renders its own name too fine to pick out of a list, with あア亜 beside it
 as the sample.
 
@@ -214,6 +214,6 @@ on every change.
 - `VN_OVERLAY_FONT` (default `DNP Shuei Mincho Pr6`, set by `vn-overlay.sh`;
   unset it falls back to the page's `Noto Sans CJK JP`) — the font for the line
   only.
-  Any family name `fc-list :lang=ja family` prints. The popup keeps the default:
+  Any family name `GET /api/reader/fonts` lists. The popup keeps the default:
   a dictionary and the text being tried are hard to judge in the same face.
 
