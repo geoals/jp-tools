@@ -423,10 +423,12 @@ JP_DICT="$HERE/target/release/jp-dict"
 # Nothing here is redistributed: each is fetched from whoever publishes it, at
 # the version they are publishing today. That is also why the URLs are resolved
 # rather than pinned — a stale pin is a dictionary that quietly stops existing.
-jitendex_url() {
-  curl -sL --max-time 30 https://api.github.com/repos/stephenmk/stephenmk.github.io/releases/latest \
-    | jq -r '.assets[] | select(.name == "jitendex-yomitan.zip") | .browser_download_url'
-}
+#
+# Jitendex resolves through the releases/latest/download redirect rather than
+# api.github.com: unauthenticated, that API allows 60 requests an hour per
+# address, and a machine behind a company NAT shares the count with everyone
+# else on it.
+JITENDEX_URL="https://github.com/stephenmk/stephenmk.github.io/releases/latest/download/jitendex-yomitan.zip"
 
 # What is already imported, so a dictionary that is present under another
 # filename is not downloaded a second time. `source_path` is the cache key, so a
@@ -450,13 +452,9 @@ want_dictionary() {
 # popup is empty, and with no ranks nothing is underlined or ordered. Asking
 # only offers the reader a broken install.
 if want_dictionary jitendex-yomitan.zip "jitendex" "Jitendex"; then
-  url="$(jitendex_url)"
-  if [ -n "$url" ] && [ "$url" != null ]; then
-    fetch "$url" "$HERE/dictionaries/jitendex-yomitan.zip" 10000000 \
-      "Jitendex — Japanese-English (~39 MB, CC BY-SA 4.0)"
-  else
-    fail "could not resolve the Jitendex release — get it from https://jitendex.org"
-  fi
+  fetch "$JITENDEX_URL" "$HERE/dictionaries/jitendex-yomitan.zip" 10000000 \
+    "Jitendex — Japanese-English (~39 MB, CC BY-SA 4.0)" \
+    || say "get it from https://jitendex.org"
 fi
 
 # jiten.moe ranks the media people actually read. HEAD is refused there, so

@@ -115,14 +115,13 @@ function Want($zipName, $match, $label) {
 # Both are free and neither is optional in practice: with no definitions the
 # popup is empty, and with no ranks nothing is underlined or ordered.
 if (Want 'jitendex-yomitan.zip' 'jitendex' 'Jitendex') {
-    $rel = Invoke-RestMethod 'https://api.github.com/repos/stephenmk/stephenmk.github.io/releases/latest'
-    $url = ($rel.assets | Where-Object { $_.name -eq 'jitendex-yomitan.zip' }).browser_download_url
-    if ($url) {
-        Fetch $url (Join-Path $DictDir 'jitendex-yomitan.zip') 10000000 `
-            'Jitendex - Japanese-English (~39 MB, CC BY-SA 4.0)' | Out-Null
-    } else {
-        Fail 'could not resolve the Jitendex release - get it from https://jitendex.org'
-    }
+    # The releases/latest/download redirect rather than the API: unauthenticated
+    # api.github.com allows 60 requests an hour per address, and a VM behind a
+    # company NAT shares that with everyone else on it. Still resolved rather
+    # than pinned - a stale pin is a dictionary that quietly stops existing.
+    Fetch 'https://github.com/stephenmk/stephenmk.github.io/releases/latest/download/jitendex-yomitan.zip' `
+        (Join-Path $DictDir 'jitendex-yomitan.zip') 10000000 `
+        'Jitendex - Japanese-English (~39 MB, CC BY-SA 4.0)' | Out-Null
 }
 
 # jiten.moe ranks the media people actually read.
