@@ -17,7 +17,8 @@
 # Re-runnable: every step checks before it acts, so a second run is a no-op and
 # a run after installing something picks that up.
 #
-# Needs Rust (https://rustup.rs) with the MSVC toolchain.
+# The release zip ships the binaries. A git checkout builds them instead, and
+# needs Rust (https://rustup.rs) with the MSVC toolchain.
 #
 # A machine that cannot reach a certificate revocation list - a proxy, or a
 # firewall allowing only 443, since a CRL is served over plain HTTP - fails the
@@ -95,24 +96,41 @@ function Fetch($url, $dest, $minBytes, $label) {
 # ------------------------------------------------------------------ build --
 
 Step 'Binaries'
-if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
-    Fail 'no cargo - install Rust from https://rustup.rs and run this again'
-    exit 1
-}
-Say 'building - the first time takes several minutes'
-# The same three the Linux tarball ships. Not the whole workspace: yt-mine and
-# manga-mine have no part in keeping the ledger, and they carry the expensive
-# image codecs. Every one named with its own --bin, since the flag filters
-# across the whole selection rather than per package.
-& cargo build --release --manifest-path (Join-Path $Here 'Cargo.toml') `
-    -p kotodex-server --bin kotodex-server `
-    -p jp-core --bin jp-dict `
-    -p jp-mine-core --bin anki-setup
-if ($LASTEXITCODE -ne 0) { Fail 'build failed'; exit 1 }
-Good 'built'
-
 $JpDict = Join-Path $Here 'target\release\jp-dict.exe'
 $Server = Join-Path $Here 'target\release\kotodex-server.exe'
+
+# A checkout builds whenever cargo is here, not only when the exes are missing:
+# one that has moved on leaves exes that still run and answer with stale
+# behaviour, which is harder to see than a missing one. Cargo is a no-op when
+# they are current.
+#
+# Cargo.toml is what tells a checkout from the zip. The zip ships the exes and
+# no source, so asking for cargo alone would run a build with nothing to build
+# on any machine that happens to have rustup.
+$HasCargo = [bool](Get-Command cargo -ErrorAction SilentlyContinue)
+if ((Test-Path (Join-Path $Here 'Cargo.toml')) -and $HasCargo) {
+    Say 'building - the first time takes several minutes'
+    # The same three the Linux tarball ships. Not the whole workspace: yt-mine
+    # and manga-mine have no part in keeping the ledger, and they carry the
+    # expensive image codecs. Every one named with its own --bin, since the flag
+    # filters across the whole selection rather than per package.
+    & cargo build --release --manifest-path (Join-Path $Here 'Cargo.toml') `
+        -p kotodex-server --bin kotodex-server `
+        -p jp-core --bin jp-dict `
+        -p jp-mine-core --bin anki-setup
+    if ($LASTEXITCODE -ne 0) { Fail 'build failed'; exit 1 }
+    Good 'built'
+} elseif ((Test-Path $Server) -and (Test-Path $JpDict)) {
+    Good 'shipped binaries'
+} elseif (Test-Path (Join-Path $Here 'Cargo.toml')) {
+    Fail 'no binaries, and no cargo to build this checkout with'
+    Say 'install Rust: https://rustup.rs'
+    exit 1
+} else {
+    Fail 'this release is missing its binaries'
+    Say 'download the zip again, or build from a git checkout'
+    exit 1
+}
 
 # ----------------------------------------------------------- the tokenizer --
 
