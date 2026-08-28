@@ -58,10 +58,16 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Self {
         let db_path = std::env::var("KOTODEX_SERVER_DB_PATH").unwrap_or_else(|_| {
-            jp_core::install::data_dir().join("kotodex.db").display().to_string()
+            jp_core::install::data_dir()
+                .join("kotodex.db")
+                .display()
+                .to_string()
         });
         let knowledge_db_path = std::env::var("KOTODEX_KNOWLEDGE_DB_PATH").unwrap_or_else(|_| {
-            jp_core::install::data_dir().join("knowledge.db").display().to_string()
+            jp_core::install::data_dir()
+                .join("knowledge.db")
+                .display()
+                .to_string()
         });
         let listen_addr = std::env::var("KOTODEX_SERVER_LISTEN_ADDR")
             .unwrap_or_else(|_| "0.0.0.0:3200".to_string());
@@ -97,9 +103,7 @@ impl Config {
                 .unwrap_or_else(|_| jp_core::install::install_root().join("system_full.dic")),
             vn_capture_script: std::env::var("KOTODEX_VN_CAPTURE_SH")
                 .map(Into::into)
-                .unwrap_or_else(|_| {
-                    jp_core::install::install_root().join("capture/vn-capture.sh")
-                }),
+                .unwrap_or_else(|_| jp_core::install::install_root().join("capture/vn-capture.sh")),
             anthropic_api_key: std::env::var("KOTODEX_ANTHROPIC_API_KEY").ok(),
             whisper_url: std::env::var("KOTODEX_WHISPER_URL")
                 .unwrap_or_else(|_| "http://localhost:8100".to_string()),

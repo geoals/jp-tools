@@ -1146,7 +1146,12 @@ mod tests {
         // vocabulary scale both need a master, so the smallest dictionary
         // present takes the role rather than the set having none.
         let k = with_dicts(&[("Jitendex", "/x/jitendex-yomitan.zip")]).await;
-        assert!(ensure_master(k.pool(), DEFAULT_MASTER).await.unwrap().is_some());
+        assert!(
+            ensure_master(k.pool(), DEFAULT_MASTER)
+                .await
+                .unwrap()
+                .is_some()
+        );
         assert_eq!(master(k.pool()).await.unwrap().unwrap().title, "Jitendex");
     }
 

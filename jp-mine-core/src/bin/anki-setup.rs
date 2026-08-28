@@ -55,7 +55,10 @@ async fn check(client: &reqwest::Client) -> ExitCode {
     println!("✓ AnkiConnect is answering ({} note types)", models.len());
 
     if !models.contains(&config.model_name) {
-        println!("✗ note type {} is not in this collection", config.model_name);
+        println!(
+            "✗ note type {} is not in this collection",
+            config.model_name
+        );
         if config.model_name == "Lapis" {
             println!("  anki-setup install-lapis  — downloads it and imports it");
         } else {
@@ -99,7 +102,10 @@ async fn check(client: &reqwest::Client) -> ExitCode {
     println!("  it has: {}", fields.join(", "));
     println!("  add the missing ones in Anki, or rename each to a field it has:");
     for (what, _) in &missing {
-        println!("    {}=<field>   # {what}, or empty for none", env_var_for(what));
+        println!(
+            "    {}=<field>   # {what}, or empty for none",
+            env_var_for(what)
+        );
     }
     ExitCode::FAILURE
 }
@@ -164,7 +170,10 @@ async fn install_lapis(client: &reqwest::Client) -> ExitCode {
         return ExitCode::FAILURE;
     };
 
-    println!("downloading Lapis {}", release["tag_name"].as_str().unwrap_or("?"));
+    println!(
+        "downloading Lapis {}",
+        release["tag_name"].as_str().unwrap_or("?")
+    );
     let bytes = match client.get(&url).send().await {
         Ok(r) => match r.bytes().await {
             Ok(b) => b,
@@ -220,7 +229,9 @@ async fn install_lapis(client: &reqwest::Client) -> ExitCode {
 }
 
 async fn has_lapis(client: &reqwest::Client) -> bool {
-    let models = anki(client, "modelNames", json!({})).await.unwrap_or_default();
+    let models = anki(client, "modelNames", json!({}))
+        .await
+        .unwrap_or_default();
     let models: Vec<String> = serde_json::from_value(models).unwrap_or_default();
     models.iter().any(|m| m == "Lapis")
 }

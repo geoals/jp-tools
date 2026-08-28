@@ -65,12 +65,14 @@ fn first_on_path<'a>(bins: &[&'a str]) -> Option<&'a str> {
 
 #[cfg(unix)]
 fn run_dir() -> PathBuf {
-    std::env::var_os("VN_RUNDIR").map(PathBuf::from).unwrap_or_else(|| {
-        let base = std::env::var_os("XDG_RUNTIME_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(format!("/run/user/{}", real_uid())));
-        base.join("kotodex")
-    })
+    std::env::var_os("VN_RUNDIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            let base = std::env::var_os("XDG_RUNTIME_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from(format!("/run/user/{}", real_uid())));
+            base.join("kotodex")
+        })
 }
 
 /// `getuid` without a libc dependency: the runtime directory is only a fallback
@@ -107,7 +109,11 @@ fn capture_running() -> Capability {
         .flatten()
         .flatten()
         .filter_map(|e| e.metadata().ok()?.modified().ok())
-        .any(|m| m.elapsed().map(|e| e < Duration::from_secs(30)).unwrap_or(false));
+        .any(|m| {
+            m.elapsed()
+                .map(|e| e < Duration::from_secs(30))
+                .unwrap_or(false)
+        });
     if fresh {
         on("recording")
     } else {
@@ -128,7 +134,9 @@ fn capture_running() -> Capability {
 /// first run and then outlives every producer — so a file check answers `ok` on
 /// a machine with nothing hooked at all.
 async fn lines_source(state: &AppState) -> Capability {
-    let settings = crate::db::load_settings(&state.local).await.unwrap_or_default();
+    let settings = crate::db::load_settings(&state.local)
+        .await
+        .unwrap_or_default();
     let beat = super::stream::heartbeat(state).await;
     if beat.as_ref().is_some_and(|b| b.attached()) {
         return on(settings.line_source);
@@ -343,7 +351,10 @@ async fn dictionaries(state: &AppState) -> Value {
         n => on(format!("{n}")),
     };
     let pitch = match count(Role::Pitch) {
-        0 => off("none", "import a pitch dictionary — required for the accent line"),
+        0 => off(
+            "none",
+            "import a pitch dictionary — required for the accent line",
+        ),
         n => on(format!("{n}")),
     };
     let defs = match definitions {
@@ -381,7 +392,10 @@ async fn vocabulary_ledger(state: &AppState) -> Capability {
         .await
         .unwrap_or(false);
     if read_anything {
-        off("empty", "run POST /api/vocab/rebuild — nothing has been ingested")
+        off(
+            "empty",
+            "run POST /api/vocab/rebuild — nothing has been ingested",
+        )
     } else {
         on("empty, nothing read yet")
     }

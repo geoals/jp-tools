@@ -64,8 +64,7 @@ fn legacy_class(title: &str) -> Option<&'static str> {
 /// styles directly.
 pub fn glossary_block(title: &str, definitions: &[&str]) -> String {
     let title = html_escape(title);
-    let mut out =
-        String::from("<div style=\"text-align: left;\" class=\"yomitan-glossary\"><ol>");
+    let mut out = String::from("<div style=\"text-align: left;\" class=\"yomitan-glossary\"><ol>");
     for def in definitions {
         out.push_str(&format!("<li data-dictionary=\"{title}\">{def}</li>"));
     }
@@ -159,7 +158,11 @@ pub async fn first_sense(
     let ordered = dicts
         .iter()
         .filter(|d| d.role == dictionaries::Role::Master)
-        .chain(dicts.iter().filter(|d| d.role != dictionaries::Role::Master));
+        .chain(
+            dicts
+                .iter()
+                .filter(|d| d.role != dictionaries::Role::Master),
+        );
 
     for dict in ordered {
         let entries = dictionaries::lookup_dictionary_entries(pool, dict.id, term).await?;

@@ -146,7 +146,10 @@ mod tests {
     #[test]
     fn a_clip_url_keeps_only_its_path() {
         assert_eq!(
-            clip_path("http://127.0.0.1:5050", "http://localhost:5050/nhk16/audio/1.opus"),
+            clip_path(
+                "http://127.0.0.1:5050",
+                "http://localhost:5050/nhk16/audio/1.opus"
+            ),
             Some("nhk16/audio/1.opus".to_string())
         );
     }

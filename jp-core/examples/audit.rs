@@ -74,10 +74,7 @@ async fn main() {
 
     // The reader-facing rank, which is the one that says whether a spelling is
     // one anybody writes — see `reader_frequency` in `knowledge::dictionaries`.
-    let reader_freq = dictionaries::reader_frequency(pool)
-        .await
-        .unwrap()
-        .unwrap();
+    let reader_freq = dictionaries::reader_frequency(pool).await.unwrap().unwrap();
     let jiten: HashMap<String, i64> =
         sqlx::query_as::<_, (String, i64)>(
             "select term, min(frequency) from dictionary_frequency where dictionary_id = ? group by term",

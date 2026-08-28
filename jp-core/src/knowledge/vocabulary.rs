@@ -621,7 +621,6 @@ pub fn preselects_known(row: &VocabRow, min_encounters: i64) -> bool {
     row.encounter_count >= min_encounters && row.lookup_count == 0
 }
 
-
 /// How common the *word* is, as an SQL expression over a `vocabulary` row.
 ///
 /// Not `MIN(frequency) WHERE term = headword`. BCCWJ is annotated with UniDic,

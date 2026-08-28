@@ -45,7 +45,9 @@ fn adopt_former_name(db_path: &str) {
     for suffix in ["", "-wal", "-shm"] {
         let from = with_suffix(&former, suffix);
         let to = with_suffix(path, suffix);
-        if from.exists() && let Err(e) = std::fs::rename(&from, &to) {
+        if from.exists()
+            && let Err(e) = std::fs::rename(&from, &to)
+        {
             tracing::warn!(from = %from.display(), to = %to.display(), error = %e,
                 "could not adopt the former database name");
             return;

@@ -23,8 +23,8 @@ fn parse_headwords(text: &str) -> Vec<String> {
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_trailing_suffix_may_spell_a_listed_headword() {
-    let dict_path = std::env::var("KOTODEX_SUDACHI_DICT_PATH")
-        .expect("KOTODEX_SUDACHI_DICT_PATH must be set");
+    let dict_path =
+        std::env::var("KOTODEX_SUDACHI_DICT_PATH").expect("KOTODEX_SUDACHI_DICT_PATH must be set");
     // Each is spelt by its parts as written, the last one in its base form —
     // 怖がり would need 怖がる listed instead, which is a different rung.
     let listed = ["度し難い", "言い難い", "得難い", "行き方"];
@@ -52,8 +52,8 @@ fn a_trailing_suffix_may_spell_a_listed_headword() {
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn an_idiom_longer_than_three_morphemes_is_still_offered() {
-    let dict_path = std::env::var("KOTODEX_SUDACHI_DICT_PATH")
-        .expect("KOTODEX_SUDACHI_DICT_PATH must be set");
+    let dict_path =
+        std::env::var("KOTODEX_SUDACHI_DICT_PATH").expect("KOTODEX_SUDACHI_DICT_PATH must be set");
     let listed = ["一か八か", "首を横に振る", "何でもない"];
     let tokenizer = SudachiTokenizer::new(Path::new(&dict_path), HashSet::new())
         .unwrap()
@@ -75,8 +75,8 @@ fn an_idiom_longer_than_three_morphemes_is_still_offered() {
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn mode_c_with_headwords_keeps_compounds_that_mode_b_splits() {
-    let dict_path = std::env::var("KOTODEX_SUDACHI_DICT_PATH")
-        .expect("KOTODEX_SUDACHI_DICT_PATH must be set");
+    let dict_path =
+        std::env::var("KOTODEX_SUDACHI_DICT_PATH").expect("KOTODEX_SUDACHI_DICT_PATH must be set");
     let path = Path::new(&dict_path);
 
     let words = parse_headwords(include_str!("compound_headwords.txt"));

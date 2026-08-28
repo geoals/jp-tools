@@ -872,7 +872,9 @@ async fn scrolling_back_pages_through_history_without_gaps_or_overlap() {
         app.add_line(base + i as f64 * 10.0, "あ", None).await;
     }
 
-    let newest = kotodex_server::db::max_line_id(&app.knowledge).await.unwrap();
+    let newest = kotodex_server::db::max_line_id(&app.knowledge)
+        .await
+        .unwrap();
     let mut before = newest + 1;
     let mut seen: Vec<i64> = Vec::new();
     loop {

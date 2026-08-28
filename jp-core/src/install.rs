@@ -49,7 +49,9 @@ fn user_data_root() -> PathBuf {
 fn root_from_exe() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
     let root = exe.parent()?.parent()?.parent()?;
-    root.join("kotodex-server/static").is_dir().then(|| root.to_path_buf())
+    root.join("kotodex-server/static")
+        .is_dir()
+        .then(|| root.to_path_buf())
 }
 
 fn build_workspace() -> PathBuf {

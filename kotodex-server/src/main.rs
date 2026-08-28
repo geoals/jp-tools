@@ -43,14 +43,14 @@ async fn main() {
     // needs to wait for it. Parsing Jitendex takes a while and runs once.
     if !config.demo {
         tokio::spawn({
-        let knowledge = knowledge.clone();
-        async move {
-            match jp_core::dictionary::Dictionary::backfill_sequences(knowledge.pool()).await {
-                Ok(0) => {}
-                Ok(n) => info!(updated = n, "dictionary entry ids backfilled"),
-                Err(e) => warn!(error = %e, "could not backfill dictionary entry ids"),
+            let knowledge = knowledge.clone();
+            async move {
+                match jp_core::dictionary::Dictionary::backfill_sequences(knowledge.pool()).await {
+                    Ok(0) => {}
+                    Ok(n) => info!(updated = n, "dictionary entry ids backfilled"),
+                    Err(e) => warn!(error = %e, "could not backfill dictionary entry ids"),
+                }
             }
-        }
         });
     }
 
