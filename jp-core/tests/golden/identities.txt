@@ -1,5 +1,5 @@
-# 254 lines, 3224 counted tokens, 995 distinct identities
-# 340 counted tokens (10.5%) are identities the master does not list
+# 254 lines, 3225 counted tokens, 994 distinct identities
+# 339 counted tokens (10.5%) are identities the master does not list
 # regenerate: cargo run --example golden -p jp-core --features test-support
 
 羽咲は…だ、大丈夫と思ます
@@ -246,7 +246,7 @@
     幽霊/ゆうれい 部屋/へや 終わり/おわり? の/の 空/そら で/で 見る/みる た/た 風景/ふうけい それ/それ は/は 何時/いつ の/の 風景/ふうけい
 
 「何それ？　そんな地点があるの？」
-    何それ/なにそれ? そんな/そんな 地点/ちてん が/が ある/ある の/の
+    何/なん それ/それ そんな/そんな 地点/ちてん が/が ある/ある の/の
 
 「第……ええと、十何回目かの、 　ナユタ決起集会」
     第/だい ええと/ええと 十/じゅう 何/なん 回/かい 目/め か/か の/の ナユタ/なゆた? 決起/けっき 集会/しゅうかい
