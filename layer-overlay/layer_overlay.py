@@ -134,6 +134,10 @@ class Overlay(QObject):
         #: rebuilds that an output change causes.
         self.hidden = False
         self._hits = []
+        #: Whether the page has ever pushed a region. The first push is the
+        #: moment the overlay becomes clickable, which is what a reader
+        #: experiences as it being *there* — the surface exists well before it.
+        self._reported = False
         self._name = ""
         self._rect = None
         self._xdotool = shutil.which("xdotool")
@@ -310,6 +314,13 @@ class Overlay(QObject):
         """Take what the page says is clickable, as flat `x, y, w, h, ...`."""
         v = [int(n) for n in flat]
         hits = [tuple(v[i : i + 4]) for i in range(0, len(v) - 3, 4)]
+        if not self._reported:
+            # The end of starting, as far as anyone using it is concerned: the
+            # page has loaded, the channel is up and there is something to click.
+            # Logged because the surface appearing is *not* that moment and the
+            # gap between them is all page load.
+            self._reported = True
+            print(f"{since_start()} page interactive", flush=True)
         if hits == self._hits:
             return
         self._hits = hits
@@ -433,6 +444,12 @@ class Surface:
         self._rebuild.stop()
 
     def _closed(self, window) -> None:
+        # Checked before the engine is touched, not only in `_schedule`. Qt still
+        # emits `visibleChanged` while it tears the window down on the way out,
+        # and by then the engine's C++ object can already be gone — reading
+        # `rootObjects()` off it raised a traceback on every quit.
+        if self._quitting:
+            return
         if window is self._engine.rootObjects()[0] and not window.isVisible():
             self._schedule()
 

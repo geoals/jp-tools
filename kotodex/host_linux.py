@@ -97,9 +97,6 @@ def components(Child):
             ensure_cmd=[OVERLAY_SH, "ensure"],
             detaches=True,
             supervised=False,
-            # It draws a kotodex-server page, and a browser error page over the
-            # whole screen has no way to be dismissed.
-            needs_server=True,
         ),
     ]
 

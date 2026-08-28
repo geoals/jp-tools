@@ -39,10 +39,23 @@ from config import SOCKET_NAME
 if (host.ROOT / "kotodex-server" / "static").is_dir():
     os.environ.setdefault("KOTODEX_ROOT", str(host.ROOT))
 
+# When this process began, as near to it as Python can see — the interpreter's
+# own boot is already spent. Every launcher log line is stamped against it, which
+# is what makes a slow start readable next to the overlay's own timings.
+STARTED = time.monotonic()
+
 # How long kotodex-server gets to answer before it is called down. The launcher
 # never builds it, so this covers the migrations it runs against knowledge.db on
 # the way up, not a compile.
 READY_TIMEOUT = 60.0
+# How often a probe is retried while waiting for a component to answer.
+#
+# A tenth of a second rather than a whole one: kotodex-server binds in about a
+# quarter of a second, so at one-second granularity every wait slept out the rest
+# of the second before noticing, and most of it was the poll rather than the
+# component. A refused connection is instant, so retrying ten times a second
+# costs nothing.
+POLL_INTERVAL = 0.1
 # A detaching child gets this long to appear before the probe is trusted.
 SPAWN_GRACE = 10.0
 # Restart a child this many times before giving up and saying which one.
@@ -60,7 +73,7 @@ class Child:
     def __init__(
         self, name, probe, start_cmd, stop_cmd=None, restart_cmd=None,
         ensure_cmd=None, detaches=False, supervised=True, log_file=None,
-        stop_adopted=None, needs_server=False, wait_after_restart=0.0
+        stop_adopted=None, wait_after_restart=0.0
     ):
         self.name = name
         self.probe = probe
@@ -69,11 +82,6 @@ class Child:
         # How to bring it back without disturbing one already running — the
         # tray's Show overlay. `None` means starting it is that.
         self.ensure_cmd = ensure_cmd or start_cmd
-        # Whether the launcher holds it back until kotodex-server answers. The
-        # overlay draws a kotodex-server page on Linux; where the page retries on
-        # its own, starting it early is how its cold start and the server's boot
-        # are spent at once rather than in series.
-        self.needs_server = needs_server
         # How long to let it answer after a *restart*, for one whose restart
         # command returns before the process it spawned is up.
         self.wait_after_restart = wait_after_restart
@@ -120,7 +128,7 @@ class Child:
         while time.time() < deadline:
             if self.probe():
                 return True
-            time.sleep(1)
+            time.sleep(POLL_INTERVAL)
         log(f"{self.name}: not answering after {timeout:.0f}s")
         return False
 
@@ -210,12 +218,24 @@ def children():
 
 
 def wait_for_kotodex_server(log):
+    """Say when the port started answering, and give up loudly if it never does.
+
+    Nothing is held back on this any more — see the spawn loop in [`main`]. It
+    remains because a start that felt slow is diagnosed from this number, and
+    because a server that never comes up should say so rather than leave the
+    reader wondering why the strip is empty.
+    """
+    started = time.monotonic()
     deadline = time.time() + READY_TIMEOUT
     while time.time() < deadline:
         if config.kotodex_server_up():
+            log(f"kotodex-server: answering after {time.monotonic() - started:.2f}s")
             return True
-        time.sleep(1)
-    log("kotodex-server: no answer — not starting the overlay")
+        time.sleep(POLL_INTERVAL)
+    log(
+        f"kotodex-server: no answer after {READY_TIMEOUT:.0f}s — the overlay is up "
+        "but its strip stays empty. Restart from the tray."
+    )
     return False
 
 
@@ -333,21 +353,27 @@ def main() -> int:
         instance.send("show")
         return 0
 
+    # Timed like the overlay's own log, so "starting felt slow" is answerable
+    # from the two logs side by side rather than guessed at. Everything up to the
+    # overlay being spawned is serial, so each line is a phase boundary.
     def log(msg):
-        print(f"kotodex: {msg}", flush=True)
+        print(f"kotodex: +{time.monotonic() - STARTED:6.2f}s {msg}", flush=True)
 
     kids = children()
 
-    # A component that needs the server is held back until the port answers —
-    # see `Child.needs_server`. If kotodex-server never comes up the tray is how
-    # it is retried.
-    serving = True
+    # Everything at once, and the server's boot reported afterwards rather than
+    # waited out in the middle.
+    #
+    # The overlay used to be held back until the port answered, which put the
+    # server's whole boot in front of a third of a second of Python and Qt
+    # starting that needs no server at all. It does not need the gate: a page
+    # that loads too early retries, and `Overlay.qml` turns Chromium's error page
+    # off so a failed load leaves the surface as it was rather than covering the
+    # screen with something that cannot be dismissed. Windows already started it
+    # this way.
     for child in kids:
-        if child.needs_server and not serving:
-            continue
         child.ensure(log)
-        if child.name == "kotodex-server":
-            serving = wait_for_kotodex_server(log)
+    wait_for_kotodex_server(log)
 
     tray = Tray(app, kids, config.SERVER_URL, log)
 
@@ -362,7 +388,6 @@ def main() -> int:
         back as its child, or the restart would quietly convert it into
         something adopted — running, but no longer stopped on the way out.
         """
-        nonlocal serving
         log("restarting everything")
         restarting["until"] = time.time() + 120
         for child in reversed(kids):
@@ -391,11 +416,8 @@ def main() -> int:
             # gap: it was stopped above and `ensure` spawns it here.
             if child.wait_after_restart:
                 child.wait_ready(log, child.wait_after_restart)
-            if child.needs_server and not serving:
-                continue
             child.ensure(log)
-            if child.name == "kotodex-server":
-                serving = wait_for_kotodex_server(log)
+        wait_for_kotodex_server(log)
         restarting["until"] = 0.0
         log("restarted")
 

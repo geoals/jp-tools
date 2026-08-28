@@ -82,12 +82,6 @@ def components(Child):
             stop_cmd=["taskkill", "/IM", OVERLAY_EXE.name, "/F"],
             log_file=LOG_DIR / "kotodex-overlay.log",
             supervised=False,
-            # Started while the server is still booting. The page retries until
-            # it answers, and this is a frozen Qt application over half a
-            # gigabyte of Chromium — on a cold first run Defender reads all of
-            # it, and that minute is better spent alongside the server's boot
-            # than after it.
-            needs_server=False,
         ),
     ]
 

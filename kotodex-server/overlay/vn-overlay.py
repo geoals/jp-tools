@@ -41,6 +41,7 @@ import argparse
 import json
 import os
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -93,6 +94,12 @@ def _timed_check(target) -> _Check:
         return _Check(time.monotonic() - started, str(e))
 
 
+def _say(message: str) -> None:
+    """One write per line, because these now land while Qt is writing too."""
+    sys.stderr.write(f"{layer_overlay.since_start()} {message}\n")
+    sys.stderr.flush()
+
+
 def check_dependencies(page_url: str) -> None:
     """Say which of the overlay's dependencies are down, and keep going.
 
@@ -100,6 +107,13 @@ def check_dependencies(page_url: str) -> None:
     an overlay started before kotodex-server catches up when kotodex-server arrives,
     and Anki is only needed at the moment a word is mined. Exiting would make
     the start order matter when it does not.
+
+    **Reporting only, so it must not be in front of the surface.** Neither check
+    gates anything, and a closed port does not refuse on Windows the way it does
+    on Linux — it times out, so a shut Anki cost two seconds of drawing nothing.
+    [`main`] runs this on a thread of its own for that reason; every line carries
+    `since_start()`, so one that lands after the surface still says when it was
+    taken.
 
     Textractor is deliberately absent. The page already reports it live from
     `settings.vn_logger_heartbeat`, in `#warn`, which stays right when it stops
@@ -111,17 +125,16 @@ def check_dependencies(page_url: str) -> None:
     # Both checks are timed, because `timeout` does not bound all of what they
     # do: it applies to the socket, never to resolving the name in front of it.
     # A check that took far longer than its own timeout is the report that says
-    # so, and both of these run before anything is drawn.
+    # so.
     took = _timed_check(f"{api}/api/settings")
     if took.error:
-        print(
-            f"{layer_overlay.since_start()} kotodex-server not answering on {api} "
+        _say(
+            f"kotodex-server not answering on {api} "
             f"({took.error}) after {took.seconds:.2f}s — the strip stays empty "
-            "until it does. Start Kotodex, which runs it.",
-            file=sys.stderr,
+            "until it does. Start Kotodex, which runs it."
         )
     else:
-        print(f"{layer_overlay.since_start()} kotodex-server answered", file=sys.stderr)
+        _say("kotodex-server answered")
 
     request = urllib.request.Request(
         ANKI_URL,
@@ -130,14 +143,13 @@ def check_dependencies(page_url: str) -> None:
     )
     took = _timed_check(request)
     if took.error:
-        print(
-            f"{layer_overlay.since_start()} Anki not answering on {ANKI_URL} "
+        _say(
+            f"Anki not answering on {ANKI_URL} "
             f"({took.error}) after {took.seconds:.2f}s — reading and lookups work, "
-            "mining will fail",
-            file=sys.stderr,
+            "mining will fail"
         )
     else:
-        print(f"{layer_overlay.since_start()} Anki answered", file=sys.stderr)
+        _say("Anki answered")
 
 
 def quit_kotodex() -> None:
@@ -183,7 +195,9 @@ def main() -> int:
         if font:
             url += f"&font={quote(font)}"
 
-    check_dependencies(url)
+    # Beside the surface, never in front of it — see `check_dependencies`. A
+    # daemon thread because a report is worth nothing once the overlay is gone.
+    threading.Thread(target=check_dependencies, args=(url,), daemon=True).start()
     code = layer_overlay.run(url, scope=SCOPE, storage=STORAGE, qt_args=qt_args)
     if code == layer_overlay.QUIT_REQUESTED:
         quit_kotodex()
