@@ -95,7 +95,9 @@ row() {
     printf '  %s✓%s %-18s %s\n' "$green" "$off" "$name" "$detail"
     return
   fi
-  case "$INSTALLING$fix" in 1"start Kotodex"*) return ;; esac
+  if [ "$INSTALLING" = 1 ]; then
+    case "$fix" in *[Ss]"tart Kotodex"*) return ;; esac
+  fi
   flush_section
   if [ -n "$critical" ]; then
     printf '  %s✗%s %-18s %s\n' "$red" "$off" "$name" "$detail"
