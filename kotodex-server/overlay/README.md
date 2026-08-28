@@ -88,11 +88,12 @@ hands back the id `define` returned, so a retraction can only ever undo the one
 row that popup made. The side buttons still cost nothing at all and stay the
 way to judge a word without asking what it means.
 
-**The controls live behind one handle.** ☰ at the top left is the bar shut: drag
-it to move the widget, click it to hide the row to its right — explain, hide the
-line, scrollback, pause capture, stats, settings, and ✕ quit. It starts open,
-and only the handle opens and shuts it — nothing closes it on its own, so a
-button is never taken out from under the pointer reaching for it. The three
+**The controls live behind one handle.** The Kotodex mark at the top left is
+the bar shut: drag it to move the widget, click it to hide the row to its
+right — explain, hide the line, scrollback, pause capture, stats, settings, and
+✕ quit. It starts open, and only the handle opens and shuts it — nothing closes
+it on its own, so a button is never taken out from under the pointer reaching
+for it. The three
 panels that hang under the bar (scrollback, explain, settings) are alternatives
 rather than a stack: opening one closes the others.
 

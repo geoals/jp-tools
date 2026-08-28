@@ -527,6 +527,24 @@
   #pause-btn svg {
     stroke-width: 2.3;
   }
+
+  /* The launcher icon at the launcher's own proportions: the button is the
+     icon's rounded panel, so the mark fills the button the way it fills the
+     tile, not the 1.25rem the drawn glyphs beside it use. Its own coordinates
+     too, so the two stay one drawing. Butt caps and miter joins, so the
+     terminals are flat the way a gothic face's are; the row's round caps would
+     fatten every stroke by half its width at each end. */
+  #bar-handle svg.logo {
+    width: 86%;
+    height: 86%;
+    stroke-width: 22;
+    stroke-linecap: butt;
+    stroke-linejoin: miter;
+  }
+  #bar-handle svg.logo .rule {
+    fill: var(--accent);
+    stroke: none;
+  }
   /* Pause carries the state on the icon alone: two bars while capture is
      running, a triangle while it is stopped. */
   #pause-btn.paused .when-running,
@@ -967,7 +985,12 @@
 <div id="explain-box">
   <div id="bar">
     <button id="bar-handle" data-tip="Overlay controls — drag to move">
-      <svg viewBox="0 0 24 24"><path d="M4 8h16M4 12h16M4 16h16"/></svg>
+      <svg viewBox="0 0 256 256" class="logo">
+        <path d="M47 77H114V139H47"/>
+        <path d="M163 66V150"/>
+        <path d="M163 101L204 118"/>
+        <rect x="47" y="168" width="153" height="18" class="rule"/>
+      </svg>
     </button>
     <div id="buttons">
       <button id="explain-btn" data-tip="Explain the last line (select a word first to focus on it)">
