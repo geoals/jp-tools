@@ -29,14 +29,22 @@ pub trait LlmDefiner: Send + Sync {
 
 pub struct CompactDefiner {
     client: reqwest::Client,
-    api_key: String,
+    provider: jp_mine_core::llm::Provider,
 }
 
 impl CompactDefiner {
+    /// Anthropic behind the API key, which is all yt-mine has ever configured.
+    /// The provider is a setting in kotodex-server because a reader sets it there;
+    /// this tool has no such surface.
     pub fn new(api_key: String) -> Self {
         Self {
             client: reqwest::Client::new(),
-            api_key,
+            provider: jp_mine_core::llm::Provider {
+                kind: jp_mine_core::llm::Kind::Anthropic,
+                base_url: String::new(),
+                model: String::new(),
+                api_key,
+            },
         }
     }
 }
@@ -47,10 +55,10 @@ impl LlmDefiner for CompactDefiner {
         word: &str,
         sentence_context: &str,
     ) -> Pin<Box<dyn Future<Output = Result<String, LlmError>> + Send>> {
-        let (client, api_key) = (self.client.clone(), self.api_key.clone());
+        let (client, provider) = (self.client.clone(), self.provider.clone());
         let (word, sentence) = (word.to_string(), sentence_context.to_string());
         Box::pin(async move {
-            jp_mine_core::compactdef::compact_def(&client, &api_key, &word, &sentence)
+            jp_mine_core::compactdef::compact_def(&client, &provider, &word, &sentence)
                 .await
                 .map_err(|e| LlmError::Failed(e.to_string()))
         })
