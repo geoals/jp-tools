@@ -128,47 +128,6 @@ pub async fn compact_def(
     unreachable!("the loop returns on both branches of its last iteration")
 }
 
-/// Generate the gloss through the `claude` CLI instead of the API, so the call
-/// is billed to the subscription rather than to API credits.
-///
-/// Same prompt, same model, same effort — measured equivalent to [`compact_def`]
-/// over the `tag_probe` set once run-to-run variance is accounted for. It is the
-/// path for bulk work: re-tagging the whole collection is thousands of calls
-/// that are not worth API credits, while a single mine on the hot path stays on
-/// the API, which is faster and has no process to spawn.
-///
-/// `--setting-sources ""` is what makes it comparable. Without it the CLI loads
-/// CLAUDE.md and auto-memory, and this repository's memory contains notes on
-/// tuning these very tags — the model would be reading the answer key.
-pub fn compact_def_cli(target: &str, sentence: &str) -> Result<String, CompactDefError> {
-    let mut message = format!("Sentence: {sentence}\nTarget: {target}");
-
-    for attempt in 0..2 {
-        // The CLI prints the reply and nothing else, but a stray leading line
-        // would land in the meaning; the gloss is the last two non-empty lines.
-        let raw = clean_gloss(&run_cli(system_prompt(), &message)?);
-        let raw = match raw.rsplit_once("<br>") {
-            Some((head, tags)) => {
-                let meaning = head.rsplit_once("<br>").map_or(head, |(_, m)| m);
-                format!("{meaning}<br>{tags}")
-            }
-            None => raw,
-        };
-
-        match canonical_gloss(&raw) {
-            Ok(gloss) => return Ok(gloss),
-            Err(why) if attempt == 0 => {
-                message = format!(
-                    "Sentence: {sentence}\nTarget: {target}\n\nYour previous answer was \
-                     {raw:?} and line 2 is invalid: {why}. Send both lines again, corrected."
-                );
-            }
-            Err(why) => return Err(CompactDefError::Failed(format!("bad tag line: {why}"))),
-        }
-    }
-    unreachable!("the loop returns on both branches of its last iteration")
-}
-
 /// Run one `claude -p` call and return its stdout.
 fn run_cli(system: &str, message: &str) -> Result<String, CompactDefError> {
     let out = std::process::Command::new("claude")

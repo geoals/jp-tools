@@ -145,10 +145,6 @@ impl History {
         slice_range(&self.lookups, from, to)
     }
 
-    pub fn marks_in(&self, from: f64, to: f64) -> &[f64] {
-        slice_range(&self.marks, from, to)
-    }
-
     /// Mined card creation times in `[from, to)`, in seconds.
     pub fn card_times_in(&self, from: f64, to: f64) -> Vec<f64> {
         let (a, b) = ((from * 1000.0) as i64, (to * 1000.0) as i64);

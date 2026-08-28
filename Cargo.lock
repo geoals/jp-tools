@@ -4869,7 +4869,6 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "axum-test",
- "base64",
  "dotenvy",
  "jp-core",
  "jp-mine-core",

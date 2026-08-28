@@ -198,33 +198,6 @@ pub async fn top_unknown(
     Ok(rows.iter().map(row_to_term).collect())
 }
 
-/// Known words of this work, with the moment each was first met anywhere.
-///
-/// The raw material for "what this work taught you": the caller decides which
-/// of these were first met *here* by asking what was being read at
-/// `first_seen`, because only the line stream knows that and this table has no
-/// timestamps of its own.
-pub async fn known_with_first_seen(
-    k: &Knowledge,
-    work: &str,
-) -> Result<Vec<(WorkTerm, f64)>, sqlx::Error> {
-    let rows = sqlx::query(&format!(
-        "SELECT wt.headword, wt.reading, v.pos, v.status, wt.count, \
-                (v.encounter_count - wt.count) AS elsewhere, v.first_seen \
-         FROM work_terms wt JOIN vocabulary v \
-             ON v.headword = wt.headword AND v.reading = wt.reading \
-         WHERE wt.work = ? AND {IS_WORD} AND v.first_seen IS NOT NULL AND {IS_KNOWN} \
-         ORDER BY wt.count DESC",
-    ))
-    .bind(work)
-    .fetch_all(k.pool())
-    .await?;
-    Ok(rows
-        .iter()
-        .map(|r| (row_to_term(r), r.get("first_seen")))
-        .collect())
-}
-
 /// Words this work uses that the rest of the reading barely does.
 ///
 /// The counterweight to [`top_unknown`]: high count here, almost nothing

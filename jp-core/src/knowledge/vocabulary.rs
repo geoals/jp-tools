@@ -16,7 +16,7 @@
 //! are incremental because re-tokenizing all of `lines` on every Anki refresh
 //! would be minutes of CPU. `status` is assertions only.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use sqlx::{Row, SqlitePool};
 
@@ -291,33 +291,6 @@ pub async fn sync_lookup_counts(k: &Knowledge) -> Result<(), sqlx::Error> {
     .execute(k.pool())
     .await?;
     Ok(())
-}
-
-/// Every headword the reader has ever stopped to look up.
-///
-/// The one piece of evidence in the database that a word was *not* known, and
-/// the reader's own rather than inferred. A bulk import claiming to know things
-/// has to be told about it: of 3,469 seeded-known words that came up again in
-/// reading, 95 were looked up, and those 95 were a quarter of every lookup made
-/// in that stretch.
-///
-/// Headword only — Yomitan sends no reading — so a lookup of 空 vetoes both
-/// そら and から. That is the safe direction: the pair stays unjudged and reaches
-/// triage, rather than being claimed on evidence that does not name it.
-pub async fn looked_up_headwords(k: &Knowledge) -> Result<HashSet<String>, sqlx::Error> {
-    // Both spellings, deliberately. This is a veto, and the doc above commits
-    // to erring toward vetoing: a seed keyed on either spelling should be
-    // stopped by a lookup recorded under the other. `sync_lookup_counts` takes
-    // the normalized one alone, because a count may not have it both ways.
-    let rows: Vec<(String, String)> =
-        sqlx::query_as("SELECT DISTINCT term, headword FROM lookups WHERE term <> ''")
-            .fetch_all(k.pool())
-            .await?;
-    Ok(rows
-        .into_iter()
-        .flat_map(|(term, headword)| [term, headword])
-        .filter(|s| !s.is_empty())
-        .collect())
 }
 
 /// Recompute the three dictionary flags from `dictionary_entries` + the roles.

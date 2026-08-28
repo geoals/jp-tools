@@ -406,43 +406,6 @@ pub async fn master_forms_by_sequence(
     Ok(out)
 }
 
-/// What to call an entry id that resolved to nothing, so a drop can be read
-/// rather than counted.
-///
-/// An import silently discards thousands of ids — names, JMdict's multi-word
-/// phrases, anything the master dictionary does not list — and "4,983
-/// unresolved" is not something a reader can check. Its best-scored form is
-/// what the entry is normally called.
-///
-/// Returned whole, like [`master_forms_by_sequence`], and for the same reason.
-pub async fn entry_labels_by_sequence(
-    pool: &SqlitePool,
-) -> Result<HashMap<i64, (String, String)>, sqlx::Error> {
-    let Some(lex) = lexeme_dictionary(pool).await? else {
-        return Ok(HashMap::new());
-    };
-    let rows = sqlx::query(
-        "SELECT j.sequence AS seq, j.term AS term, \
-                COALESCE(NULLIF(j.reading, ''), j.term) AS reading \
-           FROM dictionary_entries j \
-           JOIN (SELECT sequence, MAX(score) AS top FROM dictionary_entries \
-                  WHERE dictionary_id = ? AND sequence IS NOT NULL \
-                  GROUP BY sequence) b \
-             ON b.sequence = j.sequence AND b.top = j.score \
-          WHERE j.dictionary_id = ? AND j.sequence IS NOT NULL \
-          GROUP BY j.sequence",
-    )
-    .bind(lex)
-    .bind(lex)
-    .fetch_all(pool)
-    .await?;
-
-    Ok(rows
-        .iter()
-        .map(|r| (r.get("seq"), (r.get("term"), r.get("reading"))))
-        .collect())
-}
-
 pub async fn lookup_dictionary_entries(
     pool: &SqlitePool,
     dictionary_id: i64,

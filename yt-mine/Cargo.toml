@@ -14,7 +14,6 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 tracing = "0.1"
 tracing-subscriber = "0.3"
 thiserror = "2"
-base64 = "0.22.1"
 jp-core = { path = "../jp-core" }
 jp-mine-core = { path = "../jp-mine-core" }
 dotenvy = "0.15"

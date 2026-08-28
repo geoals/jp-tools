@@ -228,19 +228,6 @@ pub async fn insert_sentences(
     Ok(())
 }
 
-pub async fn update_job_progress(
-    pool: &SqlitePool,
-    id: i64,
-    segments_found: i64,
-) -> Result<(), sqlx::Error> {
-    sqlx::query("UPDATE mining_jobs SET segments_found = ? WHERE id = ?")
-        .bind(segments_found)
-        .bind(id)
-        .execute(pool)
-        .await?;
-    Ok(())
-}
-
 /// The videos already processed, newest first — one row per video rather than
 /// one per job, since re-submitting a failed video leaves several.
 pub async fn list_recent_videos(
