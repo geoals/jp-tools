@@ -102,7 +102,7 @@ export function BrowseView({ onJudged }) {
 
   return html`
     <div class="card">
-      <h2 title="What the ledger holds, as opposed to what to judge next.">
+      <h2>
         Browse
       </h2>
       <div class="triage-actions">

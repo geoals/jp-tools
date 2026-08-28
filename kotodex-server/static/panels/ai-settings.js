@@ -25,7 +25,7 @@ const SERVICES = {
   openai: {
     label: "OpenAI-compatible",
     baseUrl: "https://api.openai.com/v1",
-    note: "Anything speaking OpenAI's chat API: OpenAI, OpenRouter, DeepSeek, Gemini's compatible endpoint, or a local llama.cpp or Ollama. Include the version part of the address, and name a model — there is no sensible default across all of them.",
+    note: "Anything speaking the OpenAI chat API: OpenAI, OpenRouter, DeepSeek, Gemini, or a local model. Include /v1 in the address, and name a model.",
   },
 };
 
@@ -67,13 +67,15 @@ export function AiSettings({ settings, onSaved }) {
   const keyHint = settings.llm_has_key
     ? "A key is stored. Paste another to replace it, or save an empty box to remove it."
     : settings.llm_key_from_env
-      ? "A key is set in KOTODEX_ANTHROPIC_API_KEY and is what answers. It cannot be changed here — paste one to store a key that takes over from it."
+      ? "KOTODEX_ANTHROPIC_API_KEY is what answers. Paste a key here to use that one instead."
       : "Needed for explaining a line, and for the short gloss on a mined card. Everything else works without one.";
+
+  const nothingToSave = key.trim() === "" && !settings.llm_has_key;
 
   const keyPlaceholder = settings.llm_has_key
     ? "a key is stored"
     : settings.llm_key_from_env
-      ? "a key is set in the environment"
+      ? "using KOTODEX_ANTHROPIC_API_KEY"
       : "paste a key";
 
   return html`
@@ -91,7 +93,7 @@ export function AiSettings({ settings, onSaved }) {
             value=${key}
             onInput=${(e) => setKey(e.currentTarget.value)}
           />
-          <button type="button" onClick=${saveKey} disabled=${busy}>
+          <button type="button" onClick=${saveKey} disabled=${busy || nothingToSave}>
             ${busy ? "checking…" : "save"}
           </button>
         </div>
@@ -138,8 +140,7 @@ export function AiSettings({ settings, onSaved }) {
           />
         </div>
         <p class="settings-hint">
-          Empty uses the service's own. Set this to reach a proxy, a gateway or a
-          model running on this machine.
+          Empty uses the default. Set this for a proxy or a local model.
         </p>
       </div>
 
@@ -156,9 +157,7 @@ export function AiSettings({ settings, onSaved }) {
           />
         </div>
         <p class="settings-hint">
-          Empty leaves each prompt on the model it was tuned against — a stronger
-          one writes the card gloss, a cheaper one explains a line. Naming one
-          here uses it for both.
+          Empty keeps the default. Setting one here uses it for everything.
         </p>
       </div>
     </div>

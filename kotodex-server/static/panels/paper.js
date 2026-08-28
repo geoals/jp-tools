@@ -342,9 +342,8 @@ export function AddPaperBook({ work, onAdded, onDone }) {
               `
             : html`
                 <p class="book-setup-hint">
-                  The epub opens like this. Copy the first line of the story
-                  into the box below — everything before it is front matter and
-                  is never counted.
+                  Copy the first line of the story into the box below.
+                  Everything before it is front matter.
                 </p>
                 <pre class="book-head">${added.head}</pre>
                 <form onSubmit=${setup}>

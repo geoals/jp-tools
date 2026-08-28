@@ -606,18 +606,18 @@ export function Reader() {
   // is stale and reporting it would be a guess.
   const captureState = live ? (capture ? capture.capture : "…") : "offline";
   const CAPTURE_BADGE = {
-    live: ["live", "Lines are being hooked and recorded"],
+    live: ["live", "Lines are being recorded"],
     stalled: [
       "writer stuck",
-      "Textractor is hooked, but the logger cannot write to the database — lines are held in memory and will land when it clears",
+      "Textractor is hooked but the logger cannot write — lines are held in memory",
     ],
     unhooked: [
       "not hooked",
-      "The logger is running but Textractor is not attached — nothing is being captured",
+      "Textractor is not attached",
     ],
     down: [
       "logger down",
-      "The capture daemon is not running — nothing is being captured. Restart it: kotodex-capture restart",
+      "Capture daemon not running",
     ],
     paused: ["paused", "Capture is paused — nothing is being recorded"],
     offline: ["reconnecting…", "Not connected — is kotodex-server reachable?"],
@@ -630,17 +630,16 @@ export function Reader() {
   const clearLabel = clearing ? "…" : "✕ clear last";
   const emptyLabel =
     markedOnly && lines.length
-      ? "No marked words in the lines loaded — scroll up for more, or show every line."
+      ? "No marked words in the lines loaded."
       : capturing
         ? "Waiting for the next hooked line…"
         : liveTitle;
   // Quality-only: mining still works, so this is a quiet hint, not a disable.
   const trimOff = state && state.trim_available === false;
-  const trimTitle =
-    "whisper-service is down — mined clips are VAD-trimmed but not narrowed to the single mined sentence";
+  const trimTitle = "whisper-service down — clips trimmed by silence, not by sentence";
   const pauseTitle = paused
-    ? "Reconnect to Textractor and start recording lines again"
-    : "Disconnect from Textractor — no lines are recorded at all while this is off";
+    ? "Resume capture"
+    : "Pause — no lines recorded while off";
   // Built whole rather than split around the focus word — htm collapses the
   // whitespace at a line break.
   const explainTitle =
@@ -652,17 +651,17 @@ export function Reader() {
   const pausedBanner = "⏸ PAUSED — no lines are being recorded. Tap to resume.";
   const markedOnlyLabel = markedOnly ? "◍ marked" : "◌ marked";
   const markedOnlyTitle = markedOnly
-    ? "Showing only lines with a marked word — tap to show every line"
-    : "Show only the lines with a word you have not judged known";
+    ? "Showing marked lines only — tap to show all"
+    : "Show only lines with unjudged words";
   // Off while filtering: it drops the newest line, which the filter may be
   // hiding, and that would clear something not on screen.
   const clearTitle = markedOnly
-    ? "Show every line first — this drops the newest one, which the filter may be hiding"
-    : "Drop the newest line from the stats — lines hooked while finding the route, or a stretch re-read after skipping back";
+    ? "Show every line first"
+    : "Drop the newest line";
   const highlightLabel = highlightOn ? "◨ words" : "◫ words";
   const highlightTitle = highlightOn
-    ? "Tinting words you have not judged known — tap to read the line plain"
-    : "Tint words you have not judged known";
+    ? "Showing word status — tap to read plain"
+    : "Show word status";
 
   return html`
     <div class="reader ${paused ? "is-paused" : ""}">

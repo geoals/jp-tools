@@ -126,8 +126,7 @@ export function SetupView({ onReady }) {
         : html`
             <h2>Ready to read</h2>
             <p class="setup-fix">
-              Text is arriving and a dictionary can answer for it. Everything
-              below is optional — add it whenever you want it.
+              Text is arriving and a dictionary can answer for it.
             </p>
           `}
       <div class="setup-actions">

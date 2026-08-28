@@ -138,9 +138,8 @@ export function WorkSearchForm({ onSaved, onCancel }) {
         ${msg && html`<span class="form-msg error">${msg.text}</span>`}
       </div>
       <p class="settings-hint">
-        Picking one fills in the cover for you. How long it is has to be pasted
-        from jiten.moe — vndb has no character count — and Kotodex asks for that
-        on the progress bar, once there is progress to show.
+        Picking one fills in the cover. Paste the character count from jiten.moe
+        for the progress bar.
       </p>
     </div>
   `;

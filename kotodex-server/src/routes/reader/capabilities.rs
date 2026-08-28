@@ -208,22 +208,20 @@ async fn lines_source(state: &AppState, fresh_install: bool) -> Capability {
     #[cfg(not(unix))]
     return off(
         format!("{}, no producer", settings.line_source),
-        "nothing is hooking the game's text. Textractor with its WebSocket \
-         extension is what does it — the address it connects to is under Source.",
+        "nothing is hooking the game's text. Set up Textractor with its \
+         WebSocket extension.",
     )
     .blocking(fresh_install);
     #[cfg(unix)]
     match settings.line_source.as_str() {
         "clipboard" => off(
             "clipboard, no producer",
-            "nothing is copying text. Start Kotodex — it runs the capture daemon \
-             that watches the clipboard.",
+            "nothing is copying text. Start Kotodex.",
         )
         .blocking(fresh_install),
         _ => off(
             "ws, no producer",
-            "nothing is hooking the game's text. Start Kotodex — it runs the \
-             logger that reads Textractor's WebSocket.",
+            "nothing is hooking the game's text. Start Kotodex.",
         )
         .blocking(fresh_install),
     }
@@ -239,7 +237,7 @@ fn vad_model() -> Capability {
     } else {
         off(
             "not downloaded",
-            "the model was never downloaded. Run the installer again — it fetches it.",
+            "run the installer again to download it.",
         )
     }
 }
@@ -265,8 +263,7 @@ fn xdotool() -> Capability {
         // sentence is printed as one line by the doctor and the overlay both.
         off(
             "not installed",
-            "install xdotool — required for anki cards to get a screenshot of the \
-             right window, and for positioning of the overlay",
+            "install xdotool — needed for screenshots and overlay positioning",
         )
     }
 }
@@ -341,9 +338,8 @@ async fn whisper(state: &AppState) -> Capability {
     } else {
         off(
             "not running",
-            "whisper-service is not up. It is a separate service — see \
-             whisper-service/README.md. A card still gets audio without it, \
-             trimmed to the voice rather than to the sentence.",
+            "whisper-service is not running. Cards still get audio without it, \
+             trimmed to the voice instead of the sentence.",
         )
     }
 }
@@ -369,8 +365,8 @@ async fn anki(state: &AppState) -> (Capability, Capability) {
         return (
             off(
                 "not running",
-                "Anki is not answering. Start it, and install the AnkiConnect \
-                 add-on if you have not — that is what lets Kotodex add a card.",
+                "Anki is not answering. Start it with the AnkiConnect add-on \
+                 installed.",
             ),
             off("unknown", "needs a reachable Anki"),
         );
@@ -402,9 +398,8 @@ async fn dictionaries(state: &AppState, fresh_install: bool) -> Value {
         Some(d) => on(d.title.clone()),
         None => off(
             "none",
-            "no dictionary is set as the master, so there is nothing to measure \
-             a vocabulary against. Import a monolingual one — Sankoku is what \
-             the counts here were tuned on.",
+            "no master dictionary — import a monolingual one (Sankoku is the \
+             intended one).",
         ),
     };
     let frequency = match count(Role::Frequency) {
@@ -430,7 +425,7 @@ async fn dictionaries(state: &AppState, fresh_install: bool) -> Value {
         0 => off(
             "none",
             "drop a Yomitan dictionary zip into the dictionaries folder, then \
-             restart Kotodex — required for any definitions at all",
+             restart Kotodex.",
         )
         .blocking(fresh_install),
         n => on(format!("{n}")),
@@ -484,8 +479,7 @@ async fn explain(state: &AppState) -> Capability {
     } else {
         off(
             "no API key",
-            "required for AI generated explanation of lines, and the gloss on a \
-             mined card",
+            "needed for line explanations and the card gloss",
         )
         .fixed_at("Add a key", "#settings")
     }

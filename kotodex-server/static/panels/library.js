@@ -53,7 +53,7 @@ export function LibraryView({ works, settings, openWork, onSaved }) {
       </div>
       <div
         class="meta-hint"
-        title="For reading the line stream never saw — a physical book, or a VN read before this existed."
+        title="A physical book, or a VN read before Kotodex"
       >
         For reading that wasn't hooked.
       </div>

@@ -1390,7 +1390,7 @@ const LLM_SERVICES = {
   },
   openai: {
     baseUrl: "https://api.openai.com/v1",
-    note: "Anything speaking OpenAI's chat API: OpenAI, OpenRouter, DeepSeek, Gemini's compatible endpoint, or a local llama.cpp or Ollama. Include the version part of the address, and name a model — there is no sensible default across all of them.",
+    note: "Anything speaking the OpenAI chat API: OpenAI, OpenRouter, DeepSeek, Gemini, or a local model. Include /v1 in the address, and name a model.",
   },
 };
 
@@ -1404,8 +1404,8 @@ function showServerSettings() {
   wsUrlEl.disabled = lineSource !== "ws";
   sourceNoteEl.textContent =
     lineSource === "clipboard"
-      ? "Anything copied is read as a line, including a sentence copied for a lookup. Needs wl-clipboard or xclip."
-      : "Textractor's WebSocket plugin, which is the port set in Textractor itself.";
+      ? "Anything copied is treated as a line, including text copied for a lookup. Needs wl-clipboard or xclip."
+      : "Textractor's WebSocket plugin. The port is the one set in Textractor.";
   showLlmSettings();
 }
 
@@ -1423,11 +1423,12 @@ function showLlmSettings() {
   }
   if (document.activeElement !== llmModelEl) llmModelEl.value = llm.model;
   llmNoteEl.textContent = service.note;
+  llmKeySaveEl.disabled = llmKeyEl.value.trim() === "" && !llm.hasKey;
   if (!llmKeyNoteEl.dataset.said) {
     llmKeyNoteEl.textContent = llm.hasKey
       ? "A key is stored. Paste another to replace it, or save an empty box to remove it."
       : llm.keyFromEnv
-        ? "A key is set in KOTODEX_ANTHROPIC_API_KEY and is what answers. It cannot be changed here — paste one to store a key that takes over from it."
+        ? "KOTODEX_ANTHROPIC_API_KEY is what answers. Paste a key here to use that one instead."
         : "Needed for explaining a line, and for the short gloss on a mined card. Everything else works without one.";
   }
 }
@@ -1455,7 +1456,7 @@ async function saveLlmKey() {
     llmKeyNoteEl.textContent = String(e.message || e);
     llmKeyNoteEl.classList.add("err");
   } finally {
-    llmKeySaveEl.disabled = false;
+    llmKeySaveEl.disabled = llmKeyEl.value.trim() === "" && !llm.hasKey;
   }
 }
 
@@ -1470,6 +1471,9 @@ function refreshCapabilities() {
 }
 
 llmKeySaveEl.addEventListener("click", saveLlmKey);
+llmKeyEl.addEventListener("input", () => {
+  llmKeySaveEl.disabled = llmKeyEl.value.trim() === "" && !llm.hasKey;
+});
 llmKeyEl.addEventListener("keydown", (e) => {
   if (e.key === "Enter") saveLlmKey();
 });

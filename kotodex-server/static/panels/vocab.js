@@ -32,8 +32,8 @@ import { TriageView } from "./triage.js";
 const STATES = [
   ["known", "I know this word"],
   ["seen", "met while reading, never judged"],
-  ["unknown", "judged, and not known — the sweep's snooze"],
-  ["new", "never met and never judged — waiting for the reading to reach it"],
+  ["unknown", "judged unknown"],
+  ["new", "in the dictionary but never met"],
   ["blacklisted", "never surface this again"],
 ];
 
@@ -94,7 +94,7 @@ function StatusSummary({ vocab }) {
   // Built whole rather than interpolated beside literal text, where htm
   // collapses the whitespace at a line break.
   const spellings = `(${vocab.known_in_master.toLocaleString("en")} spellings)`;
-  const readyHint = `Unjudged vocabulary met at least ${vocab.ready_min_encounters} times — what a sweep can offer. Derived from the encounter count, not a stored status, so changing the threshold re-reads the whole history.`;
+  const readyHint = `Unjudged words met at least ${vocab.ready_min_encounters} times`;
   // The sweep's own figure beside the standing one. `ready` cannot shrink as a
   // backlog is worked through unscoped, so it answers "how much is there" and
   // not "how much is new", which is the question the sweep is triggered by.
@@ -119,7 +119,7 @@ function StatusSummary({ vocab }) {
       <div class="tile-row" style="margin-top:0">
         <div
           class="tile has-hint"
-          title="Distinct words marked known, collapsing spellings of one word — 叔父 / 伯父 / おじ count once. The sub-figure is the ledger rows behind them."
+          title="Different spellings of one word count once"
         >
           <div class="label">known words</div>
           <div class="value">
@@ -143,7 +143,7 @@ function StatusSummary({ vocab }) {
         </div>
         <div
           class="tile has-hint"
-          title="Rows carrying any status other than new — i.e. something I have actually judged"
+          title="Words you have judged"
         >
           <div class="label">triaged</div>
           <div class="value">

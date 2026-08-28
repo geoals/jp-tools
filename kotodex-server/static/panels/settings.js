@@ -46,7 +46,7 @@ const FIELDS = [
     unit: "minutes",
     step: 5,
     min: 5,
-    hint: "The one goal the meter draws, and what “target met” means. 120 is roughly two hours of reading a day.",
+    hint: “”,
   },
   {
     group: "Goal",
@@ -55,7 +55,7 @@ const FIELDS = [
     unit: "minutes",
     step: 5,
     min: 5,
-    hint: "Minutes a day needs to extend the streak. Separate from the target on purpose: the streak asks whether you showed up, the target asks whether you did the day's work.",
+    hint: "Minutes a day needs to extend the streak.",
   },
   {
     group: "Derivation",
@@ -64,7 +64,7 @@ const FIELDS = [
     unit: "seconds",
     step: 5,
     min: 5,
-    hint: "The most one gap between lines can credit as reading. 30s is about the 90th percentile of real lookup gaps — long enough to keep a dictionary detour whole, short enough that walking away doesn't count. Changing this re-prices every hour you have ever read.",
+    hint: "The most one gap between lines can count as reading.",
   },
   {
     group: "Derivation",
@@ -73,7 +73,7 @@ const FIELDS = [
     unit: "seconds",
     step: 60,
     min: 60,
-    hint: "A gap longer than this ends one sitting and starts another. Only affects how reading is grouped, never how much of it counts.",
+    hint: "A gap longer than this ends one sitting and starts another.",
   },
   {
     group: "Derivation",
@@ -83,7 +83,7 @@ const FIELDS = [
     step: 1,
     min: 0,
     max: 23,
-    hint: "Reading past midnight counts toward the day before, up to this hour. 4 means a session ending at 03:30 still belongs to yesterday.",
+    hint: "Reading past midnight counts toward the day before, up to this hour.",
   },
   {
     group: "Derivation",
@@ -92,7 +92,7 @@ const FIELDS = [
     unit: "chars",
     step: 10,
     min: 10,
-    hint: "Used to turn a physical book's page count into characters when logging a session by hand. 550 is a typical bunkobon page.",
+    hint: "For turning a book's page count into characters.",
   },
   {
     group: "Vocabulary",
@@ -101,7 +101,7 @@ const FIELDS = [
     unit: "encounters",
     step: 1,
     min: 1,
-    hint: "How often a word must have been met before triage offers it, and ticks it as known. It can sit this low because the other half of the rule does the work: only words you have never looked up are ticked. Raise it for a shorter, safer queue; lower it to reach further down the tail.",
+    hint: "How many times a word must appear before triage offers it. Only words never looked up are marked.",
   },
   {
     group: "Vocabulary",
@@ -110,7 +110,7 @@ const FIELDS = [
     unit: "jiten rank",
     step: 500,
     min: 0,
-    hint: "In #read, a new or unknown word this common or commoner is underlined as well as tinted. Not knowing a rare word is expected; a common one is the gap worth seeing. Words the list does not rank are never underlined by this threshold.",
+    hint: "New or unknown words ranked this high or higher are underlined in the reader.",
   },
   {
     group: "Vocabulary",
@@ -119,7 +119,7 @@ const FIELDS = [
     unit: "BCCWJ rank",
     step: 1000,
     min: 0,
-    hint: "The same underline against BCCWJ, tested on its own: a word passing either threshold is underlined. BCCWJ is newspaper and government prose, so it catches common words the fiction list ranks rare. 0 turns this half off.",
+    hint: "Same underline against BCCWJ. A word passing either threshold is underlined. 0 turns this off.",
   },
 ];
 
@@ -216,7 +216,7 @@ export function SettingsView({ settings, vocab, onSaved }) {
               />
               <span class="settings-unit">${f.unit}</span>
             </div>
-            <p class="settings-hint">${f.hint}</p>
+            ${f.hint && html`<p class="settings-hint">${f.hint}</p>`}
           </div>
         `,
       )}
@@ -226,7 +226,7 @@ export function SettingsView({ settings, vocab, onSaved }) {
   return html`
     <div class="card">
       <h2
-        title="Thresholds are applied at query time, not at capture time — every one of these re-reads the whole history under the new value, so a change is reversible and never edits a stored number."
+        title="Every threshold is applied when reading the data, not when capturing it — changing one recalculates your whole history, and changing it back undoes that exactly."
       >
         Settings
       </h2>
@@ -236,9 +236,7 @@ export function SettingsView({ settings, vocab, onSaved }) {
         <details class="settings-advanced">
           <summary>Advanced — how reading is measured</summary>
           <p class="settings-hint">
-            Every one of these is applied when a figure is read, not when a line
-            is captured, so changing one re-prices your whole history and
-            changing it back undoes that exactly.
+            Changes recalculate your whole history. Changing back undoes it.
           </p>
           ${advanced.map(group)}
         </details>
@@ -275,10 +273,6 @@ export function SettingsView({ settings, vocab, onSaved }) {
               )}
             </div>
           </div>
-          <p class="settings-hint">
-            Stored on this device only, so one device can read dark while
-            another stays light. “system” follows the OS setting as it changes.
-          </p>
         </div>
       </div>
 
@@ -289,11 +283,6 @@ export function SettingsView({ settings, vocab, onSaved }) {
           <div class="settings-input">
             <a class="pause-btn" href="#setup">✓ what is set up</a>
           </div>
-          <p class="settings-hint">
-            Every part of Kotodex, whether it is working, and what to do about the
-            ones that are not. It is the same check the dashboard runs — nothing
-            is remembered, so this is always the state of this machine right now.
-          </p>
         </div>
         <div class="settings-row">
           <label>Anki import</label>
@@ -301,8 +290,8 @@ export function SettingsView({ settings, vocab, onSaved }) {
             <${AnkiImport} onImported=${onSaved} />
           </div>
           <p class="settings-hint">
-            Cards past Anki's new/learning queues are marked known outright.
-            Never overwrites a word already judged here.
+            Cards past Anki's new/learning queues are marked known. Never
+            overwrites a word already judged.
           </p>
         </div>
         <div class="settings-row">
@@ -310,22 +299,12 @@ export function SettingsView({ settings, vocab, onSaved }) {
           <div class="settings-input">
             <a class="pause-btn" href="#read">📖 open in a browser</a>
           </div>
-          <p class="settings-hint">
-            The same reader the overlay draws, in a browser beside the game,
-            with Yomitan over it. The overlay is the everyday surface; this is
-            for text no hook produces, another device, or going back over a
-            session's lines.
-          </p>
         </div>
         <div class="settings-row">
           <label>Tokenizer</label>
           <div class="settings-input">
             <a class="pause-btn" href="#tokenize">🔤 tokenize a line</a>
           </div>
-          <p class="settings-hint">
-            Paste a line and see what the pipeline made of it — the tint the
-            reading view would paint, and one row per token.
-          </p>
         </div>
       </div>
     </div>

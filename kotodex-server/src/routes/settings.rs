@@ -104,7 +104,14 @@ pub async fn put_llm_key(
     let key = body.api_key.trim();
     db::save_setting(&state.local, db::LLM_API_KEY, key).await?;
     if key.is_empty() {
-        return Ok(Json(json!({ "ok": true, "detail": "key cleared" })));
+        // Clearing the row does not clear the environment, and the fallback in
+        // `services::llm` means a key still answers after it.
+        let detail = if state.env_api_key.as_deref().is_some_and(|k| !k.trim().is_empty()) {
+            "stored key removed — KOTODEX_ANTHROPIC_API_KEY answers again"
+        } else {
+            "key cleared"
+        };
+        return Ok(Json(json!({ "ok": true, "detail": detail })));
     }
     match crate::services::llm::check(&state).await {
         Ok(model) => Ok(Json(

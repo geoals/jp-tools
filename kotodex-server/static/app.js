@@ -172,7 +172,7 @@ function App({ view, sub }) {
           html`<button
             class="pause-btn ${summary.paused ? "paused" : ""}"
             onClick=${togglePause}
-            title="Stop capture at the source — the logger closes its Textractor connection, so no lines are recorded at all"
+            title="Stop recording lines"
           >
             ${summary.paused ? "▶ resume capture" : "⏸ pause capture"}
           </button>`
@@ -197,7 +197,7 @@ function App({ view, sub }) {
       summary.paused &&
       html`<div
         class="paused-banner"
-        title="The logger is disconnected from Textractor, so nothing enters the line stream at all — this is capture, not accounting."
+        title="No lines are being recorded while paused"
       >
         ⏸ Capture paused — no lines are being recorded.
       </div>`

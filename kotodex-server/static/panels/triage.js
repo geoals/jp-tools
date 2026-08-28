@@ -159,12 +159,12 @@ export function TriageView({ minEncounters, onJudged }) {
   const scopeLine = queue.scoped
     ? `read since the last sweep${sweptOn ? ` on ${sweptOn}` : ""}`
     : "everything ready, however long ago it was read";
-  const pendingLine = `${queue.pending.toLocaleString("en")} words await a verdict at this floor · ${queue.pending_preselected.toLocaleString("en")} of them never looked up · ${scopeLine}`;
+  const pendingLine = `${queue.pending.toLocaleString("en")} words ready · ${queue.pending_preselected.toLocaleString("en")} never looked up · ${scopeLine}`;
   const batchLine = `this page: ${known} known · ${unknown} unknown`;
   const acceptLabel = `accept batch (${known} known · ${unknown} unknown)`;
   const emptyLine = queue.scoped
-    ? "Nothing new since the last sweep. Come back after a day of reading, or show the whole backlog."
-    : "Nothing left to judge at this floor. Lower it to reach further down the tail.";
+    ? "Nothing new since the last sweep."
+    : "Nothing left to judge at this floor.";
 
   return html`
     <div class="card">
@@ -196,7 +196,7 @@ export function TriageView({ minEncounters, onJudged }) {
       />
       <p
         class="meta-hint"
-        title="Only words you have never looked up are ticked for you. Accepting writes both verdicts for the rows below: unticked means unknown, which keeps a word out of later batches until you read it a lot more."
+        title="Words never looked up are pre-ticked. Unticked = unknown."
       >
         Ticked means known.
       </p>
@@ -240,7 +240,7 @@ export function TriageView({ minEncounters, onJudged }) {
                     <th>reading</th>
                     <th>seen</th>
                     <th>looked up</th>
-                    ${byFrequency && html`<th title="BCCWJ rank — how common the word is in Japanese at large, not here">rank</th>`}
+                    ${byFrequency && html`<th title="BCCWJ rank">rank</th>`}
                     <th></th>
                   </tr>
                 </thead>
@@ -277,7 +277,7 @@ export function TriageView({ minEncounters, onJudged }) {
                         <td>
                           <button
                             class="ghost"
-                            title="How this word was actually written, and a line it appeared in"
+                            title="Spellings and example lines"
                             onClick=${() => spellings.toggle(t)}
                           >
                             ${spellings.isOpen(t) ? "hide" : "how written"}
@@ -303,7 +303,7 @@ export function TriageView({ minEncounters, onJudged }) {
 
     <div class="card">
       <h2
-        title="Rows no loaded dictionary recognises as a word — tokenizer noise like っっ and あああ. The queue above never offers them; blacklisting clears them out so the untriaged count means 'vocabulary still to judge'."
+        title="Tokenizer noise no dictionary recognises. Blacklisting clears them from the untriaged count."
       >
         The non-vocabulary tail
       </h2>

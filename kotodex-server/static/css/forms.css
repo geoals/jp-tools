@@ -177,6 +177,12 @@ table.days tr.today td {
   font: inherit;
   font-size: 14px;
 }
+.settings-input input[type="text"],
+.settings-input input[type="password"] {
+  flex: 1;
+  width: auto;
+  min-width: 110px;
+}
 .settings-unit {
   color: var(--muted);
   font-size: 13px;

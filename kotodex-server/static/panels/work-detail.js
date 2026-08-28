@@ -352,12 +352,12 @@ function VocabCard({ vocab, script, onTriage }) {
             <th></th>
             <th>distinct</th>
             <th
-              title="Of the distinct words, how many you know — how much studying it needs."
+              title="Known share of the distinct words"
             >
               known, by word
             </th>
             <th
-              title="Of the running text, how much you know — how it will feel to read."
+              title="Known share of the running text"
             >
               known, by text
             </th>
@@ -380,7 +380,7 @@ function VocabCard({ vocab, script, onTriage }) {
         html`<div class="progress-caption">
           <span>${metLabel}</span>
           <span
-            title="A branching work's script holds every route, so more of it exists than any one playthrough reads."
+            title="The full script includes every route"
           >
             whole script, every route
           </span>

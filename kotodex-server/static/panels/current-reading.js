@@ -132,7 +132,7 @@ export function CurrentReading({ works, settings, days, onSaved }) {
                 </div>
                 <div
                   class="tile has-hint"
-                  title="Time credited to this VN, by the same presence rule the dashboard uses — gaps count up to the cap, dictionary detours included."
+                  title="Reading time for this work"
                 >
                   <div class="label">hours read</div>
                   <div class="value">${hoursRead}</div>
@@ -193,7 +193,7 @@ export function CurrentReading({ works, settings, days, onSaved }) {
                   html`
                     <div
                       class="tile has-hint"
-                      title="This VN's own reading speed, over all your time in it. Kept separate from other works, so switching to a harder VN shows the real drop here instead of blending into a cross-work average."
+                      title="Reading speed in this work"
                     >
                       <div class="label">speed</div>
                       <div class="value">
@@ -227,9 +227,8 @@ export function CurrentReading({ works, settings, days, onSaved }) {
                 </div>
               </div>
               <div class="meta-hint">
-                No total length set —
-                add the jpdb character count with <strong>edit</strong> to get
-                progress, hours left and a finish date.
+                No total length set. Add it with <strong>edit</strong> for
+                progress and a finish estimate.
               </div>
             </div>
           </div>
@@ -239,9 +238,8 @@ export function CurrentReading({ works, settings, days, onSaved }) {
         unmatched &&
         html`
           <div class="meta-hint">
-            Nothing tracked for <strong>${title}</strong> yet. If you have been
-            reading it, the title here has to match the one your tracker stamps
-            on lines exactly — pick from the list below instead of typing it.
+            Nothing tracked for <strong>${title}</strong>. The title must
+            match exactly — pick from the list instead of typing.
           </div>
         `
       }
@@ -253,8 +251,7 @@ export function CurrentReading({ works, settings, days, onSaved }) {
         !title &&
         html`
           <div class="meta-hint">
-            Nothing selected, so nothing being read is being filed under
-            anything. Say what it is:
+            No work selected.
           </div>
           <${WorkSearchForm} onSaved=${onSaved} />
         `
@@ -345,12 +342,12 @@ export function CurrentReading({ works, settings, days, onSaved }) {
 function vnWindowHint(meta, windows) {
   const set = meta?.vn_window;
   if (!set) {
-    return "Not set for this VN — the mine button screenshots whatever has focus, which is the browser when you mine from this machine. Pick this VN's window above.";
+    return "Not set — screenshots will capture whatever has focus.";
   }
   const matches = windows.some((w) => w.includes(set));
   return matches
-    ? `Screenshots this VN match "${set}". It's tied to this work, so switching VNs switches it.`
-    : `No open window matches "${set}" — captures will fall back to the focused window. Re-pick it if this VN isn't running.`;
+    ? `Captures match "${set}".`
+    : `No open window matches "${set}". Re-pick it if the VN is running.`;
 }
 
 /** The library is where works are managed: switch the current one, edit

@@ -89,7 +89,7 @@ pub async fn upload_book(
     }
     if db::fetch_book(&state.knowledge, title).await?.is_some() {
         return Err(AppError::BadRequest(format!(
-            "{title} already has an epub — every position recorded is an offset into it"
+            "{title} already has an epub"
         )));
     }
     let text = jp_core::epub::flatten(&body)

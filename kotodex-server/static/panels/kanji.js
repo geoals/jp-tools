@@ -294,7 +294,7 @@ function GradeCard({ grades, solidAt }) {
           other &&
           html`<div
             class="compare-row"
-            title="Jinmeiyō names and the hyōgai the writing reaches for — no grade teaches them, so there is nothing to draw a bar against."
+            title="No grade to compare against"
           >
             <span class="compare-name">non-jōyō</span>
             <span class="compare-track"></span>
