@@ -21,6 +21,9 @@ const TEXT_KEYS: &[&str] = &[
     "vn_window",
     "line_source",
     "line_source_ws_url",
+    "llm_provider",
+    "llm_base_url",
+    "llm_model",
 ];
 
 pub async fn put_settings(
@@ -51,6 +54,13 @@ pub async fn put_settings(
                     "line_source must be ws or clipboard, not {s}"
                 )));
             }
+            // Same reason as `line_source`: a name nothing speaks would be found
+            // only by pressing a button and reading a failure.
+            if key == "llm_provider" && jp_mine_core::llm::Kind::parse(s).is_none() {
+                return Err(AppError::BadRequest(format!(
+                    "llm_provider must be anthropic or openai, not {s}"
+                )));
+            }
             s.to_string()
         } else {
             let Some(num) = value.as_f64() else {
@@ -61,6 +71,43 @@ pub async fn put_settings(
         db::save_setting(&state.local, key, &stored).await?;
     }
     Ok(Json(db::load_settings(&state.local).await?))
+}
+
+/// `PUT /api/settings/llm-key` — store the model API key, or clear it.
+///
+/// Its own endpoint rather than a key in [`put_settings`], because the value must
+/// never come back out: `GET /api/settings` serializes the whole `Settings`
+/// struct to whoever asks, and the server binds `0.0.0.0`. `settings.llm_has_key`
+/// is the only thing a client learns about it.
+///
+/// The reply says whether the key *works*, not merely that it was written. A key
+/// pasted with a character missing is the ordinary mistake here, and finding out
+/// from a failed explain button three lines later is what the sentence in the
+/// dialog exists to prevent.
+pub async fn put_llm_key(
+    State(state): State<AppState>,
+    Json(body): Json<LlmKeyBody>,
+) -> Result<Json<Value>, AppError> {
+    let key = body.api_key.trim();
+    db::save_setting(&state.local, db::LLM_API_KEY, key).await?;
+    if key.is_empty() {
+        return Ok(Json(json!({ "ok": true, "detail": "key cleared" })));
+    }
+    match crate::services::llm::check(&state).await {
+        Ok(model) => Ok(Json(
+            json!({ "ok": true, "detail": format!("{model} answered") }),
+        )),
+        // Stored anyway, and reported. A key that cannot reach the network right
+        // now is still the key the reader meant to save, and clearing it behind
+        // their back would make a working key look rejected.
+        Err(e) => Ok(Json(json!({ "ok": false, "detail": e.to_string() }))),
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct LlmKeyBody {
+    /// Empty clears the stored key.
+    pub api_key: String,
 }
 
 /// Toggle capture. Returns `{"paused": bool}`.

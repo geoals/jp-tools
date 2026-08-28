@@ -105,10 +105,11 @@ works the same way.
   VAD-trimmed clip is attached instead and the bar shows a muted **✂ off** hint.
 - **✕ clear last** drops the newest hooked line from the stats.
 - **ℹ explain last line** sends the newest line, with a few before it for
-  context, to the Anthropic API and shows a short read on it. **Select a word
+  context, to the configured model and shows a short read on it. **Select a word
   first** and the explanation centres on that word; the selection is read the
   instant the button is tapped. Capped at a few sentences, streamed as it
-  arrives, and only enabled when `KOTODEX_ANTHROPIC_API_KEY` is set.
+  arrives. With no key set it opens the field to paste one into rather than
+  failing — see the AI settings below.
 - **Tapping a word judges it** — see CLAUDE.md for the rules.
 
 While the reader is open the **page title is set to `current_work`**, because
@@ -489,9 +490,9 @@ curl -X POST localhost:3200/api/sessions -H 'Content-Type: application/json' \
   loopback only, and `localhost` can resolve to `::1` first.
 - `KOTODEX_ANKI_FIELD_COMPACT_DEF` (`MainDefinition` on Lapis) — after a card is
   added, `services::card` generates a ≤2-second gloss from the note's word +
-  sentence in the background and writes it to that field. Needs
-  `KOTODEX_ANTHROPIC_API_KEY`; set the field name empty to disable. Without a key
-  the field gets the first dictionary sense instead.
+  sentence in the background and writes it to that field. Needs an AI key; set
+  the field name empty to disable. Without a key the field gets the first
+  dictionary sense instead.
 - `KOTODEX_AUTO_CAPTURE_ON_ADD` (default **on**) — fire `vn-capture.sh` after
   any card add (audio + picture, best-effort). This *is* mining now; there
   is no button. Set to `0` on a machine that serves the dashboard but doesn't
@@ -503,13 +504,28 @@ curl -X POST localhost:3200/api/sessions -H 'Content-Type: application/json' \
   add. It needs the desktop session's environment, since it takes a screenshot,
   so kotodex-server has to be started from within the session — which is what the
   Kotodex launcher and `scripts/start-all.sh` both do.
-- `KOTODEX_ANTHROPIC_API_KEY` — enables the ℹ explain button on both reading
-  surfaces, and the card's CompactDef gloss; unset leaves the button undrawn and
-  the gloss falls back to the first dictionary sense. Shared with yt-mine, so a
-  root `.env` covers both. **The models are pinned in code, not configurable**:
-  explain is Sonnet 5 (`services::llm`), a short lookup read once and thrown
-  away, and the gloss is Opus 5 (`jp_mine_core::compactdef`), which is written
-  onto a card and kept.
+- `KOTODEX_ANTHROPIC_API_KEY` — the **fallback** behind the key stored in
+  `settings`, kept because `setup.sh` writes it. Shared with yt-mine, so a root
+  `.env` covers both.
+
+### Which model answers
+
+Set in ⚙ → AI on either reading surface, and stored in `settings`:
+
+| row | means |
+|---|---|
+| `llm_provider` | `anthropic` or `openai` — the request shape, not the company. The second reaches OpenAI, OpenRouter, DeepSeek, Gemini's compatible endpoint, and a local llama.cpp or Ollama |
+| `llm_base_url` | empty for the provider's own. An OpenAI-shaped URL includes the version segment |
+| `llm_model` | empty leaves each prompt on the model it was tuned against: Sonnet 5 for explain (`services::llm`), read once and thrown away, and Opus 5 for the gloss (`jp_mine_core::compactdef`), which is written onto a card and kept. Naming one here uses it for both |
+
+**The key is write-only.** It is not a field on `Settings` and not in
+`SETTING_KEYS`, so `GET /api/settings` cannot return it and `PUT /api/settings`
+refuses to write it — `db::load_settings` reads the row and keeps only
+`llm_has_key`. `PUT /api/settings/llm-key` is the only writer, and it answers
+whether the key actually worked rather than only that it was stored.
+
+Both request shapes live in `jp_mine_core::llm`, shared with the card gloss, so
+there is one implementation of how a model is asked and two prompts.
 - `KOTODEX_WHISPER_URL` (default `http://localhost:8100`) — whisper-service,
   probed only to light the reader's **✂ off** hint. kotodex-server never calls it
   directly; `vn-capture.sh` does (its own `VN_WHISPER_URL`), and the mine works

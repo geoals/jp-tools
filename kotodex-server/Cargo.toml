@@ -30,6 +30,11 @@ fontdb = "0.24.0"
 ttf-parser = "0.25.1"
 notify-rust = "4.18.0"
 
+[target.'cfg(windows)'.dependencies]
+# The window picker, in `services::desktop::win32`. Linux asks `xdotool`, which
+# the overlay needs anyway; Windows has no such tool to shell out to.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Dwm"] }
+
 [target.'cfg(windows)'.build-dependencies]
 # Stamps the icon into the executable. Nothing outside the build can: a shortcut's
 # icon is the shortcut's, so the process and its taskbar entry stayed blank.

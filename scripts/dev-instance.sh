@@ -232,10 +232,15 @@ cmd_browser() {
 
   # Settings and tokenize: reached from ⚙ rather than from a tab, and both draw
   # inside the shell, so the header has to come with them.
+  # Visible text the panel actually draws, per view. It used to assert the string
+  # "kotodex-server", which neither page has ever contained.
+  settings_wants=("Settings" "Advanced")
+  tokenize_wants=("Tokenize")
   for view in settings tokenize; do
     "$CHROME" --headless --disable-gpu --no-sandbox --dump-dom --virtual-time-budget=15000 \
       "http://127.0.0.1:$PORT/#$view" >"$WORK/dom-$view.html" 2>>"$WORK/console.log"
-    for want in "kotodex-server" "$view"; do
+    eval "wants=(\"\${${view}_wants[@]}\")"
+    for want in "${wants[@]}"; do
       grep -qF "$want" "$WORK/dom-$view.html" || die "$view view is missing: $want"
     done
     # The capture control, whichever way round it is: the frozen copy carries

@@ -216,7 +216,7 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_t
     // Whether there is a definition to ask for at all, decided before anything
     // is awaited so the capture never waits on a call that was not going to
     // happen.
-    let api_key =
+    let askable =
         if state.anki_compact_def_field.is_empty() || target.is_empty() || sentence.is_empty() {
             warn!(
                 note_id,
@@ -227,18 +227,39 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_t
                 compact_field_empty = state.anki_compact_def_field.is_empty(),
                 "enrich: skipped CompactDef — empty target, sentence, or field"
             );
-            None
-        } else if state.anthropic_api_key.is_none() {
-            warn!(note_id, "enrich: no Anthropic API key; skipping CompactDef");
-            None
+            false
         } else {
-            state.anthropic_api_key.as_deref()
+            true
         };
 
-    // No key, but the dictionaries are right here: the note type shows the
-    // gloss field as the card's headline, so it gets the first sense rather
-    // than being left blank.
-    let Some(api_key) = api_key else {
+    // Which model to ask is resolved *inside* this block, not above it: it reads
+    // the settings row, and nothing may be awaited in front of the capture.
+    let define = async {
+        if !askable {
+            return None;
+        }
+        match crate::services::llm::provider(state).await {
+            Ok(Some(provider)) => Some(
+                jp_mine_core::compactdef::compact_def(&state.http, &provider, &target, &sentence)
+                    .await,
+            ),
+            Ok(None) => {
+                warn!(note_id, "enrich: no model API key; skipping CompactDef");
+                None
+            }
+            Err(e) => {
+                warn!(note_id, error = %e, "enrich: settings unreadable; skipping CompactDef");
+                None
+            }
+        }
+    };
+
+    let (def, captured) = tokio::join!(define, capture);
+
+    // Nothing asked, but the dictionaries are right here: the note type shows the
+    // gloss field as the card's headline, so it gets the first sense rather than
+    // being left blank.
+    let Some(def) = def else {
         let fallback = if state.anki_compact_def_field.is_empty() || word.is_empty() {
             None
         } else {
@@ -264,16 +285,11 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_t
             // be made, so this is not a failure to report.
             None => true,
         };
-        if capture.await && defined {
+        if captured && defined {
             crate::services::notify::mine_complete(&word);
         }
         return;
     };
-
-    let (def, captured) = tokio::join!(
-        jp_mine_core::compactdef::compact_def(&state.http, api_key, &target, &sentence),
-        capture,
-    );
 
     let defined = match def {
         Ok(def) if !def.is_empty() => {

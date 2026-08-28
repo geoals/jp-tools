@@ -11,7 +11,8 @@
 //! | [`anki`] | AnkiConnect, read-only — snapshots the mined deck |
 //! | [`audio`] | the Local Audio Server for Yomitan, for a word's pronunciation |
 //! | [`card`] | AnkiConnect — adds a card, then enriches it; every card path's seam |
-//! | [`capture`] | `capture/vn-capture.sh`, and `xdotool` for window titles |
+//! | [`capture`] | `capture/vn-capture.sh` |
+//! | [`desktop`] | the window manager — what is open, and what is in front |
 //! | [`notify`] | the desktop's notification daemon — the one report a finished mine makes |
 //! | [`llm`] | the Anthropic API |
 //! | [`jp_mine_core::compactdef`] | — (builds the prompt [`llm`] sends, then the field value) |
@@ -24,6 +25,7 @@ pub mod audio;
 pub mod capture;
 pub mod card;
 pub mod covers;
+pub mod desktop;
 pub mod llm;
 pub mod notify;
 pub mod vndb;

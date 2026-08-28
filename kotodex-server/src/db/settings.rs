@@ -68,6 +68,24 @@ pub struct Settings {
     /// The WebSocket to hook. Textractor's plugin defaults to 6677, but it is
     /// configurable there and a second hooker uses another port.
     pub line_source_ws_url: String,
+    /// Which request shape the model endpoint speaks — `anthropic` or `openai`.
+    /// The second reaches OpenAI, OpenRouter, DeepSeek, Gemini's compatibility
+    /// endpoint and a local llama.cpp or Ollama alike.
+    pub llm_provider: String,
+    /// Empty for the provider's own. An OpenAI-shaped URL includes the version
+    /// segment.
+    pub llm_base_url: String,
+    /// Empty to leave each prompt on the model it was tuned against — the card
+    /// gloss wants the best model available and the line explanation does not.
+    pub llm_model: String,
+    /// Whether a key is stored, never the key.
+    ///
+    /// **`llm_api_key` is deliberately absent from this struct**, and absent from
+    /// [`SETTING_KEYS`] so `PUT /api/settings` refuses to write it. `Settings` is
+    /// serialized wholesale to any client that asks — including one on the LAN,
+    /// since the server binds `0.0.0.0` — so the value must have no way out of
+    /// [`load_settings`]. This flag is where the row is read and dropped.
+    pub llm_has_key: bool,
 }
 
 impl Default for Settings {
@@ -96,9 +114,17 @@ impl Default for Settings {
             highlight_status: true,
             line_source: "ws".into(),
             line_source_ws_url: "ws://localhost:6677".into(),
+            llm_provider: "anthropic".into(),
+            llm_base_url: String::new(),
+            llm_model: String::new(),
+            llm_has_key: false,
         }
     }
 }
+
+/// The key row. Not in [`SETTING_KEYS`]: it is written through its own endpoint
+/// and read only by [`super::llm_api_key`], never returned to a client.
+pub const LLM_API_KEY: &str = "llm_api_key";
 
 pub const SETTING_KEYS: &[&str] = &[
     "afk_secs",
@@ -117,6 +143,9 @@ pub const SETTING_KEYS: &[&str] = &[
     "highlight_status",
     "line_source",
     "line_source_ws_url",
+    "llm_provider",
+    "llm_base_url",
+    "llm_model",
 ];
 
 /// Settings whose stored value is `"1"`/`"0"` rather than a number or free text.
@@ -176,10 +205,30 @@ pub async fn load_settings(pool: &SqlitePool) -> Result<Settings, sqlx::Error> {
                     settings.line_source_ws_url = value
                 }
             }
+            "llm_provider" => {
+                if !value.is_empty() {
+                    settings.llm_provider = value
+                }
+            }
+            "llm_base_url" => settings.llm_base_url = value,
+            "llm_model" => settings.llm_model = value,
+            // The one row whose value is read and dropped here rather than kept.
+            LLM_API_KEY => settings.llm_has_key = !value.trim().is_empty(),
             _ => {}
         }
     }
     Ok(settings)
+}
+
+/// The stored key, or nothing.
+///
+/// Its own function rather than a field on [`Settings`], which is serialized to
+/// whoever asks. The only callers are the two paths that make a model call.
+pub async fn llm_api_key(pool: &SqlitePool) -> Result<Option<String>, sqlx::Error> {
+    Ok(get_setting_raw(pool, LLM_API_KEY)
+        .await?
+        .map(|k| k.trim().to_string())
+        .filter(|k| !k.is_empty()))
 }
 
 pub async fn save_setting(pool: &SqlitePool, key: &str, value: &str) -> Result<(), sqlx::Error> {

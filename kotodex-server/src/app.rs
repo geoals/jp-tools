@@ -66,7 +66,11 @@ pub struct AppState {
     pub auto_capture_on_add: bool,
     pub sudachi_dict_path: std::path::PathBuf,
     pub vn_capture_script: std::path::PathBuf,
-    pub anthropic_api_key: Option<String>,
+    /// `KOTODEX_ANTHROPIC_API_KEY`, the fallback behind the stored key. Read
+    /// through [`crate::services::llm::provider`] and nowhere else — a key in
+    /// the environment is what `setup.sh` writes, so an install that predates the
+    /// settings row still has one.
+    pub env_api_key: Option<String>,
     /// whisper-service base URL, probed for the reader's trim-status indicator.
     pub whisper_url: String,
     /// The Local Audio Server for Yomitan, proxied for the popup's 🔊.
@@ -176,6 +180,11 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/api/settings",
             get(settings::get_settings).put(settings::put_settings),
+        )
+        // Its own route because the value is write-only: see `put_llm_key`.
+        .route(
+            "/api/settings/llm-key",
+            axum::routing::put(settings::put_llm_key),
         )
         // The ledger's front door: any source, over HTTP, from any machine.
         .route("/api/lines", axum::routing::post(ingest::ingest_lines))

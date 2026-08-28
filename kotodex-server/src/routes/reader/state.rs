@@ -16,7 +16,6 @@ pub async fn reader_state(State(state): State<AppState>) -> Result<Json<Value>, 
         "paused": settings.capture_paused,
         "current_work": settings.current_work,
         "capture_available": state.vn_capture_script.is_file(),
-        "explain_available": state.anthropic_api_key.is_some(),
         // Quality-only: capture works without it, so the reader shows a hint
         // rather than disabling the mine button.
         "trim_available": caps["whisper"]["ok"],

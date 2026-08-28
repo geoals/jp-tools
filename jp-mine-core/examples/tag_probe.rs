@@ -86,13 +86,12 @@ const PROBES: &[(&str, &str, &str)] = &[
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     dotenvy::dotenv().ok();
-    let api_key =
-        std::env::var("KOTODEX_ANTHROPIC_API_KEY").expect("set KOTODEX_ANTHROPIC_API_KEY");
+    let provider = jp_mine_core::llm::Provider::from_env().expect("set KOTODEX_ANTHROPIC_API_KEY");
     let http = reqwest::Client::new();
 
     let mut tiers = 0;
     for (target, sentence, probing) in PROBES {
-        match compactdef::compact_def(&http, &api_key, target, sentence).await {
+        match compactdef::compact_def(&http, &provider, target, sentence).await {
             Ok(gloss) => {
                 let (meaning, tags) = gloss.rsplit_once("<br>").unwrap_or(("", &gloss));
                 let has_tier =

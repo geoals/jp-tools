@@ -1757,8 +1757,10 @@ dependencies = [
 name = "jp-mine-core"
 version = "0.1.0"
 dependencies = [
+ "async-stream",
  "base64",
  "dotenvy",
+ "futures-util",
  "jp-core",
  "mockall",
  "reqwest",
@@ -1804,6 +1806,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ttf-parser",
+ "windows-sys 0.61.2",
  "winresource",
  "zip",
 ]

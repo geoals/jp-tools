@@ -1,4 +1,4 @@
-//! A one-shot Anthropic call that writes an ultra-short "CompactDef" gloss for a
+//! A one-shot model call that writes an ultra-short "CompactDef" gloss for a
 //! mined card — the sense the target word carries in its sentence, compressed to
 //! something readable in under 2 seconds (~8 Japanese characters).
 //!
@@ -22,11 +22,22 @@ pub enum CompactDefError {
     Unavailable(String),
 }
 
+impl From<crate::llm::Error> for CompactDefError {
+    fn from(e: crate::llm::Error) -> Self {
+        match e {
+            crate::llm::Error::Failed(m) => CompactDefError::Failed(m),
+            crate::llm::Error::Unavailable(m) => CompactDefError::Unavailable(m),
+        }
+    }
+}
+
+use crate::llm::{Ask, Provider};
 use crate::tags::{FAMILIARITY_RUBRIC, FLAVOR_RUBRIC, TagLine};
 
-/// Pinned to Opus 5. The tag-axis experiment found no thinking and no external
-/// frequency signals to be best, and that request shape carries over unchanged.
-/// Opus is preferred over Sonnet for the meaning/usage prose.
+/// The model this prompt was tuned against, used unless the reader has named one
+/// (`llm::Provider::model`). The tag-axis experiment found no thinking and no
+/// external frequency signals to be best, and that request shape carries over
+/// unchanged. Opus is preferred over Sonnet for the meaning/usage prose.
 const MODEL: &str = "claude-opus-5";
 
 /// Built once from the shared tag rubric ([`crate::tags`]) plus the CompactDef-
@@ -84,7 +95,7 @@ pub fn system_prompt() -> &'static str {
 /// find the span when the surface is short or repeated.
 pub async fn compact_def(
     http: &reqwest::Client,
-    api_key: &str,
+    provider: &Provider,
     target: &str,
     sentence: &str,
 ) -> Result<String, CompactDefError> {
@@ -99,7 +110,7 @@ pub async fn compact_def(
     // missing baseline or an invented tag — both of them judgements the model
     // has to make again, not formatting this side can guess at.
     for attempt in 0..2 {
-        let raw = clean_gloss(&request(http, api_key, &messages).await?);
+        let raw = clean_gloss(&request(http, provider, &messages).await?);
         match canonical_gloss(&raw) {
             Ok(gloss) => return Ok(gloss),
             Err(why) if attempt == 0 => {
@@ -297,52 +308,26 @@ fn canonical_gloss(gloss: &str) -> Result<String, String> {
 
 async fn request(
     http: &reqwest::Client,
-    api_key: &str,
+    provider: &Provider,
     messages: &[Value],
 ) -> Result<String, CompactDefError> {
-    let body = serde_json::json!({
-        "model": MODEL,
-        "max_tokens": 300,
-        "thinking": { "type": "disabled" },
-        "output_config": { "effort": "low" },
-        // The system block is the same ~1,300 tokens on every card and is 84%
-        // of what a call costs, so it is cached. A mine inside the 5-minute
-        // window reads it at a tenth of the price — and mining clusters, so the
-        // denser the session the more of them hit.
-        "system": [{
-            "type": "text",
-            "text": SYSTEM_PROMPT.as_str(),
-            "cache_control": { "type": "ephemeral" },
-        }],
-        "messages": messages,
-    });
-
-    let resp = http
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
+    provider
+        .complete(
+            http,
+            &Ask {
+                system: SYSTEM_PROMPT.as_str(),
+                messages,
+                max_tokens: 300,
+                default_model: MODEL,
+                // The system block is the same ~1,300 tokens on every card and is
+                // most of what a call costs. A mine inside the cache window reads
+                // it at a fraction of the price — and mining clusters, so the
+                // denser the session the more of them hit.
+                cache_system: true,
+            },
+        )
         .await
-        .map_err(|e| CompactDefError::Failed(format!("Anthropic request failed: {e}")))?;
-
-    let status = resp.status();
-    let json: Value = resp
-        .json()
-        .await
-        .map_err(|e| CompactDefError::Failed(format!("Anthropic response unparseable: {e}")))?;
-
-    if !status.is_success() {
-        let msg = json["error"]["message"]
-            .as_str()
-            .unwrap_or("unknown API error");
-        return Err(CompactDefError::Failed(format!(
-            "Anthropic returned {status}: {msg}"
-        )));
-    }
-
-    extract_text(&json)
+        .map_err(Into::into)
 }
 
 /// Post-clean a raw gloss into the card-back HTML. The model returns a short
@@ -371,36 +356,9 @@ fn clean_gloss(raw: &str) -> String {
         .join("<br>")
 }
 
-/// Pull the first text block out of an Anthropic Messages response. Finds the
-/// first block of type `text` rather than blindly taking the first block: this
-/// call disables thinking, but a thinking-capable model could still lead with a
-/// `thinking` block if that ever changes.
-fn extract_text(json: &Value) -> Result<String, CompactDefError> {
-    json["content"]
-        .as_array()
-        .and_then(|blocks| blocks.iter().find(|b| b["type"] == "text"))
-        .and_then(|block| block["text"].as_str())
-        .map(str::to_string)
-        .ok_or_else(|| CompactDefError::Failed("no text content in Anthropic response".into()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn extract_text_from_valid_response() {
-        let json = serde_json::json!({
-            "content": [{ "type": "text", "text": "衰える" }]
-        });
-        assert_eq!(extract_text(&json).unwrap(), "衰える");
-    }
-
-    #[test]
-    fn extract_text_rejects_empty_content() {
-        assert!(extract_text(&serde_json::json!({ "content": [] })).is_err());
-        assert!(extract_text(&serde_json::json!({ "id": "msg_1" })).is_err());
-    }
 
     #[test]
     fn clean_gloss_joins_tag_line_with_br() {
@@ -467,7 +425,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires KOTODEX_ANTHROPIC_API_KEY"]
     async fn the_written_form_is_not_priced_as_its_kanji() {
-        let api_key = std::env::var("KOTODEX_ANTHROPIC_API_KEY").expect("set key");
+        let provider = Provider::from_env().expect("set KOTODEX_ANTHROPIC_API_KEY");
         let http = reqwest::Client::new();
         let sentence =
             |t: &str| format!("湿度が高く、薄暗く、ベッドなどの家具は硬く、<b>{t}</b>臭いがする。");
@@ -480,10 +438,10 @@ mod tests {
                 .unwrap_or_else(|| panic!("unknown familiarity: {gloss}"))
         };
 
-        let surface = compact_def(&http, &api_key, "すえた", &sentence("すえた"))
+        let surface = compact_def(&http, &provider, "すえた", &sentence("すえた"))
             .await
             .unwrap();
-        let kanji = compact_def(&http, &api_key, "饐えた", &sentence("饐えた"))
+        let kanji = compact_def(&http, &provider, "饐えた", &sentence("饐えた"))
             .await
             .unwrap();
         println!("すえた: {surface}\n饐えた: {kanji}");
@@ -496,11 +454,11 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires KOTODEX_ANTHROPIC_API_KEY"]
     async fn compact_def_integration() {
-        let api_key = std::env::var("KOTODEX_ANTHROPIC_API_KEY").expect("set key");
+        let provider = Provider::from_env().expect("set KOTODEX_ANTHROPIC_API_KEY");
         let http = reqwest::Client::new();
         let out = compact_def(
             &http,
-            &api_key,
+            &provider,
             "減退する",
             "見た目も味も最悪な料理に食欲は<b>減退する</b>が、エマも口に運ぶ。",
         )

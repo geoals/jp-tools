@@ -61,7 +61,7 @@ impl TestApp {
             // relative path would not resolve here.
             sudachi_dict_path: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../system_full.dic"),
             vn_capture_script: PathBuf::from("/nonexistent"),
-            anthropic_api_key: None,
+            env_api_key: None,
             whisper_url: "http://127.0.0.1:9".into(),
             // Port 9 is discard: nothing answers, which is the audio server
             // being absent — the case the popup has to survive.

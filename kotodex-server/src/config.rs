@@ -37,8 +37,9 @@ pub struct Config {
     pub sudachi_dict_path: PathBuf,
     /// `capture/vn-capture.sh`, fired by the reader's mine button.
     pub vn_capture_script: PathBuf,
-    /// Anthropic API key for the reader's "explain this line" button. When
-    /// unset the button is disabled rather than the server failing a request.
+    /// The fallback behind the key stored in `settings`, which is where the
+    /// reader sets one. Kept because `setup.sh` writes it, so an install made
+    /// before there was a settings row still has its key here.
     pub anthropic_api_key: Option<String>,
     /// whisper-service, used by vn-capture.sh only for the sentence-level trim.
     /// Probed for the reader's status indicator; a capture still works without

@@ -10,7 +10,10 @@ test-support = ["dep:mockall"]
 jp-core = { path = "../jp-core" }
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 serde_json = "1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls-native-roots"] }
+# `llm::Provider::stream` — the explain button reads its answer as it arrives.
+async-stream = "0.3"
+futures-util = { version = "0.3", default-features = false }
 tokio = { version = "1", features = ["fs", "rt", "macros"] }
 thiserror = "2"
 tracing = "0.1"

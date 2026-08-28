@@ -910,7 +910,13 @@ async fn reader_state_reports_what_the_reader_can_do() {
         s["capture_available"], false,
         "the test app points at no capture script"
     );
-    assert_eq!(s["explain_available"], false, "no API key configured");
+    // The explain button is always drawn; without a key it opens the field to
+    // paste one into. What it costs is a capability row, not a hidden control.
+    assert_eq!(s["capabilities"]["explain"]["ok"], false);
+    assert!(
+        s["capabilities"]["explain"]["fix"].is_string(),
+        "an off capability always says what turns it on"
+    );
 }
 
 #[tokio::test]

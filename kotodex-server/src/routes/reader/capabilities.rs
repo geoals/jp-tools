@@ -403,14 +403,14 @@ async fn vocabulary_ledger(state: &AppState) -> Capability {
     }
 }
 
-fn explain(state: &AppState) -> Capability {
-    if state.anthropic_api_key.is_some() {
+async fn explain(state: &AppState) -> Capability {
+    if crate::services::llm::available(state).await {
         on("key set")
     } else {
         off(
             "no API key",
-            "set KOTODEX_ANTHROPIC_API_KEY — required for AI generated \
-             explanation of lines, and word definitions",
+            "required for AI generated explanation of lines, and the gloss on a \
+             mined card",
         )
     }
 }
@@ -432,7 +432,7 @@ pub async fn probe(state: &AppState) -> Value {
         "whisper": whisper(state).await,
         "anki": anki_up,
         "anki_note_type": note_type,
-        "explain": explain(state),
+        "explain": explain(state).await,
         "vocabulary_ledger": vocabulary_ledger(state).await,
     });
     // Capture and the overlay are Linux-only, and a row is a claim that the part

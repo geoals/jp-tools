@@ -169,9 +169,8 @@ async fn main() {
         todo.push((note_id, vocab, surface, sentence));
     }
 
-    let api_key = api.then(|| {
-        std::env::var("KOTODEX_ANTHROPIC_API_KEY").expect("set KOTODEX_ANTHROPIC_API_KEY")
-    });
+    let provider = api
+        .then(|| jp_mine_core::llm::Provider::from_env().expect("set KOTODEX_ANTHROPIC_API_KEY"));
     let mut retagged = 0usize;
     let mut stopped = false;
     for (batch_no, chunk) in todo.chunks(batch_size).enumerate() {
@@ -184,10 +183,10 @@ async fn main() {
         );
 
         let mut results = Vec::with_capacity(chunk.len());
-        match &api_key {
-            Some(key) => {
+        match &provider {
+            Some(provider) => {
                 for (_, _, surface, sentence) in chunk {
-                    results.push(compactdef::compact_def(&http, key, surface, sentence).await);
+                    results.push(compactdef::compact_def(&http, provider, surface, sentence).await);
                 }
             }
             None => {

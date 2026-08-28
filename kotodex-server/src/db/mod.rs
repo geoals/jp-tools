@@ -72,7 +72,8 @@ pub use sessions::{
     fetch_session_texts_after, fetch_sessions, insert_session,
 };
 pub use settings::{
-    BOOL_SETTING_KEYS, SETTING_KEYS, Settings, get_setting_raw, load_settings, save_setting,
+    BOOL_SETTING_KEYS, LLM_API_KEY, SETTING_KEYS, Settings, get_setting_raw, llm_api_key,
+    load_settings, save_setting,
 };
 pub use word_days::{
     WordDayHit, add_word_day_counts, fetch_mined_word_days, fetch_word_days, fetch_word_totals,

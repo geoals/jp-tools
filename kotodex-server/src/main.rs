@@ -89,7 +89,7 @@ async fn main() {
         auto_capture_on_add: config.auto_capture_on_add,
         sudachi_dict_path: config.sudachi_dict_path.clone(),
         vn_capture_script: config.vn_capture_script.clone(),
-        anthropic_api_key: config.anthropic_api_key.clone(),
+        env_api_key: config.anthropic_api_key.clone(),
         whisper_url: config.whisper_url.clone(),
         local_audio_url: config.local_audio_url.clone(),
         highlighter: Default::default(),

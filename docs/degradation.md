@@ -78,4 +78,4 @@ Roles, not titles: any dictionary answers the wordhood gate, `standard` and
 
 | part | gives | without it | turn it on |
 |---|---|---|---|
-| Anthropic API key | the ℹ explain button | the button is not drawn | `setup.sh` prompts, or set `KOTODEX_ANTHROPIC_API_KEY` |
+| an AI API key | the ℹ explain button, and the gloss on a mined card | the button opens the field to paste a key into; the gloss falls back to the first dictionary sense | paste one into ⚙ → AI, on either reading surface |

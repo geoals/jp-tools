@@ -50,8 +50,7 @@ async fn call(http: &reqwest::Client, action: &str, params: Value) -> Value {
 #[tokio::main]
 async fn main() {
     let write = std::env::args().any(|a| a == "--write");
-    let api_key =
-        std::env::var("KOTODEX_ANTHROPIC_API_KEY").expect("set KOTODEX_ANTHROPIC_API_KEY");
+    let provider = jp_mine_core::llm::Provider::from_env().expect("set KOTODEX_ANTHROPIC_API_KEY");
     let http = reqwest::Client::new();
 
     let ids = call(&http, "findNotes", json!({ "query": DECK })).await;
@@ -93,7 +92,7 @@ async fn main() {
 
     let (mut changed, mut failed) = (0, 0);
     for (note_id, vocab, surface, sentence, old) in &targets {
-        let new = match compactdef::compact_def(&http, &api_key, surface, sentence).await {
+        let new = match compactdef::compact_def(&http, &provider, surface, sentence).await {
             Ok(def) if !def.is_empty() => def,
             Ok(_) => {
                 println!("{vocab} → {surface}: EMPTY, skipped");
