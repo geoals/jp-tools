@@ -30,6 +30,7 @@ LOG_DIR = Path(os.environ["LOCALAPPDATA"]) / "kotodex"
 ICON = ROOT / "kotodex" / "icons" / "kotodex.ico"
 
 SERVER_EXE = ROOT / "target" / "release" / "kotodex-server.exe"
+DICT_EXE = ROOT / "target" / "release" / "jp-dict.exe"
 SOURCE_EXE = ROOT / "source" / "kotodex-source.exe"
 OVERLAY_EXE = ROOT / "overlay" / "kotodex-overlay.exe"
 
@@ -56,7 +57,27 @@ def _running(exe: Path) -> bool:
     return exe.name.lower() in found.stdout.lower()
 
 
-def components(Child):
+def start_dictionary_sync():
+    """`jp-dict sync`, started rather than run: only kotodex-server waits for it.
+
+    Nothing else on the launcher's path imports a dictionary or writes the
+    collections the highlighter is built from, and this platform has no
+    `start-all.sh` to have done it. None when it is not there.
+    """
+    if not DICT_EXE.is_file():
+        return None
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    with (LOG_DIR / "jp-dict.log").open("a") as sink:
+        return subprocess.Popen(
+            [str(DICT_EXE), "sync"],
+            cwd=ROOT,
+            stdout=sink,
+            stderr=subprocess.STDOUT,
+            creationflags=CREATE_NO_WINDOW,
+        )
+
+
+def components(Child, before_server=None):
     """In start order. Stopping walks it backwards."""
     return [
         Child(
@@ -65,6 +86,7 @@ def components(Child):
             [str(SERVER_EXE)],
             log_file=LOG_DIR / "kotodex-server.log",
             stop_adopted=lambda: stop_port(config.SERVER_PORT),
+            before_spawn=before_server,
         ),
         Child(
             SOURCE,

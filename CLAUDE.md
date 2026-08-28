@@ -50,6 +50,11 @@ any Kotodex in it; everything that is the product carries it.
   systemd-managed capture daemon, and quitting stops only what it started.
   It runs all three itself and goes through no other script — the three things
   reading a VN needs are not the same set as "every service in the repo".
+  It also runs `jp-dict sync`, started beside the components and waited for only
+  by kotodex-server: **everything reading needs has to happen from the desktop
+  entry**, and this is the only path most machines ever take, so a zip dropped in
+  `dictionaries/` and the derived cache cannot depend on someone opening a
+  terminal.
   **Both platforms run this launcher, and it contains no `sys.platform`.** Which
   components exist and how each is started and stopped is `host.py`'s contract,
   answered by one module per platform; `host_windows.py` is the only file on the
@@ -225,7 +230,8 @@ that are otherwise independent — yt-mine held it, so a dictionary added for th
 VN overlay stayed invisible until yt-mine happened to boot. The services call
 `Dictionary::load_cached` and open what is already there; `jp-core`'s `jp-dict`
 binary (`sync`, `import`, `list`, `set-role`, `remove`) is the only thing that
-reads a zip, and `start-all.sh` runs `jp-dict sync` before starting them.
+reads a zip. The launcher and `start-all.sh` both run `jp-dict sync` as they
+start, so no reader has to.
 `remove` is there because nothing cascades: the three payload tables key on
 `dictionary_id`, so dropping the `dictionaries` row alone would leave the
 entries behind — invisible to `list`, and still answering the wordhood gate.
@@ -249,11 +255,13 @@ slower** — the collections are derived from the rows as before, with a log lin
 saying so.
 
 `jp-dict` is the writer that runs *ahead* of a reader, not the only writer:
-`load_or_build` keeps what it had to derive. Nothing runs `jp-dict` on the
-launcher's path — only `start-all.sh` and `setup.sh` do — so a machine started by
-the launcher alone would otherwise derive the collections on every start.
-Filling from the reader costs a start that hits the cache nothing: the
-fingerprint it needs is one the read already computes.
+`load_or_build` keeps what it had to derive. Belt and braces on purpose, because
+each covers what the other cannot. The launcher's sync is what makes a start
+from the desktop entry fast at all, and it is the only one that can import a zip.
+The write-back covers a server started some other way, one whose `jp-dict` is
+missing, and a cache that goes stale while the server is up — and it costs a
+start that hits the cache nothing, since the fingerprint it needs is one the read
+already computes.
 
 Four jobs need the dictionaries, and they apply *different* thresholds, which is
 why `dictionaries.role` exists (`master` / `standard` / `name` / `frequency` /

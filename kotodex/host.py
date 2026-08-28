@@ -9,6 +9,8 @@ nothing else; reading what a platform does means reading one file.
 - `LOG_DIR`      where a component's output is appended
 - `ICON`         the tray icon
 - `components`   the component list, in start order, built from a `Child` class
+- `start_dictionary_sync` `jp-dict sync`, started beside the components; the
+  server's `before_spawn` is what waits for it
 - `stop_port`    stop whatever is listening on a port, whoever started it
 - `run_doctor`   show the doctor, or `False` when this platform has none
 - `attach_console` make a CLI verb's output visible to whoever ran it
@@ -31,6 +33,7 @@ ROOT = _host.ROOT
 LOG_DIR = _host.LOG_DIR
 ICON = _host.ICON
 components = _host.components
+start_dictionary_sync = _host.start_dictionary_sync
 stop_port = _host.stop_port
 run_doctor = _host.run_doctor
 doctor_command = _host.doctor_command

@@ -21,6 +21,7 @@ ICON = ROOT / "kotodex" / "kotodex.svg"
 # The three components' entry points, named once.
 OVERLAY_SH = str(ROOT / "kotodex-server" / "overlay" / "vn-overlay.sh")
 SERVER_BIN = ROOT / "target" / "release" / "kotodex-server"
+DICT_BIN = ROOT / "target" / "release" / "jp-dict"
 DOCTOR_SH = ROOT / "scripts" / "kotodex-doctor.sh"
 
 # How long a restarted capture gets to answer before it is read as down and
@@ -57,7 +58,24 @@ def overlay_up() -> bool:
     ).returncode == 0
 
 
-def components(Child):
+def start_dictionary_sync():
+    """`jp-dict sync`, started rather than run: only kotodex-server waits for it.
+
+    Nothing else on the launcher's path imports a dictionary or writes the
+    collections the highlighter is built from — `setup.sh` and
+    `scripts/start-all.sh` are the only other things that run it, and clicking
+    the desktop entry runs neither. None when it is not built.
+    """
+    if not DICT_BIN.is_file():
+        return None
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    with (LOG_DIR / "jp-dict.log").open("a") as sink:
+        return subprocess.Popen(
+            [str(DICT_BIN), "sync"], cwd=ROOT, stdout=sink, stderr=subprocess.STDOUT
+        )
+
+
+def components(Child, before_server=None):
     """In start order. Stopping walks it backwards."""
     capture = capture_binary()
     return [
@@ -87,6 +105,7 @@ def components(Child):
             [str(SERVER_BIN)],
             log_file=LOG_DIR / "kotodex-server.log",
             stop_adopted=lambda: stop_port(config.SERVER_PORT),
+            before_spawn=before_server,
         ),
         Child(
             "overlay",
