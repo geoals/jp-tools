@@ -54,10 +54,10 @@ any Kotodex in it; everything that is the product carries it.
   nothing: **everything reading needs has to happen from the desktop entry**, and
   this is the only path most machines ever take, so a zip dropped in
   `dictionaries/` and the derived cache cannot depend on someone opening a
-  terminal. Holding kotodex-server until the sync finished was measured at two
-  seconds of every Windows start — and since the components start in order, the
-  overlay waited behind it — so a new dictionary is visible on the *next* start
-  instead.
+  terminal. Nothing waits for it because the only thing the wait bought was a zip
+  dropped in since the last start being visible on *this* one, and the components
+  start in order, so it stood in front of the overlay as well as the server. A
+  new dictionary costs one restart instead.
   **Both platforms run this launcher, and it contains no `sys.platform`.** Which
   components exist and how each is started and stopped is `host.py`'s contract,
   answered by one module per platform; `host_windows.py` is the only file on the

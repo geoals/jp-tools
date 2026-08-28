@@ -62,9 +62,7 @@ def start_dictionary_sync():
 
     Nothing else on the launcher's path imports a dictionary or writes the
     collections the highlighter is built from, and this platform has no
-    `start-all.sh` to have done it. It takes about two seconds here against a
-    couple of tenths on Linux, which is why nothing waits. None when it is not
-    there.
+    `start-all.sh` to have done it. None when it is not there.
     """
     if not DICT_EXE.is_file():
         return None
