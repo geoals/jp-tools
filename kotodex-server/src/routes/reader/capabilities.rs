@@ -8,6 +8,8 @@
 //! off — so a missing part is a smaller working product with one sentence
 //! saying why, never an error.
 
+// Every use of it is in a probe for something only Linux has.
+#[cfg(unix)]
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
