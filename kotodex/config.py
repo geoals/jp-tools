@@ -31,28 +31,24 @@ SOCKET_NAME = APP_ID
 _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
-# Where `SERVER_URL` points, for the connect below. Taken apart rather than
-# assumed, so overriding the URL moves both halves of the probe together.
-_SPLIT = urllib.parse.urlsplit(SERVER_URL)
-_ADDRESS = (_SPLIT.hostname or "127.0.0.1", _SPLIT.port or SERVER_PORT)
-
-#: Long enough for a listener on this machine, which accepts in about a
-#: millisecond, and short enough that learning there is none is cheap.
-CONNECT_TIMEOUT = 0.3
+# Read off `SERVER_URL` rather than assumed, so overriding the URL moves both
+# halves of the probe below together.
+_split = urllib.parse.urlsplit(SERVER_URL)
+_ADDRESS = (_split.hostname or "127.0.0.1", _split.port or SERVER_PORT)
 
 
 def kotodex_server_up() -> bool:
     """Whether the server is answering — without paying a timeout to learn it is not.
 
-    The connect is separate because **a closed port does not always refuse**. It
-    can drop, and then one generous timeout is paid in full on every negative
-    check: the launcher's probe of a port nothing was listening on cost two
-    seconds of every Windows start, before the first component was spawned. So
-    the connect gets a short deadline and only the answer keeps a generous one —
-    a server that is up but busy still gets its two seconds to reply.
+    The connect is a stage of its own because **a closed port does not always
+    refuse**. Where it drops instead, one generous timeout is paid in full on
+    every negative check, and the launcher makes that check before it starts
+    anything. So the connect gets a deadline short enough that learning there is
+    no listener is cheap, and only the answer keeps a generous one — a server that
+    is up but busy still gets its two seconds to reply.
     """
     try:
-        with socket.create_connection(_ADDRESS, timeout=CONNECT_TIMEOUT):
+        with socket.create_connection(_ADDRESS, timeout=0.3):
             pass
     except OSError:
         return False

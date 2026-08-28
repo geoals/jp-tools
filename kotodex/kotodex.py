@@ -339,12 +339,6 @@ def main() -> int:
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication
 
-    # Everything before this is the interpreter and Qt loading, which is the
-    # launcher's whole fixed cost and is nothing this process decides. Stamped
-    # rather than inferred, because it is several times larger frozen than from
-    # source and the two are easy to mistake for each other.
-    qt_ready = time.monotonic() - STARTED
-
     from single_instance import SingleInstance
     from tray import Tray
 
@@ -378,15 +372,11 @@ def main() -> int:
         print(line, flush=True)
         log_file.write(f"{line}\n")
 
-    log(f"interpreter and Qt: {qt_ready:.2f}s")
-
-    # Started and never waited for. Holding kotodex-server until it finished cost
-    # two seconds of every Windows start — the sync is a few tenths of a second on
-    # Linux and 2s there — and because the components start in order, the overlay
-    # waited behind the server for it. So a dictionary dropped in becomes visible
-    # on the *next* start, which is a rare event costing one restart, rather than
-    # every start paying for it. The reader writes the derived cache itself, so
-    # nothing else here depends on this finishing first.
+    # Started and never waited for. Waiting bought one thing — a zip dropped in
+    # since the last start being visible on this one — and the components start in
+    # order, so it stood in front of the overlay as well as the server. A new
+    # dictionary costs one restart instead. Nothing else here needs it: the reader
+    # writes the derived cache itself when it has to derive it.
     if host.start_dictionary_sync() is not None:
         log("jp-dict sync: starting")
     kids = children()

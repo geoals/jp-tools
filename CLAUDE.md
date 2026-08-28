@@ -258,13 +258,11 @@ slower** — the collections are derived from the rows as before, with a log lin
 saying so.
 
 `jp-dict` is the writer that runs *ahead* of a reader, not the only writer:
-`load_or_build` keeps what it had to derive. Belt and braces on purpose, because
-each covers what the other cannot. The launcher's sync is what makes a start
-from the desktop entry fast at all, and it is the only one that can import a zip.
-The write-back covers a server started some other way, one whose `jp-dict` is
-missing, and a cache that goes stale while the server is up — and it costs a
-start that hits the cache nothing, since the fingerprint it needs is one the read
-already computes.
+`load_or_build` keeps what it had to derive. Both are needed. Only the sync can
+import a zip, and only it can fill the cache before anything wants it — but
+nothing waits for it, so a reader can get there first, and a service started
+without it never had one. The write-back costs a start that hits the cache
+nothing: the fingerprint it needs is one the read already computes.
 
 Four jobs need the dictionaries, and they apply *different* thresholds, which is
 why `dictionaries.role` exists (`master` / `standard` / `name` / `frequency` /

@@ -131,10 +131,9 @@ pub async fn fingerprint(pool: &SqlitePool) -> Result<String, sqlx::Error> {
 /// tables when it is not.
 ///
 /// A miss keeps what it derived, so those seconds are paid once rather than on
-/// every start. `jp-dict` fills the cache when a dictionary changes and is still
-/// the only thing that fills it *before* a reader needs it, but nothing runs
-/// `jp-dict` on the launcher's path — so without this, a machine whose
-/// dictionaries were imported by an older build derives them again every time.
+/// every start. `jp-dict` is what fills the cache *before* a reader wants it, and
+/// the launcher runs it — but without waiting for it, so a reader can reach this
+/// first, and a service started any other way has nothing to have run it at all.
 pub async fn load_or_build(pool: &SqlitePool) -> Result<Derived, sqlx::Error> {
     match Derived::load(pool).await {
         Ok(Some(derived)) => return Ok(derived),

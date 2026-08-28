@@ -25,9 +25,9 @@ pub type Shared = std::sync::Arc<tokio::sync::OnceCell<std::sync::Arc<Highlighte
 /// tokenizer, so nothing should wait on one to start listening.
 pub fn warm(state: crate::app::AppState) {
     tokio::spawn(async move {
-        // Timed because "the lines took eight seconds to tint" is otherwise
-        // answered by guessing which of the cache, the dictionaries and Sudachi
-        // was slow. A start that hits the cache is under a second.
+        // Timed because "the lines took seconds to tint" is otherwise answered by
+        // guessing which of the cache, the dictionaries and Sudachi was slow, and
+        // `derived` already logs which of the two paths it took.
         let started = std::time::Instant::now();
         if shared(&state).await.is_some() {
             tracing::info!(
