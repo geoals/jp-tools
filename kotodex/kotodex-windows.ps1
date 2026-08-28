@@ -25,11 +25,19 @@ $Server = Join-Path $Repo 'target\release\kotodex-server.exe'
 $Overlay = Join-Path $Repo 'overlay\kotodex-overlay.exe'
 $Source = Join-Path $Repo 'source\kotodex-source.exe'
 $Url = 'http://localhost:3200'
+# Numeric for the probe, and the name only for the browser. `localhost` resolves
+# to `::1` first here, the server binds IPv4, and a connection to `::1` on this
+# platform times out rather than being refused - while Invoke-WebRequest, unlike
+# a browser or python, never tries the second address. Every probe therefore spent
+# its whole timeout and the wait below ran to its limit against a server that had
+# been answering for ten seconds. The tab keeps the name Yomitan is configured
+# against.
+$Probe = 'http://127.0.0.1:3200'
 $LogDir = Join-Path $env:LOCALAPPDATA 'kotodex'
 $Log = Join-Path $LogDir 'kotodex-server.log'
 
 function Answering {
-    try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 "$Url/api/reader/state" | Out-Null; return $true }
+    try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 "$Probe/api/reader/state" | Out-Null; return $true }
     catch { return $false }
 }
 
@@ -46,18 +54,27 @@ function Start-Once($exe, $name) {
         Write-Host "$name is already running"
         return
     }
-    $log = Join-Path $LogDir "$name.log"
-    Start-Hidden $exe $log
-    # Whether it is still there a moment later, because the interesting failure is
-    # a component that starts and dies: without this the launcher reports success
-    # and the reader sees nothing at all.
-    Start-Sleep -Milliseconds 1500
-    if (Get-Process -Name $name -ErrorAction SilentlyContinue) {
-        Write-Host "started $name, logging to $log"
-    } else {
-        Write-Host "$name exited immediately - see $log.err" -ForegroundColor Red
-        Get-Content -Tail 10 "$log.err" -ErrorAction SilentlyContinue |
-            ForEach-Object { Write-Host "  $_" }
+    Start-Hidden $exe (Join-Path $LogDir "$name.log")
+    $name
+}
+
+# Whether what was launched is still there, because the interesting failure is a
+# component that starts and dies: without this the launcher reports success and
+# the reader sees nothing at all.
+#
+# Both are asked once, after a wait they share. A wait each, in series, was three
+# seconds of the launcher doing nothing - and the wait for the server below is
+# already longer than the one this needs.
+function Survived($names) {
+    foreach ($name in $names) {
+        $log = Join-Path $LogDir "$name.log"
+        if (Get-Process -Name $name -ErrorAction SilentlyContinue) {
+            Write-Host "started $name, logging to $log"
+        } else {
+            Write-Host "$name exited immediately - see $log.err" -ForegroundColor Red
+            Get-Content -Tail 10 "$log.err" -ErrorAction SilentlyContinue |
+                ForEach-Object { Write-Host "  $_" }
+        }
     }
 }
 
@@ -70,26 +87,28 @@ function Start-Hidden($exe, $log) {
         -ArgumentList "/d /s /c """"$exe"" > ""$log"" 2>&1"""
 }
 
-if (Answering) {
+New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+
+$serverWasUp = Answering
+if ($serverWasUp) {
     Write-Host "Kotodex is already running - opening $Url"
+} elseif (-not (Test-Path $Server)) {
+    Write-Host "No server at $Server - run setup.ps1 first" -ForegroundColor Red
+    exit 1
 } else {
-    if (-not (Test-Path $Server)) {
-        Write-Host "No server at $Server - run setup.ps1 first" -ForegroundColor Red
-        exit 1
-    }
-    New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
     Start-Hidden $Server $Log
     Write-Host "started kotodex-server, logging to $Log"
+}
 
-    # The other two now, not after the wait below. The overlay is a frozen Qt
-    # application over half a gigabyte of Chromium, and on a cold first run
-    # Defender reads all of it - a minute is normal. Starting it while the server
-    # is still counting its line stream spends both waits at once, and the overlay
-    # is built for a server that is not up yet: it retries the page, backing off,
-    # rather than showing an error.
-    Start-Once $Source 'kotodex-source'
-    Start-Once $Overlay 'kotodex-overlay'
+# The other two before the wait below, not after it. The overlay is a frozen Qt
+# application over half a gigabyte of Chromium, and on a cold first run Defender
+# reads all of it - a minute is normal. Starting it while the server is still
+# counting its line stream spends both waits at once, and the overlay is built for
+# a server that is not up yet: it retries the page, backing off, rather than
+# showing an error. Each is a no-op when it is already running.
+$launched = @(Start-Once $Source 'kotodex-source'; Start-Once $Overlay 'kotodex-overlay')
 
+if (-not $serverWasUp) {
     # The first boot recounts the line stream and loads the tokenizer, so the
     # browser is held back rather than opening on a connection refused.
     # By name, because what was started is cmd's child rather than this script's -
@@ -111,13 +130,11 @@ if (Answering) {
     if (-not (Answering)) {
         Write-Host "the server did not answer in 30s - opening anyway, see $Log" -ForegroundColor Yellow
     }
+} elseif ($launched) {
+    Start-Sleep -Milliseconds 1500
 }
 
-New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
-# Adopted rather than started when the server was already up, which is the path
-# that skips the block above. Each is a no-op when it is already running.
-Start-Once $Source 'kotodex-source'
-Start-Once $Overlay 'kotodex-overlay'
+Survived $launched
 
 # The dashboard as well as the overlay, because the work being read and which
 # window to track are set there, and the overlay has no page for either.

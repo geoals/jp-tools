@@ -258,7 +258,10 @@ Step 'Checking with the server'
 $state = $null
 $startedHere = $null
 $log = Join-Path $Here 'setup-server.log'
-try { $state = GetJson 'http://localhost:3200/api/reader/state' 3 } catch {}
+# Numeric, not `localhost`: that name resolves to `::1` first here and the server
+# binds IPv4, so every probe below spent its whole timeout against a server that
+# was answering. See the same note in kotodex\kotodex-windows.ps1.
+try { $state = GetJson 'http://127.0.0.1:3200/api/reader/state' 3 } catch {}
 if ($state) {
     Good 'already running'
 } else {
@@ -270,7 +273,7 @@ if ($state) {
     foreach ($try in 1..30) {
         Start-Sleep -Seconds 2
         if ($startedHere.HasExited) { break }
-        try { $state = GetJson 'http://localhost:3200/api/reader/state' 3; break } catch {}
+        try { $state = GetJson 'http://127.0.0.1:3200/api/reader/state' 3; break } catch {}
     }
     if ($state) {
         Good 'started for the check'
