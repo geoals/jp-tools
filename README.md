@@ -43,6 +43,10 @@ no-op for whatever is already done. Re-run it any time.
 `--core` installs the log and the reader alone — no Qt, no audio, none of the
 parts that only exist to read a VN on this machine.
 
+On **Windows**, run `kotodex-<version>-windows-setup.exe` from a release. It
+installs per-user, so there is no elevation prompt, and it has no card audio or
+game screenshot — see [docs/install.md](docs/install.md).
+
 ## Requirements
 
 - **PySide6 and Qt WebEngine as system packages.** A pip PySide6 has no

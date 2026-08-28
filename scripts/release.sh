@@ -57,8 +57,9 @@ behind="$(git rev-list --count "HEAD..origin/master")"
 
 # The workflow prepends this file to the notes GitHub generates from the
 # commits since the last tag, so what is new in a release is never something to
-# remember to write. The file itself says what Kotodex is and how to install it,
-# which does not change between releases.
+# remember to write. It is deliberately short — which file to download and what
+# else is needed — because everything under it is what changed, and that is what
+# a release page is for. The long version is docs/install.md.
 notes="docs/release-notes.md"
 [ -r "$notes" ] || die "$notes is missing — the workflow prepends it to the release notes"
 
