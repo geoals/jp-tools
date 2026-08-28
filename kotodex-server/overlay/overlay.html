@@ -674,6 +674,9 @@
     font-size: 0.85rem;
     line-height: 1.5;
   }
+  .settings-body .note.err {
+    color: var(--danger-ink);
+  }
 
   /* Chips, not a <select>: the dropdown is a native popup window, and a layer
      surface has none to open it in — the list simply never appeared. The same
@@ -758,6 +761,7 @@
   /* Rows are divs, not buttons: a button stays inline-level whatever `display`
      says, and the list came out two names to a line. */
   #set-line-source .row,
+  #set-llm-provider .row,
   #set-font .row {
     overflow: hidden;
     padding: 0.25rem 0.5rem;
@@ -770,10 +774,12 @@
     user-select: none;
   }
   #set-line-source .row:hover,
+  #set-llm-provider .row:hover,
   #set-font .row:hover {
     background: var(--panel-hover);
   }
   #set-line-source .row.on,
+  #set-llm-provider .row.on,
   #set-font .row.on {
     background: var(--accent-fill);
     color: var(--accent-ink);
@@ -1022,6 +1028,7 @@
       <button value="text" class="on">Text</button>
       <button value="marks">Marks</button>
       <button value="source">Source</button>
+      <button value="ai">AI</button>
     </div>
 
     <div class="settings-body" data-tab="text">
@@ -1112,6 +1119,32 @@
       <span></span>
       <label></label>
       <div id="source-note" class="wide note"></div>
+      <span></span>
+    </div>
+
+    <div class="settings-body" data-tab="ai" hidden>
+      <label for="set-llm-key">API key</label>
+      <input id="set-llm-key" type="password" spellcheck="false"
+             placeholder="paste a key" autocomplete="off" />
+      <button id="llm-key-save">Save</button>
+      <label></label>
+      <div id="llm-key-note" class="wide note"></div>
+      <span></span>
+      <label>Service</label>
+      <div id="set-llm-provider" class="wide">
+        <div class="row" data-provider="anthropic">Anthropic</div>
+        <div class="row" data-provider="openai">OpenAI-compatible</div>
+      </div>
+      <span></span>
+      <label for="set-llm-base-url">Address</label>
+      <input id="set-llm-base-url" type="text" spellcheck="false" />
+      <span></span>
+      <label for="set-llm-model">Model</label>
+      <input id="set-llm-model" type="text" spellcheck="false"
+             placeholder="leave empty for the default" />
+      <span></span>
+      <label></label>
+      <div id="llm-note" class="wide note"></div>
       <span></span>
     </div>
   </div>

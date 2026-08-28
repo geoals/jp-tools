@@ -17,7 +17,7 @@ import {
 } from "preact/hooks";
 import { html } from "htm/preact";
 import { parseMarkdown } from "/shared/markdown.js";
-import { streamExplain } from "/shared/explain.js";
+import { NO_KEY, streamExplain } from "/shared/explain.js";
 import { api } from "./api.js";
 
 const FONT_KEY = "reader-font-px";
@@ -527,7 +527,14 @@ export function Reader() {
         onText: (text) => setExplain({ ok: true, focus: sel, text }),
       });
     } catch (err) {
-      setExplain({ ok: false, focus: sel, text: err.message });
+      // No key is not an error to read; it is a setting to fill in, and the
+      // panel says where. The overlay opens its own field — this surface has
+      // the settings page to send the reader to instead.
+      setExplain(
+        err.message === NO_KEY
+          ? { ok: false, focus: sel, needsKey: true, text: "" }
+          : { ok: false, focus: sel, text: err.message },
+      );
     } finally {
       setExplaining(false);
       window.getSelection?.().removeAllRanges();
@@ -627,7 +634,6 @@ export function Reader() {
       : capturing
         ? "Waiting for the next hooked line…"
         : liveTitle;
-  const explainOff = state && state.explain_available === false;
   // Quality-only: mining still works, so this is a quiet hint, not a disable.
   const trimOff = state && state.trim_available === false;
   const trimTitle =
@@ -738,7 +744,17 @@ export function Reader() {
             </button>
           </div>
           <div class="reader-explain-body">
-            ${explain && explain.text ? renderMarkdown(explain.text) : "explaining…"}
+            ${
+              explain && explain.needsKey
+                ? html`<p>
+                    No AI service is set up yet.
+                    <a href="#settings">Add a key in settings</a> to explain a
+                    line, and to get the short gloss on a mined card.
+                  </p>`
+                : explain && explain.text
+                  ? renderMarkdown(explain.text)
+                  : "explaining…"
+            }
           </div>
         </div>`
       }
@@ -760,7 +776,7 @@ export function Reader() {
         </button>
         <button
           class="reader-explain-btn"
-          disabled=${explaining || explainOff || lines.length === 0}
+          disabled=${explaining || lines.length === 0}
           onClick=${explainLine}
           title="Explain the last line (select a word first to focus on it)"
         >

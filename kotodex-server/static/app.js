@@ -169,7 +169,11 @@ function App({ view, sub }) {
       isTokenize
         ? html`<${TokenizeView} />`
         : isSettings
-          ? html`<${SettingsView} settings=${settings} onSaved=${load} />`
+          ? html`<${SettingsView}
+                settings=${settings}
+                vocab=${vocab}
+                onSaved=${load}
+              />`
           : tab === "trends"
             ? html`<${TrendsCard}
                 days=${days}

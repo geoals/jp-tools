@@ -124,6 +124,24 @@ table.days tr.today td {
 .settings-group {
   margin-top: 20px;
 }
+/* Folded away rather than absent: the thresholds are real and reversible, they
+   are just not what a first visit should open on. */
+.settings-advanced {
+  margin-top: 24px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.settings-advanced > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.settings-advanced > summary:hover {
+  color: var(--ink);
+}
 .settings-group h3 {
   font-size: 13px;
   font-weight: 600;

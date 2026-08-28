@@ -10,6 +10,12 @@
 //     device you are looking at, and a device reading in the dark should not
 //     have to agree with one that isn't.
 //
+// **A knob appears when the data it acts on exists.** A threshold on a ledger
+// with no rows in it, or a page size for a book nobody has logged, is a question
+// with no answer yet and a reason to close the page. `advanced` is the rest: the
+// derivation thresholds are real and reversible, and they are also nine numbers
+// with a paragraph each, which is not what a first visit should open on.
+//
 // The Anki import is here for the same reason as the tokenizer link: it is a
 // maintenance action on the ledger, run once in a while, not a reading of it.
 // The vocab tab reports what the ledger holds.
@@ -22,6 +28,7 @@ import { html } from "htm/preact";
 import { useState } from "preact/hooks";
 import { api } from "../api.js";
 import { THEMES, setTheme, storedTheme } from "../lib/theme.js";
+import { AiSettings } from "./ai-settings.js";
 
 /**
  * One numeric setting. `step` and `unit` are presentation; `hint` is the part
@@ -116,9 +123,16 @@ const FIELDS = [
   },
 ];
 
-const GROUPS = ["Goal", "Derivation", "Vocabulary"];
+/** Shown straight away. Everything else is a threshold on data that has to
+ *  exist first, and reads as a wall of numbers before it does. */
+const GROUPS = ["Goal"];
 
-export function SettingsView({ settings, onSaved }) {
+/** Folded away, in this order. `Vocabulary` is dropped entirely while the ledger
+ *  is empty: a triage floor with nothing to triage is a question with no answer
+ *  yet. */
+const ADVANCED_GROUPS = ["Derivation", "Vocabulary"];
+
+export function SettingsView({ settings, vocab, onSaved }) {
   // Edits are staged locally and saved as a batch: several of these interact
   // (target and streak minimum, gap cap and session break), and saving on every
   // keystroke would re-derive the whole history per digit typed.
@@ -178,6 +192,37 @@ export function SettingsView({ settings, onSaved }) {
 
   const saveLabel = busy ? "saving…" : "save changes";
 
+  // The ledger fills itself from what has been read, so this is "have you read
+  // anything yet" as much as it is about vocabulary.
+  const hasLedger = (vocab?.total ?? 0) > 0;
+  const advanced = ADVANCED_GROUPS.filter((g) => g !== "Vocabulary" || hasLedger);
+
+  const group = (name) => html`
+    <div class="settings-group" key=${name}>
+      <h3>${name}</h3>
+      ${FIELDS.filter((f) => f.group === name).map(
+        (f) => html`
+          <div class="settings-row" key=${f.key}>
+            <label for=${`set-${f.key}`}>${f.label}</label>
+            <div class="settings-input">
+              <input
+                id=${`set-${f.key}`}
+                type="number"
+                step=${f.step}
+                min=${f.min}
+                max=${f.max}
+                value=${valueOf(f.key)}
+                onInput=${(e) => edit(f.key, e.currentTarget.value)}
+              />
+              <span class="settings-unit">${f.unit}</span>
+            </div>
+            <p class="settings-hint">${f.hint}</p>
+          </div>
+        `,
+      )}
+    </div>
+  `;
+
   return html`
     <div class="card">
       <h2
@@ -185,34 +230,18 @@ export function SettingsView({ settings, onSaved }) {
       >
         Settings
       </h2>
+      <${AiSettings} settings=${settings} onSaved=${onSaved} />
       <form onSubmit=${save}>
-        ${GROUPS.map(
-          (group) => html`
-            <div class="settings-group" key=${group}>
-              <h3>${group}</h3>
-              ${FIELDS.filter((f) => f.group === group).map(
-                (f) => html`
-                  <div class="settings-row" key=${f.key}>
-                    <label for=${`set-${f.key}`}>${f.label}</label>
-                    <div class="settings-input">
-                      <input
-                        id=${`set-${f.key}`}
-                        type="number"
-                        step=${f.step}
-                        min=${f.min}
-                        max=${f.max}
-                        value=${valueOf(f.key)}
-                        onInput=${(e) => edit(f.key, e.currentTarget.value)}
-                      />
-                      <span class="settings-unit">${f.unit}</span>
-                    </div>
-                    <p class="settings-hint">${f.hint}</p>
-                  </div>
-                `,
-              )}
-            </div>
-          `,
-        )}
+        ${GROUPS.map(group)}
+        <details class="settings-advanced">
+          <summary>Advanced — how reading is measured</summary>
+          <p class="settings-hint">
+            Every one of these is applied when a figure is read, not when a line
+            is captured, so changing one re-prices your whole history and
+            changing it back undoes that exactly.
+          </p>
+          ${advanced.map(group)}
+        </details>
         <div class="settings-actions">
           <button type="submit" disabled=${busy || !dirty}>${saveLabel}</button>
           ${dirty &&

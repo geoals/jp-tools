@@ -30,7 +30,7 @@
 
 import { createPopup } from "/shared/popup.js";
 import { parseMarkdown } from "/shared/markdown.js";
-import { streamExplain } from "/shared/explain.js";
+import { NO_KEY, streamExplain } from "/shared/explain.js";
 import { THEMES, storedTheme, setTheme } from "/static/lib/theme.js";
 
 const params = new URLSearchParams(location.search);
@@ -151,6 +151,9 @@ let sessionGapSecs = 600;
 // way pausing works.
 let lineSource = "ws";
 let wsUrl = "";
+// Which model answers. `hasKey` and never the key: the server does not return
+// one, so the box shows whether something is stored rather than what.
+let llm = { provider: "anthropic", baseUrl: "", model: "", hasKey: false };
 fetch("/api/settings")
   .then((r) => r.json())
   .then((s) => {
@@ -162,6 +165,12 @@ fetch("/api/settings")
     sessionGapSecs = s.session_gap_secs || sessionGapSecs;
     lineSource = s.line_source || "ws";
     wsUrl = s.line_source_ws_url || "";
+    llm = {
+      provider: s.llm_provider || "anthropic",
+      baseUrl: s.llm_base_url || "",
+      model: s.llm_model || "",
+      hasKey: s.llm_has_key === true,
+    };
     showServerSettings();
   })
   .catch(() => {});
@@ -181,9 +190,9 @@ fetch("/api/reader/state")
   .catch(() => {});
 
 function applyCapabilities() {
-  // No key, no explain button. The button, not the box: the box is the whole bar,
-  // and pause and the type settings work without a key.
-  explainBtnEl.hidden = !can("explain");
+  // The explain button is drawn whether or not a key is set: without one it opens
+  // the field to paste a key into. A button that is simply absent leaves the
+  // reader nothing to find, and this is the one missing part with somewhere to go.
   // Nowhere to add a card, no ＋ in the popup.
   popup.setMining(can("anki"));
   // An empty ledger has no verdict to paint, whatever the setting says.
@@ -748,10 +757,7 @@ explainBoxEl.addEventListener("click", (e) => e.stopPropagation());
 
 // Reading it is what it is for, so it stays until dismissed — and a click
 // anywhere on it dismisses, rather than a ✕ to aim at over a game.
-explainPanelEl.addEventListener("click", () => {
-  explainPanelEl.hidden = true;
-  report();
-});
+explainPanelEl.addEventListener("click", hideExplain);
 
 // Take the line off the screen without stopping the overlay: it is over the
 // game's own text, and a scene worth looking at is worth looking at whole. The
@@ -1367,6 +1373,26 @@ const sourceRowEls = [...sourceBoxEl.children];
 const wsUrlEl = document.getElementById("set-ws-url");
 const sourceNoteEl = document.getElementById("source-note");
 
+const llmProviderRowEls = [...document.getElementById("set-llm-provider").children];
+const llmBaseUrlEl = document.getElementById("set-llm-base-url");
+const llmModelEl = document.getElementById("set-llm-model");
+const llmKeyEl = document.getElementById("set-llm-key");
+const llmKeySaveEl = document.getElementById("llm-key-save");
+const llmKeyNoteEl = document.getElementById("llm-key-note");
+const llmNoteEl = document.getElementById("llm-note");
+
+/** What each service wants in the two boxes under it. */
+const LLM_SERVICES = {
+  anthropic: {
+    baseUrl: "https://api.anthropic.com",
+    note: "Claude, from console.anthropic.com. Leave the address alone unless you are proxying it.",
+  },
+  openai: {
+    baseUrl: "https://api.openai.com/v1",
+    note: "Anything speaking OpenAI's chat API: OpenAI, OpenRouter, DeepSeek, Gemini's compatible endpoint, or a local llama.cpp or Ollama. Include the version part of the address, and name a model — there is no sensible default across all of them.",
+  },
+};
+
 function showServerSettings() {
   statusInputEl.checked = paintStatus;
   commonInputEl.value = String(commonRanks.freq);
@@ -1379,6 +1405,101 @@ function showServerSettings() {
     lineSource === "clipboard"
       ? "Anything copied is read as a line, including a sentence copied for a lookup. Needs wl-clipboard or xclip."
       : "Textractor's WebSocket plugin, which is the port set in Textractor itself.";
+  showLlmSettings();
+}
+
+function showLlmSettings() {
+  const service = LLM_SERVICES[llm.provider] ?? LLM_SERVICES.anthropic;
+  for (const row of llmProviderRowEls) {
+    row.classList.toggle("on", row.dataset.provider === llm.provider);
+  }
+  if (document.activeElement !== llmBaseUrlEl) {
+    // The service's own address as the placeholder rather than the value: stored
+    // empty means "whatever this service uses", and filling the box in would
+    // save a URL the reader never chose.
+    llmBaseUrlEl.value = llm.baseUrl;
+    llmBaseUrlEl.placeholder = service.baseUrl;
+  }
+  if (document.activeElement !== llmModelEl) llmModelEl.value = llm.model;
+  llmNoteEl.textContent = service.note;
+  if (!llmKeyNoteEl.dataset.said) {
+    llmKeyNoteEl.textContent = llm.hasKey
+      ? "A key is stored. Paste another to replace it, or save an empty box to remove it."
+      : "Needed for explaining a line, and for the short gloss on a mined card. Everything else works without one.";
+  }
+}
+
+/** Store the key and say whether it actually answered. */
+async function saveLlmKey() {
+  llmKeySaveEl.disabled = true;
+  llmKeyNoteEl.dataset.said = "1";
+  llmKeyNoteEl.textContent = "checking…";
+  try {
+    const res = await fetch("/api/settings/llm-key", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: llmKeyEl.value }),
+    });
+    const out = await res.json();
+    llm = { ...llm, hasKey: llmKeyEl.value.trim() !== "" };
+    llmKeyEl.value = "";
+    llmKeyNoteEl.textContent = out.detail || (out.ok ? "saved" : "could not be checked");
+    llmKeyNoteEl.classList.toggle("err", out.ok !== true);
+    // Redrawn from the server's own answer, so the row the reader reads next is
+    // the row the reader surfaces will read.
+    if (out.ok) refreshCapabilities();
+  } catch (e) {
+    llmKeyNoteEl.textContent = String(e.message || e);
+    llmKeyNoteEl.classList.add("err");
+  } finally {
+    llmKeySaveEl.disabled = false;
+  }
+}
+
+function refreshCapabilities() {
+  fetch("/api/reader/state")
+    .then((r) => r.json())
+    .then((s) => {
+      caps = s.capabilities ?? {};
+      applyCapabilities();
+    })
+    .catch(() => {});
+}
+
+llmKeySaveEl.addEventListener("click", saveLlmKey);
+llmKeyEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") saveLlmKey();
+});
+
+for (const row of llmProviderRowEls) {
+  row.addEventListener("click", () => {
+    llm = { ...llm, provider: row.dataset.provider };
+    showLlmSettings();
+    saveSetting("llm_provider", llm.provider);
+  });
+}
+
+// On change rather than on input, for the same reason as the WebSocket address:
+// a half-typed URL is not one worth storing.
+llmBaseUrlEl.addEventListener("change", () => {
+  llm = { ...llm, baseUrl: llmBaseUrlEl.value.trim() };
+  saveSetting("llm_base_url", llm.baseUrl);
+});
+llmModelEl.addEventListener("change", () => {
+  llm = { ...llm, model: llmModelEl.value.trim() };
+  saveSetting("llm_model", llm.model);
+});
+
+/** Open ⚙ on the AI tab with the key box focused. Where the explain button sends
+ *  a reader who has no key, so the answer to pressing it is the thing that turns
+ *  it on rather than a message about a variable. */
+function openAiSettings() {
+  settingsPanelEl.hidden = false;
+  settingsBtnEl.classList.remove("off");
+  for (const btn of tabBtnEls) btn.classList.toggle("on", btn.value === "ai");
+  for (const body of tabBodyEls) body.hidden = body.dataset.tab !== "ai";
+  report();
+  llmKeyEl.focus();
 }
 
 function saveSetting(key, value) {
@@ -1456,7 +1577,13 @@ async function explainLine() {
       onText: (text) => showExplain(text, false),
     });
   } catch (err) {
-    showExplain(err.message, true);
+    // No key is not an error to read, it is a box to fill in.
+    if (err.message === NO_KEY) {
+      hideExplain();
+      openAiSettings();
+    } else {
+      showExplain(err.message, true);
+    }
   } finally {
     explaining = false;
     explainBtnEl.disabled = false;
@@ -1480,6 +1607,11 @@ function showExplain(text, isError) {
   explainPanelEl.replaceChildren(frag);
   explainPanelEl.classList.toggle("err", isError);
   explainPanelEl.hidden = false;
+  report();
+}
+
+function hideExplain() {
+  explainPanelEl.hidden = true;
   report();
 }
 
@@ -1768,10 +1900,6 @@ function setGhost(on) {
   applyGhost();
 }
 
-function toggleGhost() {
-  setGhost(!ghost);
-}
-
 ghostInputEl.addEventListener("change", () => setGhost(ghostInputEl.checked));
 applyGhost();
 
@@ -1783,7 +1911,6 @@ if (window.qt?.webChannelTransport) {
   new QWebChannel(window.qt.webChannelTransport, (channel) => {
     shell = channel.objects.shell;
     shell.geometry.connect(onGeometry);
-    shell.userToggled.connect(toggleGhost);
     // Only under the shell: opened in a browser the page has no process to end.
     // This quits Kotodex, not just this window — the shell turns it into that,
     // and on a desktop with no system tray it is the only way out.

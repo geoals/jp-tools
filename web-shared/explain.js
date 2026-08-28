@@ -1,8 +1,15 @@
 // `POST /api/reader/explain`, read as it arrives.
 //
+// `NO_KEY` is the one failure with somewhere to go: both hosts answer it by
+// opening the field to paste a key into rather than showing the message. It is
+// `routes::reader::explain::NO_KEY` on the other side, tested as a string
+// because that is what the body is.
+//
 // Shared because the wire format is one contract and both hosts speak it. It is
 // server-sent events over a POST, so `EventSource` — which can only GET —
 // cannot be used, and the frames are parsed here off the response body.
+
+export const NO_KEY = "NO_KEY";
 
 /** Stream one explanation, calling `onText` with the answer so far each time it
  *  grows. Resolves with the full text; throws on an error frame or a failed
@@ -16,7 +23,7 @@ export async function streamExplain({ context, focus = "", onText }) {
   // A failure before the stream opens is still an ordinary HTTP error. The body
   // is the message itself — kotodex-server writes its errors as plain text, so
   // parsing it as JSON threw the reason away and left "Bad Request" on screen
-  // where "no Anthropic API key set" was what happened.
+  // where the reason was what happened.
   if (!res.ok) {
     throw new Error((await res.text().catch(() => "")) || res.statusText);
   }
