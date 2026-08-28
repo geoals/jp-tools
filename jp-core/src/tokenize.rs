@@ -26,6 +26,7 @@ use sudachi::analysis::stateless_tokenizer::StatelessTokenizer;
 use sudachi::analysis::{Mode, Tokenize};
 use sudachi::config::Config;
 use sudachi::dic::dictionary::JapaneseDictionary;
+use sudachi::dic::storage::{Storage, SudachiDicData};
 use sudachi::dic::subset::InfoSubset;
 use sudachi::dic::word_id::WordId;
 use sudachi::prelude::Morpheme;
@@ -203,33 +204,31 @@ impl SudachiTokenizer {
                 dict_path.display()
             ))
         })?;
-        // The config and the resource directory are named explicitly. Passing None
-        // for either makes sudachi.rs fall back to `default_resource_dir()`, which
-        // is built from `env!("CARGO_MANIFEST_DIR")` — the path of the crate on
-        // whatever machine *compiled* the binary. That is a directory under
-        // ~/.cargo on a developer's machine and under the runner's home in CI, so
-        // every released binary looked for char.def somewhere that does not exist
-        // on the reader's machine and the highlighter silently never came up.
-        //
-        // Neither can be dropped: the embedded config still names char.def,
-        // unk.def and rewrite.def, and MeCabOovPlugin reads two of them. Swapping
-        // the OOV plugin for one that needs no files would change how unknown
-        // words are segmented, which is not a packaging decision.
-        let resources = crate::install::sudachi_resource_dir();
-        let config = Config::new(
-            Some(resources.join("sudachi.json")),
-            Some(resources.clone()),
-            Some(abs_path),
-        )
-        .map_err(|e| {
+        // Nothing here reads a resource file from disk. `Config::new` and
+        // `from_cfg` resolve sudachi.json and char.def under
+        // `default_resource_dir()`, which is built from `CARGO_MANIFEST_DIR` — the
+        // crate's path on whatever machine *compiled* the binary, so a released
+        // binary found no char.def and the highlighter never came up. sudachi.rs
+        // compiles all four of its resources in, so the embedded config plus the
+        // embedded-chardef loader is the same tokenizer with no paths in it; the
+        // rewrite.def and unk.def the plugins want fall back to their embedded
+        // copies once the path fails to resolve.
+        let config = Config::new_embedded()
+            .map_err(|e| TokenizeError::Failed(format!("failed to load Sudachi config: {e}")))?;
+        let file = std::fs::File::open(&abs_path).map_err(|e| {
             TokenizeError::Failed(format!(
-                "failed to load Sudachi config from {}: {e}",
-                resources.display()
+                "failed to open Sudachi dictionary {}: {e}",
+                abs_path.display()
             ))
         })?;
-        let dict = JapaneseDictionary::from_cfg(&config).map_err(|e| {
-            TokenizeError::Failed(format!("failed to load Sudachi dictionary: {e}"))
+        let mapped = unsafe { memmap2::Mmap::map(&file) }.map_err(|e| {
+            TokenizeError::Failed(format!("failed to map Sudachi dictionary: {e}"))
         })?;
+        let storage = SudachiDicData::new(Storage::File(mapped));
+        let dict = JapaneseDictionary::from_cfg_storage_with_embedded_chardef(&config, storage)
+            .map_err(|e| {
+                TokenizeError::Failed(format!("failed to load Sudachi dictionary: {e}"))
+            })?;
         Ok(Self {
             dict: Arc::new(dict),
             mined,

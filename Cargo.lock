@@ -1741,6 +1741,7 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "flate2",
+ "memmap2",
  "mockall",
  "serde",
  "serde_json",

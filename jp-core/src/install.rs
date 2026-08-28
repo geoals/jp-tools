@@ -24,20 +24,6 @@ pub fn install_root() -> PathBuf {
     build_workspace()
 }
 
-/// Sudachi's own resource files — `sudachi.json`, `char.def`, `unk.def`,
-/// `rewrite.def`.
-///
-/// Vendored and shipped rather than left to sudachi.rs to find: its default is
-/// derived from `CARGO_MANIFEST_DIR`, so it names the crate's path on the machine
-/// that compiled the binary. `KOTODEX_SUDACHI_RESOURCES` overrides, the way every
-/// other path here does.
-pub fn sudachi_resource_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("KOTODEX_SUDACHI_RESOURCES") {
-        return PathBuf::from(dir);
-    }
-    install_root().join("jp-core/sudachi-resources")
-}
-
 /// The directory the data lives in: the two databases, the covers, the Sudachi
 /// dictionary and the VAD model that `setup.sh` downloads.
 ///

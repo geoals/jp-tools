@@ -10,13 +10,9 @@ terms. Three groups, because they arrive three different ways.
 | preact, htm, @preact/signals — `web-shared/vendor/` | the dashboards' front end | MIT |
 | KANJIDIC2 (via `davidluzgouveia/kanji-data`), reduced into `jp-core/src/text/kanji_data.rs` | school grade, stroke count and gloss per kanji | CC BY-SA 4.0 (Electronic Dictionary Research and Development Group) |
 | BCCWJ character-frequency list (NINJAL), reduced into `jp-core/src/text/bccwj_data.rs` | the kanji frequency yardstick | see NINJAL's terms for the frequency lists at <https://pj.ninjal.ac.jp/corpus_center/bccwj/freq-list.html> |
-| sudachi.rs resources — `jp-core/sudachi-resources/` (`sudachi.json`, `char.def`, `unk.def`, `rewrite.def`), WorksApplications | the tokenizer's own configuration and character tables | Apache-2.0 |
 
 The two tables are reductions, not copies: the generator script and the source
-URL are in each file's header. The sudachi.rs resources are copied unmodified from
-that crate, and are shipped rather than found at runtime because its default
-location is derived from the path of the crate on whatever machine compiled the
-binary. The vendored libraries are the npm ESM builds
+URL are in each file's header. The vendored libraries are the npm ESM builds
 unmodified — see `web-shared/vendor/README.md` for versions and why they are
 not on a CDN.
 
