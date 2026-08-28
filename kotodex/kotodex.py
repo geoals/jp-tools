@@ -361,6 +361,12 @@ def main() -> int:
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication
 
+    # Everything before this is the interpreter and Qt loading, which is the
+    # launcher's whole fixed cost and is nothing this process decides. Stamped
+    # rather than inferred, because it is several times larger frozen than from
+    # source and the two are easy to mistake for each other.
+    qt_ready = time.monotonic() - STARTED
+
     from single_instance import SingleInstance
     from tray import Tray
 
@@ -378,8 +384,23 @@ def main() -> int:
     # Timed like the overlay's own log, so "starting felt slow" is answerable
     # from the two logs side by side rather than guessed at. Everything up to the
     # overlay being spawned is serial, so each line is a phase boundary.
+    #
+    # To a file as well as stdout: the frozen launcher is built with a console it
+    # hides, so on Windows stdout goes nowhere anyone can read and these lines —
+    # the only record of the launcher's own share of starting — were unobservable
+    # there. Appended, and each run says when it began, so a slow start can be
+    # read against the one before it.
+    log_path = host.LOG_DIR / "kotodex.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_file = log_path.open("a", buffering=1)
+    log_file.write(f"=== {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+
     def log(msg):
-        print(f"kotodex: +{time.monotonic() - STARTED:6.2f}s {msg}", flush=True)
+        line = f"kotodex: +{time.monotonic() - STARTED:6.2f}s {msg}"
+        print(line, flush=True)
+        log_file.write(f"{line}\n")
+
+    log(f"interpreter and Qt: {qt_ready:.2f}s")
 
     # Beside the components rather than in front of them: importing a zip and
     # writing the derived cache is only kotodex-server's precondition, and a
