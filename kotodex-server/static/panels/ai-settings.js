@@ -66,7 +66,15 @@ export function AiSettings({ settings, onSaved }) {
 
   const keyHint = settings.llm_has_key
     ? "A key is stored. Paste another to replace it, or save an empty box to remove it."
-    : "Needed for explaining a line, and for the short gloss on a mined card. Everything else works without one.";
+    : settings.llm_key_from_env
+      ? "A key is set in KOTODEX_ANTHROPIC_API_KEY and is what answers. It cannot be changed here — paste one to store a key that takes over from it."
+      : "Needed for explaining a line, and for the short gloss on a mined card. Everything else works without one.";
+
+  const keyPlaceholder = settings.llm_has_key
+    ? "a key is stored"
+    : settings.llm_key_from_env
+      ? "a key is set in the environment"
+      : "paste a key";
 
   return html`
     <div class="settings-group">
@@ -79,7 +87,7 @@ export function AiSettings({ settings, onSaved }) {
             type="password"
             spellcheck="false"
             autocomplete="off"
-            placeholder=${settings.llm_has_key ? "a key is stored" : "paste a key"}
+            placeholder=${keyPlaceholder}
             value=${key}
             onInput=${(e) => setKey(e.currentTarget.value)}
           />

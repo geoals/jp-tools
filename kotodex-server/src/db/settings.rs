@@ -86,6 +86,15 @@ pub struct Settings {
     /// since the server binds `0.0.0.0` — so the value must have no way out of
     /// [`load_settings`]. This flag is where the row is read and dropped.
     pub llm_has_key: bool,
+    /// Whether `KOTODEX_ANTHROPIC_API_KEY` answers instead. Stamped by the route
+    /// from `AppState`, never read here — the environment is the process's fact
+    /// and this struct is the database's.
+    ///
+    /// A key from there works for every prompt but cannot be replaced or removed
+    /// from the page, so a surface that drew it as a stored key would offer two
+    /// buttons that do nothing to it.
+    #[serde(default)]
+    pub llm_key_from_env: bool,
 }
 
 impl Default for Settings {
@@ -118,6 +127,7 @@ impl Default for Settings {
             llm_base_url: String::new(),
             llm_model: String::new(),
             llm_has_key: false,
+            llm_key_from_env: false,
         }
     }
 }

@@ -9,8 +9,21 @@ use crate::app::AppState;
 use crate::db::{self, Settings};
 use crate::error::AppError;
 
+/// The stored settings plus the one fact the database cannot hold: whether a key
+/// is coming from the environment. Every handler that answers with `Settings`
+/// goes through this, so the two surfaces cannot disagree about whether a key
+/// is configured.
+async fn settings_for(state: &AppState) -> Result<Settings, AppError> {
+    let mut settings = db::load_settings(&state.local).await?;
+    settings.llm_key_from_env = state
+        .env_api_key
+        .as_deref()
+        .is_some_and(|k| !k.trim().is_empty());
+    Ok(settings)
+}
+
 pub async fn get_settings(State(state): State<AppState>) -> Result<Json<Settings>, AppError> {
-    Ok(Json(db::load_settings(&state.local).await?))
+    Ok(Json(settings_for(&state).await?))
 }
 
 /// Settings whose value is free text rather than a number. Everything else must
@@ -70,7 +83,7 @@ pub async fn put_settings(
         };
         db::save_setting(&state.local, key, &stored).await?;
     }
-    Ok(Json(db::load_settings(&state.local).await?))
+    Ok(Json(settings_for(&state).await?))
 }
 
 /// `PUT /api/settings/llm-key` — store the model API key, or clear it.

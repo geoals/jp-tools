@@ -170,6 +170,7 @@ fetch("/api/settings")
       baseUrl: s.llm_base_url || "",
       model: s.llm_model || "",
       hasKey: s.llm_has_key === true,
+      keyFromEnv: s.llm_key_from_env === true,
     };
     showServerSettings();
   })
@@ -1425,7 +1426,9 @@ function showLlmSettings() {
   if (!llmKeyNoteEl.dataset.said) {
     llmKeyNoteEl.textContent = llm.hasKey
       ? "A key is stored. Paste another to replace it, or save an empty box to remove it."
-      : "Needed for explaining a line, and for the short gloss on a mined card. Everything else works without one.";
+      : llm.keyFromEnv
+        ? "A key is set in KOTODEX_ANTHROPIC_API_KEY and is what answers. It cannot be changed here — paste one to store a key that takes over from it."
+        : "Needed for explaining a line, and for the short gloss on a mined card. Everything else works without one.";
   }
 }
 
