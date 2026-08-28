@@ -92,16 +92,20 @@ async fn run() -> Result<(), String> {
         .map_err(|e| format!("cannot open knowledge.db: {e}"))?;
     let pool = knowledge.pool();
 
-    match command.as_str() {
+    // Every command below but `list` and `help` changes what the highlighter is
+    // built from, so the derived cache is rewritten once after whichever ran.
+    let derives = !matches!(command.as_str(), "list" | "help" | "--help" | "-h");
+
+    let outcome = match command.as_str() {
         "sync" => {
             let dir = resolve_dictionary_dir(dir);
             let zips = zips_in(&dir)?;
             if zips.is_empty() {
                 println!("no .zip dictionaries in {}", dir.display());
-                return Ok(());
+            } else {
+                import_all(pool, &zips, forced_role).await?;
+                ensure_master(pool).await?;
             }
-            import_all(pool, &zips, forced_role).await?;
-            ensure_master(pool).await?;
             list(pool).await
         }
         "import" => {
@@ -218,6 +222,28 @@ async fn run() -> Result<(), String> {
             Ok(())
         }
         other => Err(format!("unknown command: {other}\n\n{USAGE}")),
+    };
+
+    outcome?;
+    if derives {
+        refresh_derived_cache(pool).await;
+    }
+    Ok(())
+}
+
+/// Rewrite the collections the highlighter is built from, if the dictionaries
+/// moved.
+///
+/// **This is their only writer.** They are derived from the dictionaries and
+/// nothing else, and every command above changes one — so this is the one place
+/// that knows. A service reads the cache and never fills it; skipping this costs
+/// the reader the seconds of deriving them itself, and nothing more, which is
+/// why a failure here warns rather than failing the import that just succeeded.
+async fn refresh_derived_cache(pool: &sqlx::SqlitePool) {
+    match jp_core::highlight::derived::rebuild(pool).await {
+        Ok(true) => println!("derived cache rebuilt"),
+        Ok(false) => {}
+        Err(e) => eprintln!("warning: cannot write the derived cache: {e}"),
     }
 }
 

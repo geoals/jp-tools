@@ -96,10 +96,7 @@ async fn run() {
     // of. Left out of this dump for its first year, so what it printed was a
     // pipeline with one rule switched off — see `Pipeline`'s nine inputs.
     let reader_ranks: HashMap<String, i64> =
-        match dictionaries::reader_frequency(pool)
-            .await
-            .unwrap()
-        {
+        match dictionaries::reader_frequency(pool).await.unwrap() {
             Some(d) => sqlx::query_as::<_, (String, i64)>(
                 "SELECT term, MIN(frequency) FROM dictionary_frequency \
                  WHERE dictionary_id = ? GROUP BY term",
@@ -129,7 +126,7 @@ async fn run() {
         .with_lexicon(lexicon)
         .with_master_readings(&entries)
         .with_frequency(ranks)
-        .with_reader_frequency(reader_ranks)
+        .with_reader_frequency(std::sync::Arc::new(reader_ranks))
         .with_preferred_readings(preferred)
         .with_conjugatable(conjugatable)
         .with_standard(&standard)

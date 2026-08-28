@@ -155,8 +155,8 @@ fn with_cast(names: &[&str]) -> SudachiTokenizer {
 }
 
 fn build(names: HashSet<String>) -> (SudachiTokenizer, MasterWords) {
-    let dict_path = std::env::var("KOTODEX_SUDACHI_DICT_PATH")
-        .expect("KOTODEX_SUDACHI_DICT_PATH must be set");
+    let dict_path =
+        std::env::var("KOTODEX_SUDACHI_DICT_PATH").expect("KOTODEX_SUDACHI_DICT_PATH must be set");
     let entries = master_entries();
     let lexicon: HashSet<String> = entries.iter().map(|(t, _)| t.clone()).collect();
     // A non-empty deck is what puts the tokenizer on the C→B→A path, which is
@@ -166,7 +166,7 @@ fn build(names: HashSet<String>) -> (SudachiTokenizer, MasterWords) {
         .with_lexicon(lexicon.clone())
         .with_master_readings(&entries)
         .with_frequency(ranks())
-        .with_reader_frequency(reader_ranks())
+        .with_reader_frequency(std::sync::Arc::new(reader_ranks()))
         .with_preferred_readings(preferences())
         .with_conjugatable(conjugatable())
         .with_names(names);

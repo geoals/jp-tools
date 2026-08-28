@@ -43,7 +43,7 @@ pub fn tokenizer(dict_path: &Path, i: &Inputs) -> SudachiTokenizer {
         .with_master_readings(&i.master)
         .with_standard(&i.standard)
         .with_frequency(i.ranks.clone())
-        .with_reader_frequency(i.reader_ranks.clone())
+        .with_reader_frequency(std::sync::Arc::new(i.reader_ranks.clone()))
         .with_preferred_readings(i.preferences.clone())
         .with_conjugatable(i.conjugatable.clone())
         .with_names(i.names.clone())

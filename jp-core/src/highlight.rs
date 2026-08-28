@@ -23,6 +23,8 @@
 //! [`Tier`] splits the ledger's `new` on `encounter_count`, since it covers both
 //! "met fifty times, never judged" and "never met at all".
 
+pub mod derived;
+
 use std::collections::{HashMap, HashSet};
 
 use crate::knowledge::Knowledge;
@@ -123,109 +125,66 @@ pub struct Pipeline {
     /// than only in [`Highlighter`] because ingest asks it too: a term the
     /// reader gives no span must not become a ledger row either.
     pub wordhood: Wordhood,
+    /// The corpus rank per spelling, which the reader tests beside the
+    /// reader-facing one — see [`Span::bccwj_rank`].
+    ///
+    /// Here rather than fetched again by [`Highlighter::build`], which ran the
+    /// same `GROUP BY` over the same 886k rows a second time. Its reader-facing
+    /// counterpart needs no field: the tokenizer already holds that list and
+    /// answers for it (`SudachiTokenizer::reader_rank`).
+    pub bccwj_ranks: HashMap<String, i64>,
 }
 
-/// Fetch the nine inputs from `knowledge.db` and build the tokenizer.
+/// Build the tokenizer, and the dictionary sets its callers need beside it.
 ///
-/// The dictionary load is CPU-bound and measured in seconds, so it runs on a
-/// blocking thread rather than on the runtime other requests are polling.
+/// The dictionary-derived collections come from [`derived::load_or_build`],
+/// which reads them back out of `knowledge.db` rather than re-deriving them from
+/// 2.5M rows. The Sudachi load and the `with_*` builders are CPU-bound and
+/// measured in hundreds of milliseconds, so they run on a blocking thread rather
+/// than on the runtime other requests are polling.
 pub async fn pipeline(
     k: &Knowledge,
     dict_path: impl AsRef<std::path::Path>,
 ) -> Result<Pipeline, BuildError> {
     let pool = k.pool();
     let vocab = vocabulary::mined_vocab(pool).await?;
-    let lexicon = crate::knowledge::dictionaries::master_headwords(pool).await?;
-    let readings = crate::knowledge::dictionaries::master_entries(pool).await?;
-    let ranks = ambiguous_ranks(pool, &readings).await?;
-    let reader = reader_ranks(pool).await?;
-    let preferred = preferred(pool).await?;
-    let conjugatable = crate::knowledge::dictionaries::master_conjugatable(pool).await?;
-    let standard = crate::knowledge::dictionaries::standard_entries(pool).await?;
     let names: HashSet<String> = crate::knowledge::work_names::all(k)
         .await?
         .into_iter()
         .collect();
 
-    let (listed, listed_readings) = crate::knowledge::dictionaries::wordhood_entries(pool).await?;
-    let wordhood = Wordhood::new(listed, listed_readings);
-
+    // Mapping 360 MB of Sudachi dictionary needs nothing out of `knowledge.db`,
+    // so it runs while the cache is being read and decoded rather than after.
     let dict_path = dict_path.as_ref().to_path_buf();
+    let loading = tokio::task::spawn_blocking(move || SudachiTokenizer::new(&dict_path, vocab));
+    let d = derived::load_or_build(pool).await?;
+    let bare = loading
+        .await
+        .map_err(|e| BuildError::Sudachi(format!("the Sudachi load panicked: {e}")))?
+        .map_err(|e| BuildError::Sudachi(e.to_string()))?;
+
     tokio::task::spawn_blocking(move || {
-        let tokenizer = SudachiTokenizer::new(&dict_path, vocab)
-            .map_err(|e| BuildError::Sudachi(e.to_string()))?
+        let lexicon = d.master_headwords;
+        let tokenizer = bare
             .with_lexicon(lexicon.clone())
-            .with_master_readings(&readings)
-            .with_frequency(ranks)
-            .with_reader_frequency(reader)
-            .with_preferred_readings(preferred)
-            .with_conjugatable(conjugatable)
-            .with_standard(&standard)
+            .with_master_readings(&d.master_entries)
+            .with_frequency(d.ambiguous_ranks)
+            .with_reader_frequency(d.reader_ranks)
+            .with_preferred_readings(d.preferred_readings)
+            .with_conjugatable(d.master_conjugatable)
+            .with_standard(&d.standard_entries)
             .with_names(names);
-        let master = MasterWords::new(lexicon.clone(), &readings);
+        let master = MasterWords::new(lexicon.clone(), &d.master_entries);
         Ok(Pipeline {
             tokenizer,
             lexicon,
             master,
-            wordhood,
+            wordhood: Wordhood::new(d.wordhood_terms, d.wordhood_readings),
+            bccwj_ranks: d.bccwj_ranks,
         })
     })
     .await
     .map_err(|e| BuildError::Sudachi(format!("pipeline build panicked: {e}")))?
-}
-
-/// BCCWJ ranks for the master headwords that share a reading with another, so
-/// the tokenizer can name a word written in kana (うかがう → 伺う over 窺う).
-///
-/// **Stays on BCCWJ** where the reader-facing ranks do not: this asks which
-/// spelling of one reading is the commoner one, and a list carrying kana-only
-/// rows would answer it with the reading's own rank. Not being loaded is not an
-/// error — ambiguous readings are then left unresolved, as they were before.
-async fn ambiguous_ranks(
-    pool: &sqlx::SqlitePool,
-    readings: &[(String, String)],
-) -> Result<HashMap<(String, String), i64>, sqlx::Error> {
-    let Some(bccwj) = crate::knowledge::dictionaries::by_title(pool, "BCCWJ").await? else {
-        return Ok(HashMap::new());
-    };
-    let terms = crate::tokenize::ambiguous_headwords(readings);
-    crate::knowledge::dictionaries::frequency_ranks(pool, bccwj.id, &terms).await
-}
-
-/// The reader-facing rank per spelling, for the tokenizer's short-kana guard.
-///
-/// The reader's frequency dictionary, not the tokenizer's BCCWJ, for the reason
-/// [`reader_frequency`](crate::knowledge::dictionaries::reader_frequency)
-/// exists: the question is whether a spelling is one the fiction being read
-/// actually uses, and a newspaper corpus ranks 船舶 eight times commoner than a
-/// novel does. Not being loaded is not an error — the guard is then simply off.
-async fn reader_ranks(pool: &sqlx::SqlitePool) -> Result<HashMap<String, i64>, sqlx::Error> {
-    use crate::knowledge::dictionaries as d;
-    let Some(reader) = d::reader_frequency(pool).await? else {
-        return Ok(HashMap::new());
-    };
-    let rows: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT term, MIN(frequency) FROM dictionary_frequency
-         WHERE dictionary_id = ? GROUP BY term",
-    )
-    .bind(reader.id)
-    .fetch_all(pool)
-    .await?;
-    Ok(rows.into_iter().collect())
-}
-
-async fn preferred(
-    pool: &sqlx::SqlitePool,
-) -> Result<HashMap<String, crate::knowledge::dictionaries::PreferredReading>, sqlx::Error> {
-    use crate::knowledge::dictionaries as d;
-    let (Some(master), Some(jitendex), Some(bccwj)) = (
-        d::master(pool).await?,
-        d::by_title(pool, "Jitendex").await?,
-        d::by_title(pool, "BCCWJ").await?,
-    ) else {
-        return Ok(HashMap::new());
-    };
-    d::preferred_readings(pool, master.id, jitendex.id, bccwj.id).await
 }
 
 /// Whether a term is a word at all, for a term the ledger cannot answer for.
@@ -329,36 +288,28 @@ pub struct Highlighter {
     /// the wordhood gate. Ingest asks the identical question, which keeps a tint
     /// and a ledger row from disagreeing about 達.
     master: MasterWords,
-    /// Frequency rank per `(headword, reading)`, for the master headwords. Held
-    /// rather than queried per line: the reader would otherwise pay a
-    /// `dictionary_frequency` lookup per word on the path that draws a line as
-    /// it is being read.
-    ranks: HashMap<String, i64>,
-    /// BCCWJ ranks for the same words, held for the same reason.
+    /// Corpus ranks per spelling. Held rather than queried per line: the reader
+    /// would otherwise pay a `dictionary_frequency` lookup per word on the path
+    /// that draws a line as it is being read. The reader-facing ranks need no
+    /// field — [`rank`](Self::rank) asks the tokenizer, which holds that list
+    /// already.
     bccwj_ranks: HashMap<String, i64>,
 }
 
 impl Highlighter {
-    /// Build one from `knowledge.db` — the [`pipeline`] plus the frequency
-    /// ranks the reader needs to tell a common unknown word from a rare one.
+    /// Build one from `knowledge.db` — the [`pipeline`], whose frequency ranks
+    /// are already the ones the reader needs to tell a common unknown word from
+    /// a rare one.
     pub async fn build(
         k: &Knowledge,
         dict_path: impl AsRef<std::path::Path>,
     ) -> Result<Highlighter, BuildError> {
         let p = pipeline(k, dict_path).await?;
-        let ranks = reader_ranks_for(
-            k,
-            crate::knowledge::dictionaries::READER_FREQUENCY,
-            &p.wordhood,
-        )
-        .await?;
-        let bccwj_ranks = reader_ranks_for(k, "BCCWJ", &p.wordhood).await?;
         Ok(Highlighter::new(
             std::sync::Arc::new(p.tokenizer),
             p.wordhood,
             p.master,
-            ranks,
-            bccwj_ranks,
+            p.bccwj_ranks,
         ))
     }
 
@@ -375,29 +326,49 @@ impl Highlighter {
         tokenizer: std::sync::Arc<SudachiTokenizer>,
         wordhood: Wordhood,
         master: MasterWords,
-        ranks: HashMap<String, i64>,
         bccwj_ranks: HashMap<String, i64>,
     ) -> Highlighter {
         Highlighter {
             tokenizer,
             wordhood,
             master,
-            ranks,
             bccwj_ranks,
         }
     }
 
     /// How common the word is — the *same number the popup prints* for it, so
     /// an underline and the rank the reader reads when they open the word
-    /// cannot disagree. See [`reader_ranks_for`].
+    /// cannot disagree.
+    ///
+    /// **Keyed by spelling alone, best rank wins** — the same question
+    /// `lookup_frequency` puts for the popup. Keying on `(spelling, reading)`
+    /// instead made the underline and the popup disagree about the same word: the
+    /// popup printed 4,259 for 近付ける while the span carried nothing.
+    ///
+    /// A rank is only reported for a spelling some dictionary lists, and
+    /// **every listed word counts, not the master's headwords alone**: Sankoku
+    /// has 近付く and 近付き but not 近付ける, so restricting to its lexicon left
+    /// every word only the lenient wordhood gate admits unrankable — and
+    /// therefore impossible to underline, whatever the thresholds say.
+    ///
+    /// The test is here rather than in the query, and rather than applied to the
+    /// map when it is loaded: `EXISTS` against `dictionary_entries` makes SQLite
+    /// scan it while every writer waits, and filtering the map instead meant
+    /// copying a million ranks on the path that brings the reader up.
+    ///
+    /// **The number comes from the tokenizer's own list**, which already holds
+    /// it for the short-kana guard. One list, so the rank behind an underline and
+    /// the rank a segmentation decision was made on cannot drift apart.
     fn rank(&self, term: &Term) -> Option<i64> {
-        self.ranks.get(&term.headword).copied()
+        self.tokenizer
+            .reader_rank(&term.headword)
+            .filter(|_| self.wordhood.lists(&term.headword))
     }
 
-    /// The same word's rank in BCCWJ, which the reader tests beside the
+    /// The same word's corpus rank, which the reader tests beside the
     /// reader-facing one — see [`Span::bccwj_rank`].
     fn bccwj_rank(&self, term: &Term) -> Option<i64> {
-        self.bccwj_ranks.get(&term.headword).copied()
+        listed_rank(&self.bccwj_ranks, &self.wordhood, &term.headword)
     }
 
     /// The ledger key a spelling from outside the tokenizer stands for — an
@@ -721,42 +692,13 @@ pub async fn analyze(k: &Knowledge, h: &Highlighter, text: &str) -> Vec<Analyzed
         .collect()
 }
 
-/// The rank per spelling the reader sees, from one frequency list. Empty when
-/// that list is not loaded.
-///
-/// **Keyed by spelling alone, best rank wins** — the same question
-/// `lookup_frequency` puts for the popup. Keying on `(spelling, reading)`
-/// instead made the underline and the popup disagree about the same word: the
-/// popup printed BCCWJ's 4,259 for 近付ける while the span carried nothing.
-///
-/// **Every listed word, not the master's headwords alone.** Sankoku has 近付く
-/// and 近付き but not 近付ける, so restricting to its lexicon left every word
-/// only the lenient wordhood gate admits unrankable — and therefore impossible
-/// to underline, whatever the thresholds say.
-///
-/// The wordhood filter runs here rather than in the query: `EXISTS` against
-/// `dictionary_entries` makes SQLite scan it, and this holds a read on the
-/// database every other writer is waiting behind.
-async fn reader_ranks_for(
-    k: &Knowledge,
-    title: &str,
-    wordhood: &Wordhood,
-) -> Result<HashMap<String, i64>, sqlx::Error> {
-    use crate::knowledge::dictionaries as d;
-    let Some(dict) = d::by_title(k.pool(), title).await? else {
-        return Ok(HashMap::new());
-    };
-    let rows: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT term, MIN(frequency) FROM dictionary_frequency
-         WHERE dictionary_id = ? GROUP BY term",
-    )
-    .bind(dict.id)
-    .fetch_all(k.pool())
-    .await?;
-    Ok(rows
-        .into_iter()
-        .filter(|(term, _)| wordhood.lists(term))
-        .collect())
+/// A spelling's rank, for a spelling some dictionary lists. See
+/// [`Highlighter::rank`], which carries the argument.
+fn listed_rank(ranks: &HashMap<String, i64>, wordhood: &Wordhood, headword: &str) -> Option<i64> {
+    ranks
+        .get(headword)
+        .copied()
+        .filter(|_| wordhood.lists(headword))
 }
 
 /// One ledger row's tier, or why the word gets no mark at all.
@@ -1013,6 +955,33 @@ mod tests {
     #[test]
     fn an_empty_wordhood_condemns_nothing() {
         assert!(!Wordhood::default().is_noise(&Term::new("ぎい", "ぎい")));
+    }
+
+    /// A rank is only reported for a spelling some dictionary lists, and every
+    /// dictionary counts — not the master alone. Sankoku has 近付く but not
+    /// 近付ける, so a master-only test left every word the lenient gate admits
+    /// unrankable and therefore impossible to underline.
+    #[test]
+    fn only_a_listed_spelling_gets_a_rank() {
+        let ranks: HashMap<String, i64> = [
+            ("景気づけ".to_string(), 4259),
+            ("むわむわ".to_string(), 91000),
+            ("ズチュ".to_string(), 500),
+        ]
+        .into_iter()
+        .collect();
+        let w = wordhood();
+        assert_eq!(listed_rank(&ranks, &w, "景気づけ"), Some(4259));
+        // A kana spelling listed as some kanji headword's reading is listed.
+        assert_eq!(listed_rank(&ranks, &w, "むわむわ"), Some(91000));
+        // Ranked by the frequency list, but no dictionary has it: hook shrapnel
+        // must not come back as a common word.
+        assert_eq!(listed_rank(&ranks, &w, "ズチュ"), None);
+        assert_eq!(
+            listed_rank(&ranks, &w, "景気付け"),
+            None,
+            "not ranked at all"
+        );
     }
 
     #[test]

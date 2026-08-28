@@ -47,6 +47,10 @@ const MIGRATION_WORKS_PLANNED: &str =
     include_str!("../../migrations/knowledge/015_works_planned.sql");
 const MIGRATION_COVERING_INDEXES: &str =
     include_str!("../../migrations/knowledge/016_covering_indexes.sql");
+const MIGRATION_DERIVED_CACHE: &str =
+    include_str!("../../migrations/knowledge/017_derived_cache.sql");
+const MIGRATION_SCHEMA_REPAIRS: &str =
+    include_str!("../../migrations/knowledge/018_schema_repairs.sql");
 
 /// Create the directory a database file will live in.
 ///
@@ -126,6 +130,11 @@ impl Knowledge {
     /// Replay every migration. Each file is idempotent (`CREATE TABLE IF NOT
     /// EXISTS`), so there is no version table to keep in sync; what SQLite
     /// can't express idempotently is guarded by [`has_column`].
+    ///
+    /// **Idempotent is not the same as free**, and the two migrations that
+    /// rewrite *data* are guarded by [`schema_repairs`](repair_done) instead:
+    /// they scanned `lines` and `dictionary_entries` whole on every open, by
+    /// every tool, to find nothing left to do.
     async fn migrate(&self) -> Result<(), sqlx::Error> {
         for sql in [
             MIGRATION_DICT,
@@ -139,8 +148,11 @@ impl Knowledge {
             MIGRATION_BOOKS,
             MIGRATION_WORKS_PLANNED,
             MIGRATION_TERM_SURFACES,
+            // Before the repairs below, which record their progress in it.
+            MIGRATION_SCHEMA_REPAIRS,
             MIGRATION_STRIP_CONTROL,
             MIGRATION_COVERING_INDEXES,
+            MIGRATION_DERIVED_CACHE,
         ] {
             sqlx::raw_sql(sql).execute(&self.0).await?;
         }
@@ -376,11 +388,45 @@ impl Knowledge {
             .await?;
         // Last of all: it rewrites keys across `vocabulary`, `term_surfaces`
         // and `vocabulary_events`, so every one of them has to exist first.
-        sqlx::raw_sql(MIGRATION_STRIP_OKURIGANA_MARKER)
-            .execute(&self.0)
-            .await?;
+        //
+        // Run once, not on every open. `strip_okurigana_marker` keeps the marker
+        // out of new imports and nothing else can introduce one, so a replay is
+        // four unindexed `LIKE '%＝%'` scans — 675k dictionary entries among them
+        // — that can only ever find nothing.
+        if !repair_done(&self.0, STRIP_OKURIGANA).await? {
+            sqlx::raw_sql(MIGRATION_STRIP_OKURIGANA_MARKER)
+                .execute(&self.0)
+                .await?;
+            mark_repaired(&self.0, STRIP_OKURIGANA).await?;
+        }
         Ok(())
     }
+}
+
+/// See `018_schema_repairs.sql`.
+const STRIP_OKURIGANA: &str = "strip_okurigana_marker";
+
+async fn repair_done(pool: &SqlitePool, name: &str) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM schema_repairs WHERE name = ?)")
+        .bind(name)
+        .fetch_one(pool)
+        .await
+}
+
+/// Recorded only after the repair itself has committed, so an interrupted run is
+/// simply retried on the next open.
+async fn mark_repaired(pool: &SqlitePool, name: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("INSERT OR REPLACE INTO schema_repairs (name, mark, ts) VALUES (?, 0, ?)")
+        .bind(name)
+        .bind(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs_f64())
+                .unwrap_or(0.0),
+        )
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 /// Whether `table.column` is declared NOT NULL. Used to detect a schema that

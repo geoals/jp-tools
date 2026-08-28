@@ -88,7 +88,7 @@ any Kotodex in it; everything that is the product carries it.
 
 | file            | holds                                                                                                             | owner                |
 | --------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `knowledge.db`  | dictionary cache (+ role), `works`, `lines`, `manual_sessions`, `anki_notes`, `word_days`, `lookups`, `vocabulary`, `term_surfaces`, `work_names`, `books` | `jp_core::knowledge` |
+| `knowledge.db`  | dictionary cache (+ role), `derived_cache`, `works`, `lines`, `manual_sessions`, `anki_notes`, `word_days`, `lookups`, `vocabulary`, `term_surfaces`, `work_names`, `books` | `jp_core::knowledge` |
 | `kotodex.db` | `settings`, `reader_marks`, `work_covers`                                                                          | kotodex-server           |
 | `yt-mine.db`    | `mining_jobs`, `mining_sentences`                                                                                  | yt-mine              |
 
@@ -232,6 +232,21 @@ entries behind — invisible to `list`, and still answering the wordhood gate.
 
 `source_path` is the cache key, so a moved zip is *repointed* rather than
 re-imported — re-importing costs a 400k-row pass and leaves a duplicate row.
+
+**And `jp-dict` owns `derived_cache` for the same reason.** The collections the
+highlighter is built from — the wordhood sets, the master and standard entries,
+the two rank maps, the arbitration tables — are a pure function of the
+dictionaries, and deriving them costs nine seconds, nearly all of it sqlx turning
+2.5M rows into Rust collections one at a time. `jp_core::highlight::derived`
+writes them as six flat blobs after every `jp-dict` command that changes a
+dictionary; a service reads it and never fills it. Six rather than one so that
+no write holds the lock for 50 MB and each decodes on a blocking thread of its
+own — the split is by size, not by meaning. A `fingerprint` of the
+dictionary list plus each one's row counts is what a reader checks, so an import
+or a `set-role` invalidates the cache by itself and a database edited by hand
+does not go unnoticed. **A stale or absent cache is never a failure, only
+slower** — the collections are derived from the rows as before, with a log line
+saying so.
 
 Four jobs need the dictionaries, and they apply *different* thresholds, which is
 why `dictionaries.role` exists (`master` / `standard` / `name` / `frequency` /

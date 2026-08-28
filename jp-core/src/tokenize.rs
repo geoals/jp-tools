@@ -189,7 +189,7 @@ pub struct SudachiTokenizer {
     /// not BCCWJ's. The only question asked of it is whether a spelling is one
     /// almost nothing uses; see [`vanishingly_rare`](Self::vanishingly_rare).
     /// Empty disables the short-kana guard entirely.
-    reader_ranks: HashMap<String, i64>,
+    reader_ranks: Arc<HashMap<String, i64>>,
     /// The cast of the works being read, from `work_names`. **The only
     /// term-level answer to whether something is a name**; Sudachi's tag is a
     /// property of the sentence. Empty leaves the tag alone.
@@ -221,9 +221,8 @@ impl SudachiTokenizer {
                 abs_path.display()
             ))
         })?;
-        let mapped = unsafe { memmap2::Mmap::map(&file) }.map_err(|e| {
-            TokenizeError::Failed(format!("failed to map Sudachi dictionary: {e}"))
-        })?;
+        let mapped = unsafe { memmap2::Mmap::map(&file) }
+            .map_err(|e| TokenizeError::Failed(format!("failed to map Sudachi dictionary: {e}")))?;
         let storage = SudachiDicData::new(Storage::File(mapped));
         let dict = JapaneseDictionary::from_cfg_storage_with_embedded_chardef(&config, storage)
             .map_err(|e| {
@@ -246,7 +245,7 @@ impl SudachiTokenizer {
             conjugatable: HashSet::new(),
             katakana_native: HashSet::new(),
             rederived: Mutex::new(HashMap::new()),
-            reader_ranks: HashMap::new(),
+            reader_ranks: Arc::new(HashMap::new()),
             names: HashSet::new(),
         })
     }
@@ -345,9 +344,20 @@ impl SudachiTokenizer {
     /// master headwords sharing a reading and needs the rank of a
     /// `(spelling, reading)` pair; this one asks only whether a spelling is one
     /// anybody writes, and a newspaper corpus answers that badly.
-    pub fn with_reader_frequency(mut self, ranks: HashMap<String, i64>) -> Self {
+    /// An `Arc` because the reader holds the same list: `Highlighter` reports
+    /// these ranks to the client and the two must be one claim about which words
+    /// are common, not two copies of 443k entries that can drift.
+    pub fn with_reader_frequency(mut self, ranks: Arc<HashMap<String, i64>>) -> Self {
         self.reader_ranks = ranks;
         self
+    }
+
+    /// How common a spelling is in fiction, for a caller that needs the number
+    /// rather than the verdict — the reader's underline and the rank the popup
+    /// prints. Handed out rather than held twice; see
+    /// [`with_reader_frequency`](Self::with_reader_frequency).
+    pub fn reader_rank(&self, term: &str) -> Option<i64> {
+        self.reader_ranks.get(term).copied()
     }
 
     /// Is this spelling one that almost nothing written in Japanese uses?
