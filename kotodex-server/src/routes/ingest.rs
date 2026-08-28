@@ -139,8 +139,30 @@ pub async fn ingest_lines(
     let ids = db::insert_lines(&state.knowledge, &source, &lines).await?;
     if !ids.is_empty() {
         info!(count = ids.len(), source, "ingested lines");
+        ensure_work_row(&state, &lines).await;
     }
     Ok(Json(json!({ "ids": ids, "paused": false })))
+}
+
+/// Give the work a `works` row if it has none, so its metadata is editable.
+///
+/// A line is stamped with a title, and everything the shelf shows derives the
+/// work from the lines — but the per-work *settings* need a row with an id, and
+/// the VN window is one of them. Without this, a work whose title was typed
+/// rather than picked had a card on the shelf and an edit dialog that could not
+/// save anything, which reads as the app being broken.
+///
+/// Idempotent (`upsert_work`) and only after a successful insert, so the cost is
+/// one indexed lookup per batch of lines and none at all for a paused capture.
+/// A failure is logged and dropped: the lines are already in, and the row can be
+/// made by opening the work.
+async fn ensure_work_row(state: &AppState, lines: &[db::NewLine]) {
+    let Some(title) = lines.iter().find_map(|l| l.work.as_deref()) else {
+        return;
+    };
+    if let Err(e) = db::upsert_work(&state.knowledge, title).await {
+        warn!(error = %e, title, "could not give the work a metadata row");
+    }
 }
 
 #[derive(Deserialize)]

@@ -17,11 +17,27 @@ but not ours to redistribute. It needs a network connection once.
 
 Two things the installer cannot do for you:
 
-- **Textractor**, with its WebSocket extension enabled. That is what hooks the
-  game's text, and without it the overlay stays empty. Kotodex listens on
-  `ws://localhost:6677`; the address is in the settings panel if yours differs.
+- **Textractor**, set up as below. That is what hooks the game's text, and
+  without it the overlay stays empty.
 - **Anki** with the AnkiConnect add-on, if you want to mine cards. Reading and
   lookups work without it.
+
+## Setting Textractor up
+
+Kotodex asks for this on its first run and will not go quiet about it until text
+is arriving, so you can also just start Kotodex and follow the page.
+
+1. Attach Textractor to the game and pick the hook that gives you the dialogue
+   and nothing else.
+2. **Extensions → add the WebSocket extension.** That is what Kotodex reads.
+   It listens on `ws://localhost:6677`; the address is under ⚙ → Source if
+   yours differs.
+3. **Set the flush delay to 30 ms.** Textractor ships at 500, which holds every
+   line for half a second before releasing it — the overlay then visibly trails
+   the game, and a line you have already read appears as you click past it.
+
+The flush delay is the one setting worth changing and the one Kotodex cannot
+check for you: nothing on this side can tell a slow flush from a slow game.
 
 Then start Kotodex from the Start Menu. It starts the ledger, the line source and
 the overlay, and opens the dashboard — where you say which work you are reading
@@ -76,8 +92,6 @@ one of them, and [docs/degradation.md](degradation.md) is the full list.
 - **On Windows:** no card audio and no game screenshot, since the capture
   pipeline is Linux-only. A game in DirectX *exclusive* fullscreen cannot be
   overlaid at all — run it borderless windowed, which most engines do anyway.
-  The dashboard's window picker lists nothing, so type the game's window title in
-  by hand.
 - Whisper (used by the YouTube tooling in this repository) is not set up by the
   installer.
 - The GNOME X11 fallback is the least tested path; open an issue with your

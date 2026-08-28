@@ -28,6 +28,7 @@ import { SettingsView } from "./panels/settings.js";
 import { KanjiView } from "./panels/kanji.js";
 import { VocabView } from "./panels/vocab.js";
 import { TrendsCard } from "./panels/trends.js";
+import { SetupView, isBlocked } from "./panels/setup.js";
 
 const REFRESH_MS = 60_000;
 
@@ -50,6 +51,18 @@ function App({ view, sub }) {
   const [sessions, setSessions] = useState(null);
   const [vocab, setVocab] = useState(null);
   const [error, setError] = useState(null);
+  // What this installation can do. Fetched beside the poll rather than by the
+  // panel that draws it, because the *shell* is what it decides: with a blocking
+  // part missing there is no dashboard worth showing behind it.
+  const [caps, setCaps] = useState(null);
+
+  function refreshCaps() {
+    api("/api/reader/state")
+      .then((st) => setCaps(st.capabilities ?? {}))
+      // Unreachable is not "blocked": the gate must never be the thing standing
+      // between the reader and a dashboard because one probe did not answer.
+      .catch(() => setCaps({}));
+  }
 
   async function load() {
     try {
@@ -60,7 +73,10 @@ function App({ view, sub }) {
         api("/api/settings"),
         api("/api/sessions"),
         api("/api/vocab/summary"),
+        // Its own call, not part of the destructure above: the probe shells out
+        // to a few tools, and a slow one must not hold up the numbers.
       ]);
+      refreshCaps();
       setSummary(s);
       setDays(d);
       setWorks(w);
@@ -100,11 +116,32 @@ function App({ view, sub }) {
     }
   }
 
+  // **The gate.** A blocking part missing means there is nothing behind the
+  // dashboard to show, so the whole page is the one thing that has to happen —
+  // no tabs, no empty charts, no numbers derived from no lines. `#settings` is
+  // still reachable, because that is where one of the fixes is.
+  //
+  // The state is the probe and not a stored flag, so this un-gates itself the
+  // moment the machine changes and re-gates if a part goes away.
+  const gated = isBlocked(caps) && view !== "settings" && view !== "setup";
+  if (gated) {
+    return html`
+      <header>
+        <h1>コトデックス</h1>
+        <div class="header-right">
+          <a class="pause-btn" href="#settings">⚙ settings</a>
+        </div>
+      </header>
+      <${SetupView} onReady=${refreshCaps} />
+    `;
+  }
+
   // The tabs choose what renders, never what is fetched. `#books` was
   // absorbed into `#library` — a saved link must not land on Today.
   const isSettings = view === "settings";
   const isTokenize = view === "tokenize";
-  const offTab = isSettings || isTokenize;
+  const isSetup = view === "setup";
+  const offTab = isSettings || isTokenize || isSetup;
   const tab = TABS.some((t) => t.id === view)
     ? view
     : view === "books"
@@ -166,7 +203,9 @@ function App({ view, sub }) {
       </div>`
     }
     ${
-      isTokenize
+      isSetup
+        ? html`<${SetupView} onReady=${refreshCaps} />`
+        : isTokenize
         ? html`<${TokenizeView} />`
         : isSettings
           ? html`<${SettingsView}

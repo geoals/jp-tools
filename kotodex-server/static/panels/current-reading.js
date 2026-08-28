@@ -7,7 +7,7 @@ import { ProgressBar } from "../charts.js";
 import { api } from "../api.js";
 import { fmtChars, fmtHours } from "../lib/format.js";
 import { workProgress } from "../lib/pace.js";
-import { WorkMetaForm, setCurrentWork } from "../panels/work-form.js";
+import { WorkMetaForm, WorkSearchForm, setCurrentWork } from "../panels/work-form.js";
 import { Modal } from "../components/modal.js";
 
 export function CurrentReading({ works, settings, days, onSaved }) {
@@ -15,14 +15,23 @@ export function CurrentReading({ works, settings, days, onSaved }) {
   const [editing, setEditing] = useState(false);
   const [winBusy, setWinBusy] = useState(false);
   const [windows, setWindows] = useState([]);
+  const [focused, setFocused] = useState(null);
 
-  // Fetched once on mount rather than with the 60s refresh: it shells out to
-  // xdotool, and the window list only changes when you launch a different VN.
+  // Refetched when the dialog opens rather than only on mount: the reader's next
+  // move after seeing "not set" is to click the game and come back, and a list
+  // taken sixty seconds ago will not have it in.
   useEffect(() => {
+    if (!editing) return;
     api("/api/vn/windows")
-      .then((r) => setWindows(r.windows || []))
-      .catch(() => setWindows([]));
-  }, []);
+      .then((r) => {
+        setWindows(r.windows || []);
+        setFocused(r.focused || null);
+      })
+      .catch(() => {
+        setWindows([]);
+        setFocused(null);
+      });
+  }, [editing]);
 
   const title = settings.current_work;
   const current = title ? works.find((w) => w.work === title) : null;
@@ -55,8 +64,7 @@ export function CurrentReading({ works, settings, days, onSaved }) {
     }
   }
 
-  async function saveWindow(e) {
-    e.preventDefault();
+  async function setWindow(title) {
     if (!meta?.id) return;
     setWinBusy(true);
     try {
@@ -64,7 +72,7 @@ export function CurrentReading({ works, settings, days, onSaved }) {
       // work to have a metadata row, which the current one always does.
       await api(`/api/works/${meta.id}`, {
         method: "PUT",
-        body: { vn_window: e.currentTarget.vnwindow.value.trim() },
+        body: { vn_window: title.trim() },
       });
       onSaved();
     } catch (err) {
@@ -72,6 +80,11 @@ export function CurrentReading({ works, settings, days, onSaved }) {
     } finally {
       setWinBusy(false);
     }
+  }
+
+  function saveWindow(e) {
+    e.preventDefault();
+    setWindow(e.currentTarget.vnwindow.value);
   }
 
   return html`
@@ -233,10 +246,18 @@ export function CurrentReading({ works, settings, days, onSaved }) {
         `
       }
       ${
+        // Asked here rather than pointed at the Library. This is the card a
+        // reader is looking at when they have just started something, so it is
+        // where the question belongs — and every line captured before it is
+        // answered is stamped with no work at all.
         !title &&
-        html`<div class="meta-hint">
-          No work selected. Pick one below, or set one from the Library.
-        </div>`
+        html`
+          <div class="meta-hint">
+            Nothing selected, so nothing being read is being filed under
+            anything. Say what it is:
+          </div>
+          <${WorkSearchForm} onSaved=${onSaved} />
+        `
       }
       <div class="now-reading">
         <label for="now-reading-input">Switch to</label>
@@ -277,6 +298,22 @@ export function CurrentReading({ works, settings, days, onSaved }) {
           />
           <form class="now-reading" onSubmit=${saveWindow}>
             <label for="vn-window-input">VN window</label>
+            ${
+              // One button on a good day: the reader was looking at the game a
+              // moment ago, so the window in front is almost always the answer
+              // and reading thirty titles out of a list is not.
+              focused &&
+              focused !== meta?.vn_window &&
+              html`<div class="now-reading-row">
+                <button
+                  type="button"
+                  disabled=${winBusy}
+                  onClick=${() => setWindow(focused)}
+                >
+                  ${`Use “${focused}”`}
+                </button>
+              </div>`
+            }
             <div class="now-reading-row">
               <input
                 id="vn-window-input"

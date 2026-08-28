@@ -40,6 +40,87 @@ struct Character {
     aliases: Vec<String>,
 }
 
+/// What a title search offers the reader to pick from.
+#[derive(serde::Serialize)]
+pub struct VnMatch {
+    pub id: String,
+    /// As Japanese writes it where VNDB has it, since that is what the reader is
+    /// looking at on screen. Falls back to the romanized title.
+    pub title: String,
+    /// The other one, shown beside it — the two are how you tell two entries in
+    /// the same series apart.
+    pub alt_title: String,
+    pub cover: String,
+    /// Roughly how long it is, in hours, from VNDB's own votes. **Not a character
+    /// count**: VNDB has none, so the progress bar still needs one pasted in.
+    pub hours: Option<f64>,
+}
+
+/// Search VNDB by title.
+///
+/// The whole point of the work form: a reader knows what they are reading and
+/// should not have to find its id on a website to say so.
+pub async fn search(
+    client: &reqwest::Client,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<VnMatch>, AppError> {
+    #[derive(Deserialize)]
+    struct SearchResponse {
+        results: Vec<SearchResult>,
+    }
+    #[derive(Deserialize)]
+    struct SearchResult {
+        id: String,
+        title: Option<String>,
+        alttitle: Option<String>,
+        image: Option<VnImage>,
+        length_minutes: Option<f64>,
+    }
+
+    let body = serde_json::json!({
+        "filters": ["search", "=", query],
+        "fields": "id,title,alttitle,image.url,length_minutes",
+        "results": limit,
+        // Most-voted first: a search for a well-known title should not open on a
+        // fan disc nobody has played.
+        "sort": "votecount",
+        "reverse": true,
+    });
+    let res: SearchResponse = client
+        .post(API_VN)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| AppError::Upstream(format!("vndb search: {e}")))?
+        .json()
+        .await
+        .map_err(|e| AppError::Upstream(format!("vndb search decode: {e}")))?;
+
+    Ok(res
+        .results
+        .into_iter()
+        .map(|r| {
+            let romanized = r.title.unwrap_or_default();
+            let original = r.alttitle.unwrap_or_default();
+            // The Japanese spelling leads where there is one: it is what the game
+            // window and the script say, so it is the title a reader recognises.
+            let (title, alt_title) = if original.is_empty() {
+                (romanized, String::new())
+            } else {
+                (original, romanized)
+            };
+            VnMatch {
+                id: r.id,
+                title,
+                alt_title,
+                cover: r.image.map(|i| i.url).unwrap_or_default(),
+                hours: r.length_minutes.map(|m| m / 60.0),
+            }
+        })
+        .collect())
+}
+
 /// Search VNDB for a title, returning the first match's id.
 pub async fn find_vn_id(client: &reqwest::Client, title: &str) -> Result<Option<String>, AppError> {
     let body = serde_json::json!({

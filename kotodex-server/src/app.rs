@@ -138,6 +138,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/books/skip", post(books::skip_book))
         .route("/api/works", get(works::works).post(works::upsert_work))
         .route("/api/works/detail", get(works::work_detail))
+        // VNDB by title, so adding a work is not a trip to a website for an id.
+        .route("/api/works/search", get(works::search_works))
         .route("/api/works/triage", get(works::work_triage))
         .route(
             "/api/works/{id}",
@@ -186,6 +188,9 @@ pub fn build_router(state: AppState) -> Router {
             "/api/settings/llm-key",
             axum::routing::put(settings::put_llm_key),
         )
+        // The capability matrix, past its cache — what "check again" asks after
+        // the reader has done something outside the app.
+        .route("/api/setup", get(reader::capabilities::setup))
         // The ledger's front door: any source, over HTTP, from any machine.
         .route("/api/lines", axum::routing::post(ingest::ingest_lines))
         .route(

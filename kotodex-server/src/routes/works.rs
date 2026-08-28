@@ -513,6 +513,32 @@ async fn apply_work_meta(state: &AppState, id: i64, req: &WorkMetaReq) -> Result
     Ok(())
 }
 
+/// `GET /api/works/search?q=` — VNDB titles to pick a new work from.
+///
+/// Adding a work used to mean typing its title, then finding its id on vndb.org
+/// by hand and pasting that back. A reader knows what they are reading; this is
+/// the app doing the looking up.
+pub async fn search_works(
+    State(state): State<AppState>,
+    Query(params): Query<SearchQuery>,
+) -> Result<Json<Value>, AppError> {
+    let q = params.q.trim();
+    if q.is_empty() {
+        return Ok(Json(json!({ "results": [] })));
+    }
+    // A failed search is an empty list and a message, never a 500: vndb.org being
+    // down must not stop a work being added by hand.
+    match crate::services::vndb::search(&state.http, q, 8).await {
+        Ok(results) => Ok(Json(json!({ "results": results }))),
+        Err(e) => Ok(Json(json!({ "results": [], "error": e.to_string() }))),
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct SearchQuery {
+    pub q: String,
+}
+
 /// Create-or-update work metadata, keyed by exact title.
 pub async fn upsert_work(
     State(state): State<AppState>,

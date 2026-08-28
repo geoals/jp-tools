@@ -250,3 +250,125 @@ table.days tr.today td {
     grid-column: 1;
   }
 }
+
+/* ── Setup ───────────────────────────────────────────────────────────────
+   The one thing that has to happen, and a list of what is merely not set up
+   yet. Deliberately roomy: this is the whole page while it is showing, and it
+   is the page a first run opens on. */
+.setup h2 {
+  margin: 0 0 8px;
+}
+.setup-fix {
+  margin: 0 0 8px;
+  max-width: 46ch;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+.setup-detail {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.setup-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 14px;
+}
+.setup-row {
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.setup-row-head {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.setup-row-label {
+  font-size: 14px;
+  color: var(--ink);
+}
+.setup-steps {
+  margin: 4px 0 12px;
+  padding-left: 22px;
+  max-width: 52ch;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+.setup-steps li {
+  margin: 5px 0;
+}
+
+/* ── Adding a work ───────────────────────────────────────────────────────
+   A title search, so the cover is what you pick from — you recognise a VN by
+   its box art faster than by its romanization. */
+.work-search > label {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.work-search > input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--page);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 15px;
+}
+.work-search-results {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+.work-search-results button {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 7px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.work-search-results button:hover {
+  background: var(--panel-hover, var(--grid));
+}
+.work-search-results img {
+  width: 40px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 3px;
+  flex: none;
+}
+.work-search-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.work-search-title {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.work-search-alt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.work-search .actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 14px;
+}

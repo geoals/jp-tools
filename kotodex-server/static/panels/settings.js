@@ -285,6 +285,17 @@ export function SettingsView({ settings, vocab, onSaved }) {
       <div class="settings-group">
         <h3>Tools</h3>
         <div class="settings-row">
+          <label>Setup</label>
+          <div class="settings-input">
+            <a class="pause-btn" href="#setup">✓ what is set up</a>
+          </div>
+          <p class="settings-hint">
+            Every part of Kotodex, whether it is working, and what to do about the
+            ones that are not. It is the same check the dashboard runs — nothing
+            is remembered, so this is always the state of this machine right now.
+          </p>
+        </div>
+        <div class="settings-row">
           <label>Anki import</label>
           <div class="settings-input">
             <${AnkiImport} onImported=${onSaved} />

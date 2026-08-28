@@ -33,6 +33,36 @@ pub struct Capability {
     pub detail: String,
     /// The one thing that turns it on. `None` when it is already on.
     pub fix: Option<String>,
+    /// Nothing has been read yet and this is why. The dashboard shows the
+    /// blocking rows and nothing else, so a first run opens on the one thing that
+    /// has to happen rather than on nine empty charts.
+    ///
+    /// **Only ever set on an install with no lines behind it.** Once there is
+    /// history the dashboard has something to say, and gating it would mean
+    /// looking at your own statistics required the game to be running — which is
+    /// most of the times you would want to.
+    ///
+    /// Deliberately few: a part is blocking only if the product does not work at
+    /// all without it. Anki, audio, a key and the pitch dictionaries are all
+    /// things a reader can add later, and asking for them up front is the wall
+    /// this exists to remove.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub blocking: bool,
+    /// Where in the app the reader fixes this, when the app can do it at all.
+    ///
+    /// The point of the whole matrix: a `fix` that names a shell command is a
+    /// diagnosis, not a repair. `Some` means the surfaces draw a button.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<Action>,
+}
+
+/// A fix the app can perform, as the client needs to know it.
+#[derive(Serialize, Clone)]
+pub struct Action {
+    /// What the button says.
+    pub label: String,
+    /// Where it goes — a dashboard route, or the overlay's own name for a panel.
+    pub goto: String,
 }
 
 fn on(detail: impl Into<String>) -> Capability {
@@ -40,6 +70,8 @@ fn on(detail: impl Into<String>) -> Capability {
         ok: true,
         detail: detail.into(),
         fix: None,
+        blocking: false,
+        action: None,
     }
 }
 
@@ -48,6 +80,26 @@ fn off(detail: impl Into<String>, fix: impl Into<String>) -> Capability {
         ok: false,
         detail: detail.into(),
         fix: Some(fix.into()),
+        blocking: false,
+        action: None,
+    }
+}
+
+impl Capability {
+    /// Nothing reads without it — but say so only while nothing has been read,
+    /// which is the only time the reader has nothing else to look at.
+    fn blocking(mut self, fresh_install: bool) -> Self {
+        self.blocking = fresh_install;
+        self
+    }
+
+    /// Reachable from inside the app.
+    fn fixed_at(mut self, label: &str, goto: &str) -> Self {
+        self.action = Some(Action {
+            label: label.into(),
+            goto: goto.into(),
+        });
+        self
     }
 }
 
@@ -135,7 +187,7 @@ fn capture_running() -> Capability {
 /// Asked of the heartbeat rather than of `lines.log`, which is created on the
 /// first run and then outlives every producer — so a file check answers `ok` on
 /// a machine with nothing hooked at all.
-async fn lines_source(state: &AppState) -> Capability {
+async fn lines_source(state: &AppState, fresh_install: bool) -> Capability {
     let settings = crate::db::load_settings(&state.local)
         .await
         .unwrap_or_default();
@@ -149,24 +201,31 @@ async fn lines_source(state: &AppState) -> Capability {
     if settings.capture_paused && beat.as_ref().is_some_and(|b| b.running()) {
         return on(format!("{}, paused", settings.line_source));
     }
+    // Nothing arrives, so there is nothing to read: the one other blocking row.
     // The launcher and the logger it starts are Linux-only, so naming them off
     // Linux would be advice nobody can take. What is true everywhere is that some
     // source has to post to the endpoint.
     #[cfg(not(unix))]
     return off(
         format!("{}, no producer", settings.line_source),
-        "no source is posting to /api/lines — see sources/README.md",
-    );
+        "nothing is hooking the game's text. Textractor with its WebSocket \
+         extension is what does it — the address it connects to is under Source.",
+    )
+    .blocking(fresh_install);
     #[cfg(unix)]
     match settings.line_source.as_str() {
         "clipboard" => off(
             "clipboard, no producer",
-            "start Kotodex — it runs the capture daemon that watches the clipboard",
-        ),
+            "nothing is copying text. Start Kotodex — it runs the capture daemon \
+             that watches the clipboard.",
+        )
+        .blocking(fresh_install),
         _ => off(
             "ws, no producer",
-            "start Kotodex — it runs the logger that reads Textractor's WebSocket",
-        ),
+            "nothing is hooking the game's text. Start Kotodex — it runs the \
+             logger that reads Textractor's WebSocket.",
+        )
+        .blocking(fresh_install),
     }
 }
 
@@ -180,7 +239,7 @@ fn vad_model() -> Capability {
     } else {
         off(
             "not downloaded",
-            "run setup.sh again — it downloads the model",
+            "the model was never downloaded. Run the installer again — it fetches it.",
         )
     }
 }
@@ -282,8 +341,9 @@ async fn whisper(state: &AppState) -> Capability {
     } else {
         off(
             "not running",
-            "required for trimming card audio to the mined sentence; \
-             see whisper-service/README.md",
+            "whisper-service is not up. It is a separate service — see \
+             whisper-service/README.md. A card still gets audio without it, \
+             trimmed to the voice rather than to the sentence.",
         )
     }
 }
@@ -309,7 +369,8 @@ async fn anki(state: &AppState) -> (Capability, Capability) {
         return (
             off(
                 "not running",
-                "start Anki with the AnkiConnect add-on — required for mining",
+                "Anki is not answering. Start it, and install the AnkiConnect \
+                 add-on if you have not — that is what lets Kotodex add a card.",
             ),
             off("unknown", "needs a reachable Anki"),
         );
@@ -326,7 +387,7 @@ async fn anki(state: &AppState) -> (Capability, Capability) {
     (on(format!("{} note types", models.len())), note_type)
 }
 
-async fn dictionaries(state: &AppState) -> Value {
+async fn dictionaries(state: &AppState, fresh_install: bool) -> Value {
     use jp_core::knowledge::dictionaries::{self, Role};
     let all = dictionaries::list_dictionaries(state.knowledge.pool())
         .await
@@ -341,30 +402,37 @@ async fn dictionaries(state: &AppState) -> Value {
         Some(d) => on(d.title.clone()),
         None => off(
             "none",
-            "import a monolingual dictionary — required for the vocabulary count",
+            "no dictionary is set as the master, so there is nothing to measure \
+             a vocabulary against. Import a monolingual one — Sankoku is what \
+             the counts here were tuned on.",
         ),
     };
     let frequency = match count(Role::Frequency) {
         0 => off(
             "none",
-            "import a frequency list — required for underlining common words, \
-             the rank in the popup, and review order",
+            "no frequency list is imported. Drop one into the dictionaries \
+             folder and restart Kotodex.",
         ),
         n => on(format!("{n}")),
     };
     let pitch = match count(Role::Pitch) {
         0 => off(
             "none",
-            "import a pitch dictionary — required for the accent line",
+            "no pitch dictionary is imported. Drop one into the dictionaries \
+             folder and restart Kotodex.",
         ),
         n => on(format!("{n}")),
     };
+    // The one dictionary row that blocks. Without any definitions the popup has
+    // nothing to draw, which is most of what reading here is; without a *master*
+    // the vocabulary scale has no denominator, which is a figure being absent.
     let defs = match definitions {
         0 => off(
             "none",
-            "drop a Yomitan zip in dictionaries/ and run setup.sh again — \
-             required for any definitions",
-        ),
+            "drop a Yomitan dictionary zip into the dictionaries folder, then \
+             restart Kotodex — required for any definitions at all",
+        )
+        .blocking(fresh_install),
         n => on(format!("{n}")),
     };
     json!({
@@ -375,7 +443,20 @@ async fn dictionaries(state: &AppState) -> Value {
     })
 }
 
-async fn vocabulary_ledger(state: &AppState) -> Capability {
+/// Whether this install has ever read a line.
+///
+/// The one input deciding whether a missing part *gates* the dashboard: with
+/// history behind it there is something to show and nothing to gate. `EXISTS`
+/// rather than a count — `lines` is the biggest table here and the question is
+/// only whether it has a row.
+async fn read_anything(state: &AppState) -> bool {
+    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM lines)")
+        .fetch_one(state.knowledge.pool())
+        .await
+        .unwrap_or(false)
+}
+
+async fn vocabulary_ledger(state: &AppState, read_anything: bool) -> Capability {
     let rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM vocabulary")
         .fetch_one(state.knowledge.pool())
         .await
@@ -386,18 +467,12 @@ async fn vocabulary_ledger(state: &AppState) -> Capability {
     // An install that has read nothing has an empty ledger because there was
     // nothing to fill it with, which is not a fault to report on the run that
     // created it. Empty with lines behind it is one: that is ingest not running.
-    //
-    // EXISTS rather than a count — `lines` is the biggest table here and the
-    // question is only whether it has a row.
-    let read_anything: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM lines)")
-        .fetch_one(state.knowledge.pool())
-        .await
-        .unwrap_or(false);
     if read_anything {
         off(
             "empty",
-            "run POST /api/vocab/rebuild — nothing has been ingested",
+            "lines have been read but nothing was counted from them",
         )
+        .fixed_at("Rebuild the ledger", "#vocab")
     } else {
         on("empty, nothing read yet")
     }
@@ -412,28 +487,49 @@ async fn explain(state: &AppState) -> Capability {
             "required for AI generated explanation of lines, and the gloss on a \
              mined card",
         )
+        .fixed_at("Add a key", "#settings")
     }
 }
+
+static CACHE: Mutex<Option<(Instant, Value)>> = Mutex::new(None);
 
 /// The whole matrix. Cached briefly: both reading surfaces ask on open, and
 /// several probes are process and filesystem work.
 pub async fn probe(state: &AppState) -> Value {
-    static CACHE: Mutex<Option<(Instant, Value)>> = Mutex::new(None);
     if let Ok(cache) = CACHE.lock()
         && let Some((at, value)) = cache.as_ref()
         && at.elapsed() < CACHE_TTL
     {
         return value.clone();
     }
+    probe_now(state).await
+}
 
+/// `GET /api/setup` — the matrix, past the cache.
+///
+/// What "check again" asks. The reader has just done something outside the app —
+/// started Textractor, dropped in a dictionary — and being told to wait ten
+/// seconds for the answer to catch up is the worst possible moment for a stale
+/// read.
+pub async fn setup(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> axum::Json<Value> {
+    axum::Json(probe_now(&state).await)
+}
+
+async fn probe_now(state: &AppState) -> Value {
+    // Read once and passed down: it decides which rows gate the dashboard, and
+    // two probes asking it separately could answer differently mid-session.
+    let read = read_anything(state).await;
+    let fresh_install = !read;
     let (anki_up, note_type) = anki(state).await;
     let mut out = json!({
-        "lines_source": lines_source(state).await,
+        "lines_source": lines_source(state, fresh_install).await,
         "whisper": whisper(state).await,
         "anki": anki_up,
         "anki_note_type": note_type,
         "explain": explain(state).await,
-        "vocabulary_ledger": vocabulary_ledger(state).await,
+        "vocabulary_ledger": vocabulary_ledger(state, read).await,
     });
     // Capture and the overlay are Linux-only, and a row is a claim that the part
     // could be here. Off with a `fix` naming a package that does not exist for
@@ -448,7 +544,10 @@ pub async fn probe(state: &AppState) -> Value {
         out.insert("xdotool".into(), json!(xdotool()));
         out.insert("overlay_backend".into(), json!(overlay_backend()));
     }
-    if let (Some(out), Some(dicts)) = (out.as_object_mut(), dictionaries(state).await.as_object()) {
+    if let (Some(out), Some(dicts)) = (
+        out.as_object_mut(),
+        dictionaries(state, fresh_install).await.as_object(),
+    ) {
         out.extend(dicts.clone());
     }
 

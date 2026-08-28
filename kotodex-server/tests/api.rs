@@ -919,6 +919,58 @@ async fn reader_state_reports_what_the_reader_can_do() {
     );
 }
 
+/// The gate decides whether the dashboard is replaced by the setup page, so it
+/// is the one capability field worth asserting exactly: a `blocking` row that
+/// survives once there is history would mean looking at your own statistics
+/// required the game to be running.
+#[tokio::test]
+async fn parts_block_the_dashboard_only_until_something_has_been_read() {
+    let app = TestApp::new().await;
+
+    let fresh = app.get("/api/setup").await;
+    let blocking: Vec<String> = blocking_rows(&fresh);
+    assert!(
+        blocking.contains(&"lines_source".to_string()),
+        "a fresh install has nothing hooked and nothing to show: {blocking:?}"
+    );
+    assert!(
+        blocking.contains(&"dict_definitions".to_string()),
+        "a fresh install has no dictionary: {blocking:?}"
+    );
+    for row in &blocking {
+        assert!(
+            fresh[row]["fix"].is_string(),
+            "{row} blocks the page and must say what to do"
+        );
+    }
+
+    app.add_line(1_700_000_000.0, "何か読んだ", Some("作品"))
+        .await;
+
+    let read = app.get("/api/setup").await;
+    assert_eq!(
+        blocking_rows(&read),
+        Vec::<String>::new(),
+        "with history behind it nothing gates the dashboard, however much is off"
+    );
+    assert_eq!(
+        read["lines_source"]["ok"], false,
+        "the row is still off — it just no longer takes the page over"
+    );
+}
+
+fn blocking_rows(caps: &serde_json::Value) -> Vec<String> {
+    let mut rows: Vec<String> = caps
+        .as_object()
+        .expect("the matrix is an object")
+        .iter()
+        .filter(|(_, c)| c["blocking"] == true)
+        .map(|(k, _)| k.clone())
+        .collect();
+    rows.sort();
+    rows
+}
+
 #[tokio::test]
 async fn anki_summary_reports_unavailable_before_the_first_refresh() {
     let app = TestApp::new().await;

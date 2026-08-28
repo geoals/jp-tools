@@ -20,7 +20,7 @@ import { ProgressBar } from "../charts.js";
 import { fmtChars, fmtDateStr, fmtHours } from "../lib/format.js";
 import { workSpeedPerHour } from "../lib/pace.js";
 import { SegmentedControl } from "../components/controls.js";
-import { WorkMetaForm } from "../panels/work-form.js";
+import { WorkSearchForm } from "../panels/work-form.js";
 import { AddPaperBook } from "../panels/paper.js";
 import { Modal } from "../components/modal.js";
 
@@ -111,13 +111,9 @@ export function WorksShelf({ works, settings, onSaved, onOpen }) {
                   </button>
                 </div>`
               : addKind === "work"
-                ? html`<${WorkMetaForm}
-                    work=${null}
-                    onSaved=${() => {
-                      close();
-                      onSaved();
-                    }}
-                    onCancel=${() => setAddKind(null)}
+                ? html`<${WorkSearchForm}
+                    onSaved=${onSaved}
+                    onCancel=${close}
                   />`
                 : html`<${AddPaperBook}
                     onAdded=${onSaved}
