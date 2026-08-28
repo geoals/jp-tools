@@ -44,20 +44,6 @@ if (host.ROOT / "kotodex-server" / "static").is_dir():
 # is what makes a slow start readable next to the overlay's own timings.
 STARTED = time.monotonic()
 
-# How long kotodex-server gets to answer before it is called down. The launcher
-# never builds it, so this covers the migrations it runs against knowledge.db on
-# the way up, not a compile.
-READY_TIMEOUT = 60.0
-# How often a probe is retried while waiting for a component to answer.
-#
-# A tenth of a second rather than a whole one: kotodex-server binds in about a
-# quarter of a second, so at one-second granularity every wait slept out the rest
-# of the second before noticing, and most of it was the poll rather than the
-# component. A refused connection is instant, so retrying ten times a second
-# costs nothing.
-POLL_INTERVAL = 0.1
-# A detaching child gets this long to appear before the probe is trusted.
-SPAWN_GRACE = 10.0
 # Restart a child this many times before giving up and saying which one.
 MAX_RESTARTS = 3
 
@@ -72,8 +58,8 @@ class Child:
 
     def __init__(
         self, name, probe, start_cmd, stop_cmd=None, restart_cmd=None,
-        ensure_cmd=None, detaches=False, supervised=True, log_file=None,
-        stop_adopted=None, wait_after_restart=0.0
+        ensure_cmd=None, supervised=True, log_file=None,
+        stop_adopted=None,
     ):
         self.name = name
         self.probe = probe
@@ -82,9 +68,6 @@ class Child:
         # How to bring it back without disturbing one already running — the
         # tray's Show overlay. `None` means starting it is that.
         self.ensure_cmd = ensure_cmd or start_cmd
-        # How long to let it answer after a *restart*, for one whose restart
-        # command returns before the process it spawned is up.
-        self.wait_after_restart = wait_after_restart
         # Where this child's output goes. `None` discards it, which is right
         # only for a component whose own log says why it stopped — the overlay
         # script's does.
@@ -97,11 +80,6 @@ class Child:
         # explicit restart *takes the component over* — it is stopped here and
         # comes back as this process's child. Quitting still never does that.
         self.stop_adopted = stop_adopted
-        # Whether start_cmd *is* the component or merely launches it.
-        # vn-overlay.sh backgrounds the real process and returns 0, so its exit
-        # status says nothing and the probe is the only thing that knows whether
-        # the component is alive. capture and kotodex-server are the process.
-        self.detaches = detaches
         # Whether the launcher keeps this one alive. The overlay is not
         # supervised: the tray shows and hides it, so it being gone is a state
         # the user chose, not a crash to restart or a reason to quit.
@@ -110,7 +88,6 @@ class Child:
         self.adopted = False
         self.restarts = 0
         self.failed = False
-        self.started_at = 0.0
 
     def ensure(self, log):
         if self.probe():
@@ -118,19 +95,6 @@ class Child:
             log(f"{self.name}: already running, adopted")
             return
         self.spawn(log)
-
-    def wait_ready(self, log, timeout):
-        """Poll the probe until it answers, so a just-restarted component is
-        not read as down and started a second time. Returns whether it ever
-        answered; a caller that restarted it will fall back to spawning its
-        own when it does not."""
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            if self.probe():
-                return True
-            time.sleep(POLL_INTERVAL)
-        log(f"{self.name}: not answering after {timeout:.0f}s")
-        return False
 
     def spawn(self, log):
         # Said rather than raised: a component whose binary is absent is a setup
@@ -142,7 +106,6 @@ class Child:
             self.failed = True
             return
         log(f"{self.name}: starting")
-        self.started_at = time.time()
         # Appended, not truncated: a component that has already been restarted
         # once this session has its earlier failure in here, which is the thing
         # worth reading.
@@ -168,15 +131,6 @@ class Child:
         """
         if self.adopted or self.proc is None or self.failed or not self.supervised:
             return False
-        if self.detaches:
-            # The wrapper returns before the process it launched is visible, so
-            # the probe cannot be believed until the component has had time to
-            # come up.
-            if time.time() - self.started_at < SPAWN_GRACE:
-                return False
-            if self.proc.poll() is None or self.probe():
-                return False
-            return self._restart(log)
         code = self.proc.poll()
         if code is None:
             return False
@@ -217,28 +171,6 @@ def children():
     return host.components(Child)
 
 
-def wait_for_kotodex_server(log):
-    """Say when the port started answering, and give up loudly if it never does.
-
-    Nothing is held back on this any more — see the spawn loop in [`main`]. It
-    remains because a start that felt slow is diagnosed from this number, and
-    because a server that never comes up should say so rather than leave the
-    reader wondering why the strip is empty.
-    """
-    started = time.monotonic()
-    deadline = time.time() + READY_TIMEOUT
-    while time.time() < deadline:
-        if config.kotodex_server_up():
-            log(f"kotodex-server: answering after {time.monotonic() - started:.2f}s")
-            return True
-        time.sleep(POLL_INTERVAL)
-    log(
-        f"kotodex-server: no answer after {READY_TIMEOUT:.0f}s — the overlay is up "
-        "but its strip stays empty. Restart from the tray."
-    )
-    return False
-
-
 def status_report():
     for child in children():
         print(f"{'running' if child.probe() else 'stopped':>8}  {child.name}")
@@ -257,11 +189,12 @@ def restart_command() -> int:
 
     app = QCoreApplication(sys.argv)  # noqa: F841 — QLocalSocket needs an app
     instance = SingleInstance(SOCKET_NAME)
-    if instance.already_running():
-        instance.send("restart")
-        print("kotodex: asked the running launcher to restart everything")
+    if not instance.already_running():
+        print("kotodex: not running")
         return 0
-    return restart_components()
+    instance.send("restart")
+    print("kotodex: asked the running launcher to restart everything")
+    return 0
 
 
 def quit_command() -> int:
@@ -281,33 +214,6 @@ def quit_command() -> int:
         return 0
     instance.send("quit")
     return 0
-
-
-def restart_components() -> int:
-    """Pick up new code in everything, whoever started it.
-
-    The launcher cannot do this by adopting: a component it adopted is one it
-    deliberately never touches, and the capture daemon is usually systemd's. So
-    an update has no way to become live short of knowing which of three things
-    started each piece — which is exactly what this hides.
-
-    Over `children()` rather than a list of its own, so a component this platform
-    has and another does not is restarted here too.
-    """
-    failed = 0
-    for child in children():
-        print(f"restarting {child.name}")
-        if child.stop_adopted is not None:
-            # Nothing to ask: a bare binary has no "restart yourself", and
-            # starting a second one only fails to bind — see `Child.stop_adopted`.
-            child.stop_adopted()
-            child.spawn(print)
-            if child.failed or not child.wait_ready(print, READY_TIMEOUT):
-                failed += 1
-        elif subprocess.run(child.restart_cmd, cwd=host.ROOT).returncode != 0:
-            print(f"  {child.name} did not restart cleanly")
-            failed += 1
-    return 1 if failed else 0
 
 
 def main() -> int:
@@ -393,7 +299,6 @@ def main() -> int:
     # this way.
     for child in kids:
         child.ensure(log)
-    wait_for_kotodex_server(log)
 
     tray = Tray(app, kids, config.SERVER_URL, log)
 
@@ -404,9 +309,9 @@ def main() -> int:
     def restart_here():
         """Stop what this launcher owns, restart what it does not, start again.
 
-        Not `restart_components`: a component this launcher started must come
-        back as its child, or the restart would quietly convert it into
-        something adopted — running, but no longer stopped on the way out.
+        A component this launcher started must come back as its child, or the
+        restart would quietly convert it into something adopted — running, but
+        no longer stopped on the way out.
         """
         log("restarting everything")
         restarting["until"] = time.time() + 120
@@ -429,16 +334,8 @@ def main() -> int:
             child.adopted = False
             child.restarts = 0
             child.failed = False
-            # A restarted child answers its probe later than its restart command
-            # returns — the capture daemon's `restart` detaches — so give it
-            # time to come back before probing it, or `ensure` reads the restart
-            # as a down component and starts a second one. kotodex-server has no such
-            # gap: it was stopped above and `ensure` spawns it here.
-            if child.wait_after_restart:
-                child.wait_ready(log, child.wait_after_restart)
             child.ensure(log)
-        wait_for_kotodex_server(log)
-        restarting["until"] = 0.0
+            restarting["until"] = 0.0
         log("restarted")
 
     def on_message(msg):

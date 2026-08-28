@@ -24,12 +24,6 @@ SERVER_BIN = ROOT / "target" / "release" / "kotodex-server"
 DICT_BIN = ROOT / "target" / "release" / "jp-dict"
 DOCTOR_SH = ROOT / "scripts" / "kotodex-doctor.sh"
 
-# How long a restarted capture gets to answer before it is read as down and
-# started a second time. Its restart command detaches and returns before the
-# daemon it spawned is up.
-CAPTURE_READY = 30.0
-
-
 def capture_binary() -> str:
     return shutil.which("kotodex-capture") or str(ROOT / "capture" / "kotodex-capture")
 
@@ -88,7 +82,6 @@ def components(Child):
             # to start. Without this, a missing dependency is discarded and the
             # reader is left with a status bar saying capture is down.
             log_file=LOG_DIR / "kotodex-capture.log",
-            wait_after_restart=CAPTURE_READY,
         ),
         Child(
             "kotodex-server",
@@ -113,7 +106,6 @@ def components(Child):
             stop_cmd=[OVERLAY_SH, "stop"],
             restart_cmd=[OVERLAY_SH, "restart"],
             ensure_cmd=[OVERLAY_SH, "ensure"],
-            detaches=True,
             supervised=False,
         ),
     ]
