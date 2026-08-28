@@ -239,14 +239,21 @@ the two rank maps, the arbitration tables — are a pure function of the
 dictionaries, and deriving them costs nine seconds, nearly all of it sqlx turning
 2.5M rows into Rust collections one at a time. `jp_core::highlight::derived`
 writes them as six flat blobs after every `jp-dict` command that changes a
-dictionary; a service reads it and never fills it. Six rather than one so that
-no write holds the lock for 50 MB and each decodes on a blocking thread of its
-own — the split is by size, not by meaning. A `fingerprint` of the
+dictionary. Six rather than one so that no write holds the lock for 50 MB and
+each decodes on a blocking thread of its own — the split is by size, not by
+meaning. A `fingerprint` of the
 dictionary list plus each one's row counts is what a reader checks, so an import
 or a `set-role` invalidates the cache by itself and a database edited by hand
 does not go unnoticed. **A stale or absent cache is never a failure, only
 slower** — the collections are derived from the rows as before, with a log line
 saying so.
+
+`jp-dict` is the writer that runs *ahead* of a reader, not the only writer:
+`load_or_build` keeps what it had to derive. Nothing runs `jp-dict` on the
+launcher's path — only `start-all.sh` and `setup.sh` do — so a machine started by
+the launcher alone would otherwise derive the collections on every start.
+Filling from the reader costs a start that hits the cache nothing: the
+fingerprint it needs is one the read already computes.
 
 Four jobs need the dictionaries, and they apply *different* thresholds, which is
 why `dictionaries.role` exists (`master` / `standard` / `name` / `frequency` /

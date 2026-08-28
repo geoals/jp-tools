@@ -129,16 +129,30 @@ pub async fn fingerprint(pool: &SqlitePool) -> Result<String, sqlx::Error> {
 
 /// The collections, from the cache when it is current and from the dictionary
 /// tables when it is not.
+///
+/// A miss keeps what it derived, so those seconds are paid once rather than on
+/// every start. `jp-dict` fills the cache when a dictionary changes and is still
+/// the only thing that fills it *before* a reader needs it, but nothing runs
+/// `jp-dict` on the launcher's path — so without this, a machine whose
+/// dictionaries were imported by an older build derives them again every time.
 pub async fn load_or_build(pool: &SqlitePool) -> Result<Derived, sqlx::Error> {
     match Derived::load(pool).await {
         Ok(Some(derived)) => return Ok(derived),
         Ok(None) => tracing::info!(
-            "no current derived cache — building the pipeline from the dictionary \
-             tables, which takes seconds; `jp-dict sync` writes the cache"
+            "no current derived cache — deriving the pipeline from the dictionary \
+             tables, which takes seconds, and keeping it"
         ),
         Err(e) => tracing::warn!(error = %e, "cannot read the derived cache"),
     }
-    Derived::build(pool).await
+    // Read before the build rather than after it: a dictionary that changes
+    // while the build runs then leaves the payload stamped with the older
+    // fingerprint, and the next reader derives again instead of trusting a mix.
+    let fingerprint = fingerprint(pool).await?;
+    let derived = Derived::build(pool).await?;
+    if let Err(e) = derived.store(pool, &fingerprint).await {
+        tracing::warn!(error = %e, "cannot write the derived cache");
+    }
+    Ok(derived)
 }
 
 /// Bring the cache up to date, and say whether it had to be written.
@@ -718,6 +732,19 @@ mod tests {
             "the second has nothing to do"
         );
         assert!(Derived::load(pool).await.unwrap().is_some());
+    }
+
+    /// A start that had to derive leaves the cache current, so the next one
+    /// reads it — and `jp-dict` then agrees there is nothing to write, which is
+    /// the two paths stamping the same fingerprint.
+    #[tokio::test]
+    async fn a_reader_that_derives_keeps_what_it_derived() {
+        let k = Knowledge::temp().await;
+        let pool = k.pool();
+        assert!(Derived::load(pool).await.unwrap().is_none());
+        load_or_build(pool).await.unwrap();
+        assert!(Derived::load(pool).await.unwrap().is_some());
+        assert!(!rebuild(pool).await.unwrap(), "nothing left for jp-dict");
     }
 
     /// **The claim the whole cache rests on**: what it hands back is what the

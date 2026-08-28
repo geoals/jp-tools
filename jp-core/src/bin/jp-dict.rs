@@ -234,11 +234,12 @@ async fn run() -> Result<(), String> {
 /// Rewrite the collections the highlighter is built from, if the dictionaries
 /// moved.
 ///
-/// **This is their only writer.** They are derived from the dictionaries and
-/// nothing else, and every command above changes one — so this is the one place
-/// that knows. A service reads the cache and never fills it; skipping this costs
-/// the reader the seconds of deriving them itself, and nothing more, which is
-/// why a failure here warns rather than failing the import that just succeeded.
+/// **This is the only writer that runs before a reader wants them.** They are
+/// derived from the dictionaries and nothing else, and every command above
+/// changes one — so this is the one place that knows in advance. A reader that
+/// misses keeps what it derived, so skipping this costs the next reader those
+/// seconds once, which is why a failure here warns rather than failing the
+/// import that just succeeded.
 async fn refresh_derived_cache(pool: &sqlx::SqlitePool) {
     match jp_core::highlight::derived::rebuild(pool).await {
         Ok(true) => println!("derived cache rebuilt"),
