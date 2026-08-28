@@ -216,6 +216,39 @@ def quit_command() -> int:
     return 0
 
 
+def restart_running(kids, log, restarting):
+    """Stop what this launcher owns, restart what it does not, start again.
+
+    A component this launcher started must come back as its child, or the
+    restart would quietly convert it into something adopted — running, but
+    no longer stopped on the way out.
+    """
+    log("restarting everything")
+    restarting["until"] = time.time() + 120
+    for child in reversed(kids):
+        if not child.adopted:
+            child.stop(log)
+        elif child.stop_adopted is not None:
+            # Nothing to ask: a bare binary has no "restart yourself", and
+            # starting a second one only fails to bind. So an explicit
+            # restart takes it over — see `Child.stop_adopted`.
+            log(f"{child.name}: taking over on restart")
+            child.stop_adopted()
+        else:
+            # Someone else's — a systemd unit, a start-all.sh run. Told to
+            # restart itself rather than stopped, since stopping it is
+            # exactly what adoption promises not to do.
+            subprocess.run(child.restart_cmd, cwd=host.ROOT, capture_output=True)
+    for child in kids:
+        child.proc = None
+        child.adopted = False
+        child.restarts = 0
+        child.failed = False
+        child.ensure(log)
+    restarting["until"] = 0.0
+    log("restarted")
+
+
 def main() -> int:
     args = sys.argv[1:]
     # Before anything prints: a frozen GUI build has no console of its own.
@@ -307,36 +340,7 @@ def main() -> int:
     restarting = {"until": 0.0}
 
     def restart_here():
-        """Stop what this launcher owns, restart what it does not, start again.
-
-        A component this launcher started must come back as its child, or the
-        restart would quietly convert it into something adopted — running, but
-        no longer stopped on the way out.
-        """
-        log("restarting everything")
-        restarting["until"] = time.time() + 120
-        for child in reversed(kids):
-            if not child.adopted:
-                child.stop(log)
-            elif child.stop_adopted is not None:
-                # Nothing to ask: a bare binary has no "restart yourself", and
-                # starting a second one only fails to bind. So an explicit
-                # restart takes it over — see `Child.stop_adopted`.
-                log(f"{child.name}: taking over on restart")
-                child.stop_adopted()
-            else:
-                # Someone else's — a systemd unit, a start-all.sh run. Told to
-                # restart itself rather than stopped, since stopping it is
-                # exactly what adoption promises not to do.
-                subprocess.run(child.restart_cmd, cwd=host.ROOT, capture_output=True)
-        for child in kids:
-            child.proc = None
-            child.adopted = False
-            child.restarts = 0
-            child.failed = False
-            child.ensure(log)
-            restarting["until"] = 0.0
-        log("restarted")
+        restart_running(kids, log, restarting)
 
     def on_message(msg):
         if msg == "restart":
