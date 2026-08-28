@@ -54,10 +54,6 @@ requirement: any lag, and any gap between the two boxes, is a click that was
 aimed at the popup landing on the VN — which advances the line and closes the
 popup being aimed at. `qwebchannel.js` is injected from Qt's own resources, so
 kotodex-server serves nothing for it.
-`SIGUSR1` (`pkill -USR1 -f vn-overlay.py`) makes the whole surface take input,
-for selecting text rather than advancing. `SIGUSR2` toggles ghost mode, the
-same thing the checkbox under ⚙ → Marks does. Both are `layer-overlay`'s; see its README for
-the input region itself.
 `vn-overlay.py` runs perfectly well by hand; the wrapper only handles being
 started from somewhere without a desktop session attached.
 
@@ -153,7 +149,7 @@ line onto the game's own text to find the offset, which is stored as fractions
 of the window, then set `--text-x`, `--text-y`, `--text-w` and `--text-size`
 from where it landed. They are per install, not yet per work.
 
-**Ghost mode** (⚙ → Marks, or `SIGUSR2`) draws the line invisibly over the
+**Ghost mode** (⚙ → Marks) draws the line invisibly over the
 game's own text: the game does the typesetting and the overlay contributes only
 the status tint per word, the underline on a common word, and somewhere to
 click. It needs the line to sit on the game's text to the pixel, so it only

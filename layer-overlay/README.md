@@ -73,17 +73,6 @@ there.
 That leaves the page nothing to dismiss things with, since a click outside never
 arrives — it has to close on its own terms.
 
-`SIGUSR1` makes the *whole* surface take input, for selecting text rather than
-clicking through. `SIGUSR2` is passed to the page as `shell.userToggled` and
-means whatever the page decides. Both go by the caller's script name:
-
-```sh
-pkill -USR1 -f my-overlay.py
-```
-
-Windows has neither signal, so both toggles are the page's own there until
-something registers a hotkey for them.
-
 ## What the page has to do
 
 `qwebchannel.js` is injected before the page runs, so the page carries no copy
@@ -94,7 +83,6 @@ of it. Connect to the object registered as `shell`:
 | `shell.setHits([x, y, w, h, ...])` | what takes clicks, flat |
 | `shell.setWindowName(name)` | track this window's rectangle, by title substring |
 | `shell.geometry(x, y, w, h)` | where it is now, zeros when it cannot be found |
-| `shell.userToggled()` | SIGUSR2 reached the page |
 | `shell.openUrl(url)` | open an `http`/`https` link in the desktop's browser |
 | `shell.quit()` | close; `run()` returns `QUIT_REQUESTED` rather than 0 |
 

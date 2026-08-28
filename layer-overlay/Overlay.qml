@@ -15,9 +15,6 @@ Window {
     width: Screen.width
     height: Screen.height
 
-    // Written from Python whenever the input region changes.
-    property bool interactive: false
-
     LayerShell.Window.scope: overlayScope
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop

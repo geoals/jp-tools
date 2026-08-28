@@ -30,8 +30,6 @@ Window {
     width: Screen.width
     height: Screen.height
 
-    property bool interactive: false
-
     // Tool rather than Window: it keeps the surface out of the taskbar and the
     // alt-tab list, which a thing with no title bar has no business being in.
     // BypassWindowManagerHint would also stay on top and is wrong — it opts out

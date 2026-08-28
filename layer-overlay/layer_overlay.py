@@ -12,7 +12,7 @@ page cannot tell which it got. Three pieces, and the page needs all three:
   pushes the rectangles it has drawn; those become the input region.
 - [`Surface`] keeps a window on screen across output changes. A layer surface
   belongs to an output, so losing one closes the surface with no error.
-- [`run`] wires both to a `QGuiApplication` and the two signals.
+- [`run`] wires both to a `QGuiApplication`.
 
 The page is expected to run `qwebchannel.js` — [`webchannel_script`] injects
 Qt's own copy — and to connect to the object registered as `shell`:
@@ -20,14 +20,8 @@ Qt's own copy — and to connect to the object registered as `shell`:
     shell.setHits([x, y, w, h, ...])   what takes clicks, flat
     shell.setWindowName(name)          track this window's rectangle
     shell.geometry(x, y, w, h)         where it is now, or zeros
-    shell.userToggled()                SIGUSR2 reached the page
     shell.openUrl(url)                 open an http(s) link in the browser
     shell.quit()                       close; `run` returns QUIT_REQUESTED
-
-`SIGUSR1` makes the *whole* surface take input, for selecting text rather than
-clicking through. `SIGUSR2` is the page's to define. Both are sent by name:
-
-    pkill -USR1 -f <the script that called run()>
 
 Needs PySide6 with Qt WebEngine. The layer-shell backend needs `layer-shell-qt`
 too, and all of them as **system packages** — a pip PySide6 carries its own Qt,
@@ -123,13 +117,9 @@ class Overlay(QObject):
     #: measured against a screen that window no longer fills.
     geometry = Signal(int, int, int, int)
 
-    #: SIGUSR2 reached the page. What it means is the page's to decide.
-    userToggled = Signal()
-
     def __init__(self) -> None:
         super().__init__()
         self._window = None
-        self.interactive = False
         #: Minimised: off screen but still running, and kept across the window
         #: rebuilds that an output change causes.
         self.hidden = False
@@ -327,11 +317,6 @@ class Overlay(QObject):
         self.apply()
 
     @Slot()
-    def toggle(self) -> None:
-        self.interactive = not self.interactive
-        self.apply()
-
-    @Slot()
     def minimise(self) -> None:
         """Off screen, still running. The window is rebuilt on output changes,
         so hiding it is a flag the rebuild honours rather than a one-off."""
@@ -377,9 +362,7 @@ class Overlay(QObject):
         # backends. Both branches pass a non-empty region on purpose: an empty
         # mask means "the whole surface takes input", which is the opposite of
         # passing clicks through.
-        if self.interactive:
-            region = QRegion(0, 0, self._window.width(), self._window.height())
-        elif self._hits:
+        if self._hits:
             region = QRegion()
             for x, y, w, h in self._hits:
                 region = region.united(QRegion(x, y, max(w, 1), max(h, 1)))
@@ -407,7 +390,6 @@ class Overlay(QObject):
         if os.environ.get("LAYER_OVERLAY_DEBUG"):
             rects = " ".join(f"{x},{y} {w}x{h}" for x, y, w, h in _rects(region, scale))
             print(f"mask [{len(self._hits)}] @{scale} {rects}", flush=True)
-        self._window.setProperty("interactive", self.interactive)
 
 
 class Surface:
@@ -548,17 +530,5 @@ def run(url: str, *, scope: str, storage, qt_args=()) -> int:
     if not surface.build():
         print("QML failed to load", file=sys.stderr)
         return 1
-
-    # Windows has neither signal, so both toggles are the page's own there until
-    # something registers a hotkey for them.
-    if hasattr(signal, "SIGUSR1"):
-        signal.signal(signal.SIGUSR1, lambda *_: overlay.toggle())
-        signal.signal(signal.SIGUSR2, lambda *_: overlay.userToggled.emit())
-        # Python only runs a signal handler between bytecodes and Qt's event loop
-        # is C, so nothing above would ever land without a tick that returns to
-        # the interpreter. It has no other work.
-        wake = QTimer()
-        wake.start(200)
-        wake.timeout.connect(lambda: None)
 
     return app.exec()

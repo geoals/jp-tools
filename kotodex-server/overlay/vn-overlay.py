@@ -15,15 +15,6 @@ The surface, the input region and the window tracking are `layer-overlay`, which
 knows nothing about any of this. What stays here is the URL, the two health
 checks, and `--mobile`.
 
-`SIGUSR1` makes the whole surface take input, for selecting text rather than
-advancing the VN. `SIGUSR2` toggles ghost mode: the line is laid over the game's
-own text and drawn invisibly, so what is read is the game's typesetting and all
-this adds is the status tint per word and somewhere to click. Bind either to a
-KDE shortcut:
-
-    pkill -USR1 -f vn-overlay.py
-    pkill -USR2 -f vn-overlay.py
-
 `--mobile` is the overlay read off a phone: everything at 1.75x, the line on
 the bottom edge, and the popup carrying known / unknown / mine buttons, since
 driving the PC's mouse from the phone leaves no side buttons for them. The
