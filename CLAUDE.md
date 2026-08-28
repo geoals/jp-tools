@@ -15,8 +15,10 @@ any Kotodex in it; everything that is the product carries it.
   means, as a popup draws it)
 - `jp-mine-core/` — shared mining back half: `card` (the note's fields, in
   Yomitan's markup), `compactdef` + `tags` (the gloss and its two-axis rubric),
-  `lookup`, and `export` (AnkiConnect). yt-mine and manga-mine use all of it;
-  kotodex-server uses `card`, `compactdef` and `tags` and **must not** use `export`
+  `llm` (which model answers, and how it is asked — two request shapes,
+  `anthropic` and the OpenAI chat shape everything else speaks), `lookup`, and
+  `export` (AnkiConnect). yt-mine and manga-mine use all of it; kotodex-server
+  uses `card`, `compactdef`, `tags` and `llm`, and **must not** use `export`
   — see the card-authoring rule below
 - `yt-mine/` — YouTube sentence mining (Axum JSON API + Preact SPA, SQLite, Anki
   export). Whisper over the whole video, never YouTube's auto-captions — see
@@ -91,6 +93,16 @@ any Kotodex in it; everything that is the product carries it.
 - `scripts/dev-instance.sh` — run kotodex-server in isolation (copy of the data,
   port 3299) and diff its endpoints before/after a change. Use this instead of
   restarting the live one.
+
+## The platform seam
+
+**One Windows-specific file per crate, behind a named seam.** `kotodex/host.py`
+is the launcher's (`host_linux.py`, `host_windows.py`); `kotodex-server`'s is
+`services::desktop` (`linux.rs`, `win32.rs`), which answers what windows are open
+and which is in front. A platform difference is a name in that contract, never a
+`cfg` branch in shared code. kotodex-server cannot be `cargo check`ed for Windows
+on a Linux machine — a C dependency wants `lib.exe` — so a scratch crate holding
+only `windows-sys` and the one file is how its FFI is verified.
 
 ## The databases
 

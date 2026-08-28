@@ -721,6 +721,44 @@ add to when the question is "does the SQL select what the derivation assumes".
 - **A rule the UI needs is a tooltip, not a paragraph.** Prose that explains
   what a number means goes in `title=` on the heading or tile it explains. Text
   on the page itself carries data — a count, a range, a date.
+- **`#setup` is the capability probe rendered as a page, not a wizard.** There is
+  no step counter and no stored progress: the state is
+  `routes::reader::capabilities`, so a part that breaks later shows the row it
+  showed on the first run and nothing persisted can disagree with the machine.
+  Three rules hold it together:
+  - **`Capability::blocking` is a judgement about a fresh install**, set only
+    while `lines` is empty. Two rows can set it, `lines_source` and
+    `dict_definitions`. Gating a dashboard with history behind it would mean
+    looking at your own statistics required the game to be running, which is most
+    of the times you would want to.
+  - **`Capability::action` means the app can perform the fix.** A `fix` naming a
+    shell command is a diagnosis; an `action` is a button. Never point one at the
+    panel that draws the row — the source and dictionary rows have none because
+    the app cannot install Textractor or download a zip.
+  - **The steps are client-side, the diagnosis is server-side.** `fix` is one
+    sentence saying what is wrong; `STEPS` in `panels/setup.js` is what to do with
+    your hands. Textractor's flush delay lives there because it cannot be
+    detected — `continues_previous` in the logger is content-based on purpose, so
+    nothing here can tell a slow flush from a slow game.
+- **A knob appears once the data it acts on exists.** The settings panel shows
+  Goal and AI; the derivation thresholds are behind `Advanced`, and the vocabulary
+  group is absent while the ledger is empty. Nine numbers with a paragraph each is
+  not what a first visit should open on.
+- **Adding a work is a title search** (`GET /api/works/search`, VNDB by name), and
+  picking one sets it as the current work — reading it is why it was added. The
+  question is asked on the Today card when nothing is selected, not by pointing at
+  the Library. `total_chars` stays manual: VNDB has no character count, so the
+  progress bar asks for one once there is progress to show.
+- **The AI key is write-only.** It is not a field on `Settings` and not in
+  `SETTING_KEYS`, so `GET /api/settings` cannot return it and `PUT /api/settings`
+  refuses it; `load_settings` reads the row and keeps only `llm_has_key`. The
+  server binds `0.0.0.0`, which is why that matters. `PUT
+  /api/settings/llm-key` is the only writer and reports whether the key *worked*.
+  Which model answers is `jp_mine_core::llm` — two request shapes, shared with the
+  card gloss, so there is one implementation and two prompts.
+- **No key is `NO_KEY`, which is a place to go and not an error to read.** The
+  explain button is always drawn; the overlay opens ⚙ → AI with the field
+  focused, `#read` links to `#settings`.
 - **Status colour is one scale, in HSL, in `base.css`.** Hue names the status
   (211 blue `new` / 276 violet `seen` / 28 amber `unknown`), lightness says how
   loudly, and the dark ramp mirrors the light one. Both places that show a
