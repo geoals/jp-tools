@@ -58,11 +58,13 @@ def _running(exe: Path) -> bool:
 
 
 def start_dictionary_sync():
-    """`jp-dict sync`, started rather than run: only kotodex-server waits for it.
+    """`jp-dict sync`, started and never waited for.
 
     Nothing else on the launcher's path imports a dictionary or writes the
     collections the highlighter is built from, and this platform has no
-    `start-all.sh` to have done it. None when it is not there.
+    `start-all.sh` to have done it. It takes about two seconds here against a
+    couple of tenths on Linux, which is why nothing waits. None when it is not
+    there.
     """
     if not DICT_EXE.is_file():
         return None
@@ -77,7 +79,7 @@ def start_dictionary_sync():
         )
 
 
-def components(Child, before_server=None):
+def components(Child):
     """In start order. Stopping walks it backwards."""
     return [
         Child(
@@ -86,7 +88,6 @@ def components(Child, before_server=None):
             [str(SERVER_EXE)],
             log_file=LOG_DIR / "kotodex-server.log",
             stop_adopted=lambda: stop_port(config.SERVER_PORT),
-            before_spawn=before_server,
         ),
         Child(
             SOURCE,

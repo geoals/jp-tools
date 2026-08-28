@@ -59,7 +59,7 @@ def overlay_up() -> bool:
 
 
 def start_dictionary_sync():
-    """`jp-dict sync`, started rather than run: only kotodex-server waits for it.
+    """`jp-dict sync`, started and never waited for.
 
     Nothing else on the launcher's path imports a dictionary or writes the
     collections the highlighter is built from — `setup.sh` and
@@ -75,7 +75,7 @@ def start_dictionary_sync():
         )
 
 
-def components(Child, before_server=None):
+def components(Child):
     """In start order. Stopping walks it backwards."""
     capture = capture_binary()
     return [
@@ -105,7 +105,6 @@ def components(Child, before_server=None):
             [str(SERVER_BIN)],
             log_file=LOG_DIR / "kotodex-server.log",
             stop_adopted=lambda: stop_port(config.SERVER_PORT),
-            before_spawn=before_server,
         ),
         Child(
             "overlay",

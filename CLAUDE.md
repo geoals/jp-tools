@@ -50,11 +50,14 @@ any Kotodex in it; everything that is the product carries it.
   systemd-managed capture daemon, and quitting stops only what it started.
   It runs all three itself and goes through no other script — the three things
   reading a VN needs are not the same set as "every service in the repo".
-  It also runs `jp-dict sync`, started beside the components and waited for only
-  by kotodex-server: **everything reading needs has to happen from the desktop
-  entry**, and this is the only path most machines ever take, so a zip dropped in
+  It also runs `jp-dict sync`, started beside the components and waited for by
+  nothing: **everything reading needs has to happen from the desktop entry**, and
+  this is the only path most machines ever take, so a zip dropped in
   `dictionaries/` and the derived cache cannot depend on someone opening a
-  terminal.
+  terminal. Holding kotodex-server until the sync finished was measured at two
+  seconds of every Windows start — and since the components start in order, the
+  overlay waited behind it — so a new dictionary is visible on the *next* start
+  instead.
   **Both platforms run this launcher, and it contains no `sys.platform`.** Which
   components exist and how each is started and stopped is `host.py`'s contract,
   answered by one module per platform; `host_windows.py` is the only file on the

@@ -73,7 +73,7 @@ class Child:
     def __init__(
         self, name, probe, start_cmd, stop_cmd=None, restart_cmd=None,
         ensure_cmd=None, detaches=False, supervised=True, log_file=None,
-        stop_adopted=None, wait_after_restart=0.0, before_spawn=None
+        stop_adopted=None, wait_after_restart=0.0
     ):
         self.name = name
         self.probe = probe
@@ -97,12 +97,6 @@ class Child:
         # explicit restart *takes the component over* — it is stopped here and
         # comes back as this process's child. Quitting still never does that.
         self.stop_adopted = stop_adopted
-        # What has to have finished before this one starts, for a component that
-        # reads something another process is still writing. Only the server has
-        # one, and only because a dictionary imported *after* it read them is
-        # invisible until the next start. An adopted component never waits: it
-        # has already read whatever it was going to.
-        self.before_spawn = before_spawn
         # Whether start_cmd *is* the component or merely launches it.
         # vn-overlay.sh backgrounds the real process and returns 0, so its exit
         # status says nothing and the probe is the only thing that knows whether
@@ -147,8 +141,6 @@ class Child:
             log(f"{self.name}: {exe} is missing — run setup")
             self.failed = True
             return
-        if self.before_spawn is not None:
-            self.before_spawn(log)
         log(f"{self.name}: starting")
         self.started_at = time.time()
         # Appended, not truncated: a component that has already been restarted
@@ -220,23 +212,9 @@ class Child:
             host.stop_child(self)
 
 
-def children(before_server=None):
+def children():
     """This platform's components, in start order. Stopping walks it backwards."""
-    return host.components(Child, before_server)
-
-
-def await_dictionary_sync(sync, log):
-    """Hold kotodex-server until `jp-dict sync` has finished.
-
-    Silent when there was nothing to wait for, which is every start where the
-    dictionaries did not move — the sync is a few tenths of a second then, and it
-    has already finished while capture came up.
-    """
-    if sync is None or sync.poll() is not None:
-        return
-    log("jp-dict sync: waiting for it")
-    sync.wait()
-    log("jp-dict sync: done")
+    return host.components(Child)
 
 
 def wait_for_kotodex_server(log):
@@ -402,14 +380,16 @@ def main() -> int:
 
     log(f"interpreter and Qt: {qt_ready:.2f}s")
 
-    # Beside the components rather than in front of them: importing a zip and
-    # writing the derived cache is only kotodex-server's precondition, and a
-    # reader who has dropped a new dictionary in should still see the overlay
-    # while the import runs.
-    sync = host.start_dictionary_sync()
-    if sync is not None:
+    # Started and never waited for. Holding kotodex-server until it finished cost
+    # two seconds of every Windows start — the sync is a few tenths of a second on
+    # Linux and 2s there — and because the components start in order, the overlay
+    # waited behind the server for it. So a dictionary dropped in becomes visible
+    # on the *next* start, which is a rare event costing one restart, rather than
+    # every start paying for it. The reader writes the derived cache itself, so
+    # nothing else here depends on this finishing first.
+    if host.start_dictionary_sync() is not None:
         log("jp-dict sync: starting")
-    kids = children(before_server=lambda log: await_dictionary_sync(sync, log))
+    kids = children()
 
     # Everything at once, and the server's boot reported afterwards rather than
     # waited out in the middle.
