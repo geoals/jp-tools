@@ -385,11 +385,11 @@ def main() -> int:
     # from the two logs side by side rather than guessed at. Everything up to the
     # overlay being spawned is serial, so each line is a phase boundary.
     #
-    # To a file as well as stdout: the frozen launcher is built with a console it
-    # hides, so on Windows stdout goes nowhere anyone can read and these lines —
-    # the only record of the launcher's own share of starting — were unobservable
-    # there. Appended, and each run says when it began, so a slow start can be
-    # read against the one before it.
+    # To a file as well as stdout: the launcher is frozen --windowed, so on
+    # Windows it has no console and stdout goes nowhere at all — these lines, the
+    # only record of the launcher's own share of starting, were unobservable on
+    # the platform where that share is largest. Appended, and each run says when
+    # it began, so a slow start can be read against the one before it.
     log_path = host.LOG_DIR / "kotodex.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_file = log_path.open("a", buffering=1)
