@@ -14,7 +14,7 @@
 # that pipeline is Linux-only.
 #
 # It sets nothing up for those two itself: they are ordinary executables in the
-# install, started by kotodex-windows.ps1. This downloads what all of them need.
+# install, started by the launcher. This downloads what all of them need.
 #
 # Re-runnable: every step checks before it acts, so a second run is a no-op and
 # a run after installing something picks that up.
@@ -223,30 +223,27 @@ if ($zips.Count -eq 0 -and -not $imported) {
 # ------------------------------------------------------------- application --
 
 Step 'Start Menu entry'
-# The Linux launcher is a Qt tray process; here the entry runs a script rather
-# than a program of its own, and that script owns the same three components.
+# The same Qt launcher Linux runs, frozen: it owns the server, the source and the
+# overlay, and leaves a tray icon behind. `kotodex\host_windows.py` is the whole
+# of what it does differently here.
+$Launcher = Join-Path $Here 'launcher\kotodex.exe'
 if ($NoShortcut) {
     Skip 'the installer owns the Start Menu entry'
+} elseif (-not (Test-Path $Launcher)) {
+    # The zip carries no frozen trees - they are the installer's. What is here
+    # still serves the reader in a browser.
+    Skip 'no launcher in this tree - start target\release\kotodex-server.exe'
 } else {
     $StartMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
     $Lnk = Join-Path $StartMenu 'Kotodex.lnk'
-    $Launcher = Join-Path $Here 'kotodex\kotodex-windows.vbs'
     $shell = New-Object -ComObject WScript.Shell
     $sc = $shell.CreateShortcut($Lnk)
-    # wscript with the .vbs, not powershell with the .ps1: a shortcut to
-    # powershell.exe shows a console for as long as the launcher runs, and the
-    # launcher waits up to thirty seconds for the server. -WindowStyle Hidden does
-    # not help - the console is allocated before the script can hide it.
-    $sc.TargetPath = 'wscript.exe'
-    $sc.Arguments = "`"$Launcher`""
+    $sc.TargetPath = $Launcher
     $sc.WorkingDirectory = $Here
-    # The .ico, not the exe: kotodex-server.exe carries no embedded icon, and a
-    # shortcut pointing at it for one is blank.
-    $sc.IconLocation = Join-Path $Here 'kotodex\icons\kotodex.ico'
     $sc.Description = 'Kotodex - the ledger, the reader and the overlay'
     $sc.Save()
     Good "Kotodex in the Start Menu"
-    Say 'it starts the server, the source and the overlay, then opens the dashboard'
+    Say 'it starts the server, the source and the overlay, and sits in the tray'
 }
 
 # ------------------------------------------------------------------ doctor --
@@ -260,7 +257,7 @@ $startedHere = $null
 $log = Join-Path $Here 'setup-server.log'
 # Numeric, not `localhost`: that name resolves to `::1` first here and the server
 # binds IPv4, so every probe below spent its whole timeout against a server that
-# was answering. See the same note in kotodex\kotodex-windows.ps1.
+# was answering. The launcher's own probe is numeric for the same reason.
 try { $state = GetJson 'http://127.0.0.1:3200/api/reader/state' 3 } catch {}
 if ($state) {
     Good 'already running'

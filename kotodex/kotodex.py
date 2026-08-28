@@ -14,89 +14,39 @@ what the launcher started.
 Qt because of the tray: a launcher that hides the overlay has to leave something
 behind to bring it back. The overlay stays a separate process — it is a layer
 surface driven by QML, and merging a widgets tray into it buys nothing.
+
+**Nothing here knows which platform it is on.** Which components there are, how
+each is started and stopped, and where the assets and logs live are `host`'s —
+see its docstring for the whole contract. Windows runs this same launcher.
 """
 
 import os
-import re
-import shutil
 import signal
 import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+import config
+import host
+from config import SOCKET_NAME
+
 # Where the assets are. The binaries are relocatable and the path they were
 # compiled in is not, so every child is told rather than left to guess — see
-# jp_core::install::install_root.
-os.environ.setdefault("KOTODEX_ROOT", str(REPO))
-SERVER_PORT = int(os.environ.get("KOTODEX_SERVER_PORT", "3200"))
-SERVER_URL = os.environ.get(
-    "KOTODEX_SERVER_URL", f"http://127.0.0.1:{SERVER_PORT}"
-)
-# Reverse-DNS off kotodex.com, and the same string as the desktop entry's
-# filename: on Wayland Qt uses it as the app_id, which is how the compositor
-# matches the window to the entry.
-APP_ID = "com.kotodex.Kotodex"
-SOCKET_NAME = APP_ID
-
-# The three components' entry points, named once. `tray.py` imports these rather
-# than rebuilding them, so "where is the overlay script" has one answer.
-OVERLAY_SH = str(REPO / "kotodex-server" / "overlay" / "vn-overlay.sh")
-SERVER_BIN = REPO / "target" / "release" / "kotodex-server"
-DOCTOR_SH = REPO / "scripts" / "kotodex-doctor.sh"
-ICON = REPO / "kotodex" / "kotodex.svg"
+# jp_core::install::install_root. Exported only when the layout is really there,
+# because a wrong `KOTODEX_ROOT` wins over the binary's own answer and a missing
+# one does not.
+if (host.ROOT / "kotodex-server" / "static").is_dir():
+    os.environ.setdefault("KOTODEX_ROOT", str(host.ROOT))
 
 # How long kotodex-server gets to answer before it is called down. The launcher
-# never builds it — see --no-build — so this covers the migrations it runs
-# against knowledge.db on the way up, not a compile.
+# never builds it, so this covers the migrations it runs against knowledge.db on
+# the way up, not a compile.
 READY_TIMEOUT = 60.0
-# How long a restarted capture gets to answer before it is read as down and
-# started a second time. Its restart command detaches and returns before the
-# daemon it spawned is up.
-CAPTURE_READY = 30.0
 # A detaching child gets this long to appear before the probe is trusted.
 SPAWN_GRACE = 10.0
 # Restart a child this many times before giving up and saying which one.
 MAX_RESTARTS = 3
-
-
-def kotodex_server_up() -> bool:
-    try:
-        with urllib.request.urlopen(f"{SERVER_URL}/api/reader/state", timeout=1) as r:
-            return r.status == 200
-    except (urllib.error.URLError, OSError):
-        return False
-
-
-def capture_binary() -> str:
-    return shutil.which("kotodex-capture") or str(REPO / "capture" / "kotodex-capture")
-
-
-def capture_up() -> bool:
-    """Asked of the daemon's own script, which knows whether systemd owns it.
-
-    Not the ring buffer: a segment is only rewritten every 5s, so a daemon that
-    has just died still leaves fresh files behind and gets adopted — running,
-    in the launcher's view, with nothing recording.
-    """
-    return subprocess.run(
-        [capture_binary(), "status"], capture_output=True
-    ).returncode == 0
-
-
-def overlay_up() -> bool:
-    """Asked of the overlay's own script, which owns the pid file and the lock.
-
-    A bare `pgrep -f vn-overlay.py` matches any command line that merely
-    mentions the script — a shell loop, an editor — and reads it as a running
-    overlay. There is one answer to this and it is not here.
-    """
-    return subprocess.run(
-        [OVERLAY_SH, "status"], capture_output=True
-    ).returncode == 0
 
 
 class Child:
@@ -109,12 +59,24 @@ class Child:
 
     def __init__(
         self, name, probe, start_cmd, stop_cmd=None, restart_cmd=None,
-        detaches=False, supervised=True, log_file=None, stop_adopted=None
+        ensure_cmd=None, detaches=False, supervised=True, log_file=None,
+        stop_adopted=None, needs_server=False, wait_after_restart=0.0
     ):
         self.name = name
         self.probe = probe
         self.start_cmd = start_cmd
         self.stop_cmd = stop_cmd
+        # How to bring it back without disturbing one already running — the
+        # tray's Show overlay. `None` means starting it is that.
+        self.ensure_cmd = ensure_cmd or start_cmd
+        # Whether the launcher holds it back until kotodex-server answers. The
+        # overlay draws a kotodex-server page on Linux; where the page retries on
+        # its own, starting it early is how its cold start and the server's boot
+        # are spent at once rather than in series.
+        self.needs_server = needs_server
+        # How long to let it answer after a *restart*, for one whose restart
+        # command returns before the process it spawned is up.
+        self.wait_after_restart = wait_after_restart
         # Where this child's output goes. `None` discards it, which is right
         # only for a component whose own log says why it stopped — the overlay
         # script's does.
@@ -163,6 +125,14 @@ class Child:
         return False
 
     def spawn(self, log):
+        # Said rather than raised: a component whose binary is absent is a setup
+        # that never finished, and a traceback out of the launcher hides which of
+        # the three it was.
+        exe = self.start_cmd[0]
+        if not Path(exe).is_file():
+            log(f"{self.name}: {exe} is missing — run setup")
+            self.failed = True
+            return
         log(f"{self.name}: starting")
         self.started_at = time.time()
         # Appended, not truncated: a component that has already been restarted
@@ -175,10 +145,10 @@ class Child:
         try:
             self.proc = subprocess.Popen(
                 self.start_cmd,
-                cwd=REPO,
+                cwd=host.ROOT,
                 stdout=sink,
                 stderr=subprocess.STDOUT if sink is not subprocess.DEVNULL else sink,
-                start_new_session=True,
+                **host.spawn_kwargs(self),
             )
         finally:
             if sink is not subprocess.DEVNULL:
@@ -218,67 +188,31 @@ class Child:
         self.spawn(log)
         return False
 
-    def stop(self, log):
-        if self.adopted:
+    def stop(self, log, force=False):
+        """Stop it, unless it is adopted and nobody insisted.
+
+        `force` is the tray's Hide overlay: hiding one this launcher adopted is
+        what the reader asked for, where quitting must still leave it alone.
+        """
+        if self.adopted and not force:
             log(f"{self.name}: left running (it was not ours)")
             return
         if self.stop_cmd:
-            subprocess.run(self.stop_cmd, cwd=REPO, capture_output=True)
+            subprocess.run(self.stop_cmd, cwd=host.ROOT, capture_output=True)
         if self.proc and self.proc.poll() is None:
             log(f"{self.name}: stopping")
-            self.proc.terminate()
-            try:
-                self.proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.proc.kill()
+            host.stop_child(self)
 
 
 def children():
-    """In start order. Stopping walks it backwards."""
-    capture = capture_binary()
-    return [
-        Child(
-            "capture",
-            capture_up,
-            [capture, "run"],
-            restart_cmd=[capture, "restart"],
-            # The daemon's own log holds the lines it hooks, not why it refused
-            # to start. Without this, a missing dependency is discarded and the
-            # reader is left with a status bar saying capture is down.
-            log_file=REPO / "logs" / "kotodex-capture.log",
-        ),
-        Child(
-            "kotodex-server",
-            kotodex_server_up,
-            # The binary directly. It is an ordinary foreground process, so the
-            # launcher owns it the way it owns the capture daemon: `stop` is a
-            # SIGTERM to its own child and nothing else has to be asked.
-            #
-            # `scripts/start-all.sh` can run it too, and this adopts one that
-            # already answers — but that script is the manual multi-service tool
-            # (yt-mine, manga-mine, whisper, the OCR service) and starting one
-            # service is not worth taking a dependency on all of them. It also
-            # never builds: clicking the desktop entry must not wait on cargo.
-            [str(SERVER_BIN)],
-            log_file=REPO / "logs" / "kotodex-server.log",
-            stop_adopted=lambda: stop_port(SERVER_PORT),
-        ),
-        Child(
-            "overlay",
-            overlay_up,
-            [OVERLAY_SH, "start"],
-            stop_cmd=[OVERLAY_SH, "stop"],
-            restart_cmd=[OVERLAY_SH, "restart"],
-            detaches=True,
-            supervised=False,
-        ),
-    ]
+    """This platform's components, in start order. Stopping walks it backwards."""
+    return host.components(Child)
 
 
 def wait_for_kotodex_server(log):
     deadline = time.time() + READY_TIMEOUT
     while time.time() < deadline:
-        if kotodex_server_up():
+        if config.kotodex_server_up():
             return True
         time.sleep(1)
     log("kotodex-server: no answer — not starting the overlay")
@@ -286,12 +220,8 @@ def wait_for_kotodex_server(log):
 
 
 def status_report():
-    for name, probe in (
-        ("capture", capture_up),
-        ("kotodex-server", kotodex_server_up),
-        ("overlay", overlay_up),
-    ):
-        print(f"{'running' if probe() else 'stopped':>8}  {name}")
+    for child in children():
+        print(f"{'running' if child.probe() else 'stopped':>8}  {child.name}")
 
 
 def restart_command() -> int:
@@ -301,11 +231,11 @@ def restart_command() -> int:
     and a restart done behind its back looks like a crash for the three seconds
     the port is closed — which it answers by starting a second one.
     """
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtCore import QCoreApplication
 
     from single_instance import SingleInstance
 
-    app = QApplication(sys.argv)  # noqa: F841 — QLocalSocket needs an app
+    app = QCoreApplication(sys.argv)  # noqa: F841 — QLocalSocket needs an app
     instance = SingleInstance(SOCKET_NAME)
     if instance.already_running():
         instance.send("restart")
@@ -320,86 +250,17 @@ def quit_command() -> int:
     Only a running launcher can do this: it is the one that knows which
     components it started and so which ones quitting is allowed to stop.
     """
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtCore import QCoreApplication
 
     from single_instance import SingleInstance
 
-    app = QApplication(sys.argv)  # noqa: F841 — QLocalSocket needs an app
+    app = QCoreApplication(sys.argv)  # noqa: F841 — QLocalSocket needs an app
     instance = SingleInstance(SOCKET_NAME)
     if not instance.already_running():
         print("kotodex: not running")
         return 0
     instance.send("quit")
     return 0
-
-
-def port_pid(port: int) -> int | None:
-    """The pid listening on `port`, or None.
-
-    Resolved from the *port* and never from the process name: `dev-instance.sh`
-    runs the same binary from the same path on 3299, so a name match would take
-    out a reading session's server while someone worked on a copy of it.
-    """
-    out = subprocess.run(["ss", "-ltnp"], capture_output=True, text=True)
-    for line in out.stdout.splitlines():
-        fields = line.split()
-        if len(fields) < 4 or not fields[3].endswith(f":{port}"):
-            continue
-        found = re.search(r"pid=(\d+)", line)
-        if found:
-            return int(found.group(1))
-    return None
-
-
-def stop_port(port: int) -> None:
-    """SIGTERM whatever is listening on `port`, and wait for it to let go."""
-    pid = port_pid(port)
-    if pid is None:
-        return
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return
-    for _ in range(20):
-        if port_pid(port) is None:
-            return
-        time.sleep(0.5)
-
-
-def start_kotodex_server(log=print) -> subprocess.Popen | None:
-    """Run the server, its output appended to `logs/kotodex-server.log`."""
-    if not SERVER_BIN.is_file():
-        log(f"{SERVER_BIN} is missing — run setup.sh")
-        return None
-    log_path = REPO / "logs" / "kotodex-server.log"
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    with log_path.open("a") as sink:
-        return subprocess.Popen(
-            [str(SERVER_BIN)],
-            cwd=REPO,
-            stdout=sink,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-
-
-def restart_kotodex_server() -> bool:
-    """Stop whatever is serving kotodex-server and start it again.
-
-    Deliberately not adoption-safe, unlike quitting: picking up new code is the
-    whole point of a restart, so it has to reach a server this process did not
-    start. Nothing else can — `start-all.sh` is the multi-service tool and the
-    launcher no longer goes through it.
-    """
-    stop_port(SERVER_PORT)
-    if start_kotodex_server() is None:
-        return False
-    deadline = time.time() + READY_TIMEOUT
-    while time.time() < deadline:
-        if kotodex_server_up():
-            return True
-        time.sleep(1)
-    return False
 
 
 def restart_components() -> int:
@@ -409,30 +270,39 @@ def restart_components() -> int:
     deliberately never touches, and the capture daemon is usually systemd's. So
     an update has no way to become live short of knowing which of three things
     started each piece — which is exactly what this hides.
+
+    Over `children()` rather than a list of its own, so a component this platform
+    has and another does not is restarted here too.
     """
     failed = 0
-    print("restarting capture")
-    if subprocess.run([capture_binary(), "restart"], cwd=REPO).returncode != 0:
-        print("  capture did not restart cleanly")
-        failed += 1
-    print("restarting kotodex-server")
-    if not restart_kotodex_server():
-        print("  kotodex-server did not restart cleanly")
-        failed += 1
-    print("restarting overlay")
-    if subprocess.run([OVERLAY_SH, "restart"], cwd=REPO).returncode != 0:
-        print("  overlay did not restart cleanly")
-        failed += 1
+    for child in children():
+        print(f"restarting {child.name}")
+        if child.stop_adopted is not None:
+            # Nothing to ask: a bare binary has no "restart yourself", and
+            # starting a second one only fails to bind — see `Child.stop_adopted`.
+            child.stop_adopted()
+            child.spawn(print)
+            if child.failed or not child.wait_ready(print, READY_TIMEOUT):
+                failed += 1
+        elif subprocess.run(child.restart_cmd, cwd=host.ROOT).returncode != 0:
+            print(f"  {child.name} did not restart cleanly")
+            failed += 1
     return 1 if failed else 0
 
 
 def main() -> int:
     args = sys.argv[1:]
+    # Before anything prints: a frozen GUI build has no console of its own.
+    host.attach_console()
     if args and args[0] == "status":
         status_report()
         return 0
     if args and args[0] == "doctor":
-        return subprocess.run([str(DOCTOR_SH), *args[1:]]).returncode
+        doctor = host.doctor_command()
+        if doctor is None:
+            print("kotodex: there is no doctor on this platform")
+            return 1
+        return subprocess.run([*doctor, *args[1:]]).returncode
     if args and args[0] == "restart":
         return restart_command()
     if args and args[0] == "quit":
@@ -440,9 +310,9 @@ def main() -> int:
     if args and args[0] == "anki":
         # The field map lives in AnkiConfig, so the check is a Rust binary
         # rather than a second list of field names here.
-        binary = REPO / "target" / "release" / "anki-setup"
+        binary = host.ROOT / "target" / "release" / "anki-setup"
         if not binary.is_file():
-            print(f"{binary} is missing — run setup.sh")
+            print(f"{binary} is missing — run setup")
             return 1
         return subprocess.run([str(binary), *args[1:]]).returncode
 
@@ -454,9 +324,7 @@ def main() -> int:
 
     app = QApplication(sys.argv)
     app.setApplicationName("Kotodex")
-    # Ties the process to the desktop entry, which is what makes the taskbar
-    # and the tray show its name and icon rather than "python3".
-    app.setDesktopFileName(APP_ID)
+    host.apply_identity(app)
     app.setQuitOnLastWindowClosed(False)
 
     instance = SingleInstance(SOCKET_NAME)
@@ -470,18 +338,18 @@ def main() -> int:
 
     kids = children()
 
-    # The overlay draws a kotodex-server page, so starting it before the port
-    # answers puts a browser error page over the whole screen with no way to
-    # dismiss it. If kotodex-server never comes up the tray is how it is retried.
+    # A component that needs the server is held back until the port answers —
+    # see `Child.needs_server`. If kotodex-server never comes up the tray is how
+    # it is retried.
     serving = True
     for child in kids:
-        if child.name == "overlay" and not serving:
+        if child.needs_server and not serving:
             continue
         child.ensure(log)
         if child.name == "kotodex-server":
             serving = wait_for_kotodex_server(log)
 
-    tray = Tray(app, kids, SERVER_URL, log)
+    tray = Tray(app, kids, config.SERVER_URL, log)
 
     # Set while a restart is in flight, so the watchdog does not read the gap
     # where kotodex-server's port is closed as a crash and start a second one.
@@ -510,7 +378,7 @@ def main() -> int:
                 # Someone else's — a systemd unit, a start-all.sh run. Told to
                 # restart itself rather than stopped, since stopping it is
                 # exactly what adoption promises not to do.
-                subprocess.run(child.restart_cmd, cwd=REPO, capture_output=True)
+                subprocess.run(child.restart_cmd, cwd=host.ROOT, capture_output=True)
         for child in kids:
             child.proc = None
             child.adopted = False
@@ -521,9 +389,9 @@ def main() -> int:
             # time to come back before probing it, or `ensure` reads the restart
             # as a down component and starts a second one. kotodex-server has no such
             # gap: it was stopped above and `ensure` spawns it here.
-            if child.name == "capture":
-                child.wait_ready(log, CAPTURE_READY)
-            if child.name == "overlay" and not serving:
+            if child.wait_after_restart:
+                child.wait_ready(log, child.wait_after_restart)
+            if child.needs_server and not serving:
                 continue
             child.ensure(log)
             if child.name == "kotodex-server":
@@ -567,5 +435,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
     sys.exit(main())

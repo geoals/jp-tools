@@ -40,7 +40,6 @@ strip grows with the type; `VN_OVERLAY_HEIGHT` still wins if it is set.
 import argparse
 import json
 import os
-import subprocess
 import sys
 import time
 import urllib.error
@@ -57,6 +56,9 @@ if not getattr(sys, "frozen", False):
 import layer_overlay  # noqa: E402
 
 DEFAULT_URL = "http://localhost:3200/overlay/overlay.html"
+# The launcher's single-instance socket, which its ✕ writes to. Named here as
+# well as in `kotodex/config.py`: one string, and the launcher owns it.
+LAUNCHER_SOCKET = "com.kotodex.Kotodex"
 ANKI_URL = os.environ.get("KOTODEX_ANKI_URL", "http://127.0.0.1:8765")
 # Names the surface to the compositor and the page's localStorage.
 SCOPE = "vn-overlay"
@@ -138,6 +140,33 @@ def check_dependencies(page_url: str) -> None:
         print(f"{layer_overlay.since_start()} Anki answered", file=sys.stderr)
 
 
+def quit_kotodex() -> None:
+    """Ask the launcher to quit, which is what the overlay's ✕ means.
+
+    Not done here: the launcher owns kotodex-server and the capture daemon and
+    knows which of them it *started*, which is the only thing that may be
+    stopped. Written to its socket rather than run as `kotodex quit` — that
+    starts a second Python and a second Qt application to send the same four
+    bytes, and from a frozen build there is no script to run at all.
+
+    A fresh `QCoreApplication` because the one the overlay ran under is gone by
+    the time ✕ has been answered. Silent when nothing is listening: an overlay
+    started by hand has no launcher to quit.
+    """
+    from PySide6.QtCore import QCoreApplication
+    from PySide6.QtNetwork import QLocalSocket
+
+    app = QCoreApplication.instance() or QCoreApplication([])
+    sock = QLocalSocket()
+    sock.connectToServer(LAUNCHER_SOCKET)
+    if sock.waitForConnected(300):
+        sock.write(b"quit")
+        sock.flush()
+        sock.waitForBytesWritten(300)
+        sock.disconnectFromServer()
+    del app
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--mobile", action="store_true", help="1.75x, with touch buttons")
@@ -157,16 +186,7 @@ def main() -> int:
     check_dependencies(url)
     code = layer_overlay.run(url, scope=SCOPE, storage=STORAGE, qt_args=qt_args)
     if code == layer_overlay.QUIT_REQUESTED:
-        # The overlay's ✕ means quit Kotodex, not just close this window: on a
-        # desktop with no system tray it is the only way out of the launcher.
-        # Handed to the launcher rather than done here — it owns kotodex-server and
-        # the capture daemon, and knows which of them it started. There is no
-        # such launcher on Windows, where the ✕ closes the overlay alone and
-        # kotodex-server keeps running for the reader in the browser.
-        if sys.platform != "win32":
-            subprocess.run(
-                [str(Path(__file__).resolve().parents[2] / "kotodex" / "kotodex"), "quit"]
-            )
+        quit_kotodex()
         return 0
     return code
 

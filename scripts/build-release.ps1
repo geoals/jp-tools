@@ -34,7 +34,7 @@ try {
 } finally { Pop-Location }
 
 if (Test-Path $Stage) { Remove-Item -Recurse -Force $Stage }
-# target\release, not bin\: it is where setup.ps1, kotodex-windows.ps1 and
+# target\release, not bin\: it is where setup.ps1, the launcher and
 # install_root() already look, and one layout for a checkout and a zip alike is
 # one thing to be wrong about.
 New-Item -ItemType Directory -Force -Path (Join-Path $Stage 'target\release') | Out-Null
@@ -59,9 +59,7 @@ Take 'THIRD-PARTY.md'
 Take 'web-shared'
 Take 'kotodex-server\static'
 Take 'kotodex-server\overlay'
-Take 'kotodex\kotodex-windows.ps1'
-Take 'kotodex\kotodex-windows.vbs'
-# The icon, which every shortcut and both frozen executables point at.
+# The icon the three frozen executables are stamped with.
 Take 'kotodex\icons\kotodex.ico'
 # Left out on purpose: capture\, layer-overlay\, scripts\lib, kotodex-doctor.sh,
 # docs\ and every Python file. None of it runs on Windows, so shipping it is a

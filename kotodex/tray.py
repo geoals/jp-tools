@@ -6,7 +6,6 @@ once and keep the overlay on screen instead of hiding it.
 """
 
 import json
-import shutil
 import subprocess
 import urllib.error
 import urllib.request
@@ -15,9 +14,7 @@ import webbrowser
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
-# From the launcher, not rebuilt here: "where is the overlay script" is one
-# answer, and a tray that reached for its own copy is the one that goes stale.
-from kotodex import DOCTOR_SH, ICON, OVERLAY_SH, REPO
+import host
 
 
 class Tray:
@@ -35,19 +32,24 @@ class Tray:
             log("no system tray here — the overlay stays on screen; Ctrl-C to quit")
             return
 
-        self.icon = QSystemTrayIcon(QIcon(str(ICON)), app)
+        self.icon = QSystemTrayIcon(QIcon(str(host.ICON)), app)
         self.icon.setToolTip(self._tooltip())
         menu = QMenu()
         self.pause_action = None
-        for label, slot in (
+        # Two items are only there where the platform is: capture is a component
+        # on Linux alone, and the doctor is a bash script.
+        items = [
             ("Show overlay", self.show_overlay),
             ("Hide overlay", self.hide_overlay),
             ("Open reading stats", self.open_stats),
-            ("Pause capture", self.toggle_capture),
-            ("Restart everything", self.restart),
-            ("Doctor", self.doctor),
-            ("Quit", self.app.quit),
-        ):
+        ]
+        if any(c.name == "capture" for c in children):
+            items.append(("Pause capture", self.toggle_capture))
+        items.append(("Restart everything", self.restart))
+        if host.doctor_command() is not None:
+            items.append(("Doctor", self.doctor))
+        items.append(("Quit", self.app.quit))
+        for label, slot in items:
             action = QAction(label, menu)
             action.triggered.connect(slot)
             menu.addAction(action)
@@ -72,14 +74,24 @@ class Tray:
         # that is visible before it happens rather than after.
         return "Kotodex — already running, left alone on quit: " + ", ".join(adopted)
 
+    def _overlay(self):
+        return next((c for c in self.children if c.name == "overlay"), None)
+
     def show_overlay(self):
-        # `ensure`, not `start`: this is also where a second launch of the
-        # desktop entry lands, and restarting a running overlay would throw
-        # away the page the reader is looking at.
-        subprocess.Popen([OVERLAY_SH, "ensure"], cwd=REPO)
+        # Never on one already up: this is also where a second launch of the
+        # desktop entry lands, and starting a second overlay would draw over the
+        # page the reader is looking at.
+        overlay = self._overlay()
+        if overlay is None or overlay.probe():
+            return
+        subprocess.Popen(overlay.ensure_cmd, cwd=host.ROOT)
 
     def hide_overlay(self):
-        subprocess.run([OVERLAY_SH, "stop"], cwd=REPO, capture_output=True)
+        # Forced, because hiding one the launcher adopted is what was asked for,
+        # where quitting must still leave it running.
+        overlay = self._overlay()
+        if overlay is not None:
+            overlay.stop(self.log, force=True)
 
     def open_stats(self):
         webbrowser.open(self.url)
@@ -125,17 +137,5 @@ class Tray:
         self.restart_here()
 
     def doctor(self):
-        # `--` for the terminals that want it and `-e` for the one that does not:
-        # gnome-terminal dropped `-e` and konsole never took `--`, so each gets
-        # the form it accepts rather than one form that half of them refuse.
-        for term, flag in (
-            ("konsole", "-e"),
-            ("gnome-terminal", "--"),
-            ("xfce4-terminal", "-x"),
-            ("xterm", "-e"),
-        ):
-            if shutil.which(term) is None:
-                continue
-            subprocess.Popen([term, flag, "bash", "-c", f"{DOCTOR_SH}; read -r"])
-            return
-        self.log("no terminal to show the doctor in; run scripts/kotodex-doctor.sh")
+        if not host.run_doctor():
+            self.log("no terminal to show the doctor in; run scripts/kotodex-doctor.sh")

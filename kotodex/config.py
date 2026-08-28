@@ -1,0 +1,37 @@
+"""The names more than one of these modules needs.
+
+Its own module because the entry script cannot be imported: under PyInstaller
+`kotodex.py` is bundled as `__main__` alone, so `from kotodex import ...` fails
+there — and on Linux it silently runs a second copy of it.
+"""
+
+import os
+import urllib.error
+import urllib.request
+
+SERVER_PORT = int(os.environ.get("KOTODEX_SERVER_PORT", "3200"))
+# Numeric: `localhost` resolves to `::1` first on Windows, where the server binds
+# IPv4 only, and a connection to `::1` there times out rather than being refused.
+SERVER_URL = os.environ.get("KOTODEX_SERVER_URL", f"http://127.0.0.1:{SERVER_PORT}")
+
+# Reverse-DNS off kotodex.com, and the same string as the desktop entry's
+# filename: on Wayland Qt uses it as the app_id, which is how the compositor
+# matches the window to the entry.
+APP_ID = "com.kotodex.Kotodex"
+SOCKET_NAME = APP_ID
+
+
+# No proxy: the server is on this machine. Windows takes its proxy from the system
+# settings, and resolving one cost the first request 1.6 seconds — longer than the
+# probe's own timeout, so every poll timed out and the launcher waited out its
+# whole deadline against a server that was answering. Through the opener it is
+# 0.01s. The same trap the overlay's own checks are built around.
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def kotodex_server_up() -> bool:
+    try:
+        with _OPENER.open(f"{SERVER_URL}/api/reader/state", timeout=2) as r:
+            return r.status == 200
+    except (urllib.error.URLError, OSError):
+        return False

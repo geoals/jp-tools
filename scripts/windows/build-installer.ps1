@@ -67,11 +67,11 @@ if (-not (Test-Path $Stage)) { throw "build-release.ps1 left no tree at $Stage" 
 
 # --------------------------------------------------------------- freeze it --
 
-# PyInstaller's PySide6 hook collects every Qt module it can find, and excluding
-# the Python bindings does not drop the payload - the DLLs and the Chromium
-# resources are collected as data. So the pruning below happens after the build,
-# by deleting what is provably unused, rather than by asking PyInstaller not to
-# take it.
+# For a module that is imported, PyInstaller's PySide6 hook takes all of it, and
+# excluding the Python bindings does not drop the payload - the DLLs and the
+# Chromium resources are collected as data. So the pruning below happens after the
+# build, by deleting what is provably unused, rather than by asking PyInstaller not
+# to take it.
 $Icon = Join-Path $Repo 'kotodex\icons\kotodex.ico'
 
 function Freeze($name, $entry, $mode, $extra) {
@@ -106,6 +106,16 @@ Freeze 'kotodex-overlay' (Join-Path $Repo 'kotodex-server\overlay\vn-overlay.py'
 # abortive disconnect from crashing Textractor itself.
 Freeze 'kotodex-source' (Join-Path $Repo 'sources\textractor\vn-ws-logger.py') '--console' @()
 
+# The launcher: the same one Linux runs, with `kotodex\host_windows.py` answering
+# for this platform. --windowed because it is a tray and nothing else; the two
+# modules it imports inside main() are named because a missing one is a crash on
+# the tray's first line rather than a build error.
+Freeze 'kotodex' (Join-Path $Repo 'kotodex\kotodex.py') '--windowed' @(
+    '--paths', (Join-Path $Repo 'kotodex'),
+    '--hidden-import', 'single_instance',
+    '--hidden-import', 'tray'
+)
+
 Say 'pruning the frozen overlay'
 $internal = Join-Path $Work 'dist\kotodex-overlay\_internal\PySide6'
 # Chromium's DevTools resources, which are only reachable through remote
@@ -127,8 +137,22 @@ $keepLocale = @('en-US', 'ja')
 Get-ChildItem (Join-Path $internal 'translations\qtwebengine_locales') -File -ErrorAction SilentlyContinue |
     Where-Object { $keepLocale -notcontains $_.BaseName } | Remove-Item -Force
 
+Say 'pruning the frozen launcher'
+# Only the dialog strings. Nothing Chromium is in this tree to begin with: the
+# launcher imports QtWidgets, QtGui, QtCore and QtNetwork, and the hook's Qt
+# collection follows what is imported - the note at the top of this file is about
+# the overlay, which imports QtWebEngine and so gets all of it.
+Get-ChildItem (Join-Path $Work 'dist\kotodex\_internal\PySide6\translations') -File `
+    -ErrorAction SilentlyContinue |
+    Where-Object { $keep -notcontains ($_.BaseName -replace '^.*_', '') } |
+    Remove-Item -Force
+
 Say 'collecting into the tree'
-foreach ($pair in @(@('kotodex-overlay', 'overlay'), @('kotodex-source', 'source'))) {
+# `launcher`, not `kotodex`: that directory already holds the icons every shortcut
+# points at. Either way the exe sits two levels under the install root, which is
+# what `host_windows.ROOT` resolves.
+foreach ($pair in @(@('kotodex-overlay', 'overlay'), @('kotodex-source', 'source'),
+                    @('kotodex', 'launcher'))) {
     $from = Join-Path $Work "dist\$($pair[0])"
     $to = Join-Path $Stage $pair[1]
     if (Test-Path $to) { Remove-Item -Recurse -Force $to }

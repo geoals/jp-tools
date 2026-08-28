@@ -49,7 +49,13 @@ any Kotodex in it; everything that is the product carries it.
   probed before it is started, so this coexists with `start-all.sh` and with a
   systemd-managed capture daemon, and quitting stops only what it started.
   It runs all three itself and goes through no other script — the three things
-  reading a VN needs are not the same set as "every service in the repo"
+  reading a VN needs are not the same set as "every service in the repo".
+  **Both platforms run this launcher, and it contains no `sys.platform`.** Which
+  components exist and how each is started and stopped is `host.py`'s contract,
+  answered by one module per platform; `host_windows.py` is the only file on the
+  Windows side, and Windows has no capture daemon and no doctor. A second
+  implementation of it is what the IPv6 probe, the serial sleeps and a ✕ that
+  stopped nothing came from
 - `layer-overlay/` — the Qt shell that puts a web page above fullscreen windows
   and makes it clickable only where the page has drawn. Knows nothing about
   Japanese, reading or kotodex-server; `kotodex-server/overlay/` is its one caller.
