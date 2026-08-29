@@ -21,7 +21,13 @@ jobs:
     container: rust:1-bookworm
     steps:
       - uses: actions/checkout@v4
+      # Read-only: a tag's own cache scope is one nothing else can read, so
+      # writing one costs a 400 MB upload for no later hit. cache-warm.yml writes
+      # the cache this reads, on master.
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-linux
+          save-if: false
 
       - name: Build the tarball
         run: |
@@ -55,6 +61,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-windows
+          save-if: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
