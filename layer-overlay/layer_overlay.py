@@ -257,6 +257,8 @@ class Overlay(QObject):
         if os.environ.get("LAYER_OVERLAY_DEBUG"):
             x, y, w, h = surface
             print(f"window {self._name!r} {x},{y} {w}x{h}", flush=True)
+        if BACKEND == backend.WINDOWS:
+            self._input.raise_topmost()
         self.geometry.emit(*surface)
         self._throttle.start()
 

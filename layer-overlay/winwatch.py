@@ -24,10 +24,22 @@ Two differences from the X11 watcher, both consequences of how the events arrive
 Nothing here reads an event's contents beyond checking that it is about a window
 rather than a caret or the cursor. Any such event means "ask again", and asking is
 one call that does not leave the machine.
+
+**An upscaler between the game and the screen is what the reader is looking at,
+so that is what gets followed.** Magpie draws a scaled copy of the game into a
+window of its own and leaves the game's own window where it was, unscaled and
+usually behind. Following the game there puts the strip over the small original
+rather than over the picture, and every `--text-*` fraction is measured against
+the wrong rectangle. Its window carries **no title**, so it cannot be found the
+way a game is; the class name is the only handle on it, and the GUID in it is
+Magpie's own fixed constant. The *client* area is taken rather than the frame,
+because the frame includes a border that is not part of the picture.
 """
 
 import ctypes
 from ctypes import wintypes
+
+MAGPIE_SCALING_CLASS = "Window_Magpie_967EB565-6F73-4E94-AE53-00CC42592A22"
 
 EVENT_OBJECT_DESTROY = 0x8001
 EVENT_OBJECT_LOCATIONCHANGE = 0x800B
@@ -73,6 +85,12 @@ class WindowWatch:
         user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
         user32.IsWindowVisible.argtypes = [wintypes.HWND]
         user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+        user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+        user32.ClientToScreen.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.POINT)]
+        user32.FindWindowExW.restype = wintypes.HWND
+        user32.FindWindowExW.argtypes = [
+            wintypes.HWND, wintypes.HWND, wintypes.LPCWSTR, wintypes.LPCWSTR,
+        ]
         user32.GetWindowThreadProcessId.argtypes = [
             wintypes.HWND, ctypes.POINTER(wintypes.DWORD)
         ]
@@ -167,6 +185,41 @@ class WindowWatch:
             return None
         return (frame.left, frame.top, w, h)
 
+    def _upscaler(self) -> int:
+        """The upscaler's output window, 0 when nothing is upscaling.
+
+        By class, because it has no title — see the module docstring. One lookup
+        against the window class table rather than an `EnumWindows` walk, so this
+        can run on every refresh and notice one appearing mid-session.
+
+        Visibility is checked for the same reason [`_find`] checks it: a window
+        that exists and is not on screen is not what the reader is looking at, and
+        following its rectangle would move the strip somewhere nothing is drawn.
+        """
+        window = self._user32.FindWindowExW(None, None, MAGPIE_SCALING_CLASS, None)
+        if not window or not self._user32.IsWindowVisible(window):
+            return 0
+        return window
+
+    def _client_geometry(self, window: int):
+        """The window's client area as `x, y, width, height` in screen coordinates.
+
+        `GetClientRect` answers in client coordinates, where the origin is always
+        zero, so it gives the size and says nothing about where — the origin has
+        to be mapped separately.
+        """
+        client = wintypes.RECT()
+        if not self._user32.GetClientRect(window, ctypes.byref(client)):
+            return None
+        origin = wintypes.POINT(client.left, client.top)
+        if not self._user32.ClientToScreen(window, ctypes.byref(origin)):
+            return None
+        w = client.right - client.left
+        h = client.bottom - client.top
+        if w <= 0 or h <= 0:
+            return None
+        return (origin.x, origin.y, w, h)
+
     def refresh(self) -> bool:
         """Ask where the window is now. True if that is different."""
         if not self._name:
@@ -181,7 +234,13 @@ class WindowWatch:
                         EVENT_OBJECT_DESTROY, EVENT_OBJECT_LOCATIONCHANGE,
                         None, self._proc, 0, thread, WINEVENT_OUTOFCONTEXT,
                     )
-        rect = self._geometry(self._window) if self._window else None
+        rect = None
+        if self._window:
+            scaling = self._upscaler()
+            if scaling:
+                rect = self._client_geometry(scaling)
+            if rect is None:
+                rect = self._geometry(self._window)
         if rect is None:
             # Gone, or never found. Either way the next call rediscovers.
             self._release()

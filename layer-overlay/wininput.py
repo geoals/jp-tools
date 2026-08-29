@@ -144,6 +144,21 @@ class InputRegion:
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
         )
 
+    def raise_topmost(self) -> None:
+        """Put the surface back at the top of the topmost band.
+
+        For the one case [`poll`]'s own defence cannot see. An upscaler between
+        the game and the screen draws into a topmost window of its own and leaves
+        the game focused, so no foreground change happens, and the overlay stays
+        under a window that appeared after it. The caller drives this from the
+        tracked rectangle changing, which is what starting to upscale looks like.
+
+        A raise sticks — Magpie does not re-assert topmost once it has been put
+        under — so this settles rather than becoming a raise war.
+        """
+        if self._hwnd:
+            self._raise()
+
     def set_keyboard(self, want: bool, restore_to: int = 0) -> None:
         if not self._hwnd or want == self._keyboard:
             return
