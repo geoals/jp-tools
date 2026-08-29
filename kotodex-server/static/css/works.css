@@ -172,7 +172,6 @@ a.ghost:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 6px;
 }
 .cover-tile {
   background: none;
@@ -310,8 +309,9 @@ a.ghost:hover {
 }
 .word-list-label {
   color: var(--muted);
-  font-size: 12px;
-  margin-top: 14px;
+  font-size: 13px;
+  font-weight: 400;
+  margin: 14px 0 6px;
 }
 .word-chips {
   display: flex;
@@ -506,28 +506,35 @@ table.vocab-split tbody tr:first-child td {
   min-width: 0;
 }
 
-/* The same field in the work editor. Full width like .log-wide: a window title
-   is as long as a game's publisher felt like, and the "use the one in front"
-   button carries another one inside it. */
+/* Full width like .log-wide: a window title runs to whatever its publisher felt
+   like, and the cover picker holds a whole search inside it. */
 .work-meta-form .work-window-field,
+.work-meta-form .work-cover-field,
 .work-meta-form .work-danger {
   grid-column: 1 / -1;
 }
-.work-window-row {
+/* A <select> in a 1fr grid column stretches to the longest title in it and
+   drags the column with it. */
+.work-window-field select {
+  max-width: 100%;
+}
+
+/* The cover, and the search that finds one. A box wanting "v3144" made the
+   reader go to vndb.org and come back with an id, which is the errand the title
+   search was built to end — so this is that search, seeded with the title the
+   work already has. */
+.work-cover-row {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
 }
-.work-window-row input {
-  flex: 1;
-  min-width: 0;
+.work-cover-row .meta-hint {
+  margin: 0;
 }
-.work-window-row button {
-  flex: none;
-  max-width: 45%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.work-cover-thumb {
+  height: 48px;
+  width: auto;
+  border-radius: 4px;
 }
 
 /* Taking a work off the shelf. Ruled off rather than tucked behind a menu: it

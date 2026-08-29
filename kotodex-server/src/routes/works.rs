@@ -587,5 +587,13 @@ pub async fn delete_work(
     }
     db::clear_work_cover_vndb(&state.local, id).await?;
     db::delete_work(&state.knowledge, id).await?;
+    // Taking a work off the shelf stops reading it. The setting names a title
+    // rather than a row, so leaving it would keep stamping every captured line
+    // with a work the reader has just said they are done with — and for a work
+    // with no reading behind it the title now exists nowhere else, which is the
+    // dashboard's "nothing tracked for X".
+    if db::load_settings(&state.local).await?.current_work == work.title {
+        db::save_setting(&state.local, "current_work", "").await?;
+    }
     Ok(Json(json!({ "deleted": id })))
 }

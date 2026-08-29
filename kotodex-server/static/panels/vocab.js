@@ -116,44 +116,44 @@ function StatusSummary({ vocab }) {
   });
   return html`
     <div class="card">
-      <div class="tile-row" style="margin-top:0">
+      <dl class="tile-row" style="margin-top:0">
         <div
           class="tile has-hint"
           title="Different spellings of one word count once"
         >
-          <div class="label">known words</div>
-          <div class="value">
+          <dt class="label">known words</dt>
+          <dd class="value">
             ${vocab.known_words.toLocaleString("en")}
             <span class="value-sub">${spellings}</span>
-          </div>
+          </dd>
         </div>
         <div
           class="tile has-hint"
           title="Every row in the ledger, whatever its status, dictionary word or not"
         >
-          <div class="label">ledger terms</div>
-          <div class="value">${vocab.total.toLocaleString("en")}</div>
+          <dt class="label">ledger terms</dt>
+          <dd class="value">${vocab.total.toLocaleString("en")}</dd>
         </div>
         <div class="tile has-hint" title=${readyHint}>
-          <div class="label">ready to judge</div>
-          <div class="value">
+          <dt class="label">ready to judge</dt>
+          <dd class="value">
             ${vocab.ready.toLocaleString("en")}
             ${readySince && html`<span class="value-sub">${readySince}</span>`}
-          </div>
+          </dd>
         </div>
         <div
           class="tile has-hint"
           title="Words you have judged"
         >
-          <div class="label">triaged</div>
-          <div class="value">
+          <dt class="label">triaged</dt>
+          <dd class="value">
             ${asserted.toLocaleString("en")}
             <span class="value-sub"
               >(${((asserted / vocab.total) * 100).toFixed(0)}%)</span
             >
-          </div>
+          </dd>
         </div>
-      </div>
+      </dl>
     </div>
 
     <${GrowthCard} knownWords=${vocab.known_words} />

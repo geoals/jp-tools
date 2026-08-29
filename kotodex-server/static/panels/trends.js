@@ -103,28 +103,28 @@ export function TrendsCard({ days, targetMins, todayDate }) {
         />
       </div>
 
-      <div class="tile-row" style="margin-top:0">
+      <dl class="tile-row" style="margin-top:0">
         <div class="tile">
-          <div class="label">time</div>
-          <div class="value">${fmtMins(secs)}</div>
+          <dt class="label">time</dt>
+          <dd class="value">${fmtMins(secs)}</dd>
         </div>
         <div class="tile">
-          <div class="label">characters</div>
-          <div class="value">${chars.toLocaleString("en")}</div>
+          <dt class="label">characters</dt>
+          <dd class="value">${chars.toLocaleString("en")}</dd>
         </div>
         <div class="tile">
-          <div class="label">days read</div>
-          <div class="value">${daysReadLabel}</div>
+          <dt class="label">days read</dt>
+          <dd class="value">${daysReadLabel}</dd>
         </div>
         <div class="tile" title=${perDayRead}>
-          <div class="label">${perDayLabel}</div>
-          <div class="value">${perDay}</div>
+          <dt class="label">${perDayLabel}</dt>
+          <dd class="value">${perDay}</dd>
         </div>
         <div class="tile" title=${avgSpeedTitle}>
-          <div class="label">avg speed</div>
-          <div class="value">${avgSpeed}</div>
+          <dt class="label">avg speed</dt>
+          <dd class="value">${avgSpeed}</dd>
         </div>
-      </div>
+      </dl>
 
       <div class="day-chart-head">
         <h3>${barsTitle}</h3>

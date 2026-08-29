@@ -32,6 +32,95 @@ export async function setCurrentWork(title) {
   });
 }
 
+/** The VNDB title search: a box, a debounced query, and the results as a list.
+ *
+ *  Controlled, so the caller owns the text. Adding a work needs it for **Use
+ *  what I typed**, and the cover picker seeds it with the title the work
+ *  already has.
+ */
+function VndbSearch({ q, onQ, onPick, label, focus }) {
+  const [results, setResults] = useState(null);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState(null);
+  const box = useRef(null);
+  // The query the results belong to, so a slow answer for an older query cannot
+  // land on a newer one.
+  const latest = useRef("");
+
+  // The attribute alone does not fire for a node inserted into a live tree,
+  // which is every way this form is ever opened.
+  useEffect(() => {
+    if (focus) box.current?.focus();
+  }, [focus]);
+
+  useEffect(() => {
+    const query = q.trim();
+    latest.current = query;
+    if (query.length < 2) {
+      setResults(null);
+      return;
+    }
+    // Debounced: VNDB is somebody else's server and this fires per keystroke.
+    const t = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await api(`/api/works/search?q=${encodeURIComponent(query)}`);
+        if (latest.current === query) setResults(res.results ?? []);
+      } catch (e) {
+        if (latest.current === query) {
+          setResults([]);
+          setError(e.message);
+        }
+      } finally {
+        if (latest.current === query) setSearching(false);
+      }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  return html`
+    <label for="work-search-input">${label}</label>
+    <input
+      id="work-search-input"
+      ref=${box}
+      type="text"
+      spellcheck="false"
+      placeholder="search for the title — Japanese or romanized"
+      value=${q}
+      onInput=${(e) => onQ(e.currentTarget.value)}
+    />
+
+    ${searching && html`<p class="settings-hint">searching vndb…</p>`}
+    ${error && html`<p class="form-msg error">${error}</p>`}
+
+    ${results?.length > 0 &&
+    html`<ul class="work-search-results">
+      ${results.map(
+        (r) => html`
+          <li key=${r.id}>
+            <button type="button" onClick=${() => onPick(r.title, r.id)}>
+              ${r.cover && html`<img src=${r.cover} alt="" loading="lazy" />`}
+              <span class="work-search-titles">
+                <span class="work-search-title">${r.title}</span>
+                ${r.alt_title &&
+                html`<span class="work-search-alt">${r.alt_title}</span>`}
+                ${r.hours !== null &&
+                html`<span class="work-search-alt">
+                  ${`about ${Math.round(r.hours)} hours`}
+                </span>`}
+              </span>
+            </button>
+          </li>
+        `,
+      )}
+    </ul>`}
+
+    ${results?.length === 0 &&
+    !searching &&
+    html`<p class="settings-hint">Nothing on vndb by that name.</p>`}
+  `;
+}
+
 /** Pick a new work by name.
  *
  *  The title that lands in the ledger is VNDB's Japanese one, which is also what
@@ -50,37 +139,7 @@ export function WorkSearchForm({ settings, onSaved, onCancel }) {
   // what comes next as of what is being read now, and switching the capture
   // target out from under a session is not what "+" was pressed for.
   const [start, setStart] = useState(!settings?.current_work);
-  const [results, setResults] = useState(null);
-  const [searching, setSearching] = useState(false);
   const [msg, setMsg] = useState(null);
-  // The query the results belong to, so a slow answer for an older query cannot
-  // land on a newer one.
-  const latest = useRef("");
-
-  useEffect(() => {
-    const query = q.trim();
-    latest.current = query;
-    if (query.length < 2) {
-      setResults(null);
-      return;
-    }
-    // Debounced: VNDB is somebody else's server and this fires per keystroke.
-    const t = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const res = await api(`/api/works/search?q=${encodeURIComponent(query)}`);
-        if (latest.current === query) setResults(res.results ?? []);
-      } catch (e) {
-        if (latest.current === query) {
-          setResults([]);
-          setMsg({ ok: false, text: e.message });
-        }
-      } finally {
-        if (latest.current === query) setSearching(false);
-      }
-    }, 350);
-    return () => clearTimeout(t);
-  }, [q]);
 
   async function create(title, vndbId) {
     setMsg(null);
@@ -103,44 +162,13 @@ export function WorkSearchForm({ settings, onSaved, onCancel }) {
 
   return html`
     <div class="work-search">
-      <label for="work-search-input">What are you reading?</label>
-      <input
-        id="work-search-input"
-        type="text"
-        autofocus
-        spellcheck="false"
-        placeholder="search for the title"
-        value=${q}
-        onInput=${(e) => setQ(e.currentTarget.value)}
+      <${VndbSearch}
+        q=${q}
+        onQ=${setQ}
+        onPick=${create}
+        label="What are you reading?"
+        focus=${true}
       />
-
-      ${searching && html`<p class="settings-hint">searching vndb…</p>`}
-
-      ${results?.length > 0 &&
-      html`<ul class="work-search-results">
-        ${results.map(
-          (r) => html`
-            <li key=${r.id}>
-              <button type="button" onClick=${() => create(r.title, r.id)}>
-                ${r.cover && html`<img src=${r.cover} alt="" loading="lazy" />`}
-                <span class="work-search-titles">
-                  <span class="work-search-title">${r.title}</span>
-                  ${r.alt_title &&
-                  html`<span class="work-search-alt">${r.alt_title}</span>`}
-                  ${r.hours !== null &&
-                  html`<span class="work-search-alt">
-                    ${`about ${Math.round(r.hours)} hours`}
-                  </span>`}
-                </span>
-              </button>
-            </li>
-          `,
-        )}
-      </ul>`}
-
-      ${results?.length === 0 &&
-      !searching &&
-      html`<p class="settings-hint">Nothing on vndb by that name.</p>`}
 
       <label class="work-search-start">
         <input
@@ -191,12 +219,12 @@ function useOpenWindows() {
  *  one fault here nothing else reports. */
 function windowHint(name, windows) {
   if (!name) {
-    return "Not set — a screenshot grabs whatever has focus, which may be this browser.";
+    return "Pick the game's window so the overlay can follow it.";
   }
   if (!windows.length) return "";
-  return windows.some((w) => w.includes(name))
-    ? "Matches an open window."
-    : "Nothing open matches this. Re-pick it while the game is running.";
+  return windows.includes(name)
+    ? "Attached."
+    : "Not open right now. Pick it again once the game is running.";
 }
 
 /** Metadata editor for one work: everything the work *is*, saved together.
@@ -216,13 +244,18 @@ export function WorkMetaForm({ work, isCurrent, onSaved, onCancel, onDeleted }) 
   const [busy, setBusy] = useState(false);
   const { windows, focused } = useOpenWindows();
   const [vnWindow, setVnWindow] = useState(work?.meta?.vn_window ?? "");
+  // null is "leave the cover alone", "" is "remove it", an id is "fetch that
+  // one". The field has three states because the server's does.
+  const [cover, setCover] = useState(null);
+  const [picking, setPicking] = useState(false);
+  const [coverQ, setCoverQ] = useState(work?.work ?? "");
   const id = work?.meta?.id ?? null;
 
   async function save(e) {
     e.preventDefault();
     const f = e.currentTarget;
     const body = {
-      vndb_id: f.vndb.value.trim() || undefined,
+      vndb_id: cover ?? undefined,
       total_chars: f.total.value ? Number(f.total.value) : undefined,
       status: f.status.value,
       // Always sent, empty included: emptying the box is how the window is
@@ -250,7 +283,11 @@ export function WorkMetaForm({ work, isCurrent, onSaved, onCancel, onDeleted }) 
     }
   }
 
-  const hint = windowHint(vnWindow.trim(), windows);
+  const hint = windowHint(vnWindow, windows);
+  // A book has no window to attach to and no VNDB entry to take a cover from.
+  // `kind` is what `/api/works` derives from where a title's text came from, so
+  // a work added through the VN search answers `vn` before it has been read.
+  const isBook = work?.kind === "book";
 
   return html`
     <form class="log work-meta-form" onSubmit=${save}>
@@ -276,10 +313,55 @@ export function WorkMetaForm({ work, isCurrent, onSaved, onCancel, onDeleted }) 
           placeholder="from jiten.moe"
         />
       </div>
-      <div>
-        <label>cover art</label
-        ><input name="vndb" type="text" placeholder="vndb link or id" />
-      </div>
+      ${!isBook &&
+      html`<div class="work-cover-field">
+        <label>cover art</label>
+        <div class="work-cover-row">
+          ${
+            work?.meta?.cover && cover !== ""
+              ? html`<img class="work-cover-thumb" src=${work.meta.cover} alt="" />`
+              : html`<span class="meta-hint">none</span>`
+          }
+          <button
+            type="button"
+            class="ghost"
+            onClick=${() => setPicking(!picking)}
+          >
+            ${picking ? "cancel" : "find on vndb"}
+          </button>
+          ${
+            work?.meta?.cover &&
+            cover !== "" &&
+            html`<button type="button" class="ghost" onClick=${() => setCover("")}>
+              remove
+            </button>`
+          }
+        </div>
+        ${
+          // The same search adding a work uses, seeded with the title this one
+          // already has. A box wanting "v3144" made the reader go and find it,
+          // which is the errand the search was built to end.
+          picking &&
+          html`<div class="work-search">
+            <${VndbSearch}
+              q=${coverQ}
+              onQ=${setCoverQ}
+              onPick=${(_title, vndbId) => {
+                setCover(vndbId);
+                setPicking(false);
+              }}
+              label="Which one is it?"
+              focus=${true}
+            />
+          </div>`
+        }
+        ${
+          cover !== null &&
+          html`<div class="meta-hint">
+            ${cover ? "New cover on save." : "Cover removed on save."}
+          </div>`
+        }
+      </div>`}
       <div>
         <label>status</label>
         <select name="status">
@@ -294,39 +376,34 @@ export function WorkMetaForm({ work, isCurrent, onSaved, onCancel, onDeleted }) 
           )}
         </select>
       </div>
-      <div class="work-window-field">
+      ${!isBook &&
+      html`<div class="work-window-field">
         <label for="vn-window-input">game window</label>
-        <div class="work-window-row">
-          <input
-            id="vn-window-input"
-            type="text"
-            list="open-windows"
-            spellcheck="false"
-            value=${vnWindow}
-            onInput=${(e) => setVnWindow(e.currentTarget.value)}
-            placeholder="part of the game's window title"
-          />
-          <datalist id="open-windows">
-            ${windows.map((w) => html`<option value=${w}></option>`)}
-          </datalist>
+        <select
+          id="vn-window-input"
+          value=${vnWindow}
+          onChange=${(e) => setVnWindow(e.currentTarget.value)}
+        >
+          <option value="">— not set —</option>
           ${
-            // One button on a good day: the reader was looking at the game a
-            // moment ago, so the window in front is almost always the answer
-            // and reading thirty titles out of a list is not. It fills the box
-            // rather than saving, so the window goes in with everything else.
-            focused &&
-            focused !== vnWindow &&
-            html`<button
-              type="button"
-              class="ghost"
-              onClick=${() => setVnWindow(focused)}
-            >
-              ${`use “${focused}”`}
-            </button>`
+            // Kept in the list even when the game is not running: it is the
+            // setting's value, and dropping it would make closing the game look
+            // like losing it.
+            vnWindow &&
+            !windows.includes(vnWindow) &&
+            html`<option value=${vnWindow}>${`${vnWindow} (not open)`}</option>`
           }
-        </div>
+          ${windows.map(
+            // The window in front is the answer on a good day: the reader was
+            // looking at the game a moment ago. Said in the list rather than as
+            // a button beside it, which was a second control for one choice.
+            (w) => html`<option value=${w}>
+              ${w === focused ? `${w} — in front` : w}
+            </option>`,
+          )}
+        </select>
         ${hint && html`<div class="meta-hint">${hint}</div>`}
-      </div>
+      </div>`}
       <div class="actions">
         <button type="submit" disabled=${busy}>${busy ? "…" : "save"}</button>
         ${

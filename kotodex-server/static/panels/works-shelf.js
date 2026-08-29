@@ -39,6 +39,10 @@ function statusOf(w) {
   return w.meta?.status ?? "reading";
 }
 
+/** A filtered shelf already says which kind is being added, so the chooser has
+ *  nothing left to ask. */
+const ADD_KIND_FOR_FILTER = { vn: "work", book: "paper" };
+
 export function WorksShelf({ works, settings, onSaved, onOpen }) {
   const [adding, setAdding] = useState(false);
   // null = the chooser; a picked kind replaces it with that form inside the
@@ -88,7 +92,10 @@ export function WorksShelf({ works, settings, onSaved, onOpen }) {
           <button
             class="ghost add-toggle"
             title="Add a visual novel or a paper book"
-            onClick=${() => setAdding(true)}
+            onClick=${() => {
+              setAddKind(ADD_KIND_FOR_FILTER[kind] ?? null);
+              setAdding(true);
+            }}
           >
             +
           </button>
@@ -112,6 +119,7 @@ export function WorksShelf({ works, settings, onSaved, onOpen }) {
                 </div>`
               : addKind === "work"
                 ? html`<${WorkSearchForm}
+                    settings=${settings}
                     onSaved=${onSaved}
                     onCancel=${close}
                   />`
@@ -132,6 +140,10 @@ export function WorksShelf({ works, settings, onSaved, onOpen }) {
               with a title.
             </div>`
           : html`
+              ${
+                current.length > 0 &&
+                html`<h3 class="word-list-label">reading</h3>`
+              }
               <div class="shelf">
                 ${current.map(
                   (w) => html`
@@ -270,7 +282,7 @@ function CoverShelf({ label, works, caption, onOpen }) {
   if (!works.length) return null;
   return html`
     <div class="finished-shelf">
-      <div class="word-list-label">${label}</div>
+      <h3 class="word-list-label">${label}</h3>
       <div class="cover-row">
         ${works.map((w) => {
           const title = caption(w);

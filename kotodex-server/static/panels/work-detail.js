@@ -39,15 +39,18 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
   const [paper, setPaper] = useState(null);
 
   const isCurrent = settings?.current_work === work;
-  // "Read this next" points the logger at a title: every line it captures from
-  // here on is stamped with it. Meaningless for Articles, which is not a
-  // hookable thing but a bucket for text logged after the fact.
-  const canMakeCurrent = !isCurrent && work !== ARTICLES;
+  // "Read this" points the logger at a title: every line it captures from here
+  // on is stamped with it. Meaningless for Articles, which is not a hookable
+  // thing but a bucket for text logged after the fact.
+  //
+  // Stopping is the same control the other way round, and it is the only place
+  // that says out loud that reading nothing is a state a reader can be in.
+  const canSwitch = work !== ARTICLES;
 
-  async function makeCurrent() {
+  async function switchTo(title) {
     setBusy(true);
     try {
-      await setCurrentWork(work);
+      await setCurrentWork(title);
       onSaved();
     } catch (e) {
       alert(e.message);
@@ -148,9 +151,13 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
         </h2>
         <div class="card-controls">
           ${
-            canMakeCurrent &&
-            html`<button class="ghost" disabled=${busy} onClick=${makeCurrent}>
-              ${busy ? "…" : "read this"}
+            canSwitch &&
+            html`<button
+              class="ghost"
+              disabled=${busy}
+              onClick=${() => switchTo(isCurrent ? "" : work)}
+            >
+              ${busy ? "…" : isCurrent ? "stop reading" : "read this"}
             </button>`
           }
           ${
@@ -166,26 +173,26 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
       <div class="work-detail-head">
         ${meta?.cover && html`<img class="cover" src=${meta.cover} alt="" />`}
         <div class="work-detail-facts">
-          <div class="tile-row">
+          <dl class="tile-row">
             <div class="tile">
-              <div class="label">characters</div>
-              <div class="value">${detail.chars.toLocaleString("en")}</div>
+              <dt class="label">characters</dt>
+              <dd class="value">${detail.chars.toLocaleString("en")}</dd>
             </div>
             <div class="tile">
-              <div class="label">time</div>
-              <div class="value">${fmtHours(detail.active_secs)}</div>
+              <dt class="label">time</dt>
+              <dd class="value">${fmtHours(detail.active_secs)}</dd>
             </div>
             <div class="tile">
-              <div class="label">speed</div>
-              <div class="value">
+              <dt class="label">speed</dt>
+              <dd class="value">
                 ${speed ? `${fmtChars(Math.round(speed))}/h` : "—"}
-              </div>
+              </dd>
             </div>
             <div class="tile">
-              <div class="label">sittings</div>
-              <div class="value">${detail.sittings.length}</div>
+              <dt class="label">sittings</dt>
+              <dd class="value">${detail.sittings.length}</dd>
             </div>
-          </div>
+          </dl>
           ${readBetween && html`<div class="meta-hint">read ${readBetween}</div>`}
           ${
             pct !== null &&
@@ -213,11 +220,17 @@ export function WorkDetail({ work, works, settings, onBack, onSaved }) {
         >
           <${WorkMetaForm}
             work=${row}
+            isCurrent=${isCurrent}
             onSaved=${() => {
               setEditing(false);
               onSaved();
             }}
             onCancel=${() => setEditing(false)}
+            onDeleted=${() => {
+              setEditing(false);
+              onSaved();
+              onBack();
+            }}
           />
         <//>`
       }

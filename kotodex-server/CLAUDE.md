@@ -463,6 +463,67 @@ Mining:
   event, and `vn-capture.sh` over `GET /api/vn/window`. The script resolved it
   in its own SQL before, which is two places to say the same thing and one of
   them silently aiming at the last VN.
+- **Two ways to write it, and which one depends on what the surface knows.**
+  The work editor PUTs `works/{id}` because it is editing a work that need not
+  be the one being read; the overlay and the Today card PUT `/api/vn/window`,
+  which resolves the current work and upserts its row, because neither has a
+  library or an id. Both land in `db::set_work_vn_window`. The window is a field
+  of the work editor rather than a form of its own — as a second form with its
+  own save button, a reader could fill in three fields, close the dialog, and
+  find capture still pointing at the last VN.
+- **A fault the overlay can fix is the control that fixes it.** "no window set
+  for this work" is a button in `#warn` that opens ⚙ → Source, the same shape
+  the missing AI key already had. Naming where a setting lives and leaving the
+  reader to walk there is the same sentence with a walk in the middle.
+- **A chosen state is not a fault and does not go in the fault box.** `#info`
+  is its own box in the panel's own ink; `#warn` is the alert-coloured list of
+  what is wrong. Capture being paused is something the reader did on purpose, so
+  it reads as a reminder rather than as the app arguing with a button they just
+  pressed.
+- **Every line in either box disappears while ⚙ is open.** All of them are
+  shortcuts *into* that panel, so leaving them stacked over the controls they
+  point at is nagging about the thing being fixed. The one sentence that would
+  become a dead end that way — "nothing is being read" on the window list —
+  carries its own link instead.
+- **Resuming capture is not instant, and the gap is not a fault.** The logger
+  polls the flag and reconnects on its next tick, so `capture` reads `unhooked`
+  in between and every resume flashed "no line source" for about a second.
+  `RESUME_SETTLE_MS` holds the capture fault for two status events after the
+  pause flag moves.
+- **A pause silences the capture fault and nothing else.** Pausing is *for*
+  lines not arriving, so reporting that as a fault would train the reader to
+  ignore the badge — but the work and window faults are about the overlay being
+  set up wrong, and a pause does not make an unconfigured overlay correct.
+  Written with `paused` in front of all three at first, which hid both setup
+  faults from a reader who had paused in order to go and fix one.
+- **No work and no window are two faults, not one graded one.** With no work
+  every captured line is stamped with no title, and this surface cannot fix it —
+  picking a work is a VNDB search — so that line opens the dashboard through
+  `shell.openUrl` instead of the panel, landing on the Today card, which asks
+  the question with the box focused whenever nothing is being read. The window
+  fault is suppressed while there is no work: setting a window on nothing is
+  what `PUT /api/vn/window` refuses, and offering it was offering an error.
+  `CaptureStatus.work` is what lets the overlay tell them apart.
+- **The window attaches the overlay to the game; the screenshot is a
+  consequence.** It is what lets the line be laid over the game's own text and
+  follow it through a move, a resize or fullscreen, and only then what a mined
+  card's screenshot frames. Every surface used to list those consequences,
+  which was three sentences saying "go and set it" — they now say that, once.
+- **Neither the window nor the cover picker is drawn for a book.** Nothing hooks
+  a book, so there is no window to attach and the overlay is not over anything;
+  and VNDB has no entry to take a cover from. `kind` comes from `/api/works`, so
+  a work added through the VN search answers `vn` before it has been read.
+- **The window is picked from a list of what is open, never typed — and on the
+  overlay that list is rows, never a `<select>` or a `<datalist>`.** Both open a
+  native popup window and a layer surface has none to open one in, so the list
+  does not appear at all; `overlay.html` has said so beside the theme chips
+  since they were written, and every other choice on that panel is a `.row`
+  list for the same reason. The dashboard is an ordinary page and uses a real
+  `<select>`. The stored value stays in the list marked `(not open)` when the
+  game is not running, so quitting the game does not look like losing the
+  setting. `— in front` is a hint and never the mechanism: `xdotool
+  getactivewindow` answers nothing under KDE Wayland, so `focused` is routinely
+  null there while the window *list* is fine.
 - **Mining is implicit.** Every card path — the overlay's `reader/mine`, and
   Yomitan's `addNote` through `routes/ankiproxy` — adds through
   `services::card::add_note`, which fires vn-capture.sh once Anki accepts the
@@ -744,11 +805,35 @@ add to when the question is "does the SQL select what the derivation assumes".
   Goal and AI; the derivation thresholds are behind `Advanced`, and the vocabulary
   group is absent while the ledger is empty. Nine numbers with a paragraph each is
   not what a first visit should open on.
-- **Adding a work is a title search** (`GET /api/works/search`, VNDB by name), and
-  picking one sets it as the current work — reading it is why it was added. The
-  question is asked on the Today card when nothing is selected, not by pointing at
-  the Library. `total_chars` stays manual: VNDB has no character count, so the
-  progress bar asks for one once there is progress to show.
+- **Adding a work is a title search** (`GET /api/works/search`, VNDB by name).
+  The question is asked on the Today card when nothing is selected, not by
+  pointing at the Library. `total_chars` stays manual: VNDB has no character
+  count, so the progress bar asks for one once there is progress to show.
+- **The cover is picked with that same search, not with an id.** `VndbSearch` is
+  one component and the work editor holds a second copy of it, seeded with the
+  title the work already has. A box wanting `v3144` sent the reader to vndb.org
+  to fetch one, which is the errand the search exists to end. `vndb_id` has
+  three states on the way out and the field has to keep all three: absent leaves
+  the cover alone, `""` removes it, an id fetches.
+- **Adding the first work starts reading it; adding a later one shelves it.**
+  With nothing current there is nothing else "+" could mean; with a VN already
+  open, adding is queueing, and switching the capture target out from under a
+  session is not what was asked for. The checkbox is pre-answered from
+  `settings.current_work` and left visible, because a rule the dialog keeps to
+  itself is a rule the reader cannot disagree with.
+- **Reading nothing is a state.** `settings.current_work` takes the empty
+  string, and lines captured then are stamped with no title — they count towards
+  the day and towards no work. It is reachable from the Today card's switcher
+  and from a work's own **stop reading**, so a reader who has put a VN down is
+  not forced to leave it looking open.
+- **Removing a work removes its metadata, not its reading.** `works` is a row
+  *about* a title and the lines are stamped with the title, so a work that has
+  been read comes straight back on the shelf with nothing filled in — which is
+  what the confirm step has to say, because "remove" means two different things
+  depending on whether any of it has been read. Deleting the current work clears
+  `current_work` in the same handler: the setting names a title, and a work with
+  no reading behind it now exists nowhere else. Deleting the lines too is not
+  implemented and the button says so rather than being absent.
 - **The AI key is write-only.** It is not a field on `Settings` and not in
   `SETTING_KEYS`, so `GET /api/settings` cannot return it and `PUT /api/settings`
   refuses it; `load_settings` reads the row and keeps only `llm_has_key`. The

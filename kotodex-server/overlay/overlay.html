@@ -441,7 +441,11 @@
 
      Its own panel, because everything around the widget is transparent — bare
      words there are over whatever the game is drawing. */
+  /* One line per thing that is wrong, with air between them: two faults are two
+     separate problems and running them together reads as one paragraph. */
   #warn {
+    display: grid;
+    gap: 0.3rem;
     padding: 0.35rem 0.75rem;
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-control);
@@ -451,11 +455,49 @@
     font-size: 0.85rem;
     line-height: 1.35;
   }
+  /* A chosen state, not a fault: same box, the panel's own ink rather than the
+     alert colour. Pausing is something the reader did on purpose and the line
+     is a reminder of it, so colouring it like a broken capture would be the
+     app disagreeing with them. */
+  #info {
+    padding: 0.35rem 0.75rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-control);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    color: var(--ink-2);
+    font-size: 0.85rem;
+    line-height: 1.35;
+  }
   /* The panel would otherwise draw as an empty chip whenever there is nothing
      wrong, which is almost always. */
   #warn:empty,
-  #explain-box[data-shut] #warn {
+  #info:empty,
+  #explain-box[data-shut] #warn,
+  #explain-box[data-shut] #info {
     display: none;
+  }
+  /* Settings open means the reader is already dealing with it, and every one of
+     these lines is a shortcut *into* that panel — leaving them stacked over the
+     controls they point at is the app nagging about the thing being fixed. */
+  #settings-panel:not([hidden]) ~ #warn,
+  #settings-panel:not([hidden]) ~ #info {
+    display: none;
+  }
+  /* A fault the overlay can fix from here is the button that fixes it — reading
+     as the line it replaces, so the box stays a list of what is wrong rather
+     than becoming a toolbar. */
+  #warn button {
+    display: block;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+    cursor: pointer;
   }
 
   /* The model's read on the last line, and the button that asks for it. Placed
@@ -743,7 +785,11 @@
     text-align: right;
     color: var(--ink-3);
   }
-  /* A row whose control needs the whole width, and one that is only a note. */
+  /* A row whose control needs the whole width, and one that is only a note.
+     Both name their columns, so **neither takes a filler cell after it** — an
+     empty <span> behind a .wide lands in the next row's first column and
+     shunts that row's label into the second, which is what had "WebSocket
+     address" and "Game window" sitting indented under everything else. */
   .settings-body .wide {
     grid-column: 2 / -1;
   }
@@ -757,6 +803,18 @@
   }
   .settings-body .note.err {
     color: var(--danger-ink);
+  }
+  /* The action a note points at, inside the note. Reads as the sentence it
+     ends, not as a button parked under it. */
+  .settings-body .note-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
   }
 
   /* Chips, not a <select>: the dropdown is a native popup window, and a layer
@@ -843,6 +901,7 @@
      says, and the list came out two names to a line. */
   #set-line-source .row,
   #set-llm-provider .row,
+  #set-vn-window .row,
   #set-font .row {
     overflow: hidden;
     padding: 0.25rem 0.5rem;
@@ -856,11 +915,13 @@
   }
   #set-line-source .row:hover,
   #set-llm-provider .row:hover,
+  #set-vn-window .row:hover,
   #set-font .row:hover {
     background: var(--panel-hover);
   }
   #set-line-source .row.on,
   #set-llm-provider .row.on,
+  #set-vn-window .row.on,
   #set-font .row.on {
     background: var(--accent-fill);
     color: var(--accent-ink);
@@ -1194,13 +1255,12 @@
         <div class="row" data-source="ws">WebSocket</div>
         <div class="row" data-source="clipboard">Clipboard</div>
       </div>
-      <span></span>
       <label for="set-ws-url">WebSocket address</label>
-      <input id="set-ws-url" type="text" spellcheck="false" />
-      <span></span>
-      <label></label>
-      <div id="source-note" class="wide note"></div>
-      <span></span>
+      <input id="set-ws-url" type="text" spellcheck="false" class="wide" />
+      <div id="source-note" class="note"></div>
+      <span>Game window</span>
+      <div id="set-vn-window" class="wide"></div>
+      <div id="vn-window-note" class="note"></div>
     </div>
 
     <div class="settings-body" data-tab="ai" hidden>
@@ -1208,25 +1268,18 @@
       <input id="set-llm-key" type="password" spellcheck="false"
              placeholder="paste a key" autocomplete="off" />
       <button id="llm-key-save">Save</button>
-      <label></label>
-      <div id="llm-key-note" class="wide note"></div>
-      <span></span>
+      <div id="llm-key-note" class="note"></div>
       <label>Service</label>
       <div id="set-llm-provider" class="wide">
         <div class="row" data-provider="anthropic">Anthropic</div>
         <div class="row" data-provider="openai">OpenAI-compatible</div>
       </div>
-      <span></span>
       <label for="set-llm-base-url">Address</label>
-      <input id="set-llm-base-url" type="text" spellcheck="false" />
-      <span></span>
+      <input id="set-llm-base-url" type="text" spellcheck="false" class="wide" />
       <label for="set-llm-model">Model</label>
-      <input id="set-llm-model" type="text" spellcheck="false"
+      <input id="set-llm-model" type="text" spellcheck="false" class="wide"
              placeholder="leave empty for the default" />
-      <span></span>
-      <label></label>
-      <div id="llm-note" class="wide note"></div>
-      <span></span>
+      <div id="llm-note" class="note"></div>
     </div>
   </div>
   <div id="scrollback" hidden>
@@ -1237,6 +1290,7 @@
       <button id="scrollback-latest">Latest</button>
     </div>
   </div>
+  <div id="info"></div>
   <div id="warn"></div>
   <div id="explain-panel" hidden></div>
 </div>

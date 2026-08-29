@@ -116,24 +116,24 @@ export function CurrentReading({ works, settings, days, onSaved }) {
                 <span>${prog.caption}</span>
                 <span>${prog.pct.toFixed(1)}%</span>
               </div>
-              <div class="tile-row">
+              <dl class="tile-row">
                 <div class="tile">
-                  <div class="label">characters read</div>
-                  <div class="value">${fmtChars(current.chars)}</div>
+                  <dt class="label">characters read</dt>
+                  <dd class="value">${fmtChars(current.chars)}</dd>
                 </div>
                 <div
                   class="tile has-hint"
                   title="Reading time for this work"
                 >
-                  <div class="label">hours read</div>
-                  <div class="value">${hoursRead}</div>
+                  <dt class="label">hours read</dt>
+                  <dd class="value">${hoursRead}</dd>
                 </div>
                 ${
                   prog.started &&
                   html`
                     <div class="tile">
-                      <div class="label">started</div>
-                      <div class="value">${prog.started}</div>
+                      <dt class="label">started</dt>
+                      <dd class="value">${prog.started}</dd>
                     </div>
                   `
                 }
@@ -141,8 +141,8 @@ export function CurrentReading({ works, settings, days, onSaved }) {
                   prog.done
                     ? html`
                         <div class="tile">
-                          <div class="label">finished</div>
-                          <div class="value">${prog.finished ?? "—"}</div>
+                          <dt class="label">finished</dt>
+                          <dd class="value">${prog.finished ?? "—"}</dd>
                         </div>
                       `
                     : html`
@@ -150,22 +150,22 @@ export function CurrentReading({ works, settings, days, onSaved }) {
                           prog.remaining !== null &&
                           html`
                             <div class="tile">
-                              <div class="label">remaining</div>
-                              <div class="value">
+                              <dt class="label">remaining</dt>
+                              <dd class="value">
                                 ${fmtChars(prog.remaining)}
-                              </div>
+                              </dd>
                             </div>
                           `
                         }
                         <div class="tile">
-                          <div class="label">time left</div>
-                          <div class="value">
+                          <dt class="label">time left</dt>
+                          <dd class="value">
                             ${
                               prog.hoursLeft !== null
                                 ? `${prog.hoursLeft < 10 ? prog.hoursLeft.toFixed(1) : Math.round(prog.hoursLeft)} h`
                                 : "—"
                             }
-                          </div>
+                          </dd>
                         </div>
                         <div
                           class=${prog.finishHint ? "tile has-hint" : "tile"}
@@ -174,8 +174,8 @@ export function CurrentReading({ works, settings, days, onSaved }) {
                             "No estimate: needs both a remaining count and a non-zero recent pace."
                           }
                         >
-                          <div class="label">finish</div>
-                          <div class="value">${prog.finish ?? "—"}</div>
+                          <dt class="label">finish</dt>
+                          <dd class="value">${prog.finish ?? "—"}</dd>
                         </div>
                       `
                 }
@@ -186,14 +186,14 @@ export function CurrentReading({ works, settings, days, onSaved }) {
                       class="tile has-hint"
                       title="Reading speed in this work"
                     >
-                      <div class="label">speed</div>
-                      <div class="value">
+                      <dt class="label">speed</dt>
+                      <dd class="value">
                         ${fmtChars(Math.round(prog.speed))}/h
-                      </div>
+                      </dd>
                     </div>
                   `
                 }
-              </div>
+              </dl>
             </div>
           </div>
         `
@@ -213,16 +213,16 @@ export function CurrentReading({ works, settings, days, onSaved }) {
               <div class="title">
                 <a href=${detailHref}>${current.work}</a>
               </div>
-              <div class="tile-row">
+              <dl class="tile-row">
                 <div class="tile">
-                  <div class="label">characters read</div>
-                  <div class="value">${fmtChars(current.chars)}</div>
+                  <dt class="label">characters read</dt>
+                  <dd class="value">${fmtChars(current.chars)}</dd>
                 </div>
                 <div class="tile">
-                  <div class="label">hours read</div>
-                  <div class="value">${hoursRead}</div>
+                  <dt class="label">hours read</dt>
+                  <dd class="value">${hoursRead}</dd>
                 </div>
-              </div>
+              </dl>
               <div class="meta-hint">
                 No total length set. Add it with <strong>edit</strong> for
                 progress and a finish estimate.
@@ -258,8 +258,12 @@ export function CurrentReading({ works, settings, days, onSaved }) {
         // On the card rather than inside the edit dialog, because "where do I
         // tell it which window the game is" was the question the dialog was
         // the answer to and nothing said so. Not set is the state worth
-        // drawing: it is the one that silently screenshots the wrong thing.
+        // drawing: the overlay cannot follow the game until it is.
+        //
+        // A book has no window: nothing hooks it, and the overlay is not over
+        // anything.
         current &&
+        current.kind !== "book" &&
         html`
           <div class="now-reading">
             <label>Game window</label>
@@ -268,7 +272,7 @@ export function CurrentReading({ works, settings, days, onSaved }) {
                 vnWindow
                   ? html`<span class="work-window-name">${vnWindow}</span>`
                   : html`<span class="meta-hint">
-                      not set — a card's screenshot grabs whatever has focus
+                      not set — the overlay cannot follow the game
                     </span>`
               }
               ${

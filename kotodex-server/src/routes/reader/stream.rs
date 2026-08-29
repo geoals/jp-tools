@@ -222,6 +222,11 @@ struct CaptureStatus {
     /// overlay can find the game and lay the line over its own text — the same
     /// column `vn-capture.sh` reads, rather than a second place to set it.
     vn_window: Option<String>,
+    /// What is being read, or nothing. Beside the window because the overlay
+    /// has to tell "no window on this work" from "no work at all" — the second
+    /// is the one where every line captured is being stamped with no title, and
+    /// it is a different thing to say.
+    work: Option<String>,
 }
 
 /// A logger that has missed this many beats is not running. Three rather than
@@ -238,6 +243,7 @@ async fn capture_status(state: &AppState) -> CaptureStatus {
     let paused = settings.capture_paused;
     let vn_window = crate::services::capture::vn_window_for(state, &settings).await;
     let vn_window = (!vn_window.is_empty()).then_some(vn_window);
+    let work = Some(settings.current_work.clone()).filter(|w| !w.is_empty());
 
     let Some(beat) = beat else {
         return CaptureStatus {
@@ -246,6 +252,7 @@ async fn capture_status(state: &AppState) -> CaptureStatus {
             age_secs: None,
             pending: 0,
             vn_window,
+            work,
         };
     };
     // Paused outranks unhooked because a paused logger disconnects on purpose:
@@ -265,6 +272,7 @@ async fn capture_status(state: &AppState) -> CaptureStatus {
         age_secs: Some(beat.age()),
         pending: beat.pending,
         vn_window,
+        work,
     }
 }
 

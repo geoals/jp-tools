@@ -73,36 +73,36 @@ export function KanjiView() {
   return html`
     <div class="card">
       <h2>Kanji</h2>
-      <div class="tile-row" style="margin-top:0">
+      <dl class="tile-row" style="margin-top:0">
         <div class="tile">
-          <div class="label">distinct kanji</div>
-          <div class="value">${rows.length.toLocaleString("en")}</div>
+          <dt class="label">distinct kanji</dt>
+          <dd class="value">${rows.length.toLocaleString("en")}</dd>
         </div>
         <div class="tile">
-          <div class="label">jōyō met</div>
-          <div class="value">
+          <dt class="label">jōyō met</dt>
+          <dd class="value">
             ${Math.round((joyoMet / joyoTotal) * 100)}%
             <span class="value-sub">${joyoOf}</span>
-          </div>
+          </dd>
         </div>
         <div class="tile">
-          <div class="label">solid</div>
-          <div class="value">
+          <dt class="label">solid</dt>
+          <dd class="value">
             ${solid.toLocaleString("en")}
             <span class="value-sub">${solidOf}</span>
-          </div>
+          </dd>
         </div>
         <div class="tile">
-          <div class="label">seen once</div>
-          <div class="value">${once.toLocaleString("en")}</div>
+          <dt class="label">seen once</dt>
+          <dd class="value">${once.toLocaleString("en")}</dd>
         </div>
         <div class="tile">
-          <div class="label">kanji read</div>
-          <div class="value">
+          <dt class="label">kanji read</dt>
+          <dd class="value">
             ${kanji.total_encounters.toLocaleString("en")}
-          </div>
+          </dd>
         </div>
-      </div>
+      </dl>
     </div>
 
     <${GridCard} rows=${rows} solidAt=${solidAt} />

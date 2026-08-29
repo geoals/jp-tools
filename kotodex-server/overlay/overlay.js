@@ -50,6 +50,7 @@ if (font) root.setProperty("--line-font", `"${font}", sans-serif`);
 
 const lineEl = document.getElementById("line");
 const warnEl = document.getElementById("warn");
+const infoEl = document.getElementById("info");
 
 // What is wrong, one line per thing. Two faults are two lines in the one box
 // rather than one of them winning: a shut Anki and a dead capture are unrelated
@@ -66,7 +67,16 @@ const transient = new Map();
 
 function drawWarnings() {
   warnEl.replaceChildren(
-    ...[...faults.values(), ...transient.keys()].map((text) => {
+    ...[...faults.values()].map(({ text, act }) => {
+      // A fault the overlay can fix from here *is* the control that fixes it.
+      // Saying where a setting lives and leaving the reader to find it is the
+      // same sentence with a walk in the middle.
+      const line = document.createElement(act ? "button" : "div");
+      line.textContent = text;
+      if (act) line.addEventListener("click", act);
+      return line;
+    }),
+    ...[...transient.keys()].map((text) => {
       const line = document.createElement("div");
       line.textContent = text;
       return line;
@@ -74,9 +84,9 @@ function drawWarnings() {
   );
 }
 
-function setFault(key, text) {
-  if (faults.get(key) === (text || undefined)) return;
-  if (text) faults.set(key, text);
+function setFault(key, text, act) {
+  if ((faults.get(key)?.text ?? "") === (text ?? "")) return;
+  if (text) faults.set(key, { text, act });
   else faults.delete(key);
   drawWarnings();
 }
@@ -131,6 +141,10 @@ let shell = null;
 // none to give. Non-null is what puts the line over the game's own text.
 let game = null;
 let windowName = "";
+// What is being read, as the status event last reported it. Empty is a state a
+// reader can be in and the one worth reporting: every line captured then is
+// stamped with no title.
+let currentWork = "";
 // The lookup row the open popup was recorded as, so marking the word known can
 // take it back. Cleared with the popup: a retraction is only ever the popup
 // that made the row undoing itself.
@@ -216,7 +230,7 @@ const stream = new EventSource(`/api/lines/stream?backlog=${EXPLAIN_CONTEXT_LINE
 stream.onmessage = (e) => draw(JSON.parse(e.data));
 
 stream.addEventListener("status", (e) => {
-  const { capture, paused, vn_window } = JSON.parse(e.data);
+  const { capture, paused, vn_window, work } = JSON.parse(e.data);
 // What each capture state says to a reader who is looking at the game, not at
 // a log. `live` never reaches here.
 //
@@ -226,6 +240,18 @@ stream.addEventListener("status", (e) => {
 // answer is taken before the source has connected and then never changes —
 // which is how the bar said there was no line source into a session that was
 // capturing fine. `capture === "live"` already means one is attached.
+/** How long after the pause flag moves to stop reporting a missing source.
+ *
+ *  Resuming is not instant: the logger polls the flag and reconnects its socket
+ *  on the next tick, so `capture` reads `unhooked` in between. Without this,
+ *  every resume put "no line source" on screen for about a second — a fault
+ *  reported for the app doing exactly what it was told, which is how a reader
+ *  learns to ignore the box. Two status events wide, since they arrive every
+ *  two seconds. */
+const RESUME_SETTLE_MS = 4000;
+let pauseMovedAt = 0;
+let wasPaused = null;
+
 const CAPTURE_FAULT = {
   unhooked: "no line source — is Textractor running with its WebSocket plugin?",
   down: "capture is not running — start Kotodex, or `kotodex-capture restart`",
@@ -237,14 +263,45 @@ const CAPTURE_FAULT = {
   // of pausing, not a problem with it. Routing a chosen state through the fault
   // line is what put the bare word "paused" on screen whenever capture stopped.
   //
-  // A missing window name is worth saying out loud on its own line: the
-  // screenshot on a card then grabs the whole screen with the overlay on it,
-  // and nothing else here reports that.
+  if (wasPaused !== null && wasPaused !== paused) pauseMovedAt = Date.now();
+  wasPaused = paused;
+  const settling = Date.now() - pauseMovedAt < RESUME_SETTLE_MS;
   setFault(
     "capture",
-    paused || capture === "live" ? "" : (CAPTURE_FAULT[capture] ?? capture),
+    paused || settling || capture === "live"
+      ? ""
+      : (CAPTURE_FAULT[capture] ?? capture),
   );
-  setFault("window", paused || vn_window ? "" : "no window name on this work");
+  // A chosen state, said plainly and in its own box: it is not a fault, and
+  // colouring it like one would be the app arguing with the reader about a
+  // button they just pressed.
+  infoEl.textContent = paused
+    ? "⏸ Capture paused — no lines are being recorded."
+    : "";
+  // **Not suppressed while paused**, unlike the capture fault above. That rule
+  // is about lines not arriving, which is what pausing is *for*; these two are
+  // about the overlay being set up wrong, and a pause does not make an
+  // unconfigured overlay correct. Written with `paused` in front at first,
+  // which hid both of them for a reader who had paused to go and fix one.
+  //
+  // Two different absences, and the second is not a milder version of the
+  // first. With no work at all nothing read is counted anywhere, and this
+  // surface cannot fix it — picking a work is a VNDB search — so that line
+  // opens the dashboard instead of the panel.
+  setFault(
+    "work",
+    work
+      ? ""
+      : "nothing is being read — nothing is counted. Click here to pick a work",
+    openDashboard,
+  );
+  setFault(
+    "window",
+    !work || vn_window
+      ? ""
+      : "the overlay is not attached to the game — click here to pick its window",
+    openWindowSettings,
+  );
   // The flag, not `capture`: the logger takes a poll to close its socket, so
   // `capture` still reads `live` right after a pause and would flip the button
   // back under the click that set it.
@@ -255,9 +312,11 @@ const CAPTURE_FAULT = {
   // answers every push with the game's rectangle, and status arrives every two
   // seconds.
   const name = vn_window ?? "";
-  if (name !== windowName) {
+  if (name !== windowName || (work ?? "") !== currentWork) {
     windowName = name;
+    currentWork = work ?? "";
     shell?.setWindowName(windowName);
+    showWindowSetting();
   }
 });
 
@@ -1491,11 +1550,22 @@ showTheme(storedTheme());
 const tabBtnEls = [...document.querySelectorAll("#settings-tabs button")];
 const tabBodyEls = [...document.querySelectorAll(".settings-body")];
 
+/** Open the panel on one tab. Also how the two faults that can be fixed from
+ *  here send a reader to the box that fixes them. */
+function showTab(name) {
+  settingsPanelEl.hidden = false;
+  settingsBtnEl.classList.remove("off");
+  for (const btn of tabBtnEls) btn.classList.toggle("on", btn.value === name);
+  for (const body of tabBodyEls) body.hidden = body.dataset.tab !== name;
+  report();
+}
+
 for (const btn of tabBtnEls) {
   btn.addEventListener("click", () => {
-    for (const other of tabBtnEls) other.classList.toggle("on", other === btn);
-    for (const body of tabBodyEls) body.hidden = body.dataset.tab !== btn.value;
-    report();
+    showTab(btn.value);
+    // What is open changes while the panel is shut, so the list is taken when
+    // the tab holding it is reached rather than kept up to date.
+    if (btn.value === "source") loadWindows();
   });
 }
 
@@ -1503,6 +1573,7 @@ settingsBtnEl.addEventListener("click", () => {
   settingsPanelEl.hidden = !settingsPanelEl.hidden;
   settingsBtnEl.classList.toggle("off", settingsPanelEl.hidden);
   report();
+  if (!settingsPanelEl.hidden) loadWindows();
 });
 
 applyType();
@@ -1651,11 +1722,7 @@ llmModelEl.addEventListener("change", () => {
  *  a reader who has no key, so the answer to pressing it is the thing that turns
  *  it on rather than a message about a variable. */
 function openAiSettings() {
-  settingsPanelEl.hidden = false;
-  settingsBtnEl.classList.remove("off");
-  for (const btn of tabBtnEls) btn.classList.toggle("on", btn.value === "ai");
-  for (const body of tabBodyEls) body.hidden = body.dataset.tab !== "ai";
-  report();
+  showTab("ai");
   llmKeyEl.focus();
 }
 
@@ -1700,6 +1767,164 @@ wsUrlEl.addEventListener("change", () => {
   wsUrl = wsUrlEl.value.trim();
   saveSetting("line_source_ws_url", wsUrl);
 });
+
+// Which window is the game. The same column the dashboard's work editor writes
+// and `vn-capture.sh` reads — put here because the overlay is where its absence
+// is noticed: nothing else on this surface reports that a card's screenshot is
+// about to grab the whole screen with the overlay on it.
+//
+// A list of what is open rather than a box to type a title into. The reader is
+// picking one of a handful of running programs, and typing is the answer to a
+// question nobody has: the game's own title is what the tracker wants and the
+// game is the thing that knows it.
+//
+// Written through `PUT /api/vn/window` rather than by work id. This page has no
+// library and no id; what it has is the work being read, which is the one the
+// window belongs to.
+const vnWindowEl = document.getElementById("set-vn-window");
+const vnWindowNoteEl = document.getElementById("vn-window-note");
+
+let openWindows = [];
+let focusedWindow = null;
+
+/** What is open, asked when the panel is opened rather than held.
+ *
+ * The answer costs a round trip to the window manager and goes stale the moment
+ * the game is started or quit, so it is worth taking exactly when someone is
+ * looking at the list. */
+async function loadWindows() {
+  try {
+    const r = await (await fetch("/api/vn/windows")).json();
+    openWindows = r.windows ?? [];
+    focusedWindow = r.focused ?? null;
+  } catch {
+    openWindows = [];
+    focusedWindow = null;
+  }
+  showWindowSetting();
+}
+
+/** One pickable window. Rows, **never a `<select>` or a `<datalist>`** — see
+ *  the chips comment in overlay.html: both open a native popup window, and a
+ *  layer surface has none to open one in, so the list simply never appears.
+ *  Every other choice on this panel is drawn the same way for the same reason. */
+function windowRow(value, text, on) {
+  const el = document.createElement("div");
+  el.className = on ? "row on" : "row";
+  el.dataset.window = value;
+  el.textContent = text;
+  return el;
+}
+
+function showWindowSetting(name = windowName) {
+  // Nothing to pick from without a work to pick it for: the note carries the
+  // reason and the way out, which is a better empty list than a dead one.
+  if (!currentWork) {
+    vnWindowEl.replaceChildren();
+  } else {
+    const rows = [windowRow("", "— not set —", !name)];
+    // Kept in the list even when the game is not running: it is the setting's
+    // value, and dropping it would make closing the game look like losing it.
+    if (name && !openWindows.includes(name)) {
+      rows.push(windowRow(name, `${name} (not open)`, true));
+    }
+    for (const w of openWindows) {
+      // The window in front is the answer on a good day — the overlay never
+      // takes focus, so the game still has it. Marked in the list rather than
+      // offered as a button beside it, which was a second control for one
+      // choice. KDE under Wayland answers nothing here, so it is a hint and
+      // never the mechanism.
+      rows.push(windowRow(w, w === focusedWindow ? `${w} — in front` : w, w === name));
+    }
+    vnWindowEl.replaceChildren(...rows);
+  }
+  showWindowNote(name);
+}
+
+/** The note under the list, with the way out of the no-work state built into
+ *  it. A sentence telling the reader to go and pick a work, on a panel that
+ *  hides every warning while it is open, would be the only dead end left. */
+function showWindowNote(name) {
+  const err = !currentWork || !name;
+  vnWindowNoteEl.classList.toggle("err", err);
+  if (!currentWork) {
+    const link = document.createElement("button");
+    link.className = "note-link";
+    link.textContent = "Pick what you are reading";
+    link.addEventListener("click", openDashboard);
+    vnWindowNoteEl.replaceChildren(
+      "Nothing is being read, so there is no work to attach. ",
+      link,
+    );
+    return;
+  }
+  vnWindowNoteEl.textContent = windowNote(name);
+}
+
+/** What the list is for, and whether the current answer still names a window.
+ *
+ *  Attaching the overlay to the game is the thing worth pressing for: it is what
+ *  lets the line be laid over the game's own text, follow it as it moves or goes
+ *  fullscreen, and be screenshotted onto a card. Listing those consequences on
+ *  every surface was three sentences saying the same "go and set it". */
+function windowNote(name) {
+  if (!name) {
+    return "Pick the game's window so the overlay can follow it.";
+  }
+  if (!openWindows.length) return "";
+  return openWindows.includes(name)
+    ? "Attached."
+    : "Not open right now. Pick it again once the game is running.";
+}
+
+async function saveWindow(name) {
+  try {
+    const res = await fetch("/api/vn/window", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ window: name.trim() }),
+    });
+    if (!res.ok) {
+      vnWindowNoteEl.textContent = (await res.text()) || "could not be saved";
+      vnWindowNoteEl.classList.add("err");
+      return;
+    }
+  } catch (e) {
+    vnWindowNoteEl.textContent = String(e.message || e);
+    vnWindowNoteEl.classList.add("err");
+    return;
+  }
+  // The status event carries it back within two seconds and the shell is told
+  // then, so nothing here keeps a second copy of which window is the game.
+  showWindowSetting(name);
+}
+
+// Delegated: the rows are rebuilt whenever the list or the setting changes.
+vnWindowEl.addEventListener("click", (e) => {
+  const row = e.target.closest(".row");
+  if (row) saveWindow(row.dataset.window);
+});
+
+/** Open ⚙ on the Source tab with the list of windows fresh. Where the "no
+ *  window name" warning sends a reader, so pressing it is the thing that fixes
+ *  it rather than a sentence about where to look. */
+function openWindowSettings() {
+  showTab("source");
+  loadWindows();
+  vnWindowEl.focus();
+}
+
+/** The dashboard, in the desktop's browser.
+ *
+ *  The one thing this surface cannot do for itself: picking a work is a VNDB
+ *  search, and the overlay is a strip over a game. `#today` asks the question
+ *  with the box focused whenever nothing is being read, so the link lands on
+ *  it without needing to say so. */
+function openDashboard() {
+  const url = new URL("/", location.href).href;
+  if (shell) shell.openUrl(url);
+  else window.open(url, "_blank");
+}
 
 statusInputEl.addEventListener("change", () => setPaintStatus(statusInputEl.checked));
 commonInputEl.addEventListener("change", () => setCommonRank(Math.max(0, Number(commonInputEl.value) || 0)));

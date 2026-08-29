@@ -225,7 +225,10 @@ pub fn build_router(state: AppState) -> Router {
             axum::routing::post(reader::lines::undiscard_lines),
         )
         .route("/api/vn/windows", get(reader::capture::vn_windows))
-        .route("/api/vn/window", get(reader::capture::vn_window))
+        .route(
+            "/api/vn/window",
+            get(reader::capture::vn_window).put(reader::capture::set_vn_window),
+        )
         .route(
             "/api/reader/explain",
             axum::routing::post(reader::explain::explain_line),

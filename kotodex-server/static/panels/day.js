@@ -153,40 +153,40 @@ export function DayCard({ days, todayDate, goal }) {
       <${GoalMeter} mins=${mins} targetMins=${goal.target_mins} />
       <div class="meter-caption"><span>0</span><span>${targetLabel}</span></div>
 
-      <div class="tile-row">
+      <dl class="tile-row">
         <div class="tile">
-          <div class="label">characters</div>
-          <div class="value">${day.chars.toLocaleString("en")}</div>
+          <dt class="label">characters</dt>
+          <dd class="value">${day.chars.toLocaleString("en")}</dd>
         </div>
         <div class="tile">
-          <div class="label">speed</div>
-          <div class="value">
+          <dt class="label">speed</dt>
+          <dd class="value">
             ${speed ? `${fmtChars(Math.round(speed))}/h` : "—"}
-          </div>
+          </dd>
         </div>
         <div class="tile">
-          <div class="label">cards mined</div>
-          <div class="value">${day.cards > 0 ? day.cards : "—"}</div>
+          <dt class="label">cards mined</dt>
+          <dd class="value">${day.cards > 0 ? day.cards : "—"}</dd>
         </div>
         <div class="tile">
-          <div class="label">lookups</div>
-          <div class="value">
+          <dt class="label">lookups</dt>
+          <dd class="value">
             ${day.lookups > 0 ? day.lookups.toLocaleString("en") : "—"}
             ${lookupRate && html`<span class="value-sub">${lookupRate}</span>`}
-          </div>
+          </dd>
         </div>
         <div class="tile">
-          <div class="label">focus</div>
-          <div class="value">
+          <dt class="label">focus</dt>
+          <dd class="value">
             ${
               day.focus.ratio !== null
                 ? `${Math.round(day.focus.ratio * 100)}%`
                 : "—"
             }
             ${bestStretch && html`<span class="value-sub">${bestStretch}</span>`}
-          </div>
+          </dd>
         </div>
-      </div>
+      </dl>
 
       <div class="day-chart-head">
         <h3>Reading speed vs. lookups</h3>
