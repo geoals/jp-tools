@@ -468,6 +468,14 @@ function onWordClick(e) {
 // read as a click outside — so every pick closed the popup it had just opened.
 document.addEventListener("click", () => closePopup());
 
+// A click on anything that is not this surface — the game, a browser, the
+// desktop — never reaches the handler above: the input region ends at what is
+// drawn, so the compositor hands that click straight to the window underneath
+// and the page hears nothing about it. What it does hear is losing the
+// keyboard, which is the same event seen from this side, and it covers every
+// window rather than only the one whose new line happened to redraw the strip.
+window.addEventListener("blur", () => closePopup());
+
 // Escape closes the popup, then the scrollback. The layer surface only takes
 // the keyboard once it has been clicked, which by then it has been — opening
 // the scrollback is a click on it.
