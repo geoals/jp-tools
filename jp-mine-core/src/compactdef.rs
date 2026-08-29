@@ -38,6 +38,12 @@ use crate::tags::{FAMILIARITY_RUBRIC, FLAVOR_RUBRIC, TagLine};
 /// (`llm::Provider::model`). Opus rather than Sonnet for the meaning/usage prose.
 const MODEL: &str = "claude-opus-5";
 
+/// A gloss is a few lines, so this is a cost bound rather than a target. Wide
+/// enough for a reasoning model, whose thinking is charged against the cap
+/// before it writes a word — a cap sized for the gloss alone comes back empty,
+/// and an empty gloss leaves the card's headline field blank.
+const MAX_TOKENS: u32 = 4000;
+
 /// Built once from the shared tag rubric ([`crate::tags`]) plus the CompactDef-
 /// specific framing and output format. The FAMILIARITY/FLAVOR definitions live in
 /// `tags.rs` because every prompt that rates a word has to rate it by the same
@@ -271,7 +277,7 @@ async fn request(
             &Ask {
                 system: SYSTEM_PROMPT.as_str(),
                 messages,
-                max_tokens: 300,
+                max_tokens: MAX_TOKENS,
                 default_model: MODEL,
                 // The system block is identical on every card and is most of what
                 // a call costs. A mine inside the cache window reads it at a

@@ -207,32 +207,23 @@ impl Provider {
                 error_message(&json)
             )));
         }
+        if cut_off(self.kind, &json) {
+            return Err(Error::Failed(format!(
+                "{} stopped at max_tokens before finishing",
+                self.kind.as_str()
+            )));
+        }
         self.text(&json)
     }
 
-    /// Whether the endpoint accepts the key, and nothing else.
+    /// Whether the endpoint answers this key with usable text.
     ///
-    /// Separate from [`Provider::complete`] because it asks a different question:
-    /// a one-token reply is legitimately empty, so requiring text of it would
-    /// report a working key as broken.
+    /// A full request rather than a cheap one, because a reasoning model spends
+    /// the token budget before it writes anything: a request too small to finish
+    /// returns success and no text, which would report a configuration that
+    /// cannot answer as a working one.
     pub async fn probe(&self, http: &reqwest::Client, ask: &Ask<'_>) -> Result<(), Error> {
-        if self.api_key.trim().is_empty() {
-            return Err(Error::Unavailable("no API key is set".into()));
-        }
-        let resp = self
-            .send(http, self.body(ask, false))
-            .await
-            .map_err(|e| Error::Failed(format!("{} unreachable: {e}", self.kind.as_str())))?;
-        let status = resp.status();
-        if status.is_success() {
-            return Ok(());
-        }
-        let json: Value = resp.json().await.unwrap_or_default();
-        Err(Error::Failed(format!(
-            "{} returned {status}: {}",
-            self.kind.as_str(),
-            error_message(&json)
-        )))
+        self.complete(http, ask).await.map(|_| ())
     }
 
     /// The answer a piece at a time.
@@ -275,6 +266,8 @@ impl Provider {
             // Chunks split anywhere, including mid-line and mid-UTF-8, so frames
             // are reassembled here rather than decoded per chunk.
             let mut buf: Vec<u8> = Vec::new();
+            let mut any_text = false;
+            let mut ran_out = false;
             while let Some(chunk) = body.next().await {
                 match chunk {
                     Ok(bytes) => buf.extend_from_slice(&bytes),
@@ -285,10 +278,23 @@ impl Provider {
                 }
                 while let Some(nl) = buf.iter().position(|b| *b == b'\n') {
                     let line: Vec<u8> = buf.drain(..=nl).collect();
-                    if let Some(text) = delta(kind, &line) {
-                        yield Ok(text);
+                    let Some(frame) = frame(kind, &line) else { continue };
+                    ran_out |= frame.cut_off;
+                    if !frame.text.is_empty() {
+                        any_text = true;
+                        yield Ok(frame.text);
                     }
                 }
+            }
+            // A stream that ended having said nothing is a failure, not an empty
+            // answer: the surface waiting on it would otherwise sit on its
+            // placeholder with nothing to show and no reason why.
+            if !any_text {
+                yield Err(Error::Failed(if ran_out {
+                    format!("{} stopped at max_tokens before writing any text", kind.as_str())
+                } else {
+                    format!("no text in the {} reply", kind.as_str())
+                }));
             }
         }
     }
@@ -305,9 +311,13 @@ impl Provider {
                 .and_then(|block| block["text"].as_str()),
             Kind::OpenAi => json["choices"][0]["message"]["content"].as_str(),
         };
+        // An empty string is a failure, not an answer. Both shapes return one
+        // when the reply was all reasoning, and passing it on as success leaves
+        // a caller writing a blank where it meant to write a gloss.
         found
             .map(str::to_string)
-            .ok_or_else(|| Error::Failed(format!("no text in the {} response", self.kind.as_str())))
+            .filter(|text| !text.trim().is_empty())
+            .ok_or_else(|| Error::Failed(format!("no text in the {} reply", self.kind.as_str())))
     }
 }
 
@@ -319,25 +329,58 @@ fn error_message(json: &Value) -> String {
         .to_string()
 }
 
-/// The text one SSE line carries, or nothing — every other line is an event
+/// Whether a completed reply was cut off at `max_tokens` rather than finished.
+///
+/// A reasoning model can spend the whole budget thinking and return no text at
+/// all, so this separates a request that was too small from a model with
+/// nothing to say.
+fn cut_off(kind: Kind, json: &Value) -> bool {
+    match kind {
+        Kind::Anthropic => json["stop_reason"] == "max_tokens",
+        Kind::OpenAi => json["choices"][0]["finish_reason"] == "length",
+    }
+}
+
+/// What one SSE line carries.
+struct Frame {
+    /// Empty for a frame carrying no text — the OpenAI shape opens with a
+    /// role-only delta, and sends empty content while it is still reasoning.
+    text: String,
+    cut_off: bool,
+}
+
+/// The frame one SSE line carries, or nothing — every other line is an event
 /// name, a blank separator, the `[DONE]` sentinel, or a frame about something
 /// else (usage, block boundaries).
-fn delta(kind: Kind, line: &[u8]) -> Option<String> {
+fn frame(kind: Kind, line: &[u8]) -> Option<Frame> {
     let line = std::str::from_utf8(line).ok()?.trim();
     let payload = line.strip_prefix("data:")?.trim();
     if payload == "[DONE]" {
         return None;
     }
     let json: Value = serde_json::from_str(payload).ok()?;
-    match kind {
+    let (text, cut_off) = match kind {
         Kind::Anthropic => {
-            if json["type"] != "content_block_delta" || json["delta"]["type"] != "text_delta" {
-                return None;
-            }
-            Some(json["delta"]["text"].as_str()?.to_string())
+            let text = if json["type"] == "content_block_delta"
+                && json["delta"]["type"] == "text_delta"
+            {
+                json["delta"]["text"].as_str().unwrap_or_default()
+            } else {
+                ""
+            };
+            (text, json["delta"]["stop_reason"] == "max_tokens")
         }
-        Kind::OpenAi => Some(json["choices"][0]["delta"]["content"].as_str()?.to_string()),
-    }
+        Kind::OpenAi => (
+            json["choices"][0]["delta"]["content"]
+                .as_str()
+                .unwrap_or_default(),
+            json["choices"][0]["finish_reason"] == "length",
+        ),
+    };
+    Some(Frame {
+        text: text.to_string(),
+        cut_off,
+    })
 }
 
 #[cfg(test)]
@@ -416,28 +459,72 @@ mod tests {
         );
     }
 
+    fn text_of(kind: Kind, line: &[u8]) -> Option<String> {
+        frame(kind, line).map(|f| f.text).filter(|t| !t.is_empty())
+    }
+
     #[test]
     fn deltas_are_read_out_of_both_stream_shapes() {
         let anthropic =
             br#"data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}"#;
-        assert_eq!(delta(Kind::Anthropic, anthropic).as_deref(), Some("hi"));
+        assert_eq!(text_of(Kind::Anthropic, anthropic).as_deref(), Some("hi"));
         let openai = br#"data: {"choices":[{"delta":{"content":"hi"}}]}"#;
-        assert_eq!(delta(Kind::OpenAi, openai).as_deref(), Some("hi"));
+        assert_eq!(text_of(Kind::OpenAi, openai).as_deref(), Some("hi"));
     }
 
     #[test]
-    fn frames_that_are_not_text_yield_nothing() {
-        assert!(delta(Kind::OpenAi, b"data: [DONE]").is_none());
-        assert!(delta(Kind::Anthropic, b"event: message_start").is_none());
-        assert!(delta(Kind::Anthropic, b"\n").is_none());
-        // The OpenAI shape opens with a role-only delta carrying no content.
+    fn frames_that_are_not_text_carry_none() {
+        assert!(frame(Kind::OpenAi, b"data: [DONE]").is_none());
+        assert!(frame(Kind::Anthropic, b"event: message_start").is_none());
+        assert!(frame(Kind::Anthropic, b"\n").is_none());
+        // The OpenAI shape opens with a role-only delta carrying no content, and
+        // sends empty content for as long as it is still reasoning.
         assert!(
-            delta(
+            text_of(
                 Kind::OpenAi,
                 br#"data: {"choices":[{"delta":{"role":"assistant"}}]}"#
             )
             .is_none()
         );
+        assert!(
+            text_of(
+                Kind::OpenAi,
+                br#"data: {"choices":[{"delta":{"content":"","reasoning_content":"hm"}}]}"#
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn running_out_of_budget_is_visible_in_both_stream_shapes() {
+        let openai = br#"data: {"choices":[{"delta":{},"finish_reason":"length"}]}"#;
+        assert!(frame(Kind::OpenAi, openai).unwrap().cut_off);
+        let anthropic = br#"data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"}}"#;
+        assert!(frame(Kind::Anthropic, anthropic).unwrap().cut_off);
+    }
+
+    #[test]
+    fn a_reply_that_is_all_reasoning_is_an_error() {
+        let openai = json!({ "choices": [{ "message": { "content": "" } }] });
+        assert!(provider(Kind::OpenAi, "", "").text(&openai).is_err());
+        let anthropic = json!({ "content": [{ "type": "thinking", "thinking": "hm" }] });
+        assert!(provider(Kind::Anthropic, "", "").text(&anthropic).is_err());
+    }
+
+    #[test]
+    fn a_completed_reply_reports_running_out_of_budget() {
+        assert!(cut_off(
+            Kind::OpenAi,
+            &json!({ "choices": [{ "finish_reason": "length" }] })
+        ));
+        assert!(cut_off(
+            Kind::Anthropic,
+            &json!({ "stop_reason": "max_tokens" })
+        ));
+        assert!(!cut_off(
+            Kind::OpenAi,
+            &json!({ "choices": [{ "finish_reason": "stop" }] })
+        ));
     }
 
     #[test]

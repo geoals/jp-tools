@@ -50,7 +50,17 @@ const MODEL: &str = "claude-sonnet-5";
 
 /// The cap is a cost bound, not a target: an answer this prompt asks to be "very
 /// concise" runs well under it, and hitting it truncates mid-sentence.
-const MAX_TOKENS: u32 = 400;
+///
+/// Wide enough for a reasoning model, whose thinking is charged against this cap
+/// before it writes a word — this prompt costs one of those several hundred
+/// tokens of reasoning, and a cap sized for the answer alone buys nothing but an
+/// empty reply.
+const MAX_TOKENS: u32 = 4000;
+
+/// The key check asks a whole question and reads the answer, so it needs room to
+/// reach one. A cap too small to finish returns success and no text, which would
+/// pass a configuration that cannot answer.
+const PROBE_MAX_TOKENS: u32 = 1000;
 
 /// Which model this install asks, or `None` when no key has been given.
 ///
@@ -79,10 +89,12 @@ pub async fn available(state: &AppState) -> bool {
     provider(state).await.ok().flatten().is_some()
 }
 
-/// Send the cheapest possible request and report which model answered.
+/// Ask the configured model a whole question and report which one answered.
 ///
-/// One token and a one-word prompt: this is asked when a key is pasted, and the
-/// question is only whether the endpoint accepts it.
+/// The question is whether this configuration can produce an answer, not whether
+/// the endpoint accepts the key — so the reply has to arrive and hold text. A
+/// service that takes the key and returns nothing usable is the failure this is
+/// asked to catch.
 pub async fn check(state: &AppState) -> Result<String, AppError> {
     let Some(provider) = provider(state).await? else {
         return Err(AppError::BadRequest("no API key is set".into()));
@@ -94,7 +106,7 @@ pub async fn check(state: &AppState) -> Result<String, AppError> {
             &Ask {
                 system: "Reply with one word.",
                 messages: &messages,
-                max_tokens: 1,
+                max_tokens: PROBE_MAX_TOKENS,
                 default_model: MODEL,
                 cache_system: false,
             },
