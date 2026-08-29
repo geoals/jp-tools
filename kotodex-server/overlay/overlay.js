@@ -242,13 +242,20 @@ stream.addEventListener("status", (e) => {
 // capturing fine. `capture === "live"` already means one is attached.
 /** How long after the pause flag moves to stop reporting a missing source.
  *
- *  Resuming is not instant: the logger polls the flag and reconnects its socket
- *  on the next tick, so `capture` reads `unhooked` in between. Without this,
- *  every resume put "no line source" on screen for about a second — a fault
- *  reported for the app doing exactly what it was told, which is how a reader
- *  learns to ignore the box. Two status events wide, since they arrive every
- *  two seconds. */
-const RESUME_SETTLE_MS = 4000;
+ *  Resuming is genuinely not instant, and nothing here can make it so: three
+ *  independent two-second waits sit between the click and the answer. The
+ *  logger is parked in its pause poll (`PAUSE_POLL_SECS`), the flag it then
+ *  reads may be up to `SETTINGS_TTL` old, and this surface is told by a status
+ *  event that is republished every two seconds. Six seconds is that worst case.
+ *
+ *  The fourth wait was the logger's own heartbeat, which is why it now
+ *  publishes on connect rather than on its next tick.
+ *
+ *  Reported as nothing at all rather than as a fault: for this window the
+ *  answer is not "no source", it is "not known yet", and a fault raised for the
+ *  app doing exactly what it was told is how a reader learns to ignore the
+ *  box. A Textractor that really is down is still reported, six seconds later. */
+const RESUME_SETTLE_MS = 6000;
 let pauseMovedAt = 0;
 let wasPaused = null;
 

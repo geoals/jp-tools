@@ -889,6 +889,12 @@ async def pump(out, stats, state):
             ) as ws:
                 log(f"connected to {url}")
                 state["ws"] = ws
+                # At once, rather than on `beat`'s next tick. Resuming already
+                # costs the pause poll and the settings TTL before the socket is
+                # opened at all; waiting a further heartbeat to *say so* is what
+                # put "no line source" on the reader's screen for a second after
+                # every resume. The same reason the close below reports itself.
+                stats.heartbeat(True)
                 watcher = asyncio.create_task(watch_pause(ws, stats))
                 try:
                     last = await read_lines(ws, out, stats, last)
@@ -897,6 +903,7 @@ async def pump(out, stats, state):
                 finally:
                     watcher.cancel()
                     state["ws"] = None
+                    stats.heartbeat(False)
         except (OSError, websockets.WebSocketException) as e:
             log(f"connect to {url} failed ({e}), retrying")
             await asyncio.sleep(RECONNECT_SECS)

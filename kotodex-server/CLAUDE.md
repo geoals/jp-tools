@@ -485,11 +485,15 @@ Mining:
   point at is nagging about the thing being fixed. The one sentence that would
   become a dead end that way — "nothing is being read" on the window list —
   carries its own link instead.
-- **Resuming capture is not instant, and the gap is not a fault.** The logger
-  polls the flag and reconnects on its next tick, so `capture` reads `unhooked`
-  in between and every resume flashed "no line source" for about a second.
-  `RESUME_SETTLE_MS` holds the capture fault for two status events after the
-  pause flag moves.
+- **Resuming capture is not instant, and the gap is not a fault.** Three
+  independent two-second waits sit between the click and the answer: the
+  logger's pause poll (`PAUSE_POLL_SECS`), the age of the flag it then reads
+  (`SETTINGS_TTL`), and the status event's own republish. A fourth — the
+  logger's heartbeat cadence — is gone: `pump` now publishes a heartbeat the
+  moment the socket is up, and on close, instead of waiting for `beat`'s next
+  tick. `RESUME_SETTLE_MS` covers what is left, and reports **nothing** during
+  it rather than a fault: for that window the answer is not "no source" but
+  "not known yet".
 - **A pause silences the capture fault and nothing else.** Pausing is *for*
   lines not arriving, so reporting that as a fault would train the reader to
   ignore the badge — but the work and window faults are about the overlay being
