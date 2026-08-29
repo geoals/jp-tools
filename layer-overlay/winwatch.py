@@ -194,3 +194,12 @@ class WindowWatch:
     def rect(self):
         """The window as `x, y, width, height`, or None while there is none."""
         return self._rect
+
+    @property
+    def window(self) -> int:
+        """The tracked window's handle, 0 while there is none.
+
+        Read by [`winfocus`], which asks whose process is in front rather than
+        where anything is.
+        """
+        return self._window

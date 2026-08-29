@@ -43,6 +43,8 @@ decides the Qt platform plugin.
   interface, because neither platform's is `QWindow.setMask`.
 - `xwatch.py` / `winwatch.py` — where the tracked window is, told by the
   display server rather than polled.
+- `winfocus.py` — Windows only: the surface off screen while something other
+  than the tracked window is being used.
 - `runner.sh` — sourced by a caller's launcher for
   `start`/`stop`/`restart`/`ensure`/`status`, detached from the shell that
   started it. Linux only.
@@ -72,6 +74,30 @@ there.
 
 That leaves the page nothing to dismiss things with, since a click outside never
 arrives — it has to close on its own terms.
+
+## Hidden while something else is in use
+
+Windows only. The surface is topmost, so a browser or an editor brought to the
+front is drawn *under* it — right while the tracked window is being read and
+wrong the moment anything else is. `winfocus.py` hides it whenever the
+foreground window belongs to neither the tracked window's process nor this one,
+and shows it again when it comes back. It never hides while no window is being
+tracked, so a game that has quit or has not started still leaves the page
+reachable. `LAYER_OVERLAY_FOCUS_GATE=0` turns it off.
+
+This process counting as the tracked one is the whole of why it is stable. The
+same rule written against focus alone oscillates: the surface takes focus, which
+reads as the game no longer being in front, so it hides, which hands focus back
+to the game, which shows it again.
+
+There is no X11 or Wayland equivalent. Under a Wayland session a game runs in
+XWayland while the surface is native, and neither side can be asked a question
+that answers for both, which is where the loop above came from.
+
+The other way to write this — putting the surface one place above the tracked
+window in the z-order rather than at the top of everything — is what Windows
+offers and what a game undoes: raising itself puts it back above the surface,
+and a game that asserts topmost on focus does it every time it is clicked.
 
 ## What the page has to do
 

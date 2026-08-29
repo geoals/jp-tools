@@ -62,9 +62,11 @@ backend.apply_environment(BACKEND)
 # same two questions - where the tracked window is, and what takes clicks - so
 # everything below is written against the interface rather than against either.
 if BACKEND == backend.WINDOWS:
+    import winfocus
     import wininput as inputregion
     import winwatch as windowwatch
 else:
+    winfocus = None
     import xshape as inputregion
     import xwatch as windowwatch
 
@@ -152,18 +154,33 @@ class Overlay(QObject):
             inputregion.InputRegion() if BACKEND != backend.LAYER_SHELL else None
         )
         # Windows has no input region, so the one it emulates has to be
-        # re-evaluated as the cursor moves rather than set and forgotten.
+        # re-evaluated as the cursor moves rather than set and forgotten. The
+        # focus gate rides the same timer rather than taking a hook of its own —
+        # see [`winfocus.FocusGate`].
         self._cursor = None
+        self._focus = None
         if BACKEND == backend.WINDOWS:
+            self._focus = winfocus.gate()
             self._cursor = QTimer()
             self._cursor.setInterval(inputregion.POLL_MS)
-            self._cursor.timeout.connect(self._input.poll)
+            self._cursor.timeout.connect(self._windows_tick)
             self._cursor.start()
         self._probe = QTimer()
         self._probe.setInterval(
             DISCOVERY_POLL_MS if self._watch.available else GEOMETRY_POLL_MS
         )
         self._probe.timeout.connect(self._poll_geometry)
+
+    def _windows_tick(self) -> None:
+        """The Windows backend's per-frame work, in the order it has to happen.
+
+        The gate first: showing the surface and then raising it is one tick,
+        because the raise is what [`wininput.InputRegion.poll`] does when it
+        notices the same foreground change.
+        """
+        if self._focus is not None and self._window is not None and not self.hidden:
+            self._focus.poll(int(self._window.winId()), self._watch.window)
+        self._input.poll()
 
     @Slot(str)
     def setWindowName(self, name: str) -> None:

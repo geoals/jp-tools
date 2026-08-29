@@ -95,6 +95,7 @@ Freeze 'kotodex-overlay' (Join-Path $Repo 'kotodex-server\overlay\vn-overlay.py'
     # Imported behind `if BACKEND == backend.WINDOWS`, which PyInstaller's static
     # analysis does see - named anyway, because losing either is a crash on the
     # first line rather than a build error.
+    '--hidden-import', 'winfocus',
     '--hidden-import', 'wininput',
     '--hidden-import', 'winwatch'
 )
