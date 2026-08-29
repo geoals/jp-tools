@@ -1,7 +1,14 @@
 // Editing a work's metadata, and switching which one is being read.
 //
 // `setCurrentWork` is the one write the reading pipeline depends on: the title
-// it stores is stamped onto every line the logger captures next.
+// it stores is stamped onto every line the logger captures next. The empty
+// string is a value it takes: nothing is being read, and lines captured until
+// something is get stamped with no title at all.
+//
+// Everything a work *is* is edited in one form — length, cover, status, and the
+// window the game draws in. The window used to be a second form glued under the
+// dialog with a save button of its own, which is how a reader could set the
+// three fields, close, and find the capture still pointing at the last VN.
 //
 // **Adding a work is a title search, not a form.** It used to be: type the
 // title, open vndb.org in another tab, find the entry, copy its id back, then
@@ -35,8 +42,14 @@ export async function setCurrentWork(title) {
  *  the work with no VNDB entry behind it, which is the case for a doujin release
  *  or anything not a VN at all.
  */
-export function WorkSearchForm({ onSaved, onCancel }) {
+export function WorkSearchForm({ settings, onSaved, onCancel }) {
   const [q, setQ] = useState("");
+  // Adding the *first* work is starting to read it — there is nothing else it
+  // could mean, and asking would be a question with one answer. Adding while
+  // something is already open is shelving: the library is as much a list of
+  // what comes next as of what is being read now, and switching the capture
+  // target out from under a session is not what "+" was pressed for.
+  const [start, setStart] = useState(!settings?.current_work);
   const [results, setResults] = useState(null);
   const [searching, setSearching] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -74,10 +87,13 @@ export function WorkSearchForm({ onSaved, onCancel }) {
     try {
       await api("/api/works", {
         method: "POST",
-        body: { title, vndb_id: vndbId || undefined, status: "reading" },
+        body: {
+          title,
+          vndb_id: vndbId || undefined,
+          status: start ? "reading" : "planned",
+        },
       });
-      // Reading it is why you added it. Anything else is a click in the library.
-      await setCurrentWork(title);
+      if (start) await setCurrentWork(title);
       onSaved();
       onCancel?.();
     } catch (e) {
@@ -93,7 +109,7 @@ export function WorkSearchForm({ onSaved, onCancel }) {
         type="text"
         autofocus
         spellcheck="false"
-        placeholder="type the title — Japanese or romanized"
+        placeholder="search for the title"
         value=${q}
         onInput=${(e) => setQ(e.currentTarget.value)}
       />
@@ -126,6 +142,15 @@ export function WorkSearchForm({ onSaved, onCancel }) {
       !searching &&
       html`<p class="settings-hint">Nothing on vndb by that name.</p>`}
 
+      <label class="work-search-start">
+        <input
+          type="checkbox"
+          checked=${start}
+          onChange=${(e) => setStart(e.currentTarget.checked)}
+        />
+        Start reading it now
+      </label>
+
       <div class="actions">
         ${q.trim() &&
         html`<button type="button" onClick=${() => create(q.trim(), null)}>
@@ -137,25 +162,60 @@ export function WorkSearchForm({ onSaved, onCancel }) {
         </button>`}
         ${msg && html`<span class="form-msg error">${msg.text}</span>`}
       </div>
-      <p class="settings-hint">
-        Picking one fills in the cover. Paste the character count from jiten.moe
-        for the progress bar.
-      </p>
     </div>
   `;
 }
 
-/** Metadata editor for one work, used to edit an existing one.
+/** The open windows and the one in front, for pointing capture at the game.
+ *
+ *  Fetched when the form mounts rather than held on the dashboard's poll: the
+ *  reader's next move after seeing "not set" is to click the game and come
+ *  back, and a list taken a minute ago will not have it in.
+ */
+function useOpenWindows() {
+  const [windows, setWindows] = useState([]);
+  const [focused, setFocused] = useState(null);
+  useEffect(() => {
+    api("/api/vn/windows")
+      .then((r) => {
+        setWindows(r.windows || []);
+        setFocused(r.focused || null);
+      })
+      .catch(() => {});
+  }, []);
+  return { windows, focused };
+}
+
+/** Whether what is in the box matches a window that is actually open. A stale
+ *  title still mines — it screenshots the wrong thing, silently, which is the
+ *  one fault here nothing else reports. */
+function windowHint(name, windows) {
+  if (!name) {
+    return "Not set — a screenshot grabs whatever has focus, which may be this browser.";
+  }
+  if (!windows.length) return "";
+  return windows.some((w) => w.includes(name))
+    ? "Matches an open window."
+    : "Nothing open matches this. Re-pick it while the game is running.";
+}
+
+/** Metadata editor for one work: everything the work *is*, saved together.
  *
  *  Editing PUTs by id so the title is never part of the update — retitling via
  *  POST would upsert a second row rather than rename, since the title is the
  *  join key lines are stamped with. Every field is prefilled from current
  *  metadata; status especially, because it is always sent and a blank select
- *  would silently reset a finished work to reading. */
+ *  would silently reset a finished work to reading.
+ *
+ *  The window is here rather than beside the capture controls because it is a
+ *  property of the work — each game draws in its own window, and switching VNs
+ *  switches the target with it. */
 
-export function WorkMetaForm({ work, onSaved, onCancel }) {
+export function WorkMetaForm({ work, isCurrent, onSaved, onCancel, onDeleted }) {
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
+  const { windows, focused } = useOpenWindows();
+  const [vnWindow, setVnWindow] = useState(work?.meta?.vn_window ?? "");
   const id = work?.meta?.id ?? null;
 
   async function save(e) {
@@ -165,6 +225,10 @@ export function WorkMetaForm({ work, onSaved, onCancel }) {
       vndb_id: f.vndb.value.trim() || undefined,
       total_chars: f.total.value ? Number(f.total.value) : undefined,
       status: f.status.value,
+      // Always sent, empty included: emptying the box is how the window is
+      // cleared, and an undefined would make that the one edit the form
+      // cannot make.
+      vn_window: vnWindow.trim(),
     };
     setBusy(true);
     setMsg(null);
@@ -185,6 +249,8 @@ export function WorkMetaForm({ work, onSaved, onCancel }) {
       setBusy(false);
     }
   }
+
+  const hint = windowHint(vnWindow.trim(), windows);
 
   return html`
     <form class="log work-meta-form" onSubmit=${save}>
@@ -228,6 +294,39 @@ export function WorkMetaForm({ work, onSaved, onCancel }) {
           )}
         </select>
       </div>
+      <div class="work-window-field">
+        <label for="vn-window-input">game window</label>
+        <div class="work-window-row">
+          <input
+            id="vn-window-input"
+            type="text"
+            list="open-windows"
+            spellcheck="false"
+            value=${vnWindow}
+            onInput=${(e) => setVnWindow(e.currentTarget.value)}
+            placeholder="part of the game's window title"
+          />
+          <datalist id="open-windows">
+            ${windows.map((w) => html`<option value=${w}></option>`)}
+          </datalist>
+          ${
+            // One button on a good day: the reader was looking at the game a
+            // moment ago, so the window in front is almost always the answer
+            // and reading thirty titles out of a list is not. It fills the box
+            // rather than saving, so the window goes in with everything else.
+            focused &&
+            focused !== vnWindow &&
+            html`<button
+              type="button"
+              class="ghost"
+              onClick=${() => setVnWindow(focused)}
+            >
+              ${`use “${focused}”`}
+            </button>`
+          }
+        </div>
+        ${hint && html`<div class="meta-hint">${hint}</div>`}
+      </div>
       <div class="actions">
         <button type="submit" disabled=${busy}>${busy ? "…" : "save"}</button>
         ${
@@ -243,6 +342,99 @@ export function WorkMetaForm({ work, onSaved, onCancel }) {
           >`
         }
       </div>
+      ${
+        onDeleted &&
+        html`<${RemoveWork}
+          work=${work}
+          isCurrent=${isCurrent}
+          onDeleted=${onDeleted}
+        />`
+      }
     </form>
+  `;
+}
+
+/** Taking a work off the shelf.
+ *
+ *  What it removes is the *metadata* — the cover, the length, the status, the
+ *  window — because that is all a `works` row is. The reading is stamped with
+ *  the title, not with the row, so a work that has been read keeps its lines,
+ *  its sittings and its place in every figure, and comes back on the shelf as a
+ *  title with no cover. A work with nothing read under it disappears outright,
+ *  since the row was the only thing that said it existed.
+ *
+ *  Saying which of those two it will be is the whole point of the confirm step:
+ *  "remove" meaning two different things depending on whether you have read any
+ *  of it is exactly the surprise worth spending a click on. */
+function RemoveWork({ work, isCurrent, onDeleted }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const id = work?.meta?.id ?? null;
+  if (id === null) return null;
+  const read = (work?.chars ?? 0) > 0;
+
+  async function remove() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await api(`/api/works/${id}`, { method: "DELETE" });
+      onDeleted();
+    } catch (e) {
+      setMsg(e.message);
+      setBusy(false);
+    }
+  }
+
+  if (!confirming) {
+    return html`<div class="work-danger">
+      <div class="work-danger-row">
+        <button type="button" class="ghost" onClick=${() => setConfirming(true)}>
+          remove from library
+        </button>
+      </div>
+    </div>`;
+  }
+
+  return html`
+    <div class="work-danger">
+      <div class="meta-hint">
+        ${
+          read
+            ? "Removes the cover, length, status and window. The reading stays: this title keeps its lines and its sittings, and stays on the shelf with nothing filled in."
+            : "Nothing has been read under this title, so it goes entirely."
+        }
+      </div>
+      ${
+        isCurrent &&
+        html`<div class="meta-hint">
+          This is what you are reading — removing it stops reading it.
+        </div>`
+      }
+      <div class="work-danger-row">
+        <button type="button" class="danger" disabled=${busy} onClick=${remove}>
+          ${busy ? "…" : "remove"}
+        </button>
+        ${
+          read &&
+          html`<button
+            type="button"
+            class="ghost"
+            onClick=${() =>
+              setMsg("Not implemented — the lines stay in the ledger.")}
+          >
+            delete the reading too
+          </button>`
+        }
+        <button
+          type="button"
+          class="ghost"
+          onClick=${() => setConfirming(false)}
+        >
+          cancel
+        </button>
+        ${msg && html`<span class="form-msg error">${msg}</span>`}
+      </div>
+    </div>
   `;
 }

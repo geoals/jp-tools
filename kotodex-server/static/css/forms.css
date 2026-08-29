@@ -378,3 +378,20 @@ table.days tr.today td {
   align-items: center;
   margin-top: 14px;
 }
+
+/* Whether adding a work also starts reading it. A checkbox rather than a rule
+   the dialog keeps to itself: it is pre-answered from whether anything is being
+   read, and the reader has to be able to see that answer to disagree with it. */
+.work-search-start {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.work-search-start input {
+  width: auto;
+  margin: 0 8px 0 0;
+}

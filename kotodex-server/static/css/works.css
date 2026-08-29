@@ -225,7 +225,7 @@ a.ghost:hover {
   align-items: flex-start;
 }
 .work-detail-head .cover {
-  width: 120px;
+  width: 140px;
   border-radius: 6px;
   border: 1px solid var(--border);
   flex: none;
@@ -332,6 +332,13 @@ a.ghost:hover {
 }
 
 /* Now reading */
+.now-reading + .now-reading,
+.meta-hint + .now-reading,
+.work-search + .now-reading {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
 .now-reading label {
   display: block;
   font-size: 12px;
@@ -355,7 +362,7 @@ a.ghost:hover {
   font: inherit;
   font-size: 14px;
 }
-.now-reading button {
+.now-reading button:not(.ghost) {
   padding: 7px 14px;
   border: none;
   border-radius: 6px;
@@ -477,4 +484,77 @@ table.vocab-split tbody tr:first-child td {
   border: 1px solid var(--grid);
   border-radius: 4px;
   padding: 1px 6px;
+}
+
+/* The window the game draws in, on the Today card. Shown rather than hidden in
+   the edit dialog because "where do I tell it which window the game is" was the
+   question the dialog was the answer to, and nothing on the card said so. */
+.work-window-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+/* The row inside .now-reading carries a .meta-hint when nothing is set, and
+   that hint's own bottom margin would push the buttons off the baseline. */
+.now-reading-row .meta-hint {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+/* The same field in the work editor. Full width like .log-wide: a window title
+   is as long as a game's publisher felt like, and the "use the one in front"
+   button carries another one inside it. */
+.work-meta-form .work-window-field,
+.work-meta-form .work-danger {
+  grid-column: 1 / -1;
+}
+.work-window-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.work-window-row input {
+  flex: 1;
+  min-width: 0;
+}
+.work-window-row button {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Taking a work off the shelf. Ruled off rather than tucked behind a menu: it
+   is one click away in a dialog the reader opened on purpose, and the confirm
+   step is where what it will actually remove gets said. */
+.work-danger {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  margin-top: 4px;
+}
+.work-danger-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.work-danger-row button.danger {
+  padding: 3px 9px;
+  border: 1px solid var(--warn);
+  border-radius: 5px;
+  background: none;
+  color: var(--warn);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.work-danger-row button.danger:disabled {
+  opacity: 0.6;
+  cursor: default;
 }

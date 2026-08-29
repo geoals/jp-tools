@@ -14,24 +14,7 @@ export function CurrentReading({ works, settings, days, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [winBusy, setWinBusy] = useState(false);
-  const [windows, setWindows] = useState([]);
   const [focused, setFocused] = useState(null);
-
-  // Refetched when the dialog opens rather than only on mount: the reader's next
-  // move after seeing "not set" is to click the game and come back, and a list
-  // taken sixty seconds ago will not have it in.
-  useEffect(() => {
-    if (!editing) return;
-    api("/api/vn/windows")
-      .then((r) => {
-        setWindows(r.windows || []);
-        setFocused(r.focused || null);
-      })
-      .catch(() => {
-        setWindows([]);
-        setFocused(null);
-      });
-  }, [editing]);
 
   const title = settings.current_work;
   const current = title ? works.find((w) => w.work === title) : null;
@@ -49,10 +32,25 @@ export function CurrentReading({ works, settings, days, onSaved }) {
   const detailHref = current
     ? `#library/${encodeURIComponent(current.work)}`
     : null;
+  const vnWindow = meta?.vn_window ?? "";
+
+  // Only while it is missing, and only for the current work: asking the desktop
+  // what is open costs a round trip to the window manager, and the answer is
+  // wanted for one button that is worth drawing on the day the box is empty.
+  // Changing a window that is already set goes through the edit dialog, which
+  // fetches the list itself.
+  useEffect(() => {
+    if (!current || vnWindow) return;
+    api("/api/vn/windows")
+      .then((r) => setFocused(r.focused || null))
+      .catch(() => setFocused(null));
+  }, [current?.work, vnWindow]);
 
   async function pick(e) {
+    // The empty string is a value here: it stops reading anything, which is
+    // what a reader who has put a VN down and not started another one means.
     const next = e.currentTarget.value;
-    if (!next || next === title) return;
+    if (next === title) return;
     setBusy(true);
     try {
       await setCurrentWork(next);
@@ -64,27 +62,20 @@ export function CurrentReading({ works, settings, days, onSaved }) {
     }
   }
 
-  async function setWindow(title) {
-    if (!meta?.id) return;
+  // Through the current work rather than by id: the title may have no metadata
+  // row yet — the tracker stamps lines with whatever is current — and the
+  // endpoint creates one. The edit dialog writes the same column by id, because
+  // there it is editing a work that need not be the one being read.
+  async function setWindow(name) {
     setWinBusy(true);
     try {
-      // Per-work now, so the capture target switches with the VN. Requires the
-      // work to have a metadata row, which the current one always does.
-      await api(`/api/works/${meta.id}`, {
-        method: "PUT",
-        body: { vn_window: title.trim() },
-      });
+      await api("/api/vn/window", { method: "PUT", body: { window: name } });
       onSaved();
     } catch (err) {
       alert(err.message);
     } finally {
       setWinBusy(false);
     }
-  }
-
-  function saveWindow(e) {
-    e.preventDefault();
-    setWindow(e.currentTarget.vnwindow.value);
   }
 
   return html`
@@ -212,6 +203,12 @@ export function CurrentReading({ works, settings, days, onSaved }) {
         !prog &&
         html`
           <div class="current-work">
+            ${
+              meta.cover &&
+              html`<a href=${detailHref}
+                ><img class="cover" src=${meta.cover} alt="cover"
+              /></a>`
+            }
             <div class="info">
               <div class="title">
                 <a href=${detailHref}>${current.work}</a>
@@ -251,9 +248,45 @@ export function CurrentReading({ works, settings, days, onSaved }) {
         !title &&
         html`
           <div class="meta-hint">
-            No work selected.
+            Nothing being read. Lines captured now are stamped with no title,
+            so they count towards the day but towards no work.
           </div>
-          <${WorkSearchForm} onSaved=${onSaved} />
+          <${WorkSearchForm} settings=${settings} onSaved=${onSaved} />
+        `
+      }
+      ${
+        // On the card rather than inside the edit dialog, because "where do I
+        // tell it which window the game is" was the question the dialog was
+        // the answer to and nothing said so. Not set is the state worth
+        // drawing: it is the one that silently screenshots the wrong thing.
+        current &&
+        html`
+          <div class="now-reading">
+            <label>Game window</label>
+            <div class="now-reading-row">
+              ${
+                vnWindow
+                  ? html`<span class="work-window-name">${vnWindow}</span>`
+                  : html`<span class="meta-hint">
+                      not set — a card's screenshot grabs whatever has focus
+                    </span>`
+              }
+              ${
+                !vnWindow &&
+                focused &&
+                html`<button
+                  class="ghost"
+                  disabled=${winBusy}
+                  onClick=${() => setWindow(focused)}
+                >
+                  ${winBusy ? "…" : `use “${focused}”`}
+                </button>`
+              }
+              <button class="ghost" onClick=${() => setEditing(true)}>
+                ${vnWindow ? "change" : "choose…"}
+              </button>
+            </div>
+          </div>
         `
       }
       <div class="now-reading">
@@ -265,10 +298,7 @@ export function CurrentReading({ works, settings, days, onSaved }) {
             disabled=${busy}
             onChange=${pick}
           >
-            ${
-              !title &&
-              html`<option value="" selected disabled>pick a work…</option>`
-            }
+            <option value="" selected=${!title}>— nothing —</option>
             ${
               unmatched &&
               html`<option value=${title} selected>${title}</option>`
@@ -290,64 +320,18 @@ export function CurrentReading({ works, settings, days, onSaved }) {
         >
           <${WorkMetaForm}
             work=${current}
+            isCurrent=${true}
             onSaved=${onSaved}
             onCancel=${() => setEditing(false)}
+            onDeleted=${() => {
+              setEditing(false);
+              onSaved();
+            }}
           />
-          <form class="now-reading" onSubmit=${saveWindow}>
-            <label for="vn-window-input">VN window</label>
-            ${
-              // One button on a good day: the reader was looking at the game a
-              // moment ago, so the window in front is almost always the answer
-              // and reading thirty titles out of a list is not.
-              focused &&
-              focused !== meta?.vn_window &&
-              html`<div class="now-reading-row">
-                <button
-                  type="button"
-                  disabled=${winBusy}
-                  onClick=${() => setWindow(focused)}
-                >
-                  ${`Use “${focused}”`}
-                </button>
-              </div>`
-            }
-            <div class="now-reading-row">
-              <input
-                id="vn-window-input"
-                name="vnwindow"
-                type="text"
-                list="open-windows"
-                value=${meta?.vn_window ?? ""}
-                placeholder="pick the VN's window"
-              />
-              <datalist id="open-windows">
-                ${windows.map((w) => html`<option value=${w}></option>`)}
-              </datalist>
-              <button type="submit" disabled=${winBusy}>
-                ${winBusy ? "…" : "set"}
-              </button>
-            </div>
-            <div class="meta-hint">${vnWindowHint(meta, windows)}</div>
-          </form>
         <//>`
       }
     </div>
   `;
-}
-
-/** Why this box exists, and whether what's in it currently matches a real
- *  window — a stale title still mines, it just screenshots the wrong thing.
- *  The window is a property of the current work, so it travels with the VN. */
-
-function vnWindowHint(meta, windows) {
-  const set = meta?.vn_window;
-  if (!set) {
-    return "Not set — screenshots will capture whatever has focus.";
-  }
-  const matches = windows.some((w) => w.includes(set));
-  return matches
-    ? `Captures match "${set}".`
-    : `No open window matches "${set}". Re-pick it if the VN is running.`;
 }
 
 /** The library is where works are managed: switch the current one, edit
