@@ -39,10 +39,10 @@ fn is_kanji_line(line: &str) -> bool {
 /// Deterministic sample: every nth line of the eligible ones. No RNG, so
 /// regenerating on the same corpus gives the same fixture.
 ///
-/// **Only for a fixture that does not exist yet.** The step is `len / 250`, so
-/// it moves as the corpus grows and a resample would swap the 250 sentences
-/// under the snapshot — leaving a diff no one can read against the rule that
-/// was changed. Delete `corpus.txt` to draw a new sample deliberately.
+/// **Only for a fixture that does not exist yet.** The step depends on the
+/// corpus length, so it moves as the corpus grows and a resample would swap the
+/// sampled sentences under the snapshot — leaving a diff no one can read against
+/// the rule that changed. Delete `corpus.txt` to draw a new sample deliberately.
 fn sample(lines: Vec<&str>) -> Vec<String> {
     let step = (lines.len() / LINES).max(1);
     lines
@@ -150,12 +150,11 @@ async fn main() {
     let all_prefs = dictionaries::preferred_readings(pool, master_dict.id, jitendex.id, bccwj.id)
         .await
         .unwrap();
-    // The whole map, *not* narrowed to `lexicon` like the fixtures above it.
-    // Every other input is written out as the same value the snapshot below is
-    // built from; this one was written filtered and snapshotted whole, so the
-    // fixture could not reproduce its own expected output. The keys the filter
-    // dropped are exactly the non-master ones — the terms the snapshot marks
-    // `?` — and a run of them is a join the test then has no way to make.
+    // The whole map, *not* narrowed to `lexicon` like the fixtures above it:
+    // the snapshot below is built from the whole map, so writing a filtered one
+    // leaves the fixture unable to reproduce its own expected output. The keys a
+    // filter drops are exactly the non-master ones — the terms the snapshot
+    // marks `?` — and a run of them is a join the test then cannot make.
     let mut prefs: Vec<String> = all_prefs
         .iter()
         .map(|(term, p)| {
@@ -199,8 +198,8 @@ async fn main() {
     .unwrap();
 
     // The cast of every work read, which is what the name pass consults. The
-    // whole list, not the part the corpus reaches: it is 62 strings, and a
-    // filtered one would hide the name that a later sample happens to contain.
+    // whole list, not the part the corpus reaches: it is short, and a filtered
+    // one would hide the name that a later sample happens to contain.
     let names: HashSet<String> = jp_core::knowledge::work_names::all(&k)
         .await
         .unwrap()

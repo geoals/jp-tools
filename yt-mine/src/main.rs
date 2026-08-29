@@ -36,7 +36,6 @@ async fn main() {
 
     let config = Config::from_env();
 
-    // Ensure output directories exist
     std::fs::create_dir_all(&config.audio_dir).expect("failed to create audio directory");
     std::fs::create_dir_all(&config.media_dir).expect("failed to create media directory");
     let media_dir = std::fs::canonicalize(&config.media_dir)
@@ -76,10 +75,10 @@ async fn main() {
             highlighter: None,
         }
     } else {
-        // The reader's own pipeline, all seven inputs — not a bare Sudachi with
-        // the headword list, which is what this used to build. A transcript and
-        // a hooked VN line have to be segmented the same way, or a word mined
-        // here lands on a ledger key `#read` never produces.
+        // The reader's own pipeline, all seven inputs, rather than a bare Sudachi
+        // with the headword list. A transcript and a hooked VN line have to be
+        // segmented the same way, or a word mined here lands on a ledger key
+        // `#read` never produces.
         let highlighter = Arc::new(
             Highlighter::build(&knowledge, &config.sudachi_dict_path)
                 .await

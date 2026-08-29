@@ -14,15 +14,13 @@ pub type Shared = std::sync::Arc<tokio::sync::OnceCell<std::sync::Arc<Highlighte
 
 /// Start building it now, off the startup path.
 ///
-/// It used to be built on first use and nothing else, which put the whole
-/// Sudachi dictionary load — 5.6 seconds, measured — in front of whichever
-/// request happened to need it first. After a restart that is the reader's
-/// first popup: `reader/expand` answered in 5.6s once and 1.5ms every time
-/// after, and the word being looked up had nothing to do with it.
+/// Built on first use alone, the whole Sudachi dictionary load — several seconds
+/// — lands in front of whichever request needs it first, which after a restart is
+/// the reader's first popup.
 ///
-/// Spawned rather than awaited, because the reason it was lazy still holds —
-/// the dashboard is most of what this server does and none of it needs a
-/// tokenizer, so nothing should wait on one to start listening.
+/// Spawned rather than awaited: the dashboard is most of what this server does
+/// and none of it needs a tokenizer, so nothing should wait on one to start
+/// listening.
 pub fn warm(state: crate::app::AppState) {
     tokio::spawn(async move {
         // Timed because "the lines took seconds to tint" is otherwise answered by

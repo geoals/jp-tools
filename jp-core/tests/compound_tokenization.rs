@@ -18,8 +18,8 @@ fn parse_headwords(text: &str) -> Vec<String> {
 
 /// Sudachi has no entry for these, so they arrive as a content word plus a
 /// trailing 接尾辞 — 度し(動詞) + 難い(接尾辞). The parts spell the master
-/// headword exactly, which is the strongest signal recomposition has, and it
-/// was being refused because the suffix is not a content word.
+/// headword exactly, which is the strongest signal recomposition has — strong
+/// enough that the suffix not being a content word must not refuse the join.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_trailing_suffix_may_spell_a_listed_headword() {
@@ -46,9 +46,8 @@ fn a_trailing_suffix_may_spell_a_listed_headword() {
     assert!(bare.tokenize("度し難い").unwrap().len() > 1);
 }
 
-/// An idiom with particles inside is four or five morphemes, and at a cap of
-/// three recomposition never offered the run at all — the master listed the
-/// word and nothing ever asked about it.
+/// An idiom with particles inside is four or five morphemes, so a cap of three
+/// never offers the run at all and the master's listing goes unasked.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn an_idiom_longer_than_three_morphemes_is_still_offered() {

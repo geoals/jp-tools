@@ -22,8 +22,8 @@ export async function streamExplain({ context, focus = "", onText }) {
   });
   // A failure before the stream opens is still an ordinary HTTP error. The body
   // is the message itself — kotodex-server writes its errors as plain text, so
-  // parsing it as JSON threw the reason away and left "Bad Request" on screen
-  // where the reason was what happened.
+  // parsing it as JSON would throw the reason away and leave "Bad Request" on
+  // screen where the reason belongs.
   if (!res.ok) {
     throw new Error((await res.text().catch(() => "")) || res.statusText);
   }

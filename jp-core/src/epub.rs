@@ -201,10 +201,9 @@ fn resolve(base: &str, href: &str) -> String {
     parts.join("/")
 }
 
-// --- the two hand-rolled XML readers ---------------------------------------
-//
-// Both only ever look at `container.xml` and the OPF, which are machine-written
-// and must be valid XML for any reader to open the book at all.
+// The two hand-rolled XML readers only ever look at `container.xml` and the OPF,
+// which are machine-written and must be valid XML for any reader to open the book
+// at all.
 
 /// Every `<name ...>` tag in the document, as raw tag text.
 fn tags_named(xml: &str, name: &str) -> Vec<String> {
@@ -258,8 +257,6 @@ fn attr(tag: &str, name: &str) -> Option<String> {
     }
     None
 }
-
-// --- markup stripping -------------------------------------------------------
 
 /// Tags whose *contents* are not text: metadata, code, and ruby readings.
 const DROPPED_CONTENT: &[&str] = &["head", "script", "style", "rt", "rp"];

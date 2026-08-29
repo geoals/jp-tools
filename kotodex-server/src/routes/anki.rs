@@ -236,7 +236,7 @@ pub async fn anki_cards(
 }
 
 /// How many rows of each bucket travel with the report. The counts are whole;
-/// the lists are for looking at, and a bucket of 900 is judged from its head.
+/// the lists are for looking at, and a large bucket is judged from its head.
 const BUCKET_SAMPLE: usize = 200;
 
 /// Re-encounter statistics: how often mined words reappear in the line stream.
@@ -263,7 +263,6 @@ pub async fn anki_summary(State(state): State<AppState>) -> Result<Json<Value>, 
             .or_insert((n.note_id, date));
     }
 
-    // Encounters per mined lemma, split into after-mined-day and last-7-days.
     let mut after: BTreeMap<&str, i64> = BTreeMap::new();
     let mut week: BTreeMap<&str, i64> = BTreeMap::new();
     let hits = db::fetch_mined_word_days(&state.knowledge).await?;
@@ -289,7 +288,6 @@ pub async fn anki_summary(State(state): State<AppState>) -> Result<Json<Value>, 
         .map(|(w, c)| json!({ "word": w, "count": c }))
         .collect();
 
-    // Never re-encountered since mined, oldest cards first.
     let mut never: Vec<_> = mined
         .iter()
         .filter(|(vocab, _)| !after.contains_key(vocab.as_str()))

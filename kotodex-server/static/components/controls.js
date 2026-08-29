@@ -3,8 +3,6 @@
 
 import { html } from "htm/preact";
 
-/** A row of mutually exclusive choices, styled as one segmented control. */
-
 export function SegmentedControl({ value, options, onChange, label }) {
   return html`
     <div class="segmented" role="group" aria-label=${label}>

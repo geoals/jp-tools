@@ -1,9 +1,8 @@
 // Light/dark, and the one place that decides it.
 //
-// The palette in css/base.css already answers to both the OS signal and an
-// explicit `data-theme` stamp on <html>. All this does is set the stamp, and
-// remember the choice — so a preference survives a reload, and "system" really
-// means system rather than a frozen copy of what the OS said at first paint.
+// The palette in css/base.css answers to both the OS signal and an explicit
+// `data-theme` stamp on <html>; this sets the stamp and remembers the choice.
+// "system" removes the stamp, so it keeps tracking the OS as it changes.
 //
 // Applied before render (see spa.html) so there is no light flash on a dark
 // device: the stamp has to be on the element before the first paint, which a
@@ -11,7 +10,7 @@
 
 const KEY = "kotodex-theme";
 
-/** The three states the control offers. "system" removes the stamp entirely. */
+/** The three states the control offers. */
 export const THEMES = ["system", "light", "dark"];
 
 export function storedTheme() {

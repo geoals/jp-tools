@@ -35,12 +35,11 @@ async fn main() {
             .expect("failed to retire the pauses table");
     }
 
-    // Best-effort, and off the boot path: attach JMdict entry ids to any
-    // dictionary cached before they were stored. They are what tells the
-    // vocabulary count that 叔父, 伯父 and おじ are one word
-    // (`jp_core::knowledge::lexeme`). Until it finishes, the count is merely
-    // conservative — it over-reports by a few dozen spellings — so nothing
-    // needs to wait for it. Parsing Jitendex takes a while and runs once.
+    // Best-effort, and off the boot path: attach JMdict entry ids to any cached
+    // dictionary that has none. They are what tells the vocabulary count that
+    // 叔父, 伯父 and おじ are one word (`jp_core::knowledge::lexeme`). Until it
+    // finishes the count is only conservative, so nothing waits for it. Parsing
+    // Jitendex takes a while and runs once.
     if !config.demo {
         tokio::spawn({
             let knowledge = knowledge.clone();

@@ -28,9 +28,8 @@ what the thing does, how to set it up, the endpoints and the config.
   `day_rollover_hour` (04:00) so late-night reading counts to the evening.
 
   The 30 comes from the measured gap distribution rather than from feel: gaps
-  containing a lookup cluster at 10–32s (median 24, p90 32) while gaps without
-  one have a p90 of 9. At 20 the majority of lookups were being clipped,
-  inflating chars/h by ~6%.
+  containing a lookup run several times longer than gaps without one, and a
+  lower cap clips most lookups and inflates chars/h.
 - **Yomitan lookups are counted by proxying AnkiConnect**
   (`routes/ankiproxy.rs`). Yomitan checks Anki for duplicates on every definition
   popup, so with its server address pointed at `/anki-proxy` each popup becomes a
@@ -407,7 +406,8 @@ them, which is why the numerator isn't plain `chars`. The shaded gap between the
 is the **lookup tax**, with the whole-day figure stated below the chart.
 
 A gap counts as lookup time when a `lookups` row falls inside it — a separation
-sharp enough to trust, at a median 21.3s against 3.1s for gaps without one. It is
+sharp enough to trust, since such gaps run many times longer than gaps with no
+lookup in them. It is
 all-or-nothing per gap, which biases the tax upward: a long gap catches a lookup
 and is billed whole even when the dictionary wasn't why it was long. Good to a
 couple of points, not to the decimal.
@@ -494,7 +494,7 @@ curl -X POST localhost:3200/api/sessions -H 'Content-Type: application/json' \
   the field name empty to disable. Without a key the field gets the first
   dictionary sense instead.
 - `KOTODEX_AUTO_CAPTURE_ON_ADD` (default **on**) — fire `vn-capture.sh` after
-  any card add (audio + picture, best-effort). This *is* mining now; there
+  any card add (audio + picture, best-effort). This *is* mining; there
   is no button. Set to `0` on a machine that serves the dashboard but doesn't
   run the VN — where the capture script is simply absent it already no-ops with
   a warning.

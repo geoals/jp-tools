@@ -136,10 +136,9 @@ pub async fn mine(
     // asking Anki a second time — and a duplicate answers `null`, which is the
     // honest answer to "did this add a card".
     let note_id = crate::services::card::new_note_id(&replied);
-    // AnkiConnect answers 200 with the refusal in the body, so the status code
-    // is not the outcome — a missing note type came back as a success with no
-    // card behind it, and the ＋ went quiet as if the click had been dropped.
-    // `ok` is whether a card exists now, and `error` is Anki's own sentence.
+    // AnkiConnect answers 200 with the refusal in the body, so the status code is
+    // not the outcome: a missing note type reads as a success with no card behind
+    // it. `ok` is whether a card exists now, and `error` is Anki's own sentence.
     let error = anki_error(&replied);
     Ok(Json(
         json!({ "ok": note_id.is_some(), "note_id": note_id, "error": error }),

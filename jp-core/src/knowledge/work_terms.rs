@@ -15,8 +15,7 @@
 //!   much studying it needs.
 //! - **by token** — of its running text, how much is known: how it will *feel*.
 //!
-//! They routinely sit ten points apart, because the words a work repeats are the
-//! common ones.
+//! They diverge widely, because the words a work repeats are the common ones.
 
 use sqlx::Row;
 

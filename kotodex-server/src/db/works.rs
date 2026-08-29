@@ -1,8 +1,8 @@
 //! `works` — the source dimension: one row per VN, book or article.
 //!
 //! The join key is the **exact title string** stamped onto `lines.work` and
-//! `manual_sessions.work`, not an id — vn-ws-logger.py writes the title it is given
-//! and has no way to look up a foreign key. So a row here is metadata *about* a
+//! `manual_sessions.work`, not an id — a source posts the title it is given and
+//! has no way to look up a foreign key. So a row here is metadata *about* a
 //! title (cover, status, queue position, capture window), and a title with no
 //! row still reads and counts perfectly well.
 

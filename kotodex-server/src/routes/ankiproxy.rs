@@ -3,8 +3,8 @@
 //! Yomitan checks Anki for duplicates every time it displays a definition
 //! popup, so pointing its "Server address" at this endpoint turns every lookup
 //! into an observable event. Requests are forwarded to the real AnkiConnect
-//! byte-for-byte and the response returned unchanged, so mining behaves exactly
-//! as it did before — this sits in the path but never alters it.
+//! byte-for-byte and the response returned unchanged, so mining behaves as if
+//! the proxy were not there — it sits in the path but never alters it.
 //!
 //! Only *read* actions count. Adding a card is preceded by the popup that
 //! already counted, so counting `addNote` too would double up.

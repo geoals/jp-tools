@@ -51,7 +51,6 @@ def health():
 
 @app.post("/transcribe")
 async def transcribe(audio: UploadFile = File(...), words: bool = False):
-    # Save uploaded audio to a temporary file
     suffix = os.path.splitext(audio.filename or "audio.wav")[1]
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(await audio.read())

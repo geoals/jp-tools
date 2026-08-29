@@ -54,8 +54,6 @@ requirement: any lag, and any gap between the two boxes, is a click that was
 aimed at the popup landing on the VN — which advances the line and closes the
 popup being aimed at. `qwebchannel.js` is injected from Qt's own resources, so
 kotodex-server serves nothing for it.
-`vn-overlay.py` runs perfectly well by hand; the wrapper only handles being
-started from somewhere without a desktop session attached.
 
 Three actions on a word, and only one of them opens the popup:
 
@@ -67,8 +65,8 @@ Three actions on a word, and only one of them opens the popup:
 | wheel               | page the open popup's dictionaries  | no              |
 
 Opening the popup *is* the lookup, so it is the only thing that counts as one.
-Reaching a button through the popup meant judging a word already understood
-recorded a lookup that never happened, which is why the side buttons carry those
+Reaching a button through the popup makes judging a word already understood
+record a lookup that never happened, which is why the side buttons carry those
 two. Judging repaints the word; mining reports with a desktop notification and
 nothing else.
 
@@ -142,7 +140,7 @@ connection can be opened. Everything in `overlay.html`'s `--text-*` is a fractio
 of that rectangle, so moving or resizing the game carries the line with it and
 another resolution needs no re-measuring. No rectangle — no name on the work, no
 way to reach X, a Wayland-native game — and the line falls back to sitting
-against the screen, which is where it sat before any of this.
+against the screen.
 
 The `--text-*` defaults are measured off one VN. Another wants its own: drag the
 line onto the game's own text to find the offset, which is stored as fractions
@@ -185,10 +183,10 @@ Yomitan's audio sources point, so both surfaces attach the same file.
 Yomitan does not run here, so alt-tab to `#read` when the tokenizer picks the
 wrong boundary.
 
-Three things Qt will not survive, all found the hard way: **calling a PySide
-slot from inside a `runJavaScript` callback segfaults** (a WebChannel slot is a
-different path and is fine); **QML's `console.log` reaches nothing here** —
-which is why that crash first looked like a timer failing to fire; and
+Three things Qt will not survive: **calling a PySide slot from inside a
+`runJavaScript` callback segfaults** (a WebChannel slot is a different path and
+is fine); **QML's `console.log` reaches nothing here**, so that segfault reads as
+a timer that never fired; and
 **`WebEngineScript` cannot be declared in QML** (it is a value type), so the
 injected script is built in Python. Also: `WebEngineView.webChannel` wants a
 `QQmlWebChannel`, which PySide does not expose, so the channel is declared in

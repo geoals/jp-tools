@@ -67,9 +67,8 @@ pub struct AppState {
     pub sudachi_dict_path: std::path::PathBuf,
     pub vn_capture_script: std::path::PathBuf,
     /// `KOTODEX_ANTHROPIC_API_KEY`, the fallback behind the stored key. Read
-    /// through [`crate::services::llm::provider`] and nowhere else — a key in
-    /// the environment is what `setup.sh` writes, so an install that predates the
-    /// settings row still has one.
+    /// through [`crate::services::llm::provider`] and nowhere else. `setup.sh`
+    /// writes this one.
     pub env_api_key: Option<String>,
     /// whisper-service base URL, probed for the reader's trim-status indicator.
     pub whisper_url: String,
@@ -191,13 +190,12 @@ pub fn build_router(state: AppState) -> Router {
         // The capability matrix, past its cache — what "check again" asks after
         // the reader has done something outside the app.
         .route("/api/setup", get(reader::capabilities::setup))
-        // The ledger's front door: any source, over HTTP, from any machine.
+        // Where every source hands its text over, from any machine.
         .route("/api/lines", axum::routing::post(ingest::ingest_lines))
         .route(
             "/api/lines/retract",
             axum::routing::post(ingest::retract_line),
         )
-        // Reading view: live line feed + the mine trigger.
         .route("/api/lines/stream", get(reader::stream::lines_stream))
         .route("/api/lines/before", get(reader::lines::lines_before))
         .route("/api/reader/state", get(reader::state::reader_state))

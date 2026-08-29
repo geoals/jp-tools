@@ -1,9 +1,8 @@
 """What the launcher's platform answers for, on Windows.
 
 See `host.py` for the contract. This is the whole of the Windows-specific
-launcher: three components rather than Linux's three — kotodex-server, the
-Textractor source and the overlay — because capture is audio and Linux-only, and
-so is the doctor.
+launcher. Its components are kotodex-server, the Textractor source and the
+overlay: capture is audio and Linux-only, and so is the doctor.
 """
 
 import os
@@ -152,9 +151,9 @@ def attach_console() -> None:
     """Write to the console that launched us, where there is one.
 
     The frozen launcher is a GUI application and has no console of its own, so
-    `kotodex.exe status` printed nowhere. Skipped when the streams are already
-    somewhere — a caller capturing the output has redirected them, and a GUI
-    launch has no console to attach to.
+    without this `kotodex.exe status` prints nowhere. Skipped when the streams are
+    already somewhere — a caller capturing the output has redirected them, and a
+    GUI launch has no console to attach to.
     """
     import ctypes
 
@@ -183,8 +182,7 @@ def spawn_kwargs(child) -> dict:
     and an abortive disconnect crashes Textractor itself. So the source gets a
     real console with its window hidden through `STARTUPINFO`, and a process group
     of its own for the event to be sent to. Under `CREATE_NO_WINDOW` it ignores
-    the break event and has to be killed; this way it exits with 0 in a third of a
-    second.
+    the break event and has to be killed.
     """
     if child.name != SOURCE:
         return {"creationflags": CREATE_NO_WINDOW}
@@ -200,8 +198,8 @@ def _break(pid: int) -> bool:
     Always to the child's own process group, which is what it was given one for.
     Never to the whole console: the launcher may be sharing that console, and a
     sender cannot exempt itself — `SetConsoleCtrlHandler(NULL, TRUE)` ignores
-    CTRL+C alone, so the launcher stopped itself half way through its own
-    shutdown and left the server running.
+    CTRL+C alone, so the launcher would stop half way through its own shutdown
+    and leave the server running.
 
     `Popen.send_signal` cannot do it either: `GenerateConsoleCtrlEvent` reaches
     only a process sharing the *caller's* console, and a windowless Qt

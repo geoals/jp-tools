@@ -1,5 +1,5 @@
 //! Incremental tokenization of everything read. Runs on Anki refresh; one pass
-//! over the text fills three sinks:
+//! over the text fills four sinks:
 //!
 //! - **`word_days`** — per-day content-word counts, behind the kanji grid, the
 //!   discovery curve and every coverage figure.
@@ -41,10 +41,10 @@ const SESSION_WATERMARK_KEY: &str = "tokenized_through_session_id";
 /// The ledger's own pair, for the reason in the module doc.
 const VOCAB_LINE_WATERMARK_KEY: &str = "vocab_through_line_id";
 const VOCAB_SESSION_WATERMARK_KEY: &str = "vocab_through_session_id";
-/// And the per-work sink's, which arrived after both.
+/// The per-work sink's.
 const WORKS_LINE_WATERMARK_KEY: &str = "work_terms_through_line_id";
 const WORKS_SESSION_WATERMARK_KEY: &str = "work_terms_through_session_id";
-/// And the spelling sink's, latest of all.
+/// The spelling sink's.
 const SURFACES_LINE_WATERMARK_KEY: &str = "term_surfaces_through_line_id";
 const SURFACES_SESSION_WATERMARK_KEY: &str = "term_surfaces_through_session_id";
 
@@ -77,13 +77,12 @@ impl IngestOutcome {
     }
 }
 
-/// All three sinks, accumulated over one tokenization pass — kept together so
-/// the tokenizer, whose dictionary load costs more than the tokenizing, runs
-/// once.
+/// Every sink, accumulated over one tokenization pass — kept together so the
+/// tokenizer, whose dictionary load costs more than the tokenizing, runs once.
 struct Harvest {
     /// The master dictionary, for the affix half of the wordhood gate
-    /// ([`jp_core::tokenize::counts_as_word`]). Held here because all three
-    /// sinks take the same tokens and must agree about which are words.
+    /// ([`jp_core::tokenize::counts_as_word`]). Held here because every sink
+    /// takes the same tokens and they must agree about which are words.
     master: MasterWords,
     /// Every dictionary, for the other half: a short kana string none of them
     /// has is tokenizer noise and gets no row at all
@@ -189,11 +188,11 @@ impl Harvest {
     /// Whether a term is a name, decided over the whole pass by majority
     /// rather than per occurrence.
     ///
-    /// A name is not vocabulary — a VN's cast topped every per-work "unknown
-    /// words" list. But Sudachi tags a surface 固有名詞 only some of the time,
-    /// so filtering occurrence by occurrence kept 79 of ノア's 194. A majority
-    /// drops ノア whole while keeping words merely *usable* as names: 空 and 光
-    /// are tagged once in a hundred sightings and stay vocabulary.
+    /// A name is not vocabulary, and a VN's cast otherwise tops every per-work
+    /// "unknown words" list. Sudachi tags a surface 固有名詞 only some of the
+    /// time, so filtering occurrence by occurrence keeps part of ノア's count. A
+    /// majority drops ノア whole while keeping words merely *usable* as names:
+    /// 空 and 光 are tagged rarely and stay vocabulary.
     ///
     /// Names leave the ledger and the per-work sink but stay in `word_days`,
     /// which asks what text you were exposed to.
@@ -284,7 +283,7 @@ pub(crate) async fn normalized_spellings(
         .map_err(|e| AppError::Upstream(format!("tokenize task panicked: {e}")))
 }
 
-/// Write both sinks and advance both watermarks. `max_id` is the highest id in
+/// Write every sink and advance every watermark. `max_id` is the highest id in
 /// the batch; each watermark only moves for the sink that was actually behind.
 async fn commit(
     state: &AppState,
@@ -332,8 +331,8 @@ pub async fn ingest_new_lines(state: &AppState) -> Result<IngestOutcome, AppErro
     let settings = db::load_settings(&state.local).await?;
     let rollover = settings.day_rollover_hour;
     let tz = tz_offset_secs();
-    // The same seven inputs the reader's `Highlighter` takes — one call, so a
-    // tint and the ledger row behind it cannot come from two pipelines.
+    // The same inputs the reader's `Highlighter` takes — one call, so a tint and
+    // the ledger row behind it cannot come from two pipelines.
     let p = jp_core::highlight::pipeline(&state.knowledge, &state.sudachi_dict_path)
         .await
         .map_err(|e| AppError::Upstream(e.to_string()))?;
@@ -414,8 +413,8 @@ pub async fn ingest_new_sessions(state: &AppState) -> Result<IngestOutcome, AppE
     let settings = db::load_settings(&state.local).await?;
     let rollover = settings.day_rollover_hour;
     let tz = tz_offset_secs();
-    // The same seven inputs the reader's `Highlighter` takes — one call, so a
-    // tint and the ledger row behind it cannot come from two pipelines.
+    // The same inputs the reader's `Highlighter` takes — one call, so a tint and
+    // the ledger row behind it cannot come from two pipelines.
     let p = jp_core::highlight::pipeline(&state.knowledge, &state.sudachi_dict_path)
         .await
         .map_err(|e| AppError::Upstream(e.to_string()))?;
@@ -688,8 +687,8 @@ mod tests {
 
     #[test]
     fn the_verdict_is_the_majority_of_a_terms_own_occurrences() {
-        // Sudachi tags a VN's cast inconsistently — this one only 60% of the
-        // time, which is still a name.
+        // Sudachi tags a VN's cast inconsistently; a bare majority is still a
+        // name.
         let mut tokens = vec![tok("ノア", "のあ", true); 6];
         tokens.extend(vec![tok("ノア", "のあ", false); 4]);
         assert!(harvest(tokens).encounters().is_empty());
@@ -697,9 +696,8 @@ mod tests {
 
     #[test]
     fn a_suffix_the_master_lists_reaches_the_ledger() {
-        // 私達 is not a master entry, so it arrives as 私 + 達. Dropping the
-        // suffix half credited the compound's second word to nothing — the
-        // 懲罰房 defect, arriving through the part-of-speech tag instead.
+        // 私達 is not a master entry, so it arrives as 私 + 達. Dropping a
+        // suffix the master lists credits the compound's second word to nothing.
         let mut suffix = tok("達", "たち", false);
         suffix.pos = "接尾辞".to_string();
         let h = harvest(vec![suffix; 3]);
@@ -727,7 +725,7 @@ mod tests {
         kanji.surface = "窺っ".to_string();
         let h = harvest(vec![kana.clone(), kana, kanji]);
 
-        assert_eq!(h.encounters().len(), 1, "one ledger row, as before");
+        assert_eq!(h.encounters().len(), 1, "one ledger row");
         let mut spellings: Vec<(String, i64)> = h
             .surface_encounters()
             .iter()

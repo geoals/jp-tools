@@ -1,14 +1,13 @@
 //! The canonical two-axis tag rubric (FAMILIARITY + FLAVOR) shared by every LLM
 //! call that emits it: the CompactDef gloss ([`crate::compactdef`]) and
-//! kotodex-server's explain button. Both used to carry their own paraphrase of these
-//! definitions and had already drifted apart; this is the single source of truth
-//! so a wording change lands everywhere at once.
+//! kotodex-server's explain button. The definitions live here because every prompt
+//! that rates a word has to rate it by the same rubric, so a wording change lands
+//! everywhere at once and no caller can grow its own paraphrase.
 //!
 //! FAMILIARITY is optional and usually absent. It claims something about the
-//! whole native adult population, which is not knowable for most words, and a
-//! forced five-tier version of it put COMMON on 74% of the collection — two
-//! words checked against a native speaker came back wrong in the same
-//! direction. Omission is the honest answer and the expected one.
+//! whole native adult population, which is not knowable for most words, so
+//! omission is the honest answer and the expected one. Forced to fill the slot,
+//! the model settles on the middle of the scale for almost everything.
 //!
 //! It is rated on the spelling the reader actually met, which is why both
 //! callers send a surface form and never a dictionary headword: 饐える is a rare
@@ -41,9 +40,9 @@ not etymology.";
 
 /// The FAMILIARITY tiers, most familiar first.
 ///
-/// Three, not five. The middle of a five-tier scale is where the population
-/// claim cannot be made honestly, and UNCOMMON was absorbing it — 483 cards
-/// carried it. Omitting the tier says that better than a tier for it does.
+/// Three, not five. The middle of a five-tier scale is where the population claim
+/// cannot be made honestly, and omitting the tier says that better than a tier
+/// for it does.
 pub const FAMILIARITY: [&str; 3] = ["CORE", "COMMON", "RARE"];
 
 /// The baseline formalities. Exactly one is required.
@@ -54,8 +53,7 @@ pub const BASELINES: [&str; 4] = ["SLANG", "CASUAL", "PLAIN", "FORMAL"];
 ///
 /// LITERARY is a mark and not a baseline because it answers a different
 /// question: the baseline is how stiff a word is, LITERARY is which medium it
-/// belongs to, and a word can be both. Forcing the choice produced 26 cards
-/// that emitted FORMAL and LITERARY together — 怨恨, 傀儡, 羅列 are stiff *and*
+/// belongs to, and a word can be both. 怨恨, 傀儡 and 羅列 are stiff *and*
 /// writing-only, while 束の間 is writing-heavy at a plain register and 誤謬 is
 /// stiff but perfectly sayable.
 pub const MARKS: [&str; 10] = [
@@ -217,8 +215,8 @@ mod tests {
         }
     }
 
-    /// The bug this parser exists for: the axis separator goes missing whenever
-    /// a mark follows the baseline. Both shapes were live on real cards.
+    /// The case the lenient split exists for: the axis separator goes missing
+    /// whenever a mark follows the baseline.
     #[test]
     fn a_missing_axis_separator_is_repaired() {
         assert_eq!(
@@ -240,11 +238,8 @@ mod tests {
         );
     }
 
-    /// A missing baseline is not repairable — PLAIN is not a safe default, it is
-    /// the claim "safe anywhere", which is exactly what a TECHNICAL-only line
-    /// failed to decide.
-    /// The 26-card case: stiff *and* writing-only is one word's two properties,
-    /// not a choice between them.
+    /// Stiff *and* writing-only are one word's two properties, not a choice
+    /// between them.
     #[test]
     fn formal_and_literary_coexist() {
         assert_eq!(
@@ -266,6 +261,8 @@ mod tests {
         );
     }
 
+    /// A missing baseline is not repairable — PLAIN is not a safe default, it is
+    /// the claim "safe anywhere", which a TECHNICAL-only line has not made.
     #[test]
     fn a_missing_baseline_is_rejected() {
         assert_eq!(

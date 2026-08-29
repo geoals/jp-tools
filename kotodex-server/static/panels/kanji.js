@@ -122,8 +122,6 @@ export function KanjiView() {
   `;
 }
 
-/* The grid ---------------------------------------------------------------- */
-
 /** Tint strength for a chip, on a log scale against the most-read kanji. The
  *  floor keeps a once-seen kanji visible as a chip rather than a hole in the
  *  grid, and the ceiling stops the top of the ramp from swallowing the glyph. */
@@ -217,8 +215,6 @@ function Inspector({ row }) {
   const seen = `${row.count.toLocaleString("en")}× over ${row.days} day${row.days === 1 ? "" : "s"}`;
   const grade = GRADE_LABEL[row.grade ?? 0];
   const strokes = row.strokes ? `${row.strokes} strokes` : "";
-  // BCCWJ ranks the whole tail, so it can say "rare" where the newspaper list
-  // can only say "unlisted" — which is why it leads and the other follows.
   const bccwj = row.bccwj_rank
     ? `BCCWJ #${row.bccwj_rank.toLocaleString("en")}`
     : "not once in BCCWJ";
@@ -257,8 +253,6 @@ function Inspector({ row }) {
     </div>
   `;
 }
-
-/* Grade coverage ---------------------------------------------------------- */
 
 function GradeCard({ grades, solidAt }) {
   const joyo = grades.filter((g) => g.grade !== 0);

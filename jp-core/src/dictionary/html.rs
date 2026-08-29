@@ -22,8 +22,6 @@ pub fn html_escape(s: &str) -> String {
     out
 }
 
-/// Convert a camelCase CSS property name to kebab-case.
-/// e.g. `fontSize` → `font-size`
 pub(crate) fn camel_to_kebab(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 4);
     for ch in s.chars() {
@@ -37,10 +35,9 @@ pub(crate) fn camel_to_kebab(s: &str) -> String {
     out
 }
 
-/// Render a JSON style object to a CSS inline style string.
-/// Properties are sorted alphabetically by kebab-case name for deterministic output.
-/// Style prefixes stripped from inline styles — our stylesheet controls layout and theming.
-/// Yomitan styles target light-background popups and conflict with our dark theme.
+/// The style prefixes dropped from a dictionary's inline styles. Yomitan's own
+/// styling assumes a light popup, and colour, spacing and borders are the
+/// stylesheet's to decide.
 const STRIPPED_STYLE_PROPS: &[&str] = &[
     "color",
     "padding",
@@ -50,6 +47,8 @@ const STRIPPED_STYLE_PROPS: &[&str] = &[
     "border-radius",
 ];
 
+/// One `style` object as an inline CSS string, sorted by property name so the
+/// same entry always renders the same markup.
 pub(crate) fn render_style(obj: &serde_json::Map<String, Value>) -> String {
     let mut props: Vec<(String, &str)> = obj
         .iter()
@@ -161,8 +160,8 @@ impl HtmlWriter<'_> {
         self.buf.push('>');
     }
 
-    /// Render an `img` tag. If the image path exists in the pre-extracted image map,
-    /// emit an `<img>` with an inline data URI. Otherwise skip (same as before).
+    /// Render an `img` tag as an inline data URI. An image the map does not hold
+    /// is skipped: nothing outside the zip may be fetched from a card.
     fn write_img(&mut self, obj: &serde_json::Map<String, Value>) {
         let path = match obj.get("path").and_then(|p| p.as_str()) {
             Some(p) => p,
@@ -181,7 +180,6 @@ impl HtmlWriter<'_> {
         self.buf.push_str(data_uri);
         self.buf.push('"');
 
-        // Build style from width/height/sizeUnits
         let units = obj
             .get("sizeUnits")
             .and_then(|v| v.as_str())
@@ -239,7 +237,6 @@ fn write_dimension(buf: &mut String, prop: &str, value: f64, units: &str) {
     buf.push_str(prop);
     buf.push(':');
     if value.fract() == 0.0 {
-        // Write as integer to avoid "1.0em" → "1em"
         buf.push_str(&format!("{}", value as i64));
     } else {
         buf.push_str(&format!("{value}"));
@@ -249,24 +246,20 @@ fn write_dimension(buf: &mut String, prop: &str, value: f64, units: &str) {
 
 /// Write HTML attributes in deterministic order: lang, title, href, data-* (sorted), style.
 fn write_attributes(obj: &serde_json::Map<String, Value>, buf: &mut String) {
-    // lang
     if let Some(Value::String(val)) = obj.get("lang") {
         write_attr(buf, "lang", val);
     }
 
-    // title
     if let Some(Value::String(val)) = obj.get("title") {
         write_attr(buf, "title", val);
     }
 
-    // href
     if let Some(Value::String(val)) = obj.get("href")
         && safe_href(val)
     {
         write_attr(buf, "href", val);
     }
 
-    // data-* attributes (sorted alphabetically by key)
     if let Some(Value::Object(data)) = obj.get("data") {
         let mut keys: Vec<&String> = data.keys().collect();
         keys.sort();
@@ -277,7 +270,6 @@ fn write_attributes(obj: &serde_json::Map<String, Value>, buf: &mut String) {
         }
     }
 
-    // style
     if let Some(Value::Object(style)) = obj.get("style") {
         let css = render_style(style);
         if !css.is_empty() {

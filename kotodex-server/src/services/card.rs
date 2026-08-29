@@ -82,9 +82,8 @@ pub fn new_note_id(resp_bytes: &Bytes) -> Option<i64> {
 pub async fn forward(state: &AppState, body: Bytes) -> Result<(StatusCode, Bytes), String> {
     // One retry on a send that never left, for the same reason
     // `services::anki::call` has one: AnkiConnect closes the connection after
-    // every response, so the pooled one is already dead when the next request
-    // reaches for it. Adding the audio lookup in front of the add made that
-    // dead connection the normal case rather than an occasional one.
+    // every response, so the pooled one is routinely dead when the next request
+    // reaches for it.
     let mut attempt = 0;
     let resp = loop {
         let sent = state
@@ -116,11 +115,11 @@ pub async fn forward(state: &AppState, body: Bytes) -> Result<(StatusCode, Bytes
 
 /// Tell the deck mirror about the card that was just added.
 ///
-/// Every cards-per-hour figure counts rows in `anki_notes`, and the only thing
-/// that used to fill it was the dashboard page opening. An evening of mining in
-/// the overlay left the mirror at whenever the page was last loaded, so the
-/// cards existed in Anki and in no figure. Best-effort: a card that fails to
-/// land here is still a card, and the next refresh picks it up.
+/// Every cards-per-hour figure counts rows in `anki_notes`, and the refresh that
+/// replaces the mirror runs when the dashboard page opens — so without this, an
+/// evening of mining in the overlay is in Anki and in no figure. Best-effort: a
+/// card that fails to land here is still a card, and the next refresh picks it
+/// up.
 async fn mirror_added_note(state: &AppState, note_id: i64, req: &Value) {
     let vocab = req
         .pointer("/params/note/fields")
@@ -156,8 +155,8 @@ async fn mirror_added_note(state: &AppState, note_id: i64, req: &Value) {
 /// **Nothing may be awaited in front of the capture.** A screenshot shows the
 /// screen as it is when taken, so anything ahead of it puts the *next* line on
 /// the card. (`anchor_ts` pins the audio window; the picture has no such
-/// recourse.) But making CompactDef wait for the capture only moved the delay
-/// onto CompactDef, which then landed ten seconds after the add.
+/// recourse.) Making CompactDef wait for the capture instead only moves the
+/// delay onto CompactDef.
 ///
 /// So the LLM call runs *alongside* the capture with its write afterwards. The
 /// two `updateNoteFields` stay strictly ordered — two concurrent writes to one
@@ -185,9 +184,8 @@ async fn enrich_added_note(state: &AppState, note_id: i64, req: &Value, anchor_t
     // fallback for a note that has no markers to parse.
     let target = crate::services::anki::bolded_span(raw_sentence).unwrap_or_else(|| word.clone());
 
-    // Auto-capture: fold the mine button into the add. The note id and the
-    // anchor both come from the add itself, so neither depends on what has
-    // happened on screen or in Anki since.
+    // The note id and the anchor both come from the add itself, so neither
+    // depends on what has happened on screen or in Anki since.
     //
     // Reports whether the media actually landed. `ok: false` is the script's
     // normal way of saying a capture was not possible (a stale ring, no speech

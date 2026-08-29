@@ -1,9 +1,8 @@
 // Reading the ledger, as opposed to judging it.
 //
 // The triage passes each choose their own rows and ask for a verdict on every
-// one. This is the other question a 5,000-word bulk import raises — "what is
-// actually in here, and where did it come from" — and until now nothing could
-// answer it: the counts said 5,000 and the words themselves were unreachable.
+// one. This answers the other question a bulk import raises: what is actually in
+// here, and where did it come from.
 //
 // Ordered rarest-first by default because that is the axis an import goes wrong
 // along. A threshold rule ("met ten times in one book") claims common words

@@ -1,13 +1,12 @@
 // New things per day, and the running total of distinct ones.
 //
-// Two marks on one plot because they are the same fact at two integrations:
-// the bars are how many were met for the first time that day, the line is their
-// sum. The bars decay as the corpus grows — that decay *is* the progress
-// signal, and it only reads as progress next to a line that keeps climbing.
+// Two marks on one plot because they are the same fact at two integrations: the
+// bars are how many were met for the first time that day, the line is their sum.
+// The bars decay as the corpus grows, and that decay only reads as progress next
+// to a line that keeps climbing.
 //
-// Kanji and vocabulary are the same shape, so they share the chart. Each caller
-// supplies its own wording and its own tooltip body; nothing about the two
-// marks differs.
+// Kanji and vocabulary are the same shape, so they share the chart — each caller
+// supplies its own wording and tooltip body.
 
 import { html } from "htm/preact";
 import { useState } from "preact/hooks";

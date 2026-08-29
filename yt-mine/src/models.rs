@@ -44,8 +44,7 @@ pub struct Job {
     pub video_title: Option<String>,
     pub audio_path: Option<String>,
     /// What yt-dlp downloaded, before the 16kHz mono conversion whisper wants.
-    /// Card clips are cut from this; jobs older than the column have only the
-    /// converted file.
+    /// Card clips are cut from this; a job without it has only the conversion.
     pub source_audio_path: Option<String>,
     pub video_path: Option<String>,
     pub status: JobStatus,

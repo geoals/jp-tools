@@ -1,19 +1,12 @@
 // The dashboard's entry point: routing, the data every panel shares, and the
 // page layout.
 //
-// Everything that draws a card lives in ./panels; everything that draws an SVG
-// lives in ./charts.js. What stays here is what genuinely belongs to the whole
-// page — the single poll that feeds all of it, and which view is on screen.
+// One poll feeds every panel. Half the cards are different readings of the same
+// days, so independent fetches would show a stale streak beside a fresh chart:
+// the tabs choose what renders, never what is fetched.
 //
-// Loading it once and passing it down, rather than each panel fetching its own,
-// is deliberate: half the cards are different readings of the same days, and
-// independent fetches would show a stale streak beside a fresh chart. **The tabs
-// choose what renders, never what is fetched** — switching tabs must not be able
-// to show two panels disagreeing about the same day.
-//
-// `/api/kanji` is the exception: no other panel reads it, so nothing can
-// disagree with it, and it is slower than the rest of the poll put together.
-// The kanji tab fetches it itself.
+// `/api/kanji` is the exception. No other panel reads it, and it is slower than
+// the rest of the poll put together, so the kanji tab fetches it itself.
 
 import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
@@ -32,8 +25,8 @@ import { SetupView, isBlocked } from "./panels/setup.js";
 
 const REFRESH_MS = 60_000;
 
-/** The tabs, and the hash each answers to. Order is the order of the question:
- *  what is happening now, what it adds up to, what produced it. */
+/** Ordered as the question is asked: what is happening now, what it adds up to,
+ *  what produced it. */
 
 const TABS = [
   { id: "today", label: "Today" },
@@ -103,10 +96,10 @@ function App({ view, sub }) {
   if (!summary || !days || !settings)
     return html`<p class="chart-empty">Loading…</p>`;
 
-  // Capture, not accounting: this closes the logger's Textractor connection,
-  // so nothing enters the line stream while it is off. Nothing is filtered
-  // after the fact any more, which is why the banner says "not being captured"
-  // rather than "won't count".
+  // Capture, not accounting: this closes the logger's Textractor connection, so
+  // nothing enters the line stream while it is off and nothing is filtered after
+  // the fact. That is why the banner says lines are not being recorded rather
+  // than that they will not count.
   async function togglePause() {
     try {
       await api("/api/capture/pause", { method: "POST", body: {} });
@@ -116,13 +109,10 @@ function App({ view, sub }) {
     }
   }
 
-  // **The gate.** A blocking part missing means there is nothing behind the
-  // dashboard to show, so the whole page is the one thing that has to happen —
-  // no tabs, no empty charts, no numbers derived from no lines. `#settings` is
-  // still reachable, because that is where one of the fixes is.
-  //
-  // The state is the probe and not a stored flag, so this un-gates itself the
-  // moment the machine changes and re-gates if a part goes away.
+  // A blocking part missing means there is nothing behind the dashboard to show,
+  // so the setup page replaces the whole of it. `#settings` stays reachable
+  // because that is where one of the fixes is. The gate reads the live probe
+  // rather than a stored flag, so it opens and closes with the machine.
   const gated = isBlocked(caps) && view !== "settings" && view !== "setup";
   if (gated) {
     return html`
@@ -136,8 +126,8 @@ function App({ view, sub }) {
     `;
   }
 
-  // The tabs choose what renders, never what is fetched. `#books` was
-  // absorbed into `#library` — a saved link must not land on Today.
+  // `#books` resolves to `#library`, so a saved link lands on the shelf rather
+  // than on Today.
   const isSettings = view === "settings";
   const isTokenize = view === "tokenize";
   const isSetup = view === "setup";
@@ -251,9 +241,9 @@ function App({ view, sub }) {
   `;
 }
 
-/** Which view the URL is asking for. The reader is a separate branch rather than
- *  a section of the dashboard, so opening it unmounts App entirely — no
- *  aggregate polling running behind a reading session.
+/** The reader is a separate branch rather than a section of the dashboard, so
+ *  opening it unmounts App entirely — no aggregate polling behind a reading
+ *  session.
  *
  *  A tab may carry one segment (`#library/<title>`), so opening a work is a real
  *  navigation: back returns to the shelf and the page can be linked. A `useState`

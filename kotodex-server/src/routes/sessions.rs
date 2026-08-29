@@ -40,8 +40,6 @@ pub async fn list_sessions(
 
     let day_start = h.day_start(date);
     let day_end = day_start + 86400.0;
-    // Derive over a padded window, then keep only sessions that *start* on the
-    // requested day.
     let lines = h.lines_in(day_start - PAD_SECS, day_end + PAD_SECS);
     let derived: Vec<_> = stats::derive_sessions(lines, &h.presence(), h.settings.session_gap_secs)
         .into_iter()

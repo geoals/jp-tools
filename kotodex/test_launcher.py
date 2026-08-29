@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Tests for the launcher's component supervision.
 
-Every bug this file exists for was the same shape: which branch runs for a
-component the launcher *started* versus one it *adopted*. Nothing here starts a
-process — a `Child` takes its probe and its commands as arguments, so a fake
-probe and a recorded `Popen` cover the whole state machine.
+All of it is one question: which branch runs for a component the launcher
+*started* versus one it *adopted*. Nothing here starts a process — a `Child`
+takes its probe and its commands as arguments, so a fake probe and a recorded
+`Popen` cover the whole state machine.
 
 Run: python3 kotodex/test_launcher.py
 """

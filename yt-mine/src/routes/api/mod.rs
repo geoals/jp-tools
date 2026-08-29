@@ -21,8 +21,6 @@ use crate::services::export::ExportSentence;
 use crate::services::media::media_filenames;
 use crate::services::pipeline;
 
-// --- Request/response types ---
-
 #[derive(Deserialize)]
 pub struct SubmitRequest {
     url: String,
@@ -169,8 +167,6 @@ struct ExportErrorResponse {
     error: String,
 }
 
-// --- Handlers ---
-
 pub async fn submit_job(
     State(state): State<AppState>,
     Json(body): Json<SubmitRequest>,
@@ -189,7 +185,6 @@ pub async fn submit_job(
         .ok_or_else(|| AppError::BadRequest("could not extract video ID from URL".into()))?;
     let at = body.at.or_else(|| start_seconds_in(&url));
 
-    // Reuse existing non-error job
     if db::get_job_by_video_id(&state.db, &video_id)
         .await?
         .is_some()
@@ -292,7 +287,6 @@ pub async fn poll_status(
 
     let status_str = job.status.as_str().to_string();
 
-    // Return 204 if nothing changed
     if let (Some(prev_sc), Some(prev_st)) = (poll.sc, &poll.st) {
         let current_count = db::count_sentences_for_job(&state.db, job.id).await? as usize;
         if prev_st == &status_str && prev_sc == current_count {
@@ -416,7 +410,8 @@ pub async fn judge_many(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
-/// `new` and `seen` are what reading writes; only these two are set by hand.
+/// `new` and `seen` are what reading writes; `known` and `unknown` are the only
+/// two a hand can set.
 fn judgement(status: &str) -> Result<Status, AppError> {
     match Status::parse(status) {
         s @ (Status::Known | Status::Unknown) => Ok(s),
@@ -686,11 +681,9 @@ pub async fn sentence_audio(
     Ok(([(axum::http::header::CONTENT_TYPE, "audio/mpeg")], bytes).into_response())
 }
 
-// --- Helpers ---
-
 /// The file a card's audio clip is cut from: what yt-dlp downloaded, since
-/// `audio_path` is the 16kHz mono conversion whisper takes as input. Jobs from
-/// before the source was kept fall back to it.
+/// `audio_path` is the 16kHz mono conversion whisper takes as input. A job with
+/// no source recorded falls back to that conversion.
 fn clip_source(job: &Job) -> Option<&String> {
     job.source_audio_path.as_ref().or(job.audio_path.as_ref())
 }

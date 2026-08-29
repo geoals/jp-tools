@@ -56,10 +56,10 @@ function Skip($m) { Write-Host "    " -NoNewline; Write-Host "-- " -ForegroundCo
 function Fail($m) { Write-Host "    " -NoNewline; Write-Host "XX " -ForegroundColor Red -NoNewline; Write-Host $m }
 
 # Windows PowerShell decodes a response body as ISO-8859-1 unless the server
-# names a charset in Content-Type, and axum sends application/json without one.
-# That is what turned the em dash in the server's own fix lines into mojibake -
-# setting the console encoding cannot help, because the string is already wrong
-# by the time it is printed. Decoded from the bytes here instead.
+# names a charset in Content-Type, and axum sends application/json without one -
+# so the em dash in the server's own fix lines arrives as mojibake. Setting the
+# console encoding cannot help, because the string is already wrong by the time
+# it is printed. Decoded from the bytes here instead.
 function GetJson($url, $timeout) {
     $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec $timeout $url
     $bytes = if ($r.RawContentStream) { $r.RawContentStream.ToArray() }
@@ -206,7 +206,7 @@ if (Want 'kanjium_pitch_accents.zip' 'pitch' 'A pitch dictionary') {
 }
 
 # Asked of the directory rather than of sync's exit code: sync succeeds with
-# nothing to do, so reporting off the exit code called a failed download an
+# nothing to do, so reporting off the exit code would call a failed download an
 # import.
 $zips = @(Get-ChildItem -Path $DictDir -Filter '*.zip' -ErrorAction SilentlyContinue)
 if ($zips.Count -eq 0 -and -not $imported) {
@@ -256,8 +256,8 @@ $state = $null
 $startedHere = $null
 $log = Join-Path $Here 'setup-server.log'
 # Numeric, not `localhost`: that name resolves to `::1` first here and the server
-# binds IPv4, so every probe below spent its whole timeout against a server that
-# was answering. The launcher's own probe is numeric for the same reason.
+# binds IPv4, so every probe below would spend its whole timeout against a server
+# that is answering. The launcher's own probe is numeric for the same reason.
 try { $state = GetJson 'http://127.0.0.1:3200/api/reader/state' 3 } catch {}
 if ($state) {
     Good 'already running'

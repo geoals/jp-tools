@@ -59,8 +59,6 @@ async fn default_env() -> TestEnv {
     build_env(MockOcrEngine::new(), Arc::new(FakeAnkiExporter)).await
 }
 
-// --- Queue ---
-
 #[tokio::test]
 async fn queue_lists_only_image_files() {
     let env = default_env().await;
@@ -85,8 +83,6 @@ async fn queue_empty_inbox_is_empty_list() {
     let body: serde_json::Value = response.json();
     assert_eq!(body["photos"].as_array().unwrap().len(), 0);
 }
-
-// --- Photo serving ---
 
 #[tokio::test]
 async fn get_photo_serves_bytes() {
@@ -124,8 +120,6 @@ async fn thumbnail_downscales() {
     let img = image::load_from_memory(response.as_bytes()).unwrap();
     assert!(img.width() <= 480 && img.height() <= 480);
 }
-
-// --- Upload ---
 
 #[tokio::test]
 async fn upload_stores_photo_in_inbox() {
@@ -174,8 +168,6 @@ async fn upload_deduplicates_names() {
     assert_eq!(body["name"], "IMG_0042-1.jpg");
 }
 
-// --- OCR ---
-
 #[tokio::test]
 async fn ocr_crop_returns_tokenized_sentences() {
     let mut ocr = MockOcrEngine::new();
@@ -220,8 +212,6 @@ async fn ocr_empty_crop_is_client_error() {
 
     assert!(response.status_code().is_server_error() || response.status_code().is_client_error());
 }
-
-// --- Export ---
 
 #[tokio::test]
 async fn export_sends_card_with_compressed_image() {
@@ -307,7 +297,6 @@ async fn export_uses_source_and_remembers_it() {
         .await;
     response.assert_status_ok();
 
-    // Remembered and served most-recent-first
     let response = env.server.get("/api/sources").await;
     response.assert_status_ok();
     let body: serde_json::Value = response.json();
@@ -332,8 +321,6 @@ async fn export_requires_sentence() {
     response.assert_status_bad_request();
 }
 
-// --- Mark processed/skipped ---
-
 #[tokio::test]
 async fn mark_deletes_photo() {
     let env = default_env().await;
@@ -348,7 +335,6 @@ async fn mark_deletes_photo() {
 
     assert!(!env.inbox.path().join("done.jpg").exists());
 
-    // Queue no longer includes it
     let response = env.server.get("/api/queue").await;
     let body: serde_json::Value = response.json();
     assert_eq!(body["photos"].as_array().unwrap().len(), 0);

@@ -1,10 +1,10 @@
 // A dialog over the page, for a form that would otherwise push the card's
 // content around while it is open.
 //
-// Escape and a click on the backdrop close it, because a dialog with only an
-// in-form cancel button traps anyone who opened it by mistake. The page behind
-// is locked while it is open — a half-filled form over a scrolling shelf reads
-// as two places to look.
+// Escape and a click on the backdrop close it: a dialog with only an in-form
+// cancel button traps anyone who opened it by mistake. The page behind is locked
+// while it is open, because a half-filled form over a scrolling shelf reads as
+// two places to look.
 
 import { html } from "htm/preact";
 import { useEffect } from "preact/hooks";

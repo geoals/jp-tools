@@ -31,15 +31,14 @@ fi
 
 URL="http://localhost:${SERVER_PORT:-3200}"
 ONLY_PROBLEMS=0
-# Run from setup.sh, which deliberately leaves Kotodex stopped. A row whose
-# only remedy is starting it is then the expected state of every fresh install,
-# and listing it under "anything still missing" made a finished install read as
-# a broken one.
+# Run from setup.sh, which deliberately leaves Kotodex stopped. A row whose only
+# remedy is starting it is then the expected state of every fresh install, so
+# listing it under "anything still missing" makes a finished install read as a
+# broken one.
 INSTALLING=0
 
-# Which tier setup.sh installed. Absent means full, which is what every install
-# made before the tiers existed is — reporting a missing overlay as a fault on
-# one of those is right.
+# Which tier setup.sh installed. Absent means full, so an install that recorded
+# no tier has its missing overlay reported as a fault.
 TIER_FILE="${KOTODEX_DATA:-$HOME/.local/share/kotodex}/install-tier"
 TIER="$( [ -r "$TIER_FILE" ] && cat "$TIER_FILE" || echo full )"
 
@@ -69,7 +68,7 @@ core_broken=0
 # leave a bare heading behind.
 PENDING_SECTION=""
 # The banner is held for the same reason: --only-problems on a healthy machine
-# printed nothing but a title, which read as a report that had lost its rows.
+# would print nothing but a title, which reads as a report that lost its rows.
 PENDING_TITLE=""
 flush_title() {
   [ -n "$PENDING_TITLE" ] || return 0

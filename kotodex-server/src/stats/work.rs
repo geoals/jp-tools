@@ -1,6 +1,6 @@
 //! Per-work (per-VN) totals.
 //!
-//! Works join by exact title, the string `vn-ws-logger.py` stamps on each line.
+//! Works join by exact title, the string ingest stamps on each line.
 //! An unlabeled line aggregates under `None` rather than being dropped, so the
 //! works view always accounts for the whole stream.
 
@@ -58,8 +58,7 @@ pub struct WorkAgg {
 /// Credit is priced by [`Presence`] rather than by a fresh `min(gap, afk)`:
 /// the shelf sits one click away from each work's own page, which derives
 /// sessions the ordinary way, and two answers to "how many hours is this
-/// work" is exactly what the one-rule invariant exists to prevent. The flat
-/// cap had them 0.2% apart.
+/// work" is exactly what the one-rule invariant exists to prevent.
 pub fn aggregate_works(
     lines: &[WorkLine],
     presence: &Presence,

@@ -18,7 +18,6 @@ export function VideoPage({ videoId, at }) {
   // runs, so landing on the line is a one-shot that waits for it to exist.
   const landed = useRef(false);
 
-  // Initial fetch
   useEffect(() => {
     let cancelled = false;
     fetchJob(videoId)
@@ -27,7 +26,6 @@ export function VideoPage({ videoId, at }) {
     return () => { cancelled = true; };
   }, [videoId]);
 
-  // Polling
   useEffect(() => {
     if (!job || job.is_terminal) return;
 
@@ -37,7 +35,6 @@ export function VideoPage({ videoId, at }) {
         const data = await pollStatus(videoId, job.sentence_count, job.status);
         if (data) setJob(data);
       } catch (_) {
-        // Ignore transient poll errors
       }
     }, 2000);
 

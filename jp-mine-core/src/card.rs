@@ -341,7 +341,6 @@ mod tests {
         assert_eq!(pitch_pattern("さとい", 2), expected);
     }
 
-    /// Heiban: only the first mora is low and nothing drops.
     #[test]
     fn heiban_rises_once_and_never_falls() {
         let out = pitch_pattern("すんぶん", 0);
@@ -393,8 +392,6 @@ mod tests {
         );
     }
 
-    /// The class in the markup is the one the note type styles, never a slug
-    /// of the title — the title is only what the block is labelled with.
     #[test]
     fn the_block_is_classed_by_the_note_type_not_the_title() {
         let block = dict_block("jitendex", "Jitendex.org [2026-02-05]", &["GLOSS"]);

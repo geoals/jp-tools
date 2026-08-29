@@ -18,9 +18,9 @@ pub struct WordLookupResult {
 /// [`jp_core::define`] does the asking, so a card gets the same answer the VN
 /// overlay's popup shows: the dictionaries in reading order rather than install
 /// order, narrowed to `reading` where one is known, and ranked by the list the
-/// reader's own underline uses. Ranking on whichever dictionary answered first
-/// is what this used to do, and that was BCCWJ — newspaper prose, where 船舶 is
-/// the 3,843rd commonest word against 32,370th in fiction.
+/// reader's own underline uses. Ranking on whichever dictionary answers first
+/// would rank on BCCWJ, which is newspaper prose: a word ordinary in fiction can
+/// sit tens of thousands of places lower there.
 ///
 /// One sense per dictionary, which is what a card has room for. The popup is
 /// where a word goes to be read in full.

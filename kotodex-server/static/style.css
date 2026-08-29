@@ -1,14 +1,12 @@
 /* The stylesheet, assembled.
  *
- * Split by what a rule is about rather than by cascade layer: a change to how
- * the reading view looks touches one file, and that file holds the reasoning
- * for the whole view. Import order is the cascade order — base.css defines the
- * tokens the rest use, so it comes first; everything after is disjoint by
- * selector and can be read in any order.
+ * Split by what a rule is about rather than by cascade layer, so a change to how
+ * one view looks touches one file. Import order is the cascade order: base.css
+ * defines the tokens the rest use, and everything after it is disjoint by
+ * selector.
  *
- * Unbundled on purpose. There is no build step in this app, and on the LAN the
- * six extra requests cost nothing next to being able to open the file that
- * matches the thing on screen.
+ * Unbundled because there is no build step in this app; on the LAN the extra
+ * requests cost nothing.
  */
 
 @import url("css/base.css");

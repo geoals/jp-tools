@@ -17,7 +17,6 @@ async fn main() {
 
     let config = Config::from_env();
 
-    // Ensure directories exist
     std::fs::create_dir_all(&config.inbox_dir).expect("failed to create inbox directory");
     std::fs::create_dir_all(&config.media_dir).expect("failed to create media directory");
     let inbox_dir =

@@ -19,8 +19,8 @@
   gap: 8px;
   padding: 6px 10px;
   /* Match the footer: same height (its buttons are 44px inside 8px top/bottom
-     padding, so 60px total) and the same surface. The bar used to fall through
-     to --page, which left the two ends of the view in different colours. */
+     padding, so 60px total) and the same surface. Falling through to --page
+     leaves the two ends of the view in different colours. */
   min-height: 60px;
   border-bottom: 1px solid var(--border);
   background: var(--surface-1);
@@ -262,8 +262,8 @@
   opacity: 0.4;
   cursor: default;
 }
-/* The row's one deliberate action now that mining happens by itself, so it
-   takes the slack and the series hue the mine button used to hold. */
+/* The row's one deliberate action — mining happens by itself — so it takes the
+   slack and the series hue. */
 .reader-explain-btn {
   flex: 1;
   padding: 0 12px;

@@ -1,10 +1,8 @@
 // The history, over one range: how much, how fast, and what it cost.
 //
-// Four cards became one because they were four slices of the same 30 days, each
-// with its own hardcoded window — "Last 7 days" could not be asked about 30,
-// and the charts could not be asked about 7. One range selector drives all of
-// them now, and the week tiles are what they always were: a caption for the
-// bars, not a card.
+// One range selector drives every chart and tile here, so the whole card answers
+// about the same span. The tiles are a caption for the bars, not a card of their
+// own.
 //
 // The speed panel and the rate panel are stacked rather than merged. Chars/hour
 // runs in the thousands and events/hour in the tens, so one plot would need two

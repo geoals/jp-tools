@@ -25,8 +25,6 @@ use jp_core::text::sentences::split_sentences;
 
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
 
-// --- Request/response types ---
-
 #[derive(Serialize)]
 pub struct QueueResponse {
     photos: Vec<QueuePhoto>,
@@ -114,8 +112,6 @@ pub struct MarkRequest {
     /// "processed" or "skipped"
     status: String,
 }
-
-// --- Helpers ---
 
 /// Reject path traversal: the name must be a plain file name.
 fn safe_name(name: &str) -> Result<&str, AppError> {
@@ -315,8 +311,6 @@ fn tokenize_sentence(state: &AppState, text: &str) -> SentenceJson {
     }
 }
 
-// --- Handlers ---
-
 /// The queue is the inbox folder: every image file in it is an un-mined photo,
 /// oldest first.
 pub async fn list_queue(State(state): State<AppState>) -> Result<Response, AppError> {
@@ -357,7 +351,6 @@ pub async fn upload_photo(
         .map_err(|e| AppError::BadRequest(format!("invalid multipart body: {e}")))?
     {
         let original = field.file_name().unwrap_or("photo.jpg").to_string();
-        // Keep only the basename, drop anything suspicious
         let base = FsPath::new(&original)
             .file_name()
             .and_then(|f| f.to_str())

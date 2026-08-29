@@ -1,4 +1,4 @@
-// The settings view: every knob that used to be a constant, in one place.
+// The settings view: every knob the derivation reads, in one place.
 //
 // Two kinds of thing live here, and the split is deliberate:
 //
@@ -13,8 +13,8 @@
 // **A knob appears when the data it acts on exists.** A threshold on a ledger
 // with no rows in it, or a page size for a book nobody has logged, is a question
 // with no answer yet and a reason to close the page. `advanced` is the rest: the
-// derivation thresholds are real and reversible, and they are also nine numbers
-// with a paragraph each, which is not what a first visit should open on.
+// derivation thresholds are real and reversible, and they are also a screenful of
+// numbers with a paragraph each, which is not what a first visit should open on.
 //
 // The Anki import is here for the same reason as the tokenizer link: it is a
 // maintenance action on the ledger, run once in a while, not a reading of it.

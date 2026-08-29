@@ -11,8 +11,8 @@ use crate::models::{JobStatus, TranscriptSegment};
 use crate::services::download::MediaDownloader;
 use crate::services::transcribe::{ProgressCallback, Transcriber};
 
-/// Runs the full pipeline for a job: download -> transcribe -> store sentences.
-/// Updates job status at each step. On failure, sets status to `error` with a message.
+/// Runs one job to completion, moving its status as it goes. Any failure leaves
+/// the job on `error` with a message the page can show.
 pub async fn process_job(
     pool: SqlitePool,
     job_id: i64,
@@ -21,7 +21,6 @@ pub async fn process_job(
     downloader: Arc<dyn MediaDownloader>,
     transcriber: Arc<dyn Transcriber>,
 ) {
-    // Step 1: Download the audio
     info!(job_id, url = youtube_url, "starting download");
     db::update_job_status(&pool, job_id, &JobStatus::Downloading, None)
         .await
@@ -59,8 +58,8 @@ pub async fn process_job(
         tokio::spawn(async move { downloader.download_video(youtube_url, audio_dir).await })
     };
 
-    // Step 2: Transcribe — sentences are inserted progressively via the callback,
-    // so they appear in the UI during transcription (the frontend polls for updates).
+    // Sentences are inserted from the progress callback rather than at the end, so
+    // the page fills in while whisper is still working.
     info!(job_id, "starting transcription");
     db::update_job_status(&pool, job_id, &JobStatus::Transcribing, None)
         .await
@@ -141,10 +140,9 @@ pub async fn process_job(
 /// Drops a subtitle speaker label from the front of a segment.
 ///
 /// Whisper learnt Japanese partly from subtitles written `名前 セリフ`, and on a
-/// short window it writes the label too — one podcast gave 234 lines opening
-/// `ヤンヤン `, plus 48 `樋口 ` and 3 `深井 `, none of them spoken. Conditioning on
-/// the previous text then carries the label forward for as long as it survives,
-/// so one hallucination becomes a run of hundreds.
+/// short window it writes the label too, spoken by nobody. Conditioning on the
+/// previous text then carries the label forward for as long as it survives, so
+/// one hallucination becomes a run of hundreds of lines.
 ///
 /// The ASCII space is what makes this safe to strip: whisper's Japanese output
 /// has none of its own, so a leading run of Japanese followed by one is a label
@@ -213,9 +211,8 @@ fn into_sentences(mut segment: TranscriptSegment) -> Vec<TranscriptSegment> {
 
 /// The length past which a line is cut at a 、 rather than left whole.
 ///
-/// Above the p90 of every transcript measured (28–45 characters), so this only
-/// ever reaches the tail: five lines in 418 on the worst video, zero on two of
-/// four.
+/// Well above the length of an ordinary transcript line, so only the tail of the
+/// distribution ever reaches it.
 const MAX_LINE_CHARS: usize = 80;
 
 /// Neither half may come out shorter than this, or the cut is not worth making.
@@ -226,8 +223,8 @@ const MIN_CLAUSE_CHARS: usize = 20;
 /// Cut a line too long to be a card at the 、 nearest its middle.
 ///
 /// A clause is not a sentence, and that is the trade: spontaneous speech chains
-/// 、 for half a minute without ever reaching 。, so the alternative is a
-/// 152-character card that never gets reviewed. Cutting nearest the *middle*
+/// 、 for half a minute without ever reaching 。, so the alternative is a card
+/// several sentences long that never gets reviewed. Cutting nearest the *middle*
 /// rather than at the first 、 is what keeps both halves substantial — and both
 /// halves are re-tested, so a very long run comes apart into several pieces
 /// instead of one long piece and one short one.

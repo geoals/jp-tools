@@ -1,9 +1,8 @@
 //! What identity a token gets: the `(headword, reading)` pair the ledger keys
 //! on, and whether it counts.
 //!
-//! Every case here was measured against the live setup first — the pairs in
-//! `master_pairs.tsv` are Sankoku's own, so a failure means the tokenizer
-//! changed, not that the dictionary did.
+//! The pairs in `master_pairs.tsv` are Sankoku's own, so a failure means the
+//! tokenizer changed, not that the dictionary did.
 //!
 //! `KOTODEX_SUDACHI_DICT_PATH=$PWD/../system_full.dic \
 //!  cargo test -p jp-core --test identity_resolution -- --ignored`
@@ -46,8 +45,9 @@ fn ranks() -> HashMap<(String, String), i64> {
     .collect()
 }
 
-/// Jiten's rank per spelling, for the short-kana guard. Real numbers: 時 and
-/// 筈 are spellings the language uses at two morae, 弥 and 滓 are not.
+/// Jiten's rank per spelling, for the short-kana guard. The production numbers,
+/// because the guard turns on magnitude: 時 and 筈 are spellings the language
+/// uses at two morae, 弥 and 滓 are not.
 fn reader_ranks() -> HashMap<String, i64> {
     [
         ("時", 275),
@@ -58,8 +58,8 @@ fn reader_ranks() -> HashMap<String, i64> {
         ("箒", 22217),
         ("伺う", 6482),
         ("窺う", 12180),
-        // 母 is in this work's cast list and is rank 872 in fiction, which is
-        // the whole reason the cast has a frequency veto on it.
+        // 母 is in this work's cast list and common in fiction, which is the
+        // whole reason the cast has a frequency veto on it.
         ("母", 872),
         ("凛", 9368),
         // A character called ココ, and ここ is a word every page uses — the
@@ -84,8 +84,8 @@ fn preferences() -> HashMap<String, PreferredReading> {
     [
         ("私", "わたし", vec!["わたし", "あたし", "あたくし"]),
         ("何", "なに", vec!["なに", "なん"]),
-        // JMdict scores the free-standing noun of each of these 200 and the
-        // bound reading 0, which is what the bound-morpheme guard has to refuse.
+        // JMdict scores the free-standing noun of each of these and the bound
+        // reading zero, which is what the bound-morpheme guard has to refuse.
         ("名", "な", vec!["な"]),
         ("者", "もの", vec!["もの"]),
         ("生", "なま", vec!["なま"]),
@@ -200,7 +200,7 @@ fn pair(term: &str, reading: &str) -> (String, String) {
 
 /// A shred off an out-of-vocabulary path is not a word, and must not be
 /// normalised into one: Sudachi has no とん mimetic, so んっと is left over, and
-/// んっと normalises to うんと — a real Sankoku headword, counted 685 times.
+/// んっと normalises to うんと — a real Sankoku headword.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_token_with_an_impossible_onset_is_never_rescued_into_a_word() {
@@ -215,7 +215,6 @@ fn a_token_with_an_impossible_onset_is_never_rescued_into_a_word() {
             assert!(!counts_as_word(t, &master), "{t:?} must not count");
         }
     }
-    // The rest of the line is untouched.
     for (surface, want) in [
         ("胸", ("胸", "むね")),
         ("軽く", ("軽い", "かるい")),
@@ -293,7 +292,8 @@ fn a_normalized_spelling_the_master_does_not_list_falls_back_to_the_written_one(
     );
     assert_eq!(identity_of(&tokens, "待っ"), pair("待つ", "まつ"));
 
-    // 為る likewise: the commonest verb in the language was off the scale.
+    // 為る likewise: without the fallback the commonest verb in the language is
+    // off the master scale.
     let tokens = tokens_of(&tk, "そうすると決めた");
     assert_eq!(identity_of(&tokens, "する"), pair("する", "する"));
     let suru = tokens.iter().find(|t| t.surface == "する").unwrap();
@@ -346,8 +346,6 @@ fn a_kanji_headed_compound_joins_on_its_reading() {
     assert!(counts_as_word(joined, &master));
 }
 
-/// Everything that already worked. These pass before the rewrite and have to
-/// keep passing after it.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn the_existing_behaviour_is_unchanged() {
@@ -457,9 +455,9 @@ fn a_reading_only_match_on_an_inflected_token_stays_a_verb() {
     assert!(term == "捌く" || term == "裁く", "{term}");
 }
 
-/// An expression whose tail the identity ladder respelt. ひそめ is filed under
-/// 潜める, so the run's canonical spelling came out 眉を潜める — not a headword,
-/// while 眉をひそめる is one. The join has to try the tail as the text spelt it.
+/// An expression whose tail the identity ladder respells. ひそめ is filed under
+/// 潜める, so the run's canonical spelling is 眉を潜める — not a headword, while
+/// 眉をひそめる is one. The join has to try the tail as the text spelt it.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn an_expression_is_found_under_the_spelling_the_text_used() {
@@ -508,7 +506,7 @@ fn a_listed_expression_on_the_never_join_list_stays_apart() {
         ("それは私の本だ", "それは"),
         ("ものを見た", "ものを"),
         // Both readings open a clause, so position cannot arbitrate it and the
-        // list has to: 48 of its 55 sightings are the place.
+        // list has to: it is the place far more often than the conjunction.
         ("そこでシェリーが声をあげた", "そこで"),
     ] {
         let tokens = tokens_of(&tk, text);
@@ -565,8 +563,7 @@ fn an_expression_that_is_only_a_word_at_a_clause_start_is_refused_mid_clause() {
 }
 
 /// 「〜ないと思う」 is ない and a quotative と, not the ないと that means "must",
-/// and building the expression takes 思う's complement marker with it. 120 of
-/// the 379 ないと were this.
+/// and building the expression takes 思う's complement marker with it.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn an_expression_is_refused_where_the_next_word_quotes_it() {
@@ -616,8 +613,9 @@ fn an_expression_is_refused_where_the_next_word_hangs_off_its_genitive() {
 }
 
 /// 確かに and 本当に are both a noun-ish word plus に and both Sankoku headwords,
-/// and only 本当に joined: Sudachi calls its に a case particle and 確か's the
-/// copula's 連用形, so the no-inflected-part rule refused one and not the other.
+/// and the two are indistinguishable to a reader: Sudachi calls 本当's に a case
+/// particle and 確か's the copula's 連用形, so the no-inflected-part rule would
+/// refuse 確かに alone.
 ///
 /// ように is the shape that rule exists for, and every dictionary here lists it —
 /// so only `NEVER_JOIN` reaches it.
@@ -675,8 +673,7 @@ fn an_expression_is_refused_where_the_master_lists_its_conditional() {
 }
 
 /// 「ヒロちゃんと友だちになりたい」 is a name, its honorific ちゃん and the
-/// comitative と — not the adverb ちゃんと. A third of everything the join built
-/// was a cast member greeted by name.
+/// comitative と — not the adverb ちゃんと.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn an_expression_is_refused_where_a_name_makes_its_first_part_an_honorific() {
@@ -698,9 +695,9 @@ fn an_expression_is_refused_where_a_name_makes_its_first_part_an_honorific() {
 }
 
 /// The same list read the other way. でも and だが are two kana, so the join's
-/// length floor refused them everywhere and 654 sentences opening on でも had no
-/// でも in them — while 「読んでも」 and 「一人でも」 are で + も and must stay
-/// apart, which is the floor doing its job.
+/// length floor would refuse them everywhere, including the clause openings
+/// where they are the word — while 「読んでも」 and 「一人でも」 are で + も and
+/// must stay apart, which is the floor doing its job.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_two_kana_conjunction_is_built_where_it_opens_a_clause() {
@@ -776,7 +773,7 @@ fn an_inflected_stem_keeps_its_kanji_through_the_masters_other_spelling() {
 
 /// 信じ is Sudachi's 信じる normalised, but read off its dictionary form 信ずる,
 /// so the pair offered is (信じる, しんずる) — which the master does not list.
-/// The ladder used to fall through to 信ずる, a spelling the text never used.
+/// Falling through to 信ずる would spell the word a way the text never did.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_normalised_spelling_keeps_its_own_reading() {
@@ -824,8 +821,8 @@ fn a_katakana_word_is_not_folded_onto_its_hiragana_homophone() {
 }
 
 /// The other half of that: where the master lists **only** the hiragana, the
-/// katakana is not a spelling of anything and the line means the word. ウチ and
-/// コイツ each opened a ledger row of their own beside うち and こいつ.
+/// katakana is not a spelling of anything and the line means the word. Without
+/// the fold ウチ and コイツ get ledger rows of their own beside うち and こいつ.
 ///
 /// A katakana headword in its own right is untouched, because the fold is last
 /// and can only win where nothing the text wrote is listed.
@@ -845,10 +842,10 @@ fn katakana_the_master_does_not_list_folds_onto_the_hiragana_it_does() {
 
 /// 〜あい and 〜おい contract to 〜えー in speech, and Sudachi reads all of them
 /// right except where the spelling it normalises onto carries a second reading:
-/// 煩い is わずらい as well as うるさい, and うるせー took the noun 23 times.
+/// 煩い is わずらい as well as うるさい, and うるせー takes the noun.
 ///
 /// The un-contraction only ever offers a reading the master already lists for
-/// that spelling, so the family that was already right stays right — and a word
+/// that spelling, so the family that is already right stays right — and a word
 /// simply spelt the way it is read is untouched, since a kana headword matches
 /// on the headword alone and へえ would have taken はい.
 #[test]
@@ -883,9 +880,9 @@ fn a_mora_swallowed_into_a_sokuon_names_the_reading_it_came_from() {
 
 /// The fold has to ask the cast list itself, not leave the name to the gate
 /// downstream. That gate vetoes a cast name common enough to be an ordinary
-/// word and it asks the *identity*, so folding first made the veto fire on the
-/// fold: ココ became ここ, stopped being a name, and handed a character's 421
-/// sightings to the pronoun.
+/// word and it asks the *identity*, so folding first makes the veto fire on the
+/// fold: ココ becomes ここ, stops being a name, and hands a character's every
+/// sighting to the pronoun.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_katakana_cast_name_is_never_folded_onto_the_word_it_spells() {
@@ -941,8 +938,8 @@ fn one_mora_of_kana_never_becomes_a_kanji_word() {
 }
 
 /// たらしい is the suffix of 憎たらしい and never the hearsay らしい after a past
-/// tense. Sudachi segments 襲われ + た + らしい correctly; the join is what was
-/// wrong, and it is lexical — hence the list, not a rule.
+/// tense. Sudachi segments 襲われ + た + らしい correctly; the error is the join's,
+/// and it is lexical — hence the list, not a rule.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_past_tense_before_hearsay_is_not_the_suffix_of_a_word() {
@@ -978,10 +975,10 @@ fn explaining_a_line_yields_the_tokens_tokenizing_it_does() {
 ///
 /// 居やしない is the emphatic negative of いる, so the correct split has no いや
 /// in it; Sudachi's does, and 弥 is a master headword reading いや, so the pair
-/// matched exactly and a rank-36,000 adverb entered the ledger off one
-/// encounter. The guard is the one-mora rule at the next mora out — a two-kana
-/// string is homophonous with a dozen rare entries, so the match is found every
-/// time and means nothing any of them.
+/// matches exactly and a rare adverb enters the ledger off one encounter. The
+/// guard is the one-mora rule at the next mora out — a two-kana string is
+/// homophonous with a dozen rare entries, so the match is found every time and
+/// means nothing about any of them.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn two_morae_of_kana_never_name_a_spelling_nobody_writes() {
@@ -993,8 +990,8 @@ fn two_morae_of_kana_never_name_a_spelling_nobody_writes() {
 }
 
 /// The rarity fence has one exception, and its own class carries it: an
-/// interjection is never とき or はず. はは is laughter and took 母 47 times,
-/// ひっ took the prefix 引っ 70 — both far too common for the rank to refuse.
+/// interjection is never とき or はず. はは is laughter and takes 母, ひっ takes
+/// the prefix 引っ — both far too common for the rank to refuse.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_two_mora_cry_never_names_a_kanji_word() {
@@ -1031,7 +1028,7 @@ fn katakana_may_still_name_a_rare_spelling() {
 }
 
 /// Three morae is where the coincidence stops and the evidence starts: ほうき
-/// is 箒 at rank 22,217 and is right, which is why the guard stops at two.
+/// is 箒, a rare spelling and the right one, which is why the guard stops at two.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn three_morae_of_kana_may_name_a_rare_spelling() {
@@ -1044,8 +1041,8 @@ fn three_morae_of_kana_may_name_a_rare_spelling() {
 /// A join made on the reading may not overwrite a kanji the text wrote.
 ///
 /// 生誕祭 and 聖誕祭 are both せいたんさい, and only the second is a master
-/// headword, so the reading path rewrote a birthday celebration into Christmas
-/// 14 times. The kanji on the page is evidence and the reading is not: where
+/// headword, so the reading path would rewrite a birthday celebration into
+/// Christmas. The kanji on the page is evidence and the reading is not: where
 /// the two disagree the page wins, which is the same rule the identity ladder
 /// applies when it refuses to add kanji nobody wrote.
 #[test]
@@ -1060,9 +1057,9 @@ fn a_sounded_join_never_replaces_a_kanji_the_text_wrote() {
 
 /// A mimetic is written in either kana, and the dictionary picked one.
 ///
-/// スッ + と spells no headword, so the run came apart: と was left free, joined
-/// する into とする, and the mimetic vanished from the line. Sankoku lists すっと
-/// — the word was there the whole time, behind an alphabet.
+/// スッ + と spells no headword, so the run comes apart: と is left free, joins
+/// する into とする, and the mimetic is gone from the line. Sankoku lists すっと;
+/// only the alphabet differs.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_katakana_mimetic_joins_the_hiragana_headword_it_sounds_like() {
@@ -1081,7 +1078,7 @@ fn a_katakana_mimetic_joins_the_hiragana_headword_it_sounds_like() {
 
 /// SudachiDict tags a handful of everyday expressions 固有名詞, and the
 /// highlighter drops every proper noun before it consults the ledger — so
-/// 断腸の思い and 机上の空論 were invisible however often they were read.
+/// 断腸の思い and 机上の空論 are invisible however often they are read.
 ///
 /// Mixed script is what separates them from the cast, and being a master
 /// headword is not: 橘, 出雲, 葵, 司 and シェリー are all master headwords and
@@ -1107,7 +1104,7 @@ fn a_master_headword_written_with_okurigana_is_not_a_name() {
 
 /// Sudachi has no entry for most of a VN's cast, so it does not merely leave
 /// the name untagged — it *splits* it, and both halves are ordinary words the
-/// ledger then counts forever. 世/よ ×2,412 and 凪/なぎ ×2,385 over one script.
+/// ledger then counts forever.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_name_the_cast_list_holds_is_one_token_and_a_name() {
@@ -1121,9 +1118,9 @@ fn a_name_the_cast_list_holds_is_one_token_and_a_name() {
     assert_eq!(name.base_form, "世凪");
 }
 
-/// The verdict is a fact about the term, not about the sentence. ウィル came
-/// out `excluded: "name"` 16 times and vocabulary 11 more in one session,
-/// because Sudachi's 固有名詞 is a per-occurrence tag.
+/// The verdict is a fact about the term, not about the sentence. Sudachi's
+/// 固有名詞 is a per-occurrence tag, so the same name comes out
+/// `excluded: "name"` in one sentence and vocabulary in the next.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_cast_name_is_a_name_in_every_sentence() {
@@ -1138,7 +1135,7 @@ fn a_cast_name_is_a_name_in_every_sentence() {
 }
 
 /// A name Sudachi cannot account for comes back glued to whatever follows it:
-/// 「凛とオリヴィア」 analyses as the adverb 凛と, 72 times over one script.
+/// 「凛とオリヴィア」 analyses as the adverb 凛と.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_name_glued_to_a_particle_comes_apart() {
@@ -1170,7 +1167,8 @@ fn a_word_that_merely_starts_with_a_name_stays_whole() {
 }
 
 /// A cast name common enough to be an ordinary word is the word. VNDB lists 母
-/// as a character of this very work, and it is rank 872 in fiction.
+/// as a character of this very work, and it is one of the commonest words in
+/// fiction.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn an_everyday_word_in_the_cast_list_is_still_a_word() {
@@ -1217,8 +1215,8 @@ fn a_reading_the_master_merely_lacks_is_left_alone() {
 }
 
 /// Mode C hands 宣戦布告 over as one morpheme and only Jitendex lists it, so
-/// the gate broke an everyday word into two rarer ledger rows. A compound the
-/// reader-facing list ranks above both its halves is one word.
+/// the gate would break an everyday word into two rarer ledger rows. A
+/// compound the reader-facing list ranks above both its halves is one word.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_compound_commoner_than_its_halves_is_not_split() {
@@ -1329,7 +1327,7 @@ fn a_kana_prefix_alone_is_not_enough_to_join() {
 /// wrote. 最 + 低減 sounds like 最低限 and the master lists it, but the page
 /// spelt 減 and the reading さいていげん belongs to a word that does not keep
 /// it — so the run stays 最 + 低減 rather than asserting a spelling nobody
-/// read. (The script of 白昼夢の青写真 writes 最低限 this way in four lines.)
+/// read. A real script does spell it this way.
 #[test]
 #[ignore = "requires Sudachi dictionary (set KOTODEX_SUDACHI_DICT_PATH)"]
 fn a_sounded_join_may_not_respell_a_kanji_the_text_wrote() {

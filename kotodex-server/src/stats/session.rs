@@ -66,8 +66,7 @@ mod tests {
         assert_eq!(sessions[0].lines, 3);
         // Pace comes from the one undisputed gap: 10 chars in 30s. The second
         // line's 20 chars are therefore worth 60s, and that is what its 300s
-        // gap earns — the remaining four minutes are absence. The old flat cap
-        // would have credited 120s here on no evidence at all.
+        // gap earns — the remaining four minutes are absence.
         assert_eq!(sessions[0].active_secs, 30.0 + 60.0);
         assert_eq!(sessions[0].end_ts, 330.0);
         assert_eq!(sessions[1].chars, 7);

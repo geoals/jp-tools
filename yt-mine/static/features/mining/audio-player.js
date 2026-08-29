@@ -11,7 +11,6 @@ export function AudioPlayer() {
       const audio = audioRef.current;
       const current = audioState.value;
 
-      // Toggle off if same sentence is playing
       if (current.sentenceId === sentenceId && current.playing) {
         audio.pause();
         audio.currentTime = 0;
@@ -19,7 +18,6 @@ export function AudioPlayer() {
         return;
       }
 
-      // Play new sentence
       audioState.value = { playing: false, loading: true, sentenceId };
       audio.src = `/${videoId}/sentences/${sentenceId}/audio`;
       audio.load();

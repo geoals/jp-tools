@@ -231,8 +231,7 @@ const EXPAND_MAX_TOKENS: usize = 5;
 /// The highlighter is the caller's own — the one already warm for its line feed
 /// — because a second `SudachiTokenizer` is a second pipeline and answers
 /// differently, and both halves of this depend on the answer matching the
-/// ledger. `None` still works: every candidate then keys on itself, which is
-/// what the ledger did before this existed.
+/// ledger. `None` still works: every candidate then keys on itself.
 pub async fn expand(
     k: &Knowledge,
     highlighter: Option<Arc<Highlighter>>,
@@ -265,13 +264,12 @@ pub async fn expand(
     }
     // The same word in the other kana alphabet. A line writing アレ means あれ,
     // and only あれ is a headword — アレ is a Jitendex redirect and Sankoku has
-    // no entry for it at all, so the popup opened on a cross-reference.
+    // no entry for it at all, so the popup opens on a cross-reference.
     //
-    // Offered here rather than folded by the tokenizer, and that is not
-    // timidity: 23 katakana ledger rows would fold onto a master hiragana
-    // headword, and 424 of their 549 encounters are ココ, a character in the VN
-    // being read. Folding would credit the pronoun ここ with all of them. The
-    // reader can tell a name from a word; the pipeline cannot.
+    // Offered as a candidate rather than decided here: most katakana spellings
+    // that fold onto a master hiragana headword are a character's name in the
+    // work being read, and ココ folded onto ここ credits the pronoun with every
+    // encounter of her. The reader can tell a name from a word; this cannot.
     let folded: Vec<String> = candidates
         .iter()
         .map(|c| crate::text::kana::to_hiragana(c))
@@ -285,9 +283,8 @@ pub async fn expand(
     }
 
     // One statement per dictionary, keyed on `dictionary_id` so it seeks
-    // `idx_dictionary_entries_lookup` — there is no index on `term` alone, and
-    // a scan of 400k rows here would hold the write lock off every other
-    // writer.
+    // `idx_dictionary_entries_lookup` — there is no index on `term` alone, and a
+    // scan of the entries here would hold the write lock off every other writer.
     let placeholders = vec!["?"; candidates.len()].join(",");
     let sql = format!(
         "SELECT DISTINCT term, reading FROM dictionary_entries INDEXED BY idx_dictionary_entries_lookup \
@@ -320,8 +317,7 @@ pub async fn expand(
     found.sort_by_key(|(term, _, _)| std::cmp::Reverse(term.chars().count()));
 
     // A key resolved by a second pipeline matches no ledger row. With no
-    // tokenizer at all, every candidate keys on itself, which is what the
-    // ledger did before this existed.
+    // tokenizer at all, every candidate keys on itself.
     let keys = match highlighter {
         Some(h) => {
             let terms: Vec<String> = found.iter().map(|(t, _, _)| t.clone()).collect();

@@ -8,11 +8,10 @@ import { ExportResult } from './export-result.js';
 export function SentenceList({ sentences, videoId, jobId, isTranscribing }) {
   if (!sentences || sentences.length === 0) return null;
 
-  // The rows are built fresh every render, and must be. This used to cache the
-  // VNode per sentence and hand the same reference back, which makes Preact
-  // skip the whole subtree — including when a signal the row reads has
-  // changed. A word judged in the popup kept its old tint, and the token the
-  // popup was open on stayed outlined after it closed.
+  // The rows are built fresh every render, and must be. Caching a VNode per
+  // sentence and handing the same reference back makes Preact skip the whole
+  // subtree — including when a signal the row reads has changed, which leaves a
+  // judged word on its old tint and the popup's token outlined after it closes.
   return html`
     <ul class="sentence-list ${isTranscribing ? 'transcribing' : ''}">
       ${sentences.map((s) => html`

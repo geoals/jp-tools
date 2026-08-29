@@ -1,17 +1,17 @@
 //! How much of each inter-line gap counts as reading — the rule every aggregate
 //! in [`crate::stats`] credits time through.
 //!
-//! One module so there can only be one rule. When the focus metric ran on the
-//! old flat cap and the day totals ran on this, a sentence worked through with
-//! four lookups was "reading" to one and "lost focus" to the other.
+//! One module so there can only be one rule. Two of them, and a sentence worked
+//! through with four lookups is "reading" to one aggregate and "lost focus" to
+//! the next.
 
 use super::line::LineEvent;
 
 /// How much of each inter-line gap counts as reading.
 ///
 /// The gap after a line is time spent reading it, but you may have walked away
-/// mid-line. A flat `min(gap, afk_secs)` charged a seven-minute absence the same
-/// half-minute as a 35-second pause, inventing reading that never happened.
+/// mid-line. A flat `min(gap, afk_secs)` charges a seven-minute absence the same
+/// half-minute as a 35-second pause, which invents reading that never happened.
 ///
 /// So credit what can be shown: a lookup or a mined card at time `t` proves you
 /// were at the keyboard at `t`, and past the last such proof the line is worth
@@ -27,8 +27,8 @@ pub struct Presence<'a> {
 
 impl<'a> Presence<'a> {
     /// `marks` must be sorted. `pace` comes from [`measure_pace`] and is passed
-    /// in so every endpoint prices absence against the same window — deriving it
-    /// per request made the dashboard and the timeline disagree about a day.
+    /// in so every endpoint prices absence against the same window — derived per
+    /// request, the dashboard and the timeline disagree about a day.
     pub fn new(marks: &'a [f64], pace: Option<f64>, afk_secs: f64) -> Self {
         Self {
             marks,
@@ -41,7 +41,7 @@ impl<'a> Presence<'a> {
     ///
     /// A gap inside the cap is credited whole, and must be: pricing every gap
     /// at what its line was "worth" clips the above-average ones to average and
-    /// leaves the rest, shortening a day by a quarter while calling it a fix.
+    /// leaves the rest, which shortens the day while claiming to remove absence.
     ///
     /// Past the cap, two cases:
     ///
@@ -168,9 +168,7 @@ mod tests {
     fn walking_away_earns_the_line_and_nothing_more() {
         // Steady 4s lines establish 25 chars/s, then a seven-minute absence
         // after a 100-char line. That line was worth 4 seconds; the other
-        // 416 are absence and must not reach the clock. The flat cap credited
-        // a blanket 30s to every such gap, which on 2026-07-19 alone put 22
-        // minutes of phantom reading on the day and cost 11% of its speed.
+        // 416 are absence and must not reach the clock.
         let lines = [ev(0.0, 100), ev(4.0, 100), ev(8.0, 100), ev(428.0, 100)];
         let p = Presence::new(&[], measure_pace(&lines, &[], 30.0), 30.0);
         let b = bucket_lines(&lines, &[], &p, 600.0, 6000.0);
@@ -192,8 +190,8 @@ mod tests {
         // Gaps within the cap vary either side of the line's "worth" by their
         // nature — that spread *is* the reading. Pricing each at its worth
         // would clip every long one and keep every short one, shortening the
-        // day by a quarter while claiming to remove absence. Total credited
-        // time across sub-cap gaps must equal the wall clock they span.
+        // day while claiming to remove absence. Total credited time across
+        // sub-cap gaps must equal the wall clock they span.
         let lines: Vec<_> = (0..40)
             .scan(0.0, |t, i| {
                 let line = ev(*t, 20 + (i % 13) * 5);
@@ -214,7 +212,7 @@ mod tests {
     fn presence_survives_a_stream_with_no_measurable_pace() {
         // Every gap is over the cap, so there is nothing to derive a pace from.
         // Rather than divide by zero or credit nothing, fall back to the flat
-        // cap — the old behaviour, which is the right thing to degrade to.
+        // cap.
         let lines = [ev(0.0, 100), ev(200.0, 100), ev(400.0, 100)];
         let p = Presence::new(&[], measure_pace(&lines, &[], 30.0), 30.0);
         assert_eq!(p.credit(&lines[0], 200.0), 30.0);

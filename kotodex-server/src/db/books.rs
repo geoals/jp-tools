@@ -4,8 +4,8 @@
 //! knowledge.db. One row per work, keyed on the same exact title string
 //! `lines.work` and `manual_sessions.work` carry.
 //!
-//! The text is a megabyte and the list view never needs it, so [`Book`] does
-//! not carry it and [`fetch_text`] is a separate read.
+//! A whole book's text dwarfs everything else on the row and the list view never
+//! needs it, so [`Book`] does not carry it and [`fetch_text`] is a separate read.
 
 use jp_core::knowledge::Knowledge;
 use sqlx::Row;

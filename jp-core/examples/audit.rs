@@ -21,7 +21,7 @@
 //! recomposition merged, by what it built and how rare that word is. A join is
 //! the mirror defect of a bad identity — there Sudachi put a boundary wrong,
 //! here it was right and the join removed a correct one — and the same test
-//! applies, since a rank-119,268 word built out of two particles was not read
+//! applies, since a word nobody writes built out of two particles was not read
 //! either.
 //!
 //! Output is TSV, sorted by occurrences, so a threshold can be chosen by
@@ -86,10 +86,10 @@ async fn main() {
         .into_iter()
         .collect();
 
-    // **`discarded = 0`, as every other reader of this table does.** 106 lines
-    // of mojibake from one badly-hooked session carry 21% of the corpus's
-    // characters, and they were cleared from the reader long ago — measuring
-    // over them describes a tokenizer nobody runs.
+    // **`discarded = 0`, as every other reader of this table does.** A
+    // badly-hooked session leaves mojibake lines that carry a large share of
+    // the corpus's characters, and measuring over them describes a tokenizer
+    // nobody runs.
     let lines: Vec<String> = sqlx::query_scalar(
         "select text from lines where text is not null and discarded = 0 order by id",
     )
@@ -160,13 +160,13 @@ async fn main() {
 
     // `AUDIT_NAMES=1`: tokens Sudachi calls 固有名詞 that the master lists as
     // an ordinary headword — the words the name gate drops before it consults
-    // the ledger, and 断腸の思い is the one that was noticed.
+    // the ledger. 断腸の思い is one of them.
     // `AUDIT_SAMPLE=N`: N counted tokens drawn uniformly from the corpus, with
     // the line each came from — the input to a judged accuracy estimate. Drawn
     // by occurrence, not by type, because that is what the ledger accumulates.
     //
     // `AUDIT_TYPES=N` draws distinct identities instead, one vote each, which is
-    // the shape the two audits at the end of PARSE-DEFECTS.md used.
+    // the shape the audits in PARSE-DEFECTS.md use.
     let sample = std::env::var("AUDIT_SAMPLE")
         .ok()
         .or_else(|| std::env::var("AUDIT_TYPES").ok())
@@ -271,7 +271,6 @@ async fn main() {
             if headword == surface {
                 continue;
             }
-            // The identity puts a kanji on the page the surface has none of.
             if !headword
                 .chars()
                 .any(|c| is_kanji(c) && !surface.contains(c))

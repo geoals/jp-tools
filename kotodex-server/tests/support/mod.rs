@@ -144,8 +144,8 @@ impl TestApp {
         )
     }
 
-    /// Append a hooked line the way vn-ws-logger.py does. `chars` is left to
-    /// the startup recount in the real pipeline, so it is computed here too.
+    /// Append a hooked line the way ingest does, `chars` under the same counting
+    /// rule.
     pub async fn add_line(&self, ts: f64, text: &str, work: Option<&str>) {
         sqlx::query("INSERT INTO lines (ts, chars, text, work) VALUES (?, ?, ?, ?)")
             .bind(ts)

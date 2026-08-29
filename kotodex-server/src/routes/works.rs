@@ -20,8 +20,7 @@ use crate::history::History;
 use crate::stats;
 use jp_core::knowledge::{work_scripts, work_terms};
 
-/// How many words each per-work list carries. Short enough to read in one
-/// pass — a list of two hundred unknown words is a wall, not a plan.
+/// How many words each per-work list carries. Short enough to read in one pass.
 const MINED_LEN: usize = 24;
 
 /// What a work is, for the library filter. Derivable rather than stored: an
@@ -72,7 +71,6 @@ pub async fn works(State(state): State<AppState>) -> Result<Json<Value>, AppErro
     let mut agg =
         stats::aggregate_works(&h.work_lines(), &h.presence(), h.settings.session_gap_secs);
 
-    // Manual sessions merge in by title.
     for s in &h.manual {
         // Articles collapse into one row — see `stats::work::ARTICLES_WORK`.
         let key = stats::work_key(&s.source, s.work.as_deref());
@@ -118,8 +116,6 @@ pub async fn works(State(state): State<AppState>) -> Result<Json<Value>, AppErro
         )
     };
 
-    // Metadata joins by exact title; leftovers (queued works with no lines
-    // yet) still get a row so they show up before reading starts.
     let mut meta_by_title: BTreeMap<String, db::Work> = db::fetch_works_meta(&state.knowledge)
         .await?
         .into_iter()
@@ -291,7 +287,6 @@ pub async fn work_detail(
         }))
         .collect();
     let mut sittings = sittings;
-    // Newest first: the last time you sat down with it is the row you want.
     sittings.sort_by(|a, b| {
         b["start_ts"]
             .as_f64()
@@ -470,8 +465,8 @@ async fn apply_work_meta(state: &AppState, id: i64, req: &WorkMetaReq) -> Result
         } else {
             let vid = crate::services::vndb::normalize_id(raw)
                 .ok_or_else(|| AppError::BadRequest(format!("bad vndb id: {raw}")))?;
-            // Fetches the cover and records both the filename (on the work) and
-            // the vndb id (in work_covers), so a lost file can be re-fetched.
+            // The vndb id is recorded beside the filename so a lost cover file
+            // can be re-fetched.
             Some(
                 crate::services::covers::fetch_and_store(
                     &state.http,
@@ -513,11 +508,8 @@ async fn apply_work_meta(state: &AppState, id: i64, req: &WorkMetaReq) -> Result
     Ok(())
 }
 
-/// `GET /api/works/search?q=` — VNDB titles to pick a new work from.
-///
-/// Adding a work used to mean typing its title, then finding its id on vndb.org
-/// by hand and pasting that back. A reader knows what they are reading; this is
-/// the app doing the looking up.
+/// `GET /api/works/search?q=` — VNDB titles to pick a new work from, so a work
+/// is added by name rather than by an id fetched from vndb.org by hand.
 pub async fn search_works(
     State(state): State<AppState>,
     Query(params): Query<SearchQuery>,

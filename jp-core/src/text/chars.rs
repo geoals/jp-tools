@@ -8,8 +8,8 @@
 //! ```
 //!
 //! It is an allowlist, so punctuation, brackets, whitespace and the like all
-//! drop out — counting raw codepoints instead inflates chars/h by roughly the
-//! punctuation share of the text (~10-20% for VN prose).
+//! drop out. Counting raw codepoints inflates chars/h by the punctuation share of
+//! the text, which in VN prose is a large fraction of it.
 
 /// True for codepoints texthooker-ui keeps.
 pub fn is_counted(c: char) -> bool {

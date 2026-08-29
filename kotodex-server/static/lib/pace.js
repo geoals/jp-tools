@@ -1,9 +1,9 @@
 // Derived reading figures the server does not compute: where the current pace
 // lands a work, and what a day's hours imply for a finish date.
 //
-// These live on the client because they all depend on a *projection* — how much
-// you would read from here on — which is a question about intent, not history,
-// and the answer changes as you drag the controls.
+// These live on the client because they all depend on a projection — how much
+// you would read from here on — which is a question about intent rather than
+// about the record, and the answer moves as the controls are dragged.
 
 import { fmtChars, fmtDateStr, fmtFinishDate } from "../lib/format.js";
 
@@ -50,7 +50,7 @@ export function workSpeedPerHour(w) {
   return w.active_secs >= 600 ? w.chars / (w.active_secs / 3600) : null;
 }
 
-/** Progress numbers for one work; needs a jpdb total_chars to say anything. */
+/** Progress numbers for one work; needs a `total_chars` to say anything. */
 
 export function workProgress(w, days, settings) {
   const total = w?.meta?.total_chars;
@@ -67,10 +67,10 @@ export function workProgress(w, days, settings) {
 
   // Finish estimate, decomposed. How many hours a day you read is a property of
   // you and holds across VNs; how fast you read is a property of *this* VN and
-  // does not. So project with (this work's speed × your daily hours) rather
-  // than a cross-work chars/day, which would let a faster previous VN pull a
-  // harder current one's date earlier than it should. Falls back to the old
-  // cross-work pace until the work has 10 minutes of its own to measure speed.
+  // does not. So project with (this work's speed × your daily hours) rather than
+  // a cross-work chars/day, which would let a faster previous VN pull a harder
+  // current one's date earlier than it should. The cross-work pace is the
+  // fallback until the work has ten minutes of its own to measure speed over.
   const dailyHours = dailyActiveHours(days, settings);
   const workCharsPerDay =
     workSpeed !== null && dailyHours > 0 ? workSpeed * dailyHours : null;

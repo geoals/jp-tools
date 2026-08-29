@@ -232,8 +232,7 @@ cmd_browser() {
 
   # Settings and tokenize: reached from ⚙ rather than from a tab, and both draw
   # inside the shell, so the header has to come with them.
-  # Visible text the panel actually draws, per view. It used to assert the string
-  # "kotodex-server", which neither page has ever contained.
+  # Visible text the panel actually draws, per view.
   settings_wants=("Settings" "Advanced")
   tokenize_wants=("Tokenize")
   for view in settings tokenize; do
@@ -305,8 +304,8 @@ print(urllib.parse.quote(rows[0]["work"]) if rows else "")')
     [ "$code" = 200 ] || { echo "unresolved import in $file: $spec"; fail=1; }
   done < <(grep -rnoE 'from "(\.[^"]+)"' "$REPO/kotodex-server/static" --include="*.js" |
            sed -E 's/:[0-9]+:from "/ /; s/"$//')
-  # Only now: the loop above serves every specifier off the running instance,
-  # and stopping first turned the whole check into 000s reported as failures.
+  # Only now: the loop above serves every specifier off the running instance, so
+  # stopping first turns every request into a 000 reported as a failure.
   stop_server
   [ $fail -eq 0 ] || die "some module imports do not resolve"
 }

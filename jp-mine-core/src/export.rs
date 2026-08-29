@@ -16,7 +16,6 @@ use crate::config::AnkiConfig;
 pub struct ExportSentence {
     /// Plain sentence text (fallback when `sentence_html` is absent).
     pub sentence_text: String,
-    /// Fully formatted source string for this note.
     pub source: String,
     /// Absolute path to the image jpg on disk (if available).
     pub screenshot_path: Option<String>,
@@ -24,7 +23,6 @@ pub struct ExportSentence {
     pub audio_clip_path: Option<String>,
     /// The target vocabulary word selected by the user (base/dictionary form).
     pub target_word: Option<String>,
-    /// Dictionary definition of the target word, if found.
     pub definition: Option<String>,
     /// Anki bracket furigana notation, e.g. `隔週[かくしゅう]`.
     pub vocab_furigana: Option<String>,
@@ -57,7 +55,6 @@ pub enum ExportError {
     Failed(String),
 }
 
-/// Data for a single Anki note, ready to be serialized.
 pub struct NoteData {
     pub sentence_text: String,
     pub vocab_kanji: String,
@@ -169,8 +166,7 @@ pub fn build_add_note_request(n: &NoteData, config: &AnkiConfig) -> Value {
     })
 }
 
-/// Build the request to create a basic fallback note type.
-/// Only includes fields that are mapped in the config.
+/// A basic note type, for an Anki that has none by the configured name.
 fn build_create_model_request(config: &AnkiConfig) -> Value {
     let fields: Vec<&str> = [
         config.field_vocab.as_deref(),
@@ -191,7 +187,6 @@ fn build_create_model_request(config: &AnkiConfig) -> Value {
     .flatten()
     .collect();
 
-    // Build a minimal card template from the first field (sentence if available)
     let front = config
         .field_sentence
         .as_ref()
@@ -216,7 +211,6 @@ fn build_create_model_request(config: &AnkiConfig) -> Value {
     })
 }
 
-/// Build the request to create the deck if it doesn't exist.
 fn build_create_deck_request(deck_name: &str) -> Value {
     json!({
         "action": "createDeck",
@@ -227,7 +221,6 @@ fn build_create_deck_request(deck_name: &str) -> Value {
     })
 }
 
-/// Check whether a model (note type) already exists in Anki.
 fn build_model_names_request() -> Value {
     json!({
         "action": "modelNames",
@@ -249,7 +242,6 @@ pub fn build_store_media_request(filename: &str, data_base64: &str) -> Value {
     })
 }
 
-/// Read a file and return its contents as a base64-encoded string.
 async fn read_file_base64(path: &str) -> Result<String, ExportError> {
     use base64::Engine;
     let bytes = fs::read(path)
@@ -294,9 +286,9 @@ pub struct AnkiConnectExporter {
     pub anki_url: String,
     pub config: AnkiConfig,
     client: reqwest::Client,
-    /// Whether model/deck setup has already succeeded against this target —
-    /// it only needs to happen once per Anki instance, and skipping it saves
-    /// two round-trips per export (which dominate on slow LAN targets).
+    /// Whether model/deck setup has already succeeded against this target. It
+    /// only needs to happen once per Anki instance, and the two round-trips it
+    /// costs are worth skipping when Anki is across a network.
     setup_done: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
@@ -353,7 +345,6 @@ pub async fn gui_browse(
     send_anki_request(client, url, &body).await.map(|_| ())
 }
 
-/// Send a request to AnkiConnect and check for errors in the response.
 async fn send_anki_request(
     client: &reqwest::Client,
     url: &str,
@@ -393,7 +384,6 @@ async fn send_anki_request(
     Ok(body)
 }
 
-/// Check if a model already exists in Anki by querying modelNames.
 async fn model_exists(
     client: &reqwest::Client,
     url: &str,

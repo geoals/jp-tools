@@ -54,7 +54,6 @@ impl CropRect {
     }
 }
 
-/// Decode an image and apply its EXIF orientation.
 fn decode_oriented(bytes: &[u8]) -> Result<DynamicImage, ImageOpsError> {
     let mut decoder = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
@@ -102,7 +101,6 @@ pub fn compress_photo(bytes: &[u8], max_dim: u32, quality: u8) -> Result<Vec<u8>
     encode_jpeg(&img, quality)
 }
 
-/// Downscale a photo to a small thumbnail JPEG for the queue view.
 pub fn thumbnail(bytes: &[u8], max_dim: u32) -> Result<Vec<u8>, ImageOpsError> {
     let img = decode_oriented(bytes)?;
     let thumb = img.thumbnail(max_dim, max_dim);

@@ -212,8 +212,8 @@ distro_packages_pyside6() {
 # and still cannot record.
 #
 # Read into a variable rather than piped into `grep -q`: under `pipefail` the
-# grep exits at the first match, ffmpeg dies of SIGPIPE, and the pipeline
-# reports 141 — a working ffmpeg read as a broken one.
+# grep exits at the first match, ffmpeg dies of SIGPIPE, and the pipeline reports
+# 141 — so a working ffmpeg reads as a broken one.
 ffmpeg_records_pulse() {
   local demuxers
   demuxers="$(ffmpeg -hide_banner -demuxers 2>/dev/null)" || return 1

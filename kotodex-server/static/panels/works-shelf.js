@@ -1,7 +1,7 @@
 // The shelf: what is being read, what is planned, and what the reading turned
 // into.
 //
-// Cards rather than table rows, because a work is a thing with a cover and six
+// Cards rather than table rows, because a work is a cover and a handful of
 // numbers and a row can only carry the numbers. Clicking one opens its own
 // page (`work-detail.js`) — everything per-work lives there, which is what
 // keeps this level to "what is on the shelf and how far in am I".

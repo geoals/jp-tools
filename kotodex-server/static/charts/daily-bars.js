@@ -93,7 +93,7 @@ export function DailyBarChart({ days, metric, targetMins }) {
           const h = y(0) - y(v);
           // Only the bar under the pointer changes; every other bar keeps the
           // colour it has when nothing is hovered. Dimming the rest instead
-          // left the hovered day as the one thing that had not moved.
+          // makes the hovered day the one thing that has not moved.
           return html`
             ${
               h > 0.5 &&

@@ -8,10 +8,9 @@
 //!
 //! **Recording is the same code path as tokenizing, never a second one.** An
 //! explanation derived by a parallel implementation would drift from the thing
-//! it explains, and would be worth less than nothing on the day it mattered.
-//! So [`Trace`] is threaded through the real functions and is simply inert when
-//! off — [`Trace::push`] takes a closure, so a step nobody asked for is a bool
-//! check and never a `format!`.
+//! it explains. So [`Trace`] is threaded through the real functions and is
+//! inert when off — [`Trace::push`] takes a closure, so a step nobody asked for
+//! is a bool check and never a `format!`.
 
 /// One decision, in the order it was made.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -64,10 +63,9 @@ pub enum Step {
 /// What became of one candidate run.
 ///
 /// [`NoSignal`](Verdict::NoSignal) is split out from a refusal because
-/// recomposition offers every run of two and three tokens at every position,
-/// and nearly all of them spell nothing — those are the page's noise, and a
-/// reader looking for why a compound came apart wants the ones that named a
-/// word and were turned down anyway.
+/// recomposition offers every run of two and three tokens at every position and
+/// nearly all of them spell nothing. A reader looking for why a compound came
+/// apart wants the runs that named a word and were turned down anyway.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(tag = "verdict", rename_all = "snake_case")]
 pub enum Verdict {

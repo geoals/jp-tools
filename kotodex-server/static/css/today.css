@@ -1,6 +1,5 @@
 /* The Today card: the goal meter, the hero figure and the tile row. */
 
-/* Today */
 .hero-row {
   display: flex;
   align-items: baseline;

@@ -59,9 +59,9 @@ form.log {
   align-items: end;
   gap: 10px;
 }
-/* Scoped to the submit row: unscoped, this also painted the mode switch above
-   the form, so its two segments came out as two solid blue buttons with no
-   picked state between them. */
+/* Scoped to the submit row: unscoped it also paints the mode switch above the
+   form, whose two segments then read as two solid blue buttons with no picked
+   state between them. */
 .log .actions button {
   padding: 7px 16px;
   border: none;

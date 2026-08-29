@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Build the Windows installer: the zip's tree, plus the two Python components
+# Build the Windows installer: the zip's tree, plus the three Python components
 # frozen, wrapped by Inno Setup.
 #
 #   pwsh -File scripts\windows\build-installer.ps1 [version]
@@ -120,7 +120,7 @@ Freeze 'kotodex' (Join-Path $Repo 'kotodex\kotodex.py') '--windowed' @(
 Say 'pruning the frozen overlay'
 $internal = Join-Path $Work 'dist\kotodex-overlay\_internal\PySide6'
 # Chromium's DevTools resources, which are only reachable through remote
-# debugging. The debug pak alone is 72 MB.
+# debugging.
 Get-ChildItem (Join-Path $internal 'resources') -Filter 'qtwebengine_devtools_resources*.pak' `
     -ErrorAction SilentlyContinue | Remove-Item -Force
 # Qt's own dialog strings, in every language Qt ships. The page is Japanese and
@@ -131,8 +131,8 @@ Get-ChildItem (Join-Path $internal 'translations') -File -ErrorAction SilentlyCo
     Where-Object { $keep -notcontains ($_.BaseName -replace '^.*_', '') } |
     Remove-Item -Force
 # Its own list, because Chromium names these by full locale - en-US.pak, not
-# en.pak. Filtering them against the list above kept ja.pak alone and deleted
-# every English one, so an English machine shipped with no locale it could load.
+# en.pak. Filtered against the list above, every English one is deleted and
+# ja.pak alone survives, leaving an English machine no locale it can load.
 # en-US rather than en-GB or any other: it is Chromium's own fallback.
 $keepLocale = @('en-US', 'ja')
 Get-ChildItem (Join-Path $internal 'translations\qtwebengine_locales') -File -ErrorAction SilentlyContinue |

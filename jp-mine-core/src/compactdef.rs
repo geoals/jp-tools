@@ -35,16 +35,13 @@ use crate::llm::{Ask, Provider};
 use crate::tags::{FAMILIARITY_RUBRIC, FLAVOR_RUBRIC, TagLine};
 
 /// The model this prompt was tuned against, used unless the reader has named one
-/// (`llm::Provider::model`). The tag-axis experiment found no thinking and no
-/// external frequency signals to be best, and that request shape carries over
-/// unchanged. Opus is preferred over Sonnet for the meaning/usage prose.
+/// (`llm::Provider::model`). Opus rather than Sonnet for the meaning/usage prose.
 const MODEL: &str = "claude-opus-5";
 
 /// Built once from the shared tag rubric ([`crate::tags`]) plus the CompactDef-
-/// specific framing and output format. The FAMILIARITY/FLAVOR definitions live
-/// in `tags.rs` so this and kotodex-server's explain prompt can never drift apart
-/// again — and so yt-mine cannot grow a third paraphrase of them, which is
-/// exactly what its old `LlmDefiner` was.
+/// specific framing and output format. The FAMILIARITY/FLAVOR definitions live in
+/// `tags.rs` because every prompt that rates a word has to rate it by the same
+/// rubric; a paraphrase here would be a second definition of the axes.
 static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
     format!(
         "\
@@ -80,8 +77,7 @@ no markdown."
 });
 
 /// The exact system prompt sent with every CompactDef call. Exposed because
-/// tuning the rubric means reading what is actually being asked, and a
-/// paraphrase of it is how the two callers drifted apart in the first place.
+/// tuning the rubric means reading what is actually being asked.
 pub fn system_prompt() -> &'static str {
     &SYSTEM_PROMPT
 }
@@ -133,10 +129,10 @@ fn run_cli(system: &str, message: &str) -> Result<String, CompactDefError> {
     let out = std::process::Command::new("claude")
         .args(["-p", "--model", "opus", "--effort", "low"])
         .args(["--setting-sources", ""])
-        // Writing a gloss needs no tools, and their definitions are 3,800 of
-        // the ~12,000 tokens the CLI sends — a third of the bill over a run of
-        // thousands. Naming them is unfortunate but there is no "no tools"
-        // switch; a tool missing from this list costs tokens, not correctness.
+        // Writing a gloss needs no tools, and their definitions are a large part
+        // of what the CLI sends. Naming them one by one is unfortunate but there
+        // is no "no tools" switch; a tool missing from this list costs tokens,
+        // not correctness.
         .arg("--disallowed-tools")
         .args([
             "Bash",
@@ -188,10 +184,9 @@ two lines of the normal format become the two halves of one line, split by \
 
 /// Gloss many cards in one CLI call.
 ///
-/// One round trip per card is the wrong shape for a re-tag of thousands: the
-/// system prompt is ~1,300 tokens and was being resent every time, and each
-/// call is a process spawn plus a cold model. Batching amortises the prompt
-/// over the whole batch and cuts wall-clock time by roughly the batch size.
+/// One call per card resends the whole system prompt and pays a process spawn for
+/// each one, which is the wrong shape for re-tagging a deck. Batching amortises
+/// both over the batch.
 ///
 /// Returns one result per input, in order. An item the model skipped or
 /// answered unparseably comes back `Err(Failed)` and the rest still land; a
@@ -278,10 +273,9 @@ async fn request(
                 messages,
                 max_tokens: 300,
                 default_model: MODEL,
-                // The system block is the same ~1,300 tokens on every card and is
-                // most of what a call costs. A mine inside the cache window reads
-                // it at a fraction of the price — and mining clusters, so the
-                // denser the session the more of them hit.
+                // The system block is identical on every card and is most of what
+                // a call costs. A mine inside the cache window reads it at a
+                // fraction of the price, and mining clusters.
                 cache_system: true,
             },
         )
@@ -289,15 +283,11 @@ async fn request(
         .map_err(Into::into)
 }
 
-/// Post-clean a raw gloss into the card-back HTML. The model returns a short
-/// English meaning/usage block and a register keyword on a final line; this
-/// trims wrapping quotes/whitespace, drops blank lines, and joins the remaining
-/// lines with `<br>` (plain newlines don't render in Anki's HTML). See
-/// the field format.
+/// Post-clean a raw gloss into the card-back HTML. Lines are joined with `<br>`
+/// because a plain newline does not render in Anki's HTML.
 ///
-/// Opus-tier models (Opus 5 especially) sometimes echo the prompt's `<meaning>`/
-/// `<usage>` schema placeholders as literal tags; strip them defensively so they
-/// can never reach the card even if the prompt rule is ignored.
+/// Opus-tier models sometimes echo the prompt's `<meaning>`/`<usage>` schema
+/// placeholders as literal tags, so those are stripped whatever the prompt says.
 fn clean_gloss(raw: &str) -> String {
     let raw = raw
         .replace("<meaning>", "")
@@ -377,8 +367,8 @@ mod tests {
         );
     }
 
-    /// The case the surface-only shape was built for: a word whose kanji is rare
-    /// and whose kana phrase is not. Prints both so the anchoring can be seen;
+    /// The case the surface-only shape exists for: a word whose kanji is rare and
+    /// whose kana phrase is not. Prints both so the anchoring can be seen;
     /// asserts only that the written form is not tagged *below* the headword,
     /// since a tag tier is a model judgement and not a fixture.
     #[tokio::test]

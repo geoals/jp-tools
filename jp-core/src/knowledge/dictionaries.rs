@@ -2,11 +2,10 @@
 //! imported from Yomitan zips and queried by every tool that needs to know
 //! whether a string is a word.
 //!
-//! Three dictionaries are loaded — Sankoku (~82k terms), Jitendex (~408k) and
-//! NHK (pitch only) — and they **cannot be pooled** into one "is it a word" set,
-//! because they disagree about what a word is: 335k Jitendex terms are absent
-//! from Sankoku, since it gives phrases and every orthographic variant their own
-//! headword where a monolingual dictionary lists them under one.
+//! The dictionaries **cannot be pooled** into one "is it a word" set, because
+//! they disagree about what a word is: a bilingual dictionary gives phrases and
+//! every orthographic variant a headword of their own where a monolingual lists
+//! them under one, so most of Jitendex is absent from Sankoku.
 //!
 //! Hence [`Role`], and two thresholds over the same data:
 //!
@@ -22,8 +21,7 @@ use sqlx::{Row, SqlitePool};
 
 use crate::dictionary::{DictionaryEntry, PitchEntry};
 
-/// Load all distinct headwords from dictionary_entries.
-/// Used at startup to build the set for dictionary-aware tokenization.
+/// Every headword any dictionary lists, roles ignored.
 pub async fn get_all_headwords(pool: &SqlitePool) -> Result<HashSet<String>, sqlx::Error> {
     let rows: Vec<(String,)> = sqlx::query_as("SELECT DISTINCT term FROM dictionary_entries")
         .fetch_all(pool)
@@ -31,8 +29,7 @@ pub async fn get_all_headwords(pool: &SqlitePool) -> Result<HashSet<String>, sql
     Ok(rows.into_iter().map(|(term,)| term).collect())
 }
 
-/// The master dictionary's headwords, for decomposing compounds it does not
-/// list into parts it does.
+/// The master dictionary's headwords — the tokenizer's lexicon.
 pub async fn master_headwords(pool: &SqlitePool) -> Result<HashSet<String>, sqlx::Error> {
     let rows: Vec<(String,)> = sqlx::query_as(
         "SELECT DISTINCT de.term FROM dictionary_entries de \
@@ -53,12 +50,12 @@ pub async fn master_headwords(pool: &SqlitePool) -> Result<HashSet<String>, sqlx
 /// listing it as the reading of a kanji headword is the same evidence of
 /// wordhood — see [`refresh_dictionary_flags`], which this mirrors.
 ///
-/// **Every role but the master and the name lists**, which is what "lenient:
-/// any dictionary" has to mean. 明鏡 and 小学館 are `standard` because they
-/// decide segmentation, and being trusted to say where a word *ends* while not
-/// being trusted to say it is a word at all was backwards: 41,645 terms are in
-/// one of them and in nothing else, and every one of them — 聞きかじり is the
-/// noticed case — lost its span and its popup.
+/// **Every role that lists words at all**, which is what "lenient: any
+/// dictionary" has to mean — the frequency and pitch lists are out because they
+/// hold ranks and accents rather than headwords. 明鏡 and 小学館 are `standard`
+/// because they decide segmentation, and a dictionary trusted to say where a word
+/// *ends* has to be trusted to say it is a word: a term only they list needs its
+/// span and its popup like any other, 聞きかじり among them.
 ///
 /// [`VocabRow::is_word`]: crate::knowledge::vocabulary::VocabRow::is_word
 /// [`refresh_dictionary_flags`]: crate::knowledge::vocabulary::refresh_dictionary_flags
@@ -148,9 +145,8 @@ pub async fn find_dictionary(
     Ok(row.map(|r| (r.get("id"), r.get("title"))))
 }
 
-/// Insert a dictionary and all its entries in a single transaction.
-/// Returns the dictionary id. If interrupted, the transaction rolls back
-/// so no partial data is left behind.
+/// Insert a dictionary and all its entries in one transaction, so an interrupted
+/// import leaves nothing partial behind.
 pub async fn import_dictionary(
     pool: &SqlitePool,
     title: &str,
@@ -263,8 +259,8 @@ pub async fn needs_sequence_backfill(
 /// under, so this is a straight update and never invents a row. Marks the
 /// dictionary checked either way.
 ///
-/// One pass for both because both come off the same term bank, and re-reading a
-/// 400k-entry zip twice to learn two things about the same row is waste.
+/// One pass for both, because both come off the same term bank and re-reading a
+/// large zip twice to learn two things about the same row is waste.
 pub async fn backfill_sequences(
     pool: &SqlitePool,
     dictionary_id: i64,
@@ -272,10 +268,10 @@ pub async fn backfill_sequences(
 ) -> Result<u64, sqlx::Error> {
     let mut updated = 0;
     // Committed in batches, not as one transaction over every entry. SQLite has
-    // one write lock per database: a single pass over a 400k-entry dictionary
-    // holds it for minutes, which is long enough to fail a line being captured
-    // from a live reading session — and long enough to lose the lock and roll
-    // the whole thing back, as it did.
+    // one write lock per database: a single pass over a large dictionary holds it
+    // for minutes, which is long enough to fail a line being captured from a live
+    // reading session, and long enough to lose the lock and roll the whole pass
+    // back.
     for chunk in entries.chunks(2000) {
         let mut tx = pool.begin().await?;
         for entry in chunk {
@@ -334,7 +330,7 @@ pub async fn lexeme_dictionary(pool: &SqlitePool) -> Result<Option<i64>, sqlx::E
 ///
 /// **Readings are normalized on both sides before matching**, since an entry
 /// whose headword is already kana stores the reading either as the headword
-/// again or not at all. Without that every kana headword failed to join.
+/// again or not at all. Without it no kana headword joins.
 ///
 /// **Spellings fan out; readings do not.** An entry groups every way a word has
 /// ever been written *and said*, and those are not the same claim. Knowing
@@ -354,12 +350,11 @@ pub async fn lexeme_dictionary(pool: &SqlitePool) -> Result<Option<i64>, sqlx::E
 /// Negative is excluded outright as well, which is a claim about the *spelling*:
 /// 三人 is さんにん at 200 and みたり at -102, 硬い is also 緊い at -103.
 ///
-/// Measured on one import: 501 dead forms and 441 secondary readings, 20% of it.
 /// A variant spelling of the primary reading still comes through — 次々/次次,
 /// 元々/元元, 不気味/無気味 — and costs nothing, since it collapses onto the
 /// same lexeme.
 ///
-/// Returned whole rather than per id: an import asks about ~13k of them.
+/// Returned whole rather than per id: an import asks about most of them.
 pub async fn master_forms_by_sequence(
     pool: &SqlitePool,
 ) -> Result<HashMap<i64, Vec<(String, String)>>, sqlx::Error> {
@@ -436,7 +431,6 @@ pub async fn lookup_dictionary_entries(
         .collect())
 }
 
-/// Insert pitch accent entries for a dictionary within a transaction.
 pub async fn insert_pitch_entries(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     dictionary_id: i64,
@@ -482,9 +476,8 @@ pub async fn lookup_pitch_entries(
         .collect())
 }
 
-/// Insert frequency entries for a dictionary within a transaction.
-/// Batched multi-row inserts: frequency dictionaries can hold 1M+ entries
-/// (e.g. BCCWJ), and per-row round-trips make import take minutes.
+/// Batched multi-row inserts: a frequency dictionary can hold over a million
+/// entries — BCCWJ does — and per-row round-trips make the import take minutes.
 pub async fn insert_frequency_entries(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     dictionary_id: i64,
@@ -509,9 +502,8 @@ pub async fn insert_frequency_entries(
     Ok(())
 }
 
-/// Look up the best (lowest) frequency rank for a term.
-/// Frequency dicts often carry multiple entries per term (readings,
-/// short/long unit words); the minimum rank is the most common usage.
+/// A frequency dictionary carries several entries per term — readings, short and
+/// long unit words — and the lowest rank is the commonest usage.
 pub async fn lookup_frequency(
     pool: &SqlitePool,
     dictionary_id: i64,
@@ -536,8 +528,8 @@ pub async fn lookup_frequency(
 /// **Keyed on the reading as well as the term**, because the question being
 /// asked is always "how common is this spelling *read this way*". Ranking the
 /// spelling alone answers a different one and answers it wrongly: 一 is rank 23
-/// as いち, so いつ resolved to 一 rather than 何時 — 103 times — even though
-/// 一/いつ is rank 536,048 against 何時/いつ at 151.
+/// as いち, so いつ resolves to 一 rather than 何時, even though 一/いつ is rank
+/// 536,048 against 何時/いつ at 151.
 pub async fn frequency_ranks(
     pool: &SqlitePool,
     dictionary_id: i64,
@@ -576,16 +568,15 @@ pub async fn frequency_ranks(
 /// their 200 and are plainly real readings. 私/わたくし scores 0 against
 /// わたし's 200 and is the case this exists for.
 ///
-/// Equal or near-equal readings were never candidates anyway: 何 is なに and なん
+/// Equal or near-equal readings are never candidates anyway: 何 is なに and なん
 /// at 200 each, 一日 is いちにち 200 and ついたち 199.
 const POPULARITY_TIER: i64 = 150;
 
 /// Which reading to believe for a headword the master lists several ways.
 ///
 /// Sudachi's cost model is the wrong authority for this and cannot be argued
-/// with: it reads a bare 私 as わたくし in every context tried, and both
-/// 私/わたし and 私/わたくし are listed pairs, so no amount of validating the
-/// pair moves it.
+/// with: it reads a bare 私 as わたくし in every context, and both 私/わたし and
+/// 私/わたくし are listed pairs, so no amount of validating the pair moves it.
 ///
 /// Corpus frequency cannot settle it either — BCCWJ is annotated with the same
 /// UniDic that Sudachi uses, and duly ranks わたくし (47) ahead of わたし (182).
@@ -691,7 +682,7 @@ pub struct PreferredReading {
 ///
 /// Same shape as [`needs_sequence_backfill`], and for the same reason: most
 /// dictionaries publish neither, so "has no pitch rows" cannot mean "not read
-/// yet" — that re-parsed all seven zips on every `jp-dict sync`.
+/// yet" — read that way, every `jp-dict sync` re-parses every zip installed.
 pub async fn needs_meta_backfill(
     pool: &SqlitePool,
     dictionary_id: i64,
@@ -725,11 +716,11 @@ pub enum Role {
     /// because 明鏡 lists it) and nothing else: not the vocabulary scale, and
     /// not how a word is spelt. Those two stay the master's, because these
     /// dictionaries list the archaic kanji of every function word — それ as
-    /// 其れ, この as 此の — and admitting them as spellings rewrote 5,064 lines
-    /// of the corpus.
+    /// 其れ, この as 此の — and admitting those as spellings respells the
+    /// commonest words in the language in kanji no reader ever saw.
     Standard,
     /// A name dictionary: a term in here but not in the master is a name, not
-    /// vocabulary. (None loaded yet; the schema is ready for one.)
+    /// vocabulary.
     Name,
     /// A frequency list. It answers how common a word is — the reader's
     /// underline, the rank pill, the sweep's ordering — and nothing else.
@@ -833,7 +824,7 @@ pub async fn list_dictionaries(pool: &SqlitePool) -> Result<Vec<Dictionary>, sql
 /// Repoint a cached dictionary at the zip it now lives in.
 ///
 /// `source_path` is the cache key, so moving a zip would otherwise re-import it
-/// from scratch — 400k entries — and leave the old row behind as a duplicate.
+/// from scratch and leave the old row behind as a duplicate.
 /// `backfill_sequences` also resolves the zip through this column, and skips a
 /// dictionary whose path no longer exists.
 pub async fn set_source_path(
@@ -968,7 +959,7 @@ pub async fn any_readings(pool: &SqlitePool, term: &str) -> Result<Vec<String>, 
 /// the vocabulary scale are measured against — so picking a defensible one
 /// beats having none. The standard monolinguals first, then the *smallest*
 /// dictionary: a monolingual is an order of magnitude smaller than a bilingual
-/// like Jitendex, whose 335k headwords include every compositional compound and
+/// like Jitendex, whose headwords include every compositional compound and
 /// orthographic variant and would make "I know N words" meaningless.
 ///
 /// Returns an index into `all`. The count query walks `dictionary_entries`, so
@@ -1005,7 +996,7 @@ async fn fallback_master(
 /// isn't loaded must not clear the one that is.
 ///
 /// Called at startup rather than at import time, so changing the setting takes
-/// effect on the next run without re-importing 400k entries.
+/// effect on the next run without re-importing anything.
 pub async fn ensure_master(pool: &SqlitePool, marker: &str) -> Result<Option<i64>, sqlx::Error> {
     let all = list_dictionaries(pool).await?;
     let named = (!marker.is_empty())

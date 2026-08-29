@@ -23,8 +23,8 @@ pub const INTERRUPTION_SECS: f64 = 60.0;
 #[derive(Debug, Default, Clone, Copy, Serialize)]
 pub struct FocusDay {
     /// Gap time credited as reading, by the same `Presence` rule as everything
-    /// else — while this ran on a flat cap and the rest did not, a sentence
-    /// worked through with four lookups read as a minute of lost focus.
+    /// else. On a flat cap of its own, a sentence worked through with four
+    /// lookups reads as a minute of lost focus.
     pub active_secs: f64,
     /// Wall-clock time inside sessions — every gap, uncapped.
     pub span_secs: f64,
@@ -67,7 +67,7 @@ pub fn aggregate_focus_days(
                 // A long gap only breaks the run if nothing in it says you were
                 // there. Ninety seconds spent working through one sentence with
                 // four lookups is hard reading, not a distraction — counting it
-                // as one cut a 98-minute unbroken stretch in half.
+                // as one splits the stretch it belongs to.
                 if gap > INTERRUPTION_SECS && !presence.saw_activity(&prev, gap) {
                     day.interruptions += 1;
                     stretch = 0.0;
@@ -96,9 +96,6 @@ mod tests {
     fn focus_does_not_punish_looking_words_up() {
         // A hard sentence worked through with lookups: 90 seconds on one line,
         // proof of presence all the way. That is not lost focus, it is reading.
-        // While this metric ran on the flat cap and everything else did not, a
-        // day like 2026-07-20 read 97.3% focused, and every one of the 17 gaps
-        // behind the missing 2.7% turned out to hold lookups.
         // Ten minutes of steady 5s beats, then one line held for 90 seconds.
         let steady: Vec<_> = (0..=120).map(|i| ev(i as f64 * 5.0, 20)).collect();
         let mut worked = steady.clone();

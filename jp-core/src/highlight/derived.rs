@@ -2,15 +2,14 @@
 //! in `knowledge.db`.
 //!
 //! Each one is a pure function of the dictionaries, so none of them changes
-//! until a dictionary does — but deriving them costs seconds and every tool paid
-//! it on every start. The queries themselves are about one second; the rest is
-//! turning 2.5M rows into Rust collections one row at a time. Indexing cannot
-//! help, so the work has to stop being repeated.
+//! until a dictionary does — but deriving them costs seconds, nearly all of it
+//! turning the dictionary rows into Rust collections one row at a time. No index
+//! helps, so the work has to stop being repeated.
 //!
 //! **`jp-dict` writes this and services only read it.** It owns every dictionary
 //! mutation (`import`, `reimport`, `remove`, `set-role`, `priority`, `sync`), so
 //! it is the one place that knows the inputs moved. A service that wrote the
-//! cache would be three processes racing to author the same 40 MB.
+//! cache would be three processes racing to author the same payload.
 //!
 //! **A stale or absent cache is not a failure, only slower.** The fingerprint
 //! stops matching and [`Derived::build`] runs the queries as before.
@@ -25,11 +24,10 @@ use crate::knowledge::dictionaries::{self as d, PreferredReading};
 
 /// The parts the cache is stored in, one row each.
 ///
-/// **Rows rather than one 50 MB blob, for two reasons.** Each is written as a
+/// **Rows rather than one blob, for two reasons.** Each is written as a
 /// statement of its own, so `jp-dict` never holds the write lock for the whole
 /// payload at once. And each decodes on a blocking thread of its own, which is
-/// what takes the read off the critical path — decoding is 2.5M string
-/// allocations and was the largest thing left in a start.
+/// what takes the read off the critical path.
 ///
 /// So the split is by *size*, not by meaning: the two wordhood sets are one
 /// query but two rows, because together they are the longest pole.
@@ -77,8 +75,8 @@ pub struct Derived {
     /// short-kana guard reads an absent spelling as rare, so it needs all of it;
     /// the reader's underline wants the same numbers restricted to spellings a
     /// dictionary lists, which [`Highlighter::rank`] does at lookup time. An
-    /// `Arc` because both hold it and a second copy of 443k ranks is 11 MB and
-    /// 80 ms of startup for nothing.
+    /// `Arc` because both hold it and a second copy of the whole list costs
+    /// memory and startup for nothing.
     ///
     /// [`Highlighter::rank`]: super::Highlighter
     pub reader_ranks: std::sync::Arc<HashMap<String, i64>>,
@@ -91,8 +89,8 @@ pub struct Derived {
 ///
 /// **Content, not a counter.** A generation number bumped by `jp-dict` would be
 /// almost free and would be wrong the first time `knowledge.db` is edited by
-/// hand, which happens. Row counts cost about 150 ms against the covering
-/// indexes and catch every import, reimport and removal however it was made.
+/// hand, which happens. Row counts are cheap against the covering indexes and
+/// catch every import, reimport and removal however it was made.
 ///
 /// What they cannot catch is an edit that replaces a row in place. `jp-dict`
 /// rebuilds whenever the fingerprint moves, so the way out of a wrong cache is
@@ -185,8 +183,8 @@ async fn stored_fingerprint(pool: &SqlitePool) -> Result<Option<String>, sqlx::E
 }
 
 impl Derived {
-    /// Derive all of it from the dictionary tables — what every start did before
-    /// the cache existed, and still does when it misses.
+    /// Derive all of it from the dictionary tables — what a cache miss falls
+    /// back to.
     async fn build(pool: &SqlitePool) -> Result<Derived, sqlx::Error> {
         let (wordhood_terms, wordhood_readings) = d::wordhood_entries(pool).await?;
         let master_entries = d::master_entries(pool).await?;
@@ -247,9 +245,8 @@ impl Derived {
             take("arbitration"),
         );
 
-        // Decoding is half a second of pure CPU altogether, which must neither
-        // sit on the runtime a server is polling requests on nor happen one
-        // section after another.
+        // Decoding is pure CPU, which must neither sit on the runtime a server
+        // is polling requests on nor happen one section after another.
         let decoded = tokio::try_join!(
             spawn(move || decode_set(&terms)),
             spawn(move || decode_set(&readings)),
@@ -291,9 +288,9 @@ impl Derived {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0);
-        // One statement per section, so a 50 MB write is never one transaction:
-        // SQLite takes a single write lock per database and a source posting a
-        // line waits behind whatever holds it.
+        // One statement per section, so the whole payload is never one
+        // transaction: SQLite takes a single write lock per database and a source
+        // posting a line waits behind whatever holds it.
         for (name, payload) in self.encode() {
             sqlx::query(
                 "INSERT INTO derived_cache (name, fingerprint, payload, built_ts) \
@@ -309,7 +306,7 @@ impl Derived {
             .await?;
         }
         // A payload an older format wrote under a name this one does not use
-        // would sit there forever, tens of megabytes of it.
+        // would sit there forever.
         let sql = format!(
             "DELETE FROM derived_cache WHERE name NOT IN ({})",
             ["?"; SECTIONS.len()].join(",")
@@ -345,9 +342,8 @@ async fn ambiguous_ranks(
 /// loaded, which is never an error — the features built on it simply go quiet.
 ///
 /// **Keyed by spelling alone, best rank wins** — the same question
-/// `lookup_frequency` puts for the popup. Keying on `(spelling, reading)`
-/// instead made the underline and the popup disagree about the same word: the
-/// popup printed 4,259 for 近付ける while the span carried nothing.
+/// `lookup_frequency` puts for the popup. Keying on `(spelling, reading)` makes
+/// the underline and the popup disagree about the same word.
 async fn ranks_of(
     pool: &SqlitePool,
     dict: Option<d::Dictionary>,
@@ -391,8 +387,7 @@ type MasterSection = (
 );
 
 /// The two tables that arbitrate rather than describe — which spelling of a
-/// shared reading, and which reading of a shared spelling. A few tens of
-/// thousands of rows between them.
+/// shared reading, and which reading of a shared spelling.
 type ArbitrationSection = (
     HashMap<(String, String), i64>,
     HashMap<String, PreferredReading>,
@@ -408,7 +403,7 @@ fn spawn<T: Send + 'static>(
 /// byte length and its bytes, and each rank as an `i64`.
 ///
 /// Not JSON. This is read on the path that decides how long the reader waits
-/// for the first tinted line, and a serde pass over 2M strings is the cost the
+/// for the first tinted line, and a serde pass over every string is the cost the
 /// cache exists to remove.
 impl Derived {
     fn encode(&self) -> Vec<(&'static str, Vec<u8>)> {

@@ -77,9 +77,8 @@ impl Status {
         matches!(self, Status::Known)
     }
 
-    /// `learning` and `name` were removed: `learning` duplicated `mined`, and
-    /// names never reach the ledger. Either still in the database reads back as
-    /// `new` via [`Status::parse`].
+    /// The four a term can carry. Any other value in the database reads back as
+    /// `new` — see [`Status::parse`].
     pub const ALL: [Status; 4] = [
         Status::New,
         Status::Known,
@@ -256,10 +255,10 @@ pub async fn sync_mined(k: &Knowledge) -> Result<i64, sqlx::Error> {
         .await?;
     sqlx::query(
         // `headword` is the card's spelling normalized the way the ledger keys
-        // it; matching the raw `vocab` lost every card whose spelling
-        // normalizes — 検死 never marked 検屍. Empty means a snapshot older than
-        // the column, which falls back to the old behaviour until the next
-        // refresh fills it.
+        // it; matching the raw `vocab` misses every card whose spelling
+        // normalizes — 検死 would never mark 検屍. Empty means a snapshot older
+        // than the column and falls back to `vocab` until the next refresh fills
+        // it.
         "UPDATE vocabulary SET mined = 1 \
          WHERE headword IN (SELECT COALESCE(NULLIF(headword, ''), vocab) FROM anki_notes)",
     )
@@ -279,10 +278,9 @@ pub async fn sync_mined(k: &Knowledge) -> Result<i64, sqlx::Error> {
 /// reflected on the next refresh instead of leaving a count that only grows.
 pub async fn sync_lookup_counts(k: &Knowledge) -> Result<(), sqlx::Error> {
     sqlx::query(
-        // Against the normalized key, not the spelling Yomitan sent: a lookup
-        // of 検死 belongs to 検屍, the row the reader actually meets. Empty
-        // means a row the backfill has not reached, which falls back to the
-        // spelling and so behaves as it did before.
+        // Against the normalized key, not the spelling Yomitan sent: a lookup of
+        // 検死 belongs to 検屍, the row the reader actually meets. Empty means a
+        // row the backfill has not reached, and falls back to the spelling.
         "UPDATE vocabulary SET lookup_count = \
              (SELECT COUNT(*) FROM lookups \
                WHERE COALESCE(NULLIF(lookups.headword, ''), lookups.term) \
@@ -304,18 +302,17 @@ pub async fn sync_lookup_counts(k: &Knowledge) -> Result<(), sqlx::Error> {
 /// index is `(dictionary_id, term)`, so filtering on `d.role` through a join
 /// leaves its leading column unconstrained and SQLite scans every entry per
 /// ledger row. Resolving the role to its ids first makes each subquery a seek.
-/// The join form took six minutes and held the write lock throughout, failing
-/// every concurrent write with "database is locked"; this runs in 15 ms.
+/// In the join form the pass holds the write lock for minutes, so every
+/// concurrent write fails with "database is locked".
 pub async fn refresh_dictionary_flags(k: &Knowledge) -> Result<(), sqlx::Error> {
     // Two EXISTS rather than one with an OR inside: each has to be able to
     // seek its own index, and an OR across two columns leaves SQLite scanning.
     //
-    // The second is the kana case. A dictionary lists 言う and 出来る in kanji,
-    // so a term the tokenizer produced as いう or できる matched nothing and was
-    // filed as noise — 398 and 183 encounters of it. When the ledger's reading
-    // is empty the headword *is* kana (that is the key's convention), and a
-    // dictionary having it as a reading is the same evidence of wordhood that
-    // having it as a term would be.
+    // The second is the kana case. A dictionary lists 言う and 出来る in kanji, so
+    // a term the tokenizer produced as いう or できる matches no term at all and
+    // would be filed as noise. When the ledger's reading is empty the headword
+    // *is* kana (that is the key's convention), and a dictionary having it as a
+    // reading is the same evidence of wordhood that having it as a term would be.
     let clause = |roles: &[&str]| {
         let list = roles
             .iter()
@@ -621,8 +618,8 @@ fn word_rank_sql(lex: Option<i64>, corpus: Option<i64>, alias: &str) -> String {
     // against a dictionary that always carries one.
     let rd = format!("CASE WHEN {alias}.reading = '' THEN {hw} ELSE {alias}.reading END");
     // Two subqueries and a MIN, rather than one over a `term IN (...)` set: the
-    // set form makes `dictionary_frequency` unreachable by index and costs a
-    // second per row — 4.7s for five rows against 0.18s for the whole ledger.
+    // set form makes `dictionary_frequency` unreachable by index and costs about
+    // a second per row.
     let form = format!(
         "(SELECT MIN(f.frequency) FROM dictionary_frequency f \
            WHERE f.dictionary_id = {corpus} AND f.term = {hw} \
@@ -721,13 +718,13 @@ pub async fn browse(
     //
     // The entry id is taken off the form's best-scored row rather than as a
     // `MIN(sequence)`: SQLite serves a MIN over that column from
-    // `idx_dictionary_entries_sequence`, which is keyed on `dictionary_id`
-    // alone, so the term never reaches an index and every ledger row costs a
-    // partial scan of 400k entries.
+    // `idx_dictionary_entries_sequence`, which is keyed on `dictionary_id` alone,
+    // so the term never reaches an index and every ledger row costs a partial
+    // scan of the whole dictionary.
     let group = "COALESCE(CAST(seq AS TEXT), headword || CHAR(31) || reading)";
-    // Collapsed, the filter picks *words*, not rows. 元々 was judged by hand and
-    // 元元 came from the import; filtering the rows first left 元元 standing
-    // alone as its own word, which is the database showing through again. So a
+    // Collapsed, the filter picks *words*, not rows. 元々 can be judged by hand
+    // while 元元 came from an import, and filtering the rows first leaves 元元
+    // standing alone as its own word — the database showing through again. So a
     // word is shown when any of its spellings matches, and the row shown is one
     // that did.
     let survivor = if collapse {
@@ -844,9 +841,8 @@ pub async fn first_known_at(k: &Knowledge) -> Result<Vec<(Term, f64)>, sqlx::Err
         .collect())
 }
 
-/// `source` labels the pass in the history log — `triage`, `anki`,
-/// `source` labels the pass in the history log — `triage`, `anki`, `seed`. It
-/// is informational; it never affects what is written to `vocabulary` itself.
+/// `source` labels the pass in the history log — `triage`, `anki`, `seed`. It is
+/// informational; it never affects what is written to `vocabulary` itself.
 pub async fn set_status_each(
     k: &Knowledge,
     judgements: &[(Term, Status)],
@@ -878,9 +874,9 @@ pub async fn set_status_each(
 /// Move a judgement from a key the ingest no longer produces onto the one it
 /// does, and delete the old row.
 ///
-/// Re-tokenization strands assertions: when the ledger began keying on
-/// Sudachi's *normalized* form, いっぱい became 一杯 and every judgement on the
-/// old spelling was left on a row nothing writes to any more.
+/// Re-tokenization strands assertions: a rule change re-keys いっぱい onto 一杯,
+/// and the judgement on the old spelling sits on a row nothing writes to any
+/// more.
 ///
 /// Only the judgement moves — a stranded row's counts are zero by definition,
 /// the rebuild having recomputed them onto the new key. A target carrying its
@@ -1014,8 +1010,8 @@ pub async fn blacklist_non_words(k: &Knowledge, ts: f64) -> Result<u64, sqlx::Er
 }
 
 /// How many rows sit in each status, and how many of those count toward the
-/// vocabulary scale (master-dictionary terms only — see
-/// the master scale).
+/// vocabulary scale — [`COUNTS_AS_VOCAB`], which is the master dictionary's
+/// terms plus the reader's promotions.
 #[derive(Debug, Clone, Default)]
 pub struct StatusCount {
     pub status: String,
@@ -1356,10 +1352,10 @@ mod tests {
         assert_eq!(fetch(&k, &term).await.unwrap().unwrap().lookup_count, 3);
     }
 
-    /// Pins the *plan*, not the result: the flags were correct all along, and
-    /// what broke was that each subquery scanned every dictionary entry once
-    /// per ledger row. A correctness test cannot see that, and the cost only
-    /// shows on a real-sized database.
+    /// Pins the *plan*, not the result: the flags come out right either way, and
+    /// what costs minutes is a subquery scanning every dictionary entry once per
+    /// ledger row. A correctness test cannot see that, and the cost only shows on
+    /// a real-sized database.
     #[tokio::test]
     async fn the_flag_refresh_seeks_the_dictionary_index() {
         let k = temp().await;
@@ -1505,10 +1501,9 @@ mod tests {
         assert!(fetch(&k, &orphan).await.unwrap().is_none(), "nothing left");
     }
 
-    /// A dictionary trusted to say where a word *ends* is trusted to say it is
-    /// a word. 明鏡 and 小学館 are `standard` for segmentation, and leaving them
-    /// out of wordhood cost 41,645 terms their span — 聞きかじり is in 明鏡 and
-    /// in nothing else.
+    /// A dictionary trusted to say where a word *ends* is trusted to say it is a
+    /// word. 明鏡 and 小学館 are `standard` for segmentation, and a term only they
+    /// list still needs its span — 聞きかじり is in 明鏡 and in nothing else.
     #[tokio::test]
     async fn a_standard_dictionary_makes_a_term_a_word() {
         let k = temp().await;
@@ -1894,7 +1889,8 @@ mod tests {
         );
     }
 
-    /// The kana case the wordhood gate used to miss.
+    /// The kana case: the dictionary spells the word in kanji, and the tokenizer
+    /// produced it in kana.
     #[tokio::test]
     async fn a_kana_word_the_dictionary_spells_in_kanji_is_still_a_word() {
         let k = temp().await;
@@ -2055,9 +2051,9 @@ mod tests {
         assert_eq!(rank_of(&k).await, Some(7));
     }
 
-    /// A kana headword stores no reading, and matching the blank against a
-    /// dictionary that always carries one found no siblings at all — which cost
-    /// the ledger's commonest words their rank entirely: いる, この, また.
+    /// A kana headword stores no reading, and matching that blank against a
+    /// dictionary that always carries one finds no siblings at all — which loses
+    /// the rank of the ledger's commonest words: いる, この, また.
     #[tokio::test]
     async fn a_kana_headword_still_finds_its_kanji_spelling() {
         let k = temp().await;

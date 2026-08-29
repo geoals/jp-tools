@@ -26,8 +26,8 @@ impl OcrEngine for FakeOcrEngine {
     }
 }
 
-/// Naive character-level tokenizer that needs no dictionary. CJK ideographs
-/// and katakana become content words (clickable in the UI).
+/// A character-per-token stand-in that needs no dictionary. Ideographs and
+/// katakana are the content words, so the page has something tappable.
 pub struct FakeTokenizer;
 
 impl Tokenizer for FakeTokenizer {
@@ -60,7 +60,6 @@ impl Tokenizer for FakeTokenizer {
     }
 }
 
-/// Logs what would be exported and returns success.
 pub struct FakeAnkiExporter;
 
 impl AnkiExporter for FakeAnkiExporter {

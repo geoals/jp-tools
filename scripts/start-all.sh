@@ -121,8 +121,8 @@ fail()  { printf '\033[1;31m ✗ \033[0m %s\n' "$*" >&2; }
 # where ss hides the pid.
 # Neither of these lets awk `exit` on the matching line. `set -o pipefail` is
 # on, so an awk that stops reading kills `ss` with SIGPIPE and the pipeline
-# reports 141 — which read as "port free" here and aborted the whole script
-# there, but only for a port `ss` happens to list early.
+# reports 141 — which reads as "port free" here and aborts the whole script
+# there, and only for a port `ss` happens to list early.
 port_listening() {
   ss -tln 2>/dev/null | awk -v p=":$1" '$4 ~ p"$" { found=1 } END { exit !found }'
 }
@@ -349,9 +349,9 @@ start_all() {
   mkdir -p "$LOG_DIR"
   build_rust
   sync_dictionaries
-  # `|| true` throughout: `set -e` aborts on a bare `a && b` whose `a` is
-  # false, so naming one service used to stop the run at the first service not
-  # named.
+  # `|| true` throughout: `set -e` aborts on a bare `a && b` whose `a` is false,
+  # so without it, naming one service stops the run at the first service that was
+  # not named.
   selected "whisper-service"   && start_whisper || true
   selected "manga-ocr-service" && start_ocr || true
   selected "yt-mine"    && start_rust "yt-mine" "$PORT_ytmine" "yt-mine" || true

@@ -1,12 +1,10 @@
-// The primitives every chart is drawn from: the fixed viewBox width, axis
-// rounding, the rounded-end bar path, the shared tooltip, and the tick and
-// segment helpers.
+// The primitives every chart is drawn from.
 //
-// The charts are hand-rolled SVG rather than a library because the mark specs
-// are opinionated in ways charting libraries fight — thin marks, 4px rounded
-// data-ends but square at the baseline, hairline solid grid, and text in ink
-// tokens rather than the series colour. Keeping the primitives in one file is
-// what makes five charts look like one system.
+// Hand-rolled SVG rather than a charting library: the mark specs are opinionated
+// in ways a library fights — thin marks, 4px rounded data-ends but square at the
+// baseline, hairline solid grid, text in ink tokens rather than the series
+// colour. One file for the primitives is what makes the charts look like one
+// system.
 
 import { html } from "htm/preact";
 
@@ -63,8 +61,6 @@ export function clockHM(ts) {
   const d = new Date(ts * 1000);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
-
-/** Split points into drawable runs, breaking on a null value or a new session. */
 
 export function segments(pts, key) {
   const out = [];

@@ -56,16 +56,13 @@ any Kotodex in it; everything that is the product carries it.
   nothing: **everything reading needs has to happen from the desktop entry**, and
   this is the only path most machines ever take, so a zip dropped in
   `dictionaries/` and the derived cache cannot depend on someone opening a
-  terminal. Nothing waits for it because the only thing the wait bought was a zip
-  dropped in since the last start being visible on *this* one, and the components
-  start in order, so it stood in front of the overlay as well as the server. A
-  new dictionary costs one restart instead.
+  terminal. The components start in order, so waiting for the sync would hold up
+  the server and the overlay behind it; a new dictionary appears on the next
+  start instead.
   **Both platforms run this launcher, and it contains no `sys.platform`.** Which
   components exist and how each is started and stopped is `host.py`'s contract,
   answered by one module per platform; `host_windows.py` is the only file on the
-  Windows side, and Windows has no capture daemon and no doctor. A second
-  implementation of it is what the IPv6 probe, the serial sleeps and a ✕ that
-  stopped nothing came from
+  Windows side, and Windows has no capture daemon and no doctor
 - `layer-overlay/` — the Qt shell that puts a web page above fullscreen windows
   and makes it clickable only where the page has drawn. Knows nothing about
   Japanese, reading or kotodex-server; `kotodex-server/overlay/` is its one caller.
@@ -131,12 +128,10 @@ Two rules for writing to them, both from one "database is locked":
   connection and leaves the rest at zero.
 
 **The migrations are the only thing that creates a table, and only Rust opens
-the database at all.** `vn-ws-logger.py` used to write `lines` itself and once
-carried its own `CREATE TABLE` under a "keep in sync" comment, which is how the
-`ruby` column came to exist in Python and in `knowledge::migrate` and in no
-migration at all. Every source now posts to `POST /api/lines` instead, so no
-writer outside jp-core and kotodex-server knows the column list, and one on a phone
-never could.
+the database at all.** Every source posts to `POST /api/lines`, so no writer
+outside jp-core and kotodex-server knows the column list, and one on a phone
+never could. A second `CREATE TABLE` kept in sync by hand is how a column comes to
+exist in one writer and in no migration.
 
 `vocabulary` is the ledger of what is known, one row per `(headword, reading)`.
 Only the reader writes its `status` column, and `new` (never judged) is not
@@ -166,8 +161,8 @@ loads no extensions — so `routes/reader/mine.rs` builds the card itself. It
 then hands it to `services::card::add_note`, which is also where Yomitan's own
 add arrives after the proxy has counted it, so note-id extraction, the deck
 mirror, CompactDef, vn-capture and the notification stay one implementation. **Every
-card path calls `card::add_note`.** The proxy is not that seam and never was —
-it exists to observe Yomitan's popup opening (`LOOKUP_ACTIONS`), which is a
+card path calls `card::add_note`.** The proxy is not that seam — it exists to
+observe Yomitan's popup opening (`LOOKUP_ACTIONS`), which is a
 browser-only concern the overlay answers for itself in `reader/define`.
 
 **The popup is one implementation, `web-shared/popup.js`.** The overlay and
@@ -190,11 +185,9 @@ because one host is a plain page and the other is Preact.
 **The overlay is a kotodex-server surface, and the Qt shell that shows it is not.**
 Every route the page (`kotodex-server/overlay/`) calls is a kotodex-server route and
 nothing else can answer one of them, so it lives with the app that serves it.
-What puts it over a
-fullscreen window — a layer surface, an input region, a tracked window's
-geometry — is `layer-overlay/`, which has no Japanese in it and takes a URL.
-Keeping those in one directory is what made the overlay look like a third
-project: half of it was generic and half of it was not the capture pipeline's.
+What puts it over a fullscreen window — a layer surface, an input region, a
+tracked window's geometry — is `layer-overlay/`, which has no Japanese in it and
+takes a URL.
 
 **Term identity is dictionary-gated, which is why `dictionary` and `knowledge`
 are one subsystem in jp-core rather than separable data.** The ledger keys on a
@@ -203,10 +196,10 @@ canonical `(headword, reading)` — the reading is in the key because 空 is そ
 to build that key.
 
 **A name is a fact about the work, not about the sentence.** Sudachi's 固有名詞
-is a per-occurrence tag, so one character came out a name sixteen times and
-vocabulary eleven more in a single session — and a name Sudachi has no entry for
-is not merely untagged but *split*, so 世凪 arrives as 世 + 凪 and both halves
-enter the ledger. `work_names` holds the cast per work, imported from VNDB by
+is a per-occurrence tag, so the same character comes out a name in one line and
+vocabulary in the next — and a name Sudachi has no entry for is not merely
+untagged but *split*, so 世凪 arrives as 世 + 凪 and both halves enter the
+ledger. `work_names` holds the cast per work, imported from VNDB by
 `jp-script names <work>` and extended by hand with `names <work> add`; the
 tokenizer takes the union of every work's, keeps those names whole, tags them,
 and spells them the way the text did. kotodex-server's CLAUDE.md carries the rules,
@@ -216,14 +209,14 @@ including the frequency veto that keeps 母 a word.
 it to a ledger key as a raw string is silently wrong.** The ledger keys on
 Sudachi's *normalized* form; an Anki card says 検死 because that is what the page
 said, Yomitan sends 検死 for the same reason, and the ledger row is 検屍. The
-strings do not match, nothing errors, and the row simply reads as zero. It cost
-four separate defects before it was named: the Anki import wrote a duplicate
-`known` row while the word stayed painted unjudged in `#read`; `sync_mined`
-flagged the duplicate; `anki_summary` counted 144 mined words as never
-re-encountered; and `sync_lookup_counts` credited lookups to the duplicate, so
-the real row read as never looked up and `preselects_known` would tick it
-`known` on encounters alone — a wrong assertion written in bulk, which is
-exactly what that two-signal rule exists to prevent.
+strings do not match, nothing errors, and the row simply reads as zero. Every
+consequence is silent: the Anki import writes a duplicate `known` row while the
+word stays painted unjudged in `#read`, `sync_mined` flags that duplicate,
+`anki_summary` counts mined words as never re-encountered, and
+`sync_lookup_counts` credits lookups to the duplicate, so the real row reads as
+never looked up and `preselects_known` ticks it `known` on encounters alone — a
+wrong assertion written in bulk, which is exactly what that two-signal rule
+exists to prevent.
 
 So: **any table holding a spelling from outside carries its resolved ledger key
 in its own column, and joins go through that column.** `anki_notes.headword` and
@@ -241,8 +234,8 @@ word.
 **Importing a dictionary zip belongs to `jp-dict`, never to a service.** Parsing
 a zip into `knowledge.db` is cache warming: the result is shared state all three
 tools read. Owned by one of them it becomes an ordering dependency between tools
-that are otherwise independent — yt-mine held it, so a dictionary added for the
-VN overlay stayed invisible until yt-mine happened to boot. The services call
+that are otherwise independent: a dictionary added for the VN overlay stays
+invisible until whichever tool owns the import happens to boot. The services call
 `Dictionary::load_cached` and open what is already there; `jp-core`'s `jp-dict`
 binary (`sync`, `import`, `list`, `set-role`, `remove`) is the only thing that
 reads a zip. The launcher and `start-all.sh` both run `jp-dict sync` as they
@@ -252,13 +245,14 @@ start, so no reader has to.
 entries behind — invisible to `list`, and still answering the wordhood gate.
 
 `source_path` is the cache key, so a moved zip is *repointed* rather than
-re-imported — re-importing costs a 400k-row pass and leaves a duplicate row.
+re-imported — re-importing costs a full pass over the zip and leaves a duplicate
+row.
 
 **And `jp-dict` owns `derived_cache` for the same reason.** The collections the
 highlighter is built from — the wordhood sets, the master and standard entries,
 the two rank maps, the arbitration tables — are a pure function of the
-dictionaries, and deriving them costs nine seconds, nearly all of it sqlx turning
-2.5M rows into Rust collections one at a time. `jp_core::highlight::derived`
+dictionaries, and deriving them is slow — sqlx turns millions of rows into Rust
+collections one at a time. `jp_core::highlight::derived`
 writes them as six flat blobs after every `jp-dict` command that changes a
 dictionary. Six rather than one so that no write holds the lock for 50 MB and
 each decodes on a blocking thread of its own — the split is by size, not by
@@ -286,8 +280,8 @@ boolean:
 - **segmentation** (where a word ends) — the master and the `standard`
   monolingual dictionaries beside it, 明鏡 and 小学館. They say 意味ありげ is one
   word; they say nothing about how anything is spelt, because they list the
-  archaic kanji of every function word and admitting those rewrote 5,064 lines
-  of the corpus into 其れ and 此の.
+  archaic kanji of every function word and admitting those respells the
+  commonest words in the corpus as 其れ and 此の.
 - **the vocabulary scale** ("I know N words") — strict: **master only**.
 - **classification** — a term in a name dictionary but not the master is a name.
 
@@ -315,8 +309,8 @@ the question has a reading in it.**
   the underline in `#read`, and the sweep's by-frequency ordering.
   BCCWJ answers this one badly twice over. It files a word only under the
   corpus's orthography with no kana row, so いただく exists as 頂く/いただく
-  alone and a kana-written line gets no rank at all — 2,872 of 16,003 ledger
-  rows were unrankable that way against 849 under Jiten. And its corpus is
+  alone and a kana-written line gets no rank at all, which leaves far more of the
+  ledger unrankable than Jiten does. And its corpus is
   newspapers and government prose: 船舶 ranks 3,843 and 心掛ける 3,106 there,
   against 32,370 and 24,006 in Jiten. "Common in Japanese" has to mean common in
   the fiction being read.
@@ -324,8 +318,8 @@ the question has a reading in it.**
 `jp_core::knowledge::dictionaries::READER_FREQUENCY` names the second one, and every
 reader-facing rank resolves through it — they are one claim about which words
 are common, made in several places, and they must not drift apart. The two lists
-are the same size at the head (about 6,200 terms inside rank 5,000 each), so a
-threshold means roughly the same thing under either.
+are the same size at the head, so a threshold means roughly the same thing under
+either.
 
 ## Working here
 

@@ -5,9 +5,10 @@
  * its own stylesheet plus a styles.css inside each zip, and neither travels
  * with the definition — which is why the raw markup reads as
  * "1.(1)nounsuffix". Everything below is that styling, rewritten for a popup
- * that is read over a game or beside a video rather than off white paper. It is the reason this file is shared rather than reimplemented: a
- * second copy would be several hundred lines of per-dictionary selectors
- * silently drifting out of step with the dictionaries they were written for.
+ * that is read over a game or beside a video rather than off white paper. It is
+ * also the reason this file is shared rather than reimplemented: a second copy
+ * would be several hundred lines of per-dictionary selectors silently drifting
+ * out of step with the dictionaries they were written for.
  *
  * Positioning is deliberately absent. The overlay pins the popup above a fixed
  * strip; yt-mine puts it under a word in a scrolling list. Each host sets

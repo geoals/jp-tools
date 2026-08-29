@@ -14,7 +14,7 @@
 //! | [`capture`] | `capture/vn-capture.sh` |
 //! | [`desktop`] | the window manager — what is open, and what is in front |
 //! | [`notify`] | the desktop's notification daemon — the one report a finished mine makes |
-//! | [`llm`] | the Anthropic API |
+//! | [`llm`] | whichever model the install names, through [`jp_mine_core::llm`] |
 //! | [`jp_mine_core::compactdef`] | — (builds the prompt [`llm`] sends, then the field value) |
 //! | [`jp_mine_core::tags`] | — (the two-axis tag rubric both prompts share) |
 //! | [`covers`] | fetches and stores work cover images |

@@ -3,8 +3,7 @@
 Rust 2024 edition. Axum JSON API + Preact frontend (no build step), **and no
 database of its own**: the inbox folder *is* the queue, the finished card lives
 in Anki, and mined/skipped state is a file move into `processed/` or `skipped/`.
-Re-mining is moving the file back. The server is stateless — crop coordinates and
-OCR text are transient.
+Re-mining is moving the file back.
 
 ## Pipeline
 
@@ -62,8 +61,8 @@ configured as for yt-mine (same env vars).
 ## Config
 
 Env vars, names and defaults in `config.rs`. The `KOTODEX_ANKI_*` note
-type/deck/field mapping is shared with yt-mine — same note type, and now the
-same fields kotodex-server writes (`VocabDefFull`, `VocabPitchNum` +
+type/deck/field mapping is shared with yt-mine — same note type, and the same
+fields kotodex-server writes (`VocabDefFull`, `VocabPitchNum` +
 `VocabPitchPattern`, `CompactDef`). The card's fields are built by
 `jp_mine_core::card`. manga-mine has no LLM configured, so `CompactDef` is left
 empty.

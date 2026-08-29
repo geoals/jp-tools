@@ -55,9 +55,8 @@ export function createPopup(opts) {
   // state: the badge appearing is what removes the button.
   let addButton = null;
   // The speaker button, and the clip it plays. Built hidden and filled in when
-  // the source list lands, which is the same shape as the mined badge and for
-  // the same reason:
-  // most words have audio, some have none, and the answer arrives after the
+  // the source list lands, the same shape as the mined badge and for the same
+  // reason: some words have no recording, and the answer arrives after the
   // definition is already on screen. The clip is held so closing the popup can
   // stop it — the word is gone, and so is the reason to hear it.
   let audioButton = null;
@@ -118,9 +117,9 @@ export function createPopup(opts) {
 
     onOpen(data, target);
     popupEl.replaceChildren(...render(data, matches));
-    // Placed again now there is something to measure. The first call had the
-    // "…" placeholder in it, so every host asking "does it fit above the word?"
-    // was answering for a box one line tall.
+    // Placed again now there is something to measure: the first call has the
+    // "…" placeholder in it, so a host asking "does it fit above the word?"
+    // would be answering for a box one line tall.
     place(anchor);
     onLayout();
 
@@ -500,8 +499,7 @@ export function createPopup(opts) {
   // they came from. Testing does not work: `closest()` answers about where the
   // target is *now*, and picking another match re-renders the popup from inside
   // the click, which detaches the chip mid-dispatch — the detached chip then
-  // reads as a click outside, so every pick closed the popup it had just
-  // opened.
+  // reads as a click outside, closing the popup the pick just opened.
   popupEl.addEventListener("click", (e) => e.stopPropagation());
 
   return {

@@ -71,8 +71,8 @@ Measurement:
 
 - **Presence is the rule everything credits time through.** A new aggregate
   that measures time goes through `stats::Presence`, not a fresh
-  `min(gap, cap)`. When those diverged, the focus metric punished the reader for
-  using a dictionary.
+  `min(gap, cap)`. A second cap diverges from it, and the focus metric then
+  punishes the reader for using a dictionary.
 - **Pace is a property of the reader, not of a request.** `History` derives it
   once over all history, or the dashboard and the day timeline disagree about
   the same day.
@@ -132,8 +132,8 @@ The ledger (`vocabulary`):
   (`db::insert_anki_note`), which does not make the table a source of truth —
   the refresh still replaces it — but without it the mirror only learns about
   cards when the dashboard page opens. Every cards-per-hour figure counts rows
-  here, so an evening of mining in the overlay read as zero. It is its own
-  spawned task rather than a step in `enrich_added_note`, because it resolves a
+  here, so without it an evening of mining in the overlay reads as zero. It is
+  its own spawned task rather than a step in `enrich_added_note`, because it resolves a
   ledger key through Sudachi and nothing may be awaited in front of the
   capture. `vocabulary.mined` is recomputed from it and is a flag
   beside `status`, never written into it.
@@ -174,7 +174,7 @@ and a ledger row cannot disagree):
   **Except where the reader's own spelling is a Sankoku headword too** — then it
   wins, because there is nothing left to decide: 綺麗 and 奇麗 are both listed,
   the page said one of them, and normalising 検死 to 検屍 or 上手く to 旨い
-  asserts a word nobody read. 406 tokens over 116 spellings. The rule only
+  asserts a word nobody read. The rule only
   reaches a surface that is a headword as written, so it never costs the scale;
   an inflected stem (舐め, 穢さ) is not a word and is still normalised.
 - **The kana alphabet is part of the spelling.** Sudachi folds ザル onto ざる
@@ -191,38 +191,34 @@ and a ledger row cannot disagree):
   `standard` role — 明鏡, 小学館 — says only what is *one word*
   (`SudachiTokenizer::segments` against `lexicon`). 意味ありげ, 何度, 図書室,
   被害者 and 270 more are words because 明鏡 lists them; それ is still それ
-  because the master alone spells things. Merging the two was measured and is a
-  disaster: 明鏡 lists the archaic kanji of every function word, and admitting
-  those as spellings rewrote 5,064 lines into 其れ, 此の, 迚も. Three rules keep
-  the standard dictionaries inside their remit — they may not respell a word in
+  because the master alone spells things. Merging the two is a disaster: 明鏡
+  lists the archaic kanji of every function word, and admitting those as
+  spellings respells the commonest words in the corpus as 其れ, 此の, 迚も.
+  Three rules keep the standard dictionaries inside their remit — they may not respell a word in
   kanji the text did not use (今まで is not 今迄), may not license an expression
   opening on a function word (から目 ate 目を離す), and never enter the
   denominator, so a word only they list stays off the master scale.
 - **A word no dictionary lists is spelt the way it was read.** Sudachi's
-  normalisation is a guess there, and it guessed 御陰 for おかげ, 此奴 for
-  コイツ, 切っ掛け for キッカケ, 紫恵 for シケイ — 121 lines of kanji the
-  reader never saw. The fallback keeps the surface when normalising it would
-  add a kanji that is not in it.
+  normalisation is a guess there, and it guesses 御陰 for おかげ, 此奴 for
+  コイツ, 切っ掛け for キッカケ, 紫恵 for シケイ — kanji the reader never saw.
+  The fallback keeps the surface when normalising it would add a kanji that is
+  not in it.
 - **A compound the master doesn't list stays whole**, and **adjacent parts it
   lists as one word are rejoined** (`recompose`). Splitting such a compound into
-  listed parts is what `decompose` used to do, and it was removed: it made 145
-  sightings of 牢屋 out of 牢屋敷 against the 13 really read, cut 味方 into
-  "taste" + "direction" and レイピア into レイ + ピア, while the two compounds it
-  was written for had stopped reaching it — 懲罰房 because Sudachi calls it a
-  place name, 医務室 because Sankoku lists it now. It destroyed words and
-  produced fragments. An unlisted compound is a word the reader has not judged,
-  and belongs in the ledger as one. Names are never rejoined.
+  the listed parts inside it is the obvious alternative and it destroys words: it
+  invents sightings of 牢屋 out of 牢屋敷, cuts 味方 into "taste" + "direction"
+  and レイピア into レイ + ピア. An unlisted compound is a word the reader has not
+  judged, and belongs in the ledger as one. Names are never rejoined.
 - **A rejoined expression is matched with its last word in dictionary form**, so
-  気になって and 気になる are one identity. Matching the surfaces alone could
-  only ever find the uninflected sentence, which is why 気になる, 声をかける,
-  口を開く and 158 more idioms Sankoku already lists sat split — 587 occurrences
-  over the corpus, and the dictionary was never the obstacle. Three fences hold
-  it, each one measured: the head may still not be a bound stem (続い + て must
+  気になって and 気になる are one identity. Matching the surfaces alone finds
+  only the uninflected sentence, which leaves 気になる, 声をかける, 口を開く and
+  every other idiom Sankoku lists split; the dictionary was never the obstacle.
+  Three fences hold it: the head may still not be a bound stem (続い + て must
   not spell 続いて), the conjugated word must be a content word (a conjugated
   auxiliary is the previous word's inflection — そう + な would spell そうだ),
   and **the run must begin on a content word**. That last one is what keeps
-  と + し out of the listed とする; without it the quotative particle was
-  swallowed on eight lines of the golden corpus.
+  と + し out of the listed とする; without it the quotative particle is
+  swallowed.
 - **A name is not vocabulary, and which words are names is a fact about the
   work.** `work_names` holds its cast — imported from VNDB by
   `jp-script names <work>`, extended by hand with `names <work> add` — and the
@@ -231,9 +227,9 @@ and a ledger row cannot disagree):
   majority vote still folds that per _term_ over a whole pass.
 
   The cast list does three things no rule could. It **keeps a name whole**
-  (`join_names`): 世凪 arrived as 世 + 凪 and both halves were counted, 2,412 and
-  2,385 times over one script. It **takes apart what Sudachi glued to a name**
-  (`split_names`): 凛と came back as the adverb 72 times, and the split is
+  (`join_names`): without it 世凪 arrives as 世 + 凪 and both halves are counted.
+  It **takes apart what Sudachi glued to a name** (`split_names`): 凛と comes
+  back as the adverb, and the split is
   allowed only where no dictionary lists the whole and what is left over is
   grammar, so ウィルス and 出雲大社 stay whole. And it **spells the name as the
   text spelt it**, so すもも is not the fruit 李 and シャチ not the orca 鯱.
@@ -242,12 +238,12 @@ and a ledger row cannot disagree):
   as a character; it is rank 872 in fiction and the work writes it to mean a
   mother on nearly every page. `NAME_VETO_RANK` is 5,000, which also vetoes 唯,
   おじさん, 鏡, 南 and 翼; 凛 at 9,368 and 親方 at 19,076 are names. Where the
-  frequency cannot decide — 看守 is 24,066th and is a prison guard 230 times in
-  a VN set in a prison — `jp-script names <work> drop` records the judgement,
+  frequency cannot decide — 看守 is 24,066th and is a prison guard throughout a
+  VN set in a prison — `jp-script names <work> drop` records the judgement,
   under its own source so a refetch cannot undo it.
 
   **VNDB's aliases are prose as often as names.** "Prison guard", "Old man",
-  "Magical Girl Riruru": splitting a romanized form on its spaces made guard,
+  "Magical Girl Riruru": splitting a romanized form on its spaces makes guard,
   man, Old and Girl into people. `fetch_cast` splits only a Japanese form, and
   `work_names::all` hands the tokenizer nothing that has no Japanese in it —
   a romanized name is not what a Japanese script writes, and can only collide
@@ -291,18 +287,18 @@ else.
 
    **Build the "before" from `HEAD` in a `git worktree`**, not from an earlier
    dump. These tools read the live `knowledge.db`, which grows while you work,
-   and they have drifted from production before — `tokens.rs` went a year
-   without the reader ranks, so what it printed was the pipeline with the
-   short-kana guard switched off. Three env toggles exist so one rule can be
+   and they can drift from production — a missing preload prints the pipeline
+   with a guard switched off — so a dump made under another build is not a
+   baseline. Three env toggles exist so one rule can be
    diffed against itself with everything else held still: `TOKENS_NAMES=off`,
    `AUDIT_CAST=off`, `AUDIT_GUARD=off`.
 
    **A rule change is judged on that diff, not on the case that prompted it.**
    Every rule here trades one mistake for another, and the trade is only
-   visible over the corpus: と + し → とする looked like an improvement in
-   isolation and swallowed the quotative particle on eight lines. Two rules
-   this week were built, measured, and taken back out again on the strength of
-   it — see *What was refused* in `jp-core/PARSE-DEFECTS.md`.
+   visible over the corpus: と + し → とする looks like an improvement in
+   isolation and swallows the quotative particle. Rules that were built,
+   measured and taken back out again are under *What was refused* in
+   `jp-core/PARSE-DEFECTS.md`.
 3. **Reach for the narrowest knob that fits.**
 
    | the error | the knob |
@@ -338,69 +334,68 @@ else.
 
 ### Known errors, and why they are left alone
 
-A random audit of 240 tokens puts content-word accuracy near 97%. What is left
-is understood, and each was measured and declined rather than missed. **A
-Sudachi user dictionary is the one mechanism that would take all of them**: they
-are all cases where Sudachi's lexicon lacks the word, and every repair further
-down the pipeline is either a hand-list or a loosening that costs more than it
-buys.
+What is left is understood, and each case was measured and declined rather than
+missed. **A Sudachi user dictionary is the one mechanism that would take all of
+them**: they are all cases where Sudachi's lexicon lacks the word, and every
+repair further down the pipeline is either a hand-list or a loosening that costs
+more than it buys.
 
-What that dictionary would cost, measured (`jp-core/examples/missing.rs` counts
-it): 13,834 of Sankoku's 81,884 headwords do not survive Mode C as one morpheme.
-Only ~7,363 belong in a segmenter — 2–3 morphemes, containing kanji, no particle
-or auxiliary inside. The rest are phrases and idioms (ああ言えばこう言う,
-あがきが取れない), and putting those in the lexicon makes Sudachi merge them
-wherever their morphemes co-occur; they are recomposition's expression path,
-which has structural guards a Viterbi cost does not. Two things make it work
-rather than backfire: **sudachi.rs's `ubuild` has no cost estimation** — unlike
-the Java tooling, `left_id`, `right_id` and `cost` are required `i16`
-(`dic/build/lexicon.rs`), so each entry needs them cribbed from an exemplar
-system entry of the same POS — and Sankoku carries no POS, its `rules` column
-being empty for 82,271 of its rows, so POS has to come from the final morpheme's
-Sudachi tag. It also moves wordhood into costs `#tokenize` cannot explain.
+What that dictionary would cost is countable — `jp-core/examples/missing.rs`
+counts it. A sixth of Sankoku's headwords do not survive Mode C as one morpheme,
+and only about half of those belong in a segmenter — 2–3 morphemes, containing
+kanji, no particle or auxiliary inside. The rest are phrases and idioms
+(ああ言えばこう言う, あがきが取れない), and putting those in the lexicon makes
+Sudachi merge them wherever their morphemes co-occur; they are recomposition's
+expression path, which has structural guards a Viterbi cost does not. Two things
+make it work rather than backfire: **sudachi.rs's `ubuild` has no cost
+estimation** — unlike the Java tooling, `left_id`, `right_id` and `cost` are
+required `i16` (`dic/build/lexicon.rs`), so each entry needs them cribbed from an
+exemplar system entry of the same POS — and Sankoku carries no POS, its `rules`
+column being empty for nearly every row, so POS has to come from the final
+morpheme's Sudachi tag. It also moves wordhood into costs `#tokenize` cannot
+explain.
 
 **Matching master headwords against the raw line before Sudachi sees it was
 measured and rejected.** It is the obvious way to protect a word the segmenter
 lacks, and over this corpus it protects the wrong things: at a four-character
-floor it freezes じゃない (322), しまった (143), どうして (72), のだろう (71),
-いけない (62), にとって (60) and 分からない (56) into single tokens. Those are
+floor it freezes じゃない, しまった, どうして, のだろう, いけない, にとって and
+分からない into single tokens. Those are
 Sankoku headwords, so no dictionary check rejects them, but as ledger rows they
 are grammar and they stop しまった counting as しまう and 分からない as 分かる.
-A further 478 matches cross a token boundary outright — ダイイン, 女になる,
-ってんだ. Raising the floor to five characters cuts the yield to 463
-occurrences and does not change the shape of what is caught. Longest-match has
+Others cross a token boundary outright — ダイイン, 女になる,
+ってんだ. Raising the floor to five characters cuts the yield and does not
+change the shape of what is caught. Longest-match has
 no way to tell a word from a construction; recomposition's expression path
 already does, which is why the length cap was the right thing to widen instead.
 
 - **待ちたまえ → 待ち + た + まえ**, and まえ becomes the noun 前. たまえ is 給え,
   which Sankoku lists, so `recompose` could rejoin on the reading — but that
-  fence must stay shut. 3,016 adjacent pairs in the corpus have readings
-  spelling exactly one master headword, and they are て + いく → テイク,
-  ない + ん → ナイン, は + ない → 派内, いる + か → 海豚. Five tokens of gain
-  against three thousand ways to be wrong.
-- **皆守 → 皆 + 守**, 191 lines of 素晴らしき日々 — and now fixable rather than
-  known: it is the case `work_names` exists for. `jp-script names <work>` then
-  `POST /api/vocab/rebuild` re-derives what was counted.
+  fence must stay shut. Adjacent pairs whose readings spell exactly one master
+  headword are almost all accidents — て + いく → テイク, ない + ん → ナイン,
+  は + ない → 派内, いる + か → 海豚 — so the rule loses far more than it gains.
+- **皆守 → 皆 + 守** in 素晴らしき日々 — the case `work_names` exists for.
+  `jp-script names <work>` then `POST /api/vocab/rebuild` re-derives what was
+  counted.
 - **擦る is する.** Sudachi gives the 五段 verb both the dictionary form and the
   normalised form する, identical to the irregular. Only the conjugation class
   separates them, and using it means narrowing the kana exemption in
-  `conjugatable_lemma`, which exists for the auxiliaries. 12 tokens.
+  `conjugatable_lemma`, which exists for the auxiliaries.
 - **ない/無い and こと/事 are two ledger rows each.** Sudachi's dictionary
   normalises いう→言う and できる→出来る but not these. No derivable rule fixes
   it: "merge a kana headword with the kanji one that reads the same" also merges
   た with 他.
 - **A stammer with no comma is not caught** — 「そ……そう」, 「そそそう」. The
   rule keys on the comma because that is the part that is unambiguous.
-- **他 is both た and ほか**, 65 and 66 encounters, and neither is a double
-  count: bare 他 occurs 149 times and Sudachi assigns each occurrence one
-  reading. Both are Sankoku pairs, so nothing downstream can arbitrate. This is
+- **他 is both た and ほか**, and neither row is a double count: Sudachi assigns
+  each occurrence one reading. Both are Sankoku pairs, so nothing downstream can
+  arbitrate. This is
   the same case the ない/無い entry above names as unfixable.
 - **The headword shown is the canonical spelling, not the written one.**
   傍 normalises onto 側/そば, which is the mechanism that makes いう and 言う one
   row. `term_surfaces` keeps what the text actually wrote, and the triage UI
   shows it beside the count — that breakdown, not the headword, is the record of
   how a word was spelt.
-- **Function-word counts carry roughly 10% noise** from stammer fragments,
+- **Function-word counts carry noise** from stammer fragments,
   onomatopoeia and garbled hook output landing on だ, に, の. Harmless for
   vocabulary; do not build a grammar metric on particle frequencies.
 - **Anything the master dictionary lists is a word, whatever its tag.**
@@ -423,10 +418,10 @@ The reading view:
   its own health on the ingest request (whether anything is feeding it, and its
   unsent backlog), `routes/ingest` publishes that as
   `settings.vn_logger_heartbeat`, and the SSE stream republishes a verdict every
-  2s. A source with nothing to send posts the health alone. The
-  badge was once the `EventSource` alone, which sat on "live" through three
-  hours of capturing nothing: this stream is healthy whenever kotodex-server is up,
-  and knows nothing about the two hops in front of it.
+  2s. A source with nothing to send posts the health alone. The `EventSource`
+  cannot answer this on its own: it is healthy whenever kotodex-server is up, and
+  knows nothing about the two hops in front of it, so it sits on "live" through
+  hours of capturing nothing.
 - **Marks are drawn, never markup.** `jp_core::highlight` sends offsets
   per line and `paintMarks` draws a rectangle per word into a layer _behind_ the
   text. Yomitan scans this DOM, so one text node per line is a constraint.
@@ -445,7 +440,7 @@ The reading view:
   as it is being read.
 - **The feed re-pins to the bottom on a new _line_, not on a new `lines`** —
   judging a word rebuilds the array without adding to it, and an id-keyed pin
-  kept yanking the word out from under the finger. A reflow re-pins too, on a
+  yanks the word out from under the finger. A reflow re-pins too, on a
   height test (`pinToBottom`), because the web font, a page of history and a
   resize all move the feed under a reader who never touched it.
 - **The `◌ marked` filter is a view, never a write.** It filters on membership
@@ -460,9 +455,9 @@ Mining:
 - **One answer to "which window is the game".** `services::capture::vn_window`
   resolves the current work's own column, then the legacy global setting, and
   all three callers go through it: the capture it runs, the reader's status
-  event, and `vn-capture.sh` over `GET /api/vn/window`. The script resolved it
-  in its own SQL before, which is two places to say the same thing and one of
-  them silently aiming at the last VN.
+  event, and `vn-capture.sh` over `GET /api/vn/window`. Resolved a second time in
+  the script's own SQL it is two places to say the same thing, one of them
+  silently aiming at the last VN.
 - **Two ways to write it, and which one depends on what the surface knows.**
   The work editor PUTs `works/{id}` because it is editing a work that need not
   be the one being read; the overlay and the Today card PUT `/api/vn/window`,
@@ -488,31 +483,31 @@ Mining:
 - **Resuming capture is not instant, and the gap is not a fault.** Three
   independent two-second waits sit between the click and the answer: the
   logger's pause poll (`PAUSE_POLL_SECS`), the age of the flag it then reads
-  (`SETTINGS_TTL`), and the status event's own republish. A fourth — the
-  logger's heartbeat cadence — is gone: `pump` now publishes a heartbeat the
-  moment the socket is up, and on close, instead of waiting for `beat`'s next
-  tick. `RESUME_SETTLE_MS` covers what is left, and reports **nothing** during
+  (`SETTINGS_TTL`), and the status event's own republish. The logger's heartbeat
+  cadence adds no fourth: `pump` publishes a heartbeat the moment the socket is
+  up and on close, rather than waiting for `beat`'s next tick.
+  `RESUME_SETTLE_MS` covers what is left, and reports **nothing** during
   it rather than a fault: for that window the answer is not "no source" but
   "not known yet".
 - **A pause silences the capture fault and nothing else.** Pausing is *for*
   lines not arriving, so reporting that as a fault would train the reader to
   ignore the badge — but the work and window faults are about the overlay being
-  set up wrong, and a pause does not make an unconfigured overlay correct.
-  Written with `paused` in front of all three at first, which hid both setup
-  faults from a reader who had paused in order to go and fix one.
+  set up wrong, and a pause does not make an unconfigured overlay correct. With
+  `paused` in front of all three, a reader who paused in order to go and fix one
+  cannot see either setup fault.
 - **No work and no window are two faults, not one graded one.** With no work
   every captured line is stamped with no title, and this surface cannot fix it —
   picking a work is a VNDB search — so that line opens the dashboard through
   `shell.openUrl` instead of the panel, landing on the Today card, which asks
   the question with the box focused whenever nothing is being read. The window
   fault is suppressed while there is no work: setting a window on nothing is
-  what `PUT /api/vn/window` refuses, and offering it was offering an error.
+  what `PUT /api/vn/window` refuses, so offering it would offer an error.
   `CaptureStatus.work` is what lets the overlay tell them apart.
 - **The window attaches the overlay to the game; the screenshot is a
   consequence.** It is what lets the line be laid over the game's own text and
   follow it through a move, a resize or fullscreen, and only then what a mined
-  card's screenshot frames. Every surface used to list those consequences,
-  which was three sentences saying "go and set it" — they now say that, once.
+  card's screenshot frames. Every surface says "go and set it" once, rather than
+  listing the consequences.
 - **Neither the window nor the cover picker is drawn for a book.** Nothing hooks
   a book, so there is no window to attach and the overlay is not over anything;
   and VNDB has no entry to take a cover from. `kind` comes from `/api/works`, so
@@ -520,8 +515,8 @@ Mining:
 - **The window is picked from a list of what is open, never typed — and on the
   overlay that list is rows, never a `<select>` or a `<datalist>`.** Both open a
   native popup window and a layer surface has none to open one in, so the list
-  does not appear at all; `overlay.html` has said so beside the theme chips
-  since they were written, and every other choice on that panel is a `.row`
+  does not appear at all; `overlay.html` says so beside the theme chips, and
+  every other choice on that panel is a `.row`
   list for the same reason. The dashboard is an ordinary page and uses a real
   `<select>`. The stored value stays in the list marked `(not open)` when the
   game is not running, so quitting the game does not look like losing the
@@ -542,24 +537,23 @@ Mining:
   first; picking one re-opens the popup on it and ✓ ✗ ＋ then act on that term.
   The scan runs beside the definition rather than behind a button, because the
   row has to know whether there is anything to offer before it draws — on most
-  words there is not, and it draws nothing. Two failures, one answer: 経年劣化 is a Jitendex headword and not a
-  Sankoku one, so its two halves are both right and no rule joins them, and
-  素振り is そぶり or すぶり and the tokenizer picks one. Both are the reader
-  seeing what the pipeline cannot.
+  words there is not, and it draws nothing. Two failures, one answer: 経年劣化 is
+  a Jitendex headword and not a Sankoku one, so its two halves are both right and
+  no rule joins them, and 素振り is そぶり or すぶり and the tokenizer picks one.
+  Both are the reader seeing what the pipeline cannot.
   - **Two kinds of candidate, and the second is the point.** A literal prefix
     of the line finds a compound the tokenizer split (経年劣化). A prefix that
     ends on a token boundary with its last token put back in canonical form
     (`Highlighter::prefix_forms`) finds an expression the sentence conjugated —
     しびれを切らした is しびれを切らす in every dictionary that lists it, and no
     literal prefix of the line spells that. Expressions are most of what a
-    dictionary holds and the tokenizer cannot join, so literal-only found
+    dictionary holds and the tokenizer cannot join, so a literal-only scan finds
     almost none of them.
   - **The scan also offers the other kana alphabet.** アレ is a Jitendex
-    redirect and Sankoku has no entry for it, so the popup opened on a
-    cross-reference; the hiragana spelling of every candidate is offered
-    beside it. The tokenizer folds too now — the objection was that 424 of the
-    549 encounters were ココ, a character in the VN, and the cast list answers
-    that.
+    redirect and Sankoku has no entry for it, so without this the popup opens on
+    a cross-reference; the hiragana spelling of every candidate is offered
+    beside it. The tokenizer folds these too, and the cast list is what keeps a
+    name like ココ out of the folding.
   - **A candidate carries its ledger key beside its spelling**, resolved
     through the shared `Highlighter` — a dictionary headword is text from
     outside the tokenizer, and Jitendex's 素振 would otherwise become a second
@@ -584,7 +578,7 @@ Mining:
   badge on an open popup without a second query.
 - **A lookup is the popup opening, and nothing else is one.** `reader/define` is
   the overlay's whole lookup path, so it records; judging and mining from the
-  side buttons go nowhere near it. Reaching those two through the popup made
+  side buttons go nowhere near it. Reaching those two through the popup makes
   every judgement look like a word that had to be looked up, which is the one
   number the lookup tax is measured from.
 - **The popup carries those actions as buttons too, and retracts what they
@@ -611,7 +605,7 @@ Mining:
   third would land unstyled. The popup shows everything installed either way, in
   `dictionaries.priority` order — which is the reader's own, set by
   `jp-dict priority <id> <n>`, and is why nothing in `define` pins the master in
-  front any more.
+  front.
 - **Under the legacy style the class name is fixed per dictionary, never derived
   from its title.** `LEGACY_DICTIONARIES` pairs a title *prefix* with the class
   (`sanseido`, `jitendex`), because both titles carry a version the release moves
@@ -637,20 +631,19 @@ Mining:
   signal to check the log.
 - **The audio window's next-line bound is a hard cut, and that is a known
   defect.** When the next line is unvoiced the previous voice legitimately
-  plays past its timestamp and the clip is truncated. It shipped that way
-  because a truncated clip of the right line beats a whole clip of the wrong
-  one. Replacing the rule needs measurement first — how closely a voiceline's
+  plays past its timestamp and the clip is truncated. The rule stands because a
+  truncated clip of the right line beats a whole clip of the wrong
+  one. Replacing it needs measurement first — how closely a voiceline's
   onset tracks the hook, and how well a line's mora count predicts its
-  duration, over a real session rather than a menu. A script that did that
-  lived here and was deleted unused; if it comes back, two traps it already
-  fell into: letting every line search independently, so unvoiced lines claim
-  the next line's voice and invent rates like 131 morae/s (the tell is
+  duration, over a real session rather than a menu. Two traps in that
+  measurement: letting every line search independently, so unvoiced lines claim
+  the next line's voice and invent impossible speech rates (the tell is
   duplicate `dur` on neighbouring rows), and selecting the sample by
   `|onset| < 1.0` before reporting that onsets fall within 1.0.
 - **CompactDef is told the surface, never the headword.** The tag axes rate the
   spelling the reader met, so the prompt gets the `<b>` span out of the sentence
-  field (`anki::bolded_span`) and the vocab field only as a fallback. Measured on
-  one sentence: すえた comes back UNCOMMON · PLAIN and 饐えた RARE · LITERARY —
+  field (`anki::bolded_span`) and the vocab field only as a fallback. すえた comes
+  back UNCOMMON · PLAIN and 饐えた RARE · LITERARY —
   the headword prices its kanji, and a phrase people say gets tagged as if it
   were literary. Withholding it costs the model the word's identity, which it has
   to infer from the sentence; that is the accepted trade, and the reason the
@@ -658,13 +651,13 @@ Mining:
 - **The card report reads Anki's review log, never `cardsInfo`'s `mod`.**
   `stats::card_evidence` sorts each mined card by what the reading says about
   it since its last review — met without a lookup, looked up on a long
-  interval. `mod` was the obvious cutoff and is wrong: something had bulk-touched
-  this collection, so 2,196 of 2,256 cards read as "reviewed 9 days ago".
-  `anki::fetch_deck_reviews` takes the whole deck's log in one `cardReviews`
-  call (~20k rows, well under a second) and `mod` is only the fallback for a
-  card with no log. `GET /api/anki/cards` **writes nothing** — it reports what a
-  sweep would act on, and the thresholds are a guess until the buckets have been
-  read against words already judged known.
+  interval. `mod` is the obvious cutoff and is wrong: any bulk edit to the
+  collection moves it, and nearly every card then reads as reviewed on the same
+  day. `anki::fetch_deck_reviews` takes the whole deck's log in one `cardReviews`
+  call, and `mod` is only the fallback for a card with no log.
+  `GET /api/anki/cards` **writes nothing** — it reports what a sweep would act
+  on, and the thresholds are a guess until the buckets have been read against
+  words already judged known.
 - **Note ids are epoch milliseconds**, so they double as card creation times.
 - **Only engagement actions leave `reader_marks`.** Explain does; clear does
   not. A retracted lookup leaves one in place of the row it deleted, which is
@@ -720,8 +713,8 @@ add to when the question is "does the SQL select what the derivation assumes".
   reached from ⚙ and render inside the shell like any panel; `#read` is its own
   route and unmounts the dashboard, and is linked from ⚙ → Tools.
 - **Pause capture appears only where reading does** — in `#read`, and under ⚙
-  beside the settings. A live switch next to numbers that only report was read
-  as a filter.
+  beside the settings. A live switch next to numbers that only report reads as a
+  filter.
 - **The library is the only list of works, and a paper book is not a second
   kind of thing.** Uploading an epub creates the work's row, so a book is on
   the shelf like anything else; its bookmark and its log-a-sitting form are on
@@ -729,7 +722,7 @@ add to when the question is "does the SQL select what the derivation assumes".
   resolves to `#library` so saved links still land. `/api/works` therefore asks
   the `books` table before it asks anything else: a book whose epub is up but
   which has had no sitting logged has no manual sources to judge by, and an
-  empty source list satisfies every `all` test — it read as a VN.
+  empty source list satisfies every `all` test — so it reads as a VN.
 - **Library has two levels.** The shelf lists works as cards; opening one
   replaces the tab with `work-detail.js` over `GET /api/works/detail`, keyed by
   title. A work with no reading behind it does not appear. Logged articles
@@ -776,7 +769,7 @@ add to when the question is "does the SQL select what the derivation assumes".
   `scoped=0` still reaches every ready row.
 - **A form that would push the page around opens in a dialog**
   (`components/modal.js`): adding a work, editing one, logging a session by
-  hand. An inline form under a card head moved everything below it while it was
+  hand. An inline form under a card head moves everything below it while it is
   open.
 - **The sweep's two orderings are one batch, seen from either end.**
   `order=frequency` sorts the same rows by jiten rank instead of encounter
@@ -807,15 +800,15 @@ add to when the question is "does the SQL select what the derivation assumes".
     nothing here can tell a slow flush from a slow game.
 - **A knob appears once the data it acts on exists.** The settings panel shows
   Goal and AI; the derivation thresholds are behind `Advanced`, and the vocabulary
-  group is absent while the ledger is empty. Nine numbers with a paragraph each is
-  not what a first visit should open on.
+  group is absent while the ledger is empty. A page of numbers with a paragraph
+  each is not what a first visit should open on.
 - **Adding a work is a title search** (`GET /api/works/search`, VNDB by name).
   The question is asked on the Today card when nothing is selected, not by
   pointing at the Library. `total_chars` stays manual: VNDB has no character
   count, so the progress bar asks for one once there is progress to show.
 - **The cover is picked with that same search, not with an id.** `VndbSearch` is
   one component and the work editor holds a second copy of it, seeded with the
-  title the work already has. A box wanting `v3144` sent the reader to vndb.org
+  title the work already has. A box wanting `v3144` sends the reader to vndb.org
   to fetch one, which is the errand the search exists to end. `vndb_id` has
   three states on the way out and the field has to keep all three: absent leaves
   the cover alone, `""` removes it, an id fetches.

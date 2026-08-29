@@ -3,8 +3,8 @@
 //! Importing a Yomitan zip is cache warming, not a service's job: the result is
 //! shared state that yt-mine, manga-mine and kotodex-server all read. Owned by any
 //! one of them it becomes an ordering dependency between tools that are
-//! otherwise independent — which is how adding a dictionary for the VN overlay
-//! came to require booting yt-mine.
+//! otherwise independent — a dictionary added for the VN overlay would stay
+//! invisible until yt-mine happened to boot.
 //!
 //! So the services only open what is already cached (`Dictionary::load_cached`)
 //! and this is the only thing that parses a zip.
@@ -292,10 +292,10 @@ async fn import_all(
             .map_err(|e| format!("cannot resolve {}: {e}", zip.display()))?;
         let path_str = path.to_string_lossy().to_string();
 
-        // A zip cached under a different path — historically a bare relative
-        // filename, resolved against whichever service's working directory
-        // imported it. Repoint rather than re-import: same dictionary, and
-        // re-importing would cost a 400k-row pass and leave a duplicate row.
+        // A zip cached under a different path, such as a bare relative filename
+        // resolved against whichever working directory imported it. Repoint
+        // rather than re-import: it is the same dictionary, and re-importing
+        // costs a full pass over the zip and leaves a duplicate row.
         if !cached.iter().any(|d| d.source_path == path_str) {
             let name = path.file_name().map(|n| n.to_string_lossy().to_string());
             if let Some(moved) = name.and_then(|n| {
@@ -338,7 +338,7 @@ async fn import_all(
                     _ => None,
                 };
                 // A new row lands at priority 0, which would put it ahead of
-                // everything the backfill numbered by id. Install order is the
+                // every dictionary already numbered by id. Install order is the
                 // default, so a new dictionary goes last.
                 if fresh && let Some(id) = id {
                     db::set_priority(pool, id, id)

@@ -1,19 +1,16 @@
 """The Kotodex launcher: one process that owns the others.
 
-Three things have to be running for a reading session — the capture daemon, the
-kotodex-server server, the overlay — and starting them by hand is three terminals
-and an order to remember. This starts them in that order, keeps them up, and
-stops them together.
+Three things have to be running for a reading session — the capture daemon,
+kotodex-server, the overlay — and by hand that is three terminals and an order to
+remember. This starts them in that order, keeps them up, and stops them together.
 
-**Adopt, don't duplicate.** Every component is probed before it is started: a
-port already answering, a ring buffer already being written, an overlay already
-on screen. That is what lets this coexist with `scripts/start-all.sh` and with a
-systemd-managed capture daemon, and it is why closing the launcher stops only
-what the launcher started.
+**Adopt, don't duplicate.** Every component is probed before it is started, so
+this coexists with `scripts/start-all.sh` and with a systemd-managed capture
+daemon, and closing the launcher stops only what the launcher started.
 
 Qt because of the tray: a launcher that hides the overlay has to leave something
 behind to bring it back. The overlay stays a separate process — it is a layer
-surface driven by QML, and merging a widgets tray into it buys nothing.
+surface driven by QML.
 
 **Nothing here knows which platform it is on.** Which components there are, how
 each is started and stopped, and where the assets and logs live are `host`'s —
@@ -41,8 +38,8 @@ if (host.ROOT / "kotodex-server" / "static").is_dir():
     os.environ.setdefault("KOTODEX_ROOT", str(host.ROOT))
 
 # When this process began, as near to it as Python can see — the interpreter's
-# own boot is already spent. Every launcher log line is stamped against it, which
-# is what makes a slow start readable next to the overlay's own timings.
+# own boot is already spent. Every launcher log line is stamped against it, so a
+# slow start reads against the overlay's own timings.
 STARTED = time.monotonic()
 
 # How long the setup probe waits for the server to answer before giving up. A
@@ -50,12 +47,11 @@ STARTED = time.monotonic()
 # nothing is better than opening a page that cannot load.
 SETUP_PROBE_SECS = 60
 
-# Restart a child this many times before giving up and saying which one.
 MAX_RESTARTS = 3
 
 
 class Child:
-    """One component: how to see it, how to start it, and whether we started it.
+    """One component of the stack.
 
     A component that was already running is *adopted* — never started a second
     time, and never stopped on the way out. Stopping something this process did
@@ -112,9 +108,8 @@ class Child:
             self.failed = True
             return
         log(f"{self.name}: starting")
-        # Appended, not truncated: a component that has already been restarted
-        # once this session has its earlier failure in here, which is the thing
-        # worth reading.
+        # Appended, not truncated: for a component that has been restarted this
+        # session, the earlier failure is the thing worth reading.
         sink = subprocess.DEVNULL
         if self.log_file is not None:
             self.log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -132,9 +127,7 @@ class Child:
                 sink.close()
 
     def check(self, log) -> bool:
-        """Restart a child that exited on its own, with a backoff, and give up
-        loudly rather than spinning. Returns True when everything should stop.
-        """
+        """Restart a child that exited on its own. True means stop everything."""
         if self.adopted or self.proc is None or self.failed or not self.supervised:
             return False
         code = self.proc.poll()
@@ -160,7 +153,7 @@ class Child:
         """Stop it, unless it is adopted and nobody insisted.
 
         `force` is the tray's Hide overlay: hiding one this launcher adopted is
-        what the reader asked for, where quitting must still leave it alone.
+        what the reader asked for, where quitting must leave it alone.
         """
         if self.adopted and not force:
             log(f"{self.name}: left running (it was not ours)")
@@ -186,8 +179,8 @@ def restart_command() -> int:
     """`kotodex restart` from a terminal.
 
     Handed to a running launcher when there is one: it supervises kotodex-server,
-    and a restart done behind its back looks like a crash for the three seconds
-    the port is closed — which it answers by starting a second one.
+    and a restart behind its back looks like a crash while the port is closed —
+    which it answers by starting a second one.
     """
     from PySide6.QtCore import QCoreApplication
 
@@ -225,9 +218,9 @@ def quit_command() -> int:
 def restart_running(kids, log, restarting):
     """Stop what this launcher owns, restart what it does not, start again.
 
-    A component this launcher started must come back as its child, or the
-    restart would quietly convert it into something adopted — running, but
-    no longer stopped on the way out.
+    A component this launcher started has to come back as its child, or the
+    restart converts it into something adopted — running, but not stopped on the
+    way out.
     """
     log("restarting everything")
     restarting["until"] = time.time() + 120
@@ -235,15 +228,14 @@ def restart_running(kids, log, restarting):
         if not child.adopted:
             child.stop(log)
         elif child.stop_adopted is not None:
-            # Nothing to ask: a bare binary has no "restart yourself", and
-            # starting a second one only fails to bind. So an explicit
-            # restart takes it over — see `Child.stop_adopted`.
+            # A bare binary has nothing to ask, so an explicit restart takes it
+            # over — see `Child.stop_adopted`.
             log(f"{child.name}: taking over on restart")
             child.stop_adopted()
         else:
-            # Someone else's — a systemd unit, a start-all.sh run. Told to
-            # restart itself rather than stopped, since stopping it is
-            # exactly what adoption promises not to do.
+            # Someone else's — a systemd unit, a start-all.sh run. Asked to
+            # restart itself, since stopping it is what adoption promises not
+            # to do.
             subprocess.run(child.restart_cmd, cwd=host.ROOT, capture_output=True)
     for child in kids:
         child.proc = None
@@ -298,15 +290,13 @@ def main() -> int:
         instance.send("show")
         return 0
 
-    # Timed like the overlay's own log, so "starting felt slow" is answerable
-    # from the two logs side by side rather than guessed at. Everything up to the
-    # overlay being spawned is serial, so each line is a phase boundary.
+    # Timed like the overlay's own log, so a slow start is answerable from the two
+    # side by side. Everything up to the overlay being spawned is serial, so each
+    # line is a phase boundary.
     #
     # To a file as well as stdout: the launcher is frozen --windowed, so on
-    # Windows it has no console and stdout goes nowhere at all — these lines, the
-    # only record of the launcher's own share of starting, were unobservable on
-    # the platform where that share is largest. Appended, and each run says when
-    # it began, so a slow start can be read against the one before it.
+    # Windows it has no console and stdout goes nowhere. Appended, and each run
+    # says when it began, so a slow start reads against the one before it.
     log_path = host.LOG_DIR / "kotodex.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_file = log_path.open("a", buffering=1)
@@ -317,25 +307,18 @@ def main() -> int:
         print(line, flush=True)
         log_file.write(f"{line}\n")
 
-    # Started and never waited for. Waiting bought one thing — a zip dropped in
-    # since the last start being visible on this one — and the components start in
-    # order, so it stood in front of the overlay as well as the server. A new
-    # dictionary costs one restart instead. Nothing else here needs it: the reader
-    # writes the derived cache itself when it has to derive it.
+    # Started and never waited for: it stands in front of every component, since
+    # they start in order, and a zip dropped in since the last start costs one
+    # restart instead. Nothing here needs it — the reader derives the cache
+    # itself and writes back what it had to derive.
     if host.start_dictionary_sync() is not None:
         log("jp-dict sync: starting")
     kids = children()
 
-    # Everything at once, and the server's boot reported afterwards rather than
-    # waited out in the middle.
-    #
-    # The overlay used to be held back until the port answered, which put the
-    # server's whole boot in front of a third of a second of Python and Qt
-    # starting that needs no server at all. It does not need the gate: a page
+    # Everything at once: the overlay needs no gate on the server's port. A page
     # that loads too early retries, and `Overlay.qml` turns Chromium's error page
-    # off so a failed load leaves the surface as it was rather than covering the
-    # screen with something that cannot be dismissed. Windows already started it
-    # this way.
+    # off, so a failed load leaves the surface as it was rather than covering the
+    # screen with something that cannot be dismissed.
     for child in kids:
         child.ensure(log)
 
@@ -401,7 +384,6 @@ def main() -> int:
             child.stop(log)
 
     app.aboutToQuit.connect(shutdown)
-    # Ctrl-C in the terminal that launched it should stop everything too.
     signal.signal(signal.SIGINT, lambda *_: app.quit())
     nudge = QTimer()
     nudge.start(200)

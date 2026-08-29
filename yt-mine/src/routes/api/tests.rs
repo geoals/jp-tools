@@ -86,8 +86,6 @@ async fn seed_job(pool: &sqlx::SqlitePool, video_id: &str) -> i64 {
     job_id
 }
 
-// --- POST /api/jobs ---
-
 #[tokio::test]
 async fn submit_job_creates_and_returns_video_id() {
     let mut downloader = MockMediaDownloader::new();
@@ -169,8 +167,6 @@ async fn submit_job_existing_returns_200() {
     assert_eq!(body["video_id"], "dQw4w9WgXcQ");
 }
 
-// --- GET /api/{video_id} ---
-
 #[tokio::test]
 async fn get_job_returns_sentences_and_tokens() {
     let (server, pool) = test_app().await;
@@ -200,8 +196,6 @@ async fn get_job_not_found_returns_404() {
     let response = server.get("/api/nonexistent1").await;
     response.assert_status(StatusCode::NOT_FOUND);
 }
-
-// --- GET /api/{video_id}/status ---
 
 #[tokio::test]
 async fn poll_status_returns_job_data() {
@@ -246,13 +240,10 @@ fn a_link_copied_at_the_current_time_carries_it() {
     );
 }
 
-// --- GET /api/define ---
-
 #[tokio::test]
 async fn define_returns_the_popups_shape() {
-    // A real cached dictionary, because the lookup now goes through
-    // `jp_core::define` and asks `knowledge.db` rather than an in-memory
-    // `Dictionary`.
+    // A real cached dictionary: `jp_core::define` asks `knowledge.db`, not an
+    // in-memory `Dictionary`.
     let knowledge = jp_core::knowledge::Knowledge::temp().await;
     let dict_id = dictionaries::import_dictionary(
         knowledge.pool(),
@@ -323,8 +314,6 @@ async fn define_returns_the_popups_shape() {
     // Only kotodex-server records a lookup; there is no session here to record in.
     assert!(body["lookup_id"].is_null());
 }
-
-// --- POST /api/export ---
 
 #[tokio::test]
 async fn export_returns_count_and_ids() {
@@ -432,8 +421,6 @@ async fn export_empty_returns_400() {
     let body: serde_json::Value = response.json();
     assert!(body["error"].as_str().unwrap().contains("No sentences"));
 }
-
-// --- sentence audio ---
 
 async fn test_app_with_media_dir(
     media_extractor: MockMediaExtractor,
@@ -594,7 +581,6 @@ async fn sentence_audio_serves_cached_clip() {
     let sentences = db::get_sentences_for_job(&pool, job_id).await.unwrap();
     let sentence_id = sentences[0].id;
 
-    // Pre-create cached clip
     let (_, audio_filename) = media_filenames(job_id, sentence_id);
     let clip_path = format!("{media_dir}/{audio_filename}");
     std::fs::write(&clip_path, b"cached-audio").unwrap();
@@ -606,8 +592,6 @@ async fn sentence_audio_serves_cached_clip() {
     response.assert_status_ok();
     assert_eq!(&response.as_bytes()[..], b"cached-audio");
 }
-
-// --- SPA shell ---
 
 #[tokio::test]
 async fn root_returns_spa_shell() {

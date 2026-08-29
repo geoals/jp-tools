@@ -1,9 +1,7 @@
 // One day, whole: the goal, the day's totals, its curve, and its sittings.
 //
-// These were three cards — Today, Day detail, Today's sessions — asking the
-// same question at the same scale, with the middle one carrying a date picker
-// the other two didn't answer to. They are one card with one date now, so
-// stepping back a day moves the totals and the sessions with the chart.
+// One card and one date, so stepping back a day moves the totals and the
+// sessions with the chart.
 //
 // The totals come from the already-loaded `days` array rather than a fetch:
 // `/api/days` returns exactly what the hero needs for every day in the window,

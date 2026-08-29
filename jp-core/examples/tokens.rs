@@ -1,8 +1,8 @@
 //! Every line's token stream, for diffing one tokenizer rule against another.
 //!
-//! The golden fixture covers 250 sampled lines and is there to be *read*; this
-//! is the whole corpus, so a rule change can be checked for the lines it moved
-//! that it was not meant to move. Run it before and after, diff the two.
+//! The golden fixture covers a sample and is there to be *read*; this is the
+//! whole corpus, so a rule change can be checked for the lines it moved that it
+//! was not meant to move. Run it before and after, diff the two.
 //!
 //! ```text
 //! cargo run --release --example tokens -p jp-core -- <knowledge.db> <sudachi.dic> [dictionary title...]
@@ -43,10 +43,10 @@ async fn run() {
     // The segmentation authority, added as what it is: these decide wordhood
     // beside the master and nothing else.
     //
-    // **By role first.** Taking it from the command line alone meant every dump
-    // ran without 明鏡 and 小学館 — a pipeline two dictionaries short of the one
-    // the reader is using, so a rule diffed against itself was right while the
-    // absolute picture was not production's.
+    // **By role first.** Taking it from the command line alone runs the dump
+    // without 明鏡 and 小学館 — a pipeline short of the one the reader is using,
+    // so a rule diffed against itself looks right while the absolute picture is
+    // not production's.
     let mut standard: Vec<(String, String)> = dictionaries::standard_entries(pool).await.unwrap();
     eprintln!("standard role: {} entries", standard.len());
     for title in &a[3..] {
@@ -93,8 +93,7 @@ async fn run() {
         .collect();
 
     // The rank per spelling, which the short-kana guard is the only consumer
-    // of. Left out of this dump for its first year, so what it printed was a
-    // pipeline with one rule switched off — see `Pipeline`'s nine inputs.
+    // of. Without it this dump prints a pipeline with that rule switched off.
     let reader_ranks: HashMap<String, i64> =
         match dictionaries::reader_frequency(pool).await.unwrap() {
             Some(d) => sqlx::query_as::<_, (String, i64)>(
@@ -149,13 +148,12 @@ async fn run() {
                 format!("{}/{}/{reading}{name}", t.surface, t.base_form)
             })
             .collect();
-        // One record per output line, always. 1,040 of the 33,949 lines read
-        // carry a newline, and printed raw they came out as several rows whose
-        // text column held the last fragment and whose tokens held the whole
-        // line — so anything sampling this file read the wrong sentence for 3%
-        // of it. Escaped after joining, because the surface, the headword and
-        // the reading can each be a newline too. The tokenizer still sees the
-        // line whole.
+        // One record per output line, always. A line read can carry a newline,
+        // and printed raw it becomes several rows whose text column holds the
+        // last fragment while the tokens hold the whole line — so anything
+        // sampling this file reads the wrong sentence. Escaped after joining,
+        // because the surface, the headword and the reading can each be a
+        // newline too. The tokenizer still sees the line whole.
         let row = format!("{text}\t{}", out.join(" "));
         println!("{}", row.replace(['\n', '\r'], "⏎"));
     }

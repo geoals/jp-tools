@@ -3,8 +3,8 @@
 //!
 //! Ingest's Sudachi pipeline runs over the line as it streams and each content
 //! word is looked up in `vocabulary`. What comes back is **offsets, not
-//! markup**: the client paints them, so the line stays one text node and
-//! Yomitan's DOM scan sees what it always saw.
+//! markup**: the client paints them, so the line stays one text node for
+//! Yomitan's DOM scan.
 //!
 //! Two things get no span, and a third gets one that is not drawn:
 //!
@@ -106,17 +106,14 @@ pub enum BuildError {
 /// The tokenizer as jp-tools configures it, plus the dictionary sets its
 /// callers need beside it.
 ///
-/// **The nine inputs are one list and every caller takes all of them.** A
-/// tokenizer missing any one is a second pipeline that answers differently, and
-/// the answers are compared: the reader's tint and the ledger row it is drawn
-/// from have to agree about where a word ends and what it is called. Without
-/// the frequency ranks alone, a kana-written word whose reading names several
+/// **The inputs are one list and every caller takes all of them.** A tokenizer
+/// missing any one is a second pipeline that answers differently, and the
+/// answers are compared: the reader's tint and the ledger row it is drawn from
+/// have to agree about where a word ends and what it is called. Without the
+/// frequency ranks alone, a kana-written word whose reading names several
 /// master headwords stays kana — うかがう rather than 窺う, which no dictionary
 /// lists — so the wordhood gate calls it a non-word and nothing is tinted,
 /// while ingest files the same token under 窺う and counts it.
-///
-/// This existed three times over before it lived here: once for the reader's
-/// [`Highlighter`] and twice inside kotodex-server's ingest.
 pub struct Pipeline {
     pub tokenizer: SudachiTokenizer,
     pub lexicon: HashSet<String>,
@@ -128,10 +125,10 @@ pub struct Pipeline {
     /// The corpus rank per spelling, which the reader tests beside the
     /// reader-facing one — see [`Span::bccwj_rank`].
     ///
-    /// Here rather than fetched again by [`Highlighter::build`], which ran the
-    /// same `GROUP BY` over the same 886k rows a second time. Its reader-facing
-    /// counterpart needs no field: the tokenizer already holds that list and
-    /// answers for it (`SudachiTokenizer::reader_rank`).
+    /// Here rather than fetched again by [`Highlighter::build`]: it is the same
+    /// `GROUP BY` over every frequency row. Its reader-facing counterpart needs
+    /// no field — the tokenizer already holds that list and answers for it
+    /// (`SudachiTokenizer::reader_rank`).
     pub bccwj_ranks: HashMap<String, i64>,
 }
 
@@ -139,9 +136,9 @@ pub struct Pipeline {
 ///
 /// The dictionary-derived collections come from [`derived::load_or_build`],
 /// which reads them back out of `knowledge.db` rather than re-deriving them from
-/// 2.5M rows. The Sudachi load and the `with_*` builders are CPU-bound and
-/// measured in hundreds of milliseconds, so they run on a blocking thread rather
-/// than on the runtime other requests are polling.
+/// the dictionary rows. The Sudachi load and the `with_*` builders are
+/// CPU-bound, so they run on a blocking thread rather than on the runtime other
+/// requests are polling.
 pub async fn pipeline(
     k: &Knowledge,
     dict_path: impl AsRef<std::path::Path>,
@@ -153,8 +150,8 @@ pub async fn pipeline(
         .into_iter()
         .collect();
 
-    // Mapping 360 MB of Sudachi dictionary needs nothing out of `knowledge.db`,
-    // so it runs while the cache is being read and decoded rather than after.
+    // Mapping the Sudachi dictionary needs nothing out of `knowledge.db`, so it
+    // runs while the cache is being read and decoded rather than after.
     let dict_path = dict_path.as_ref().to_path_buf();
     let loading = tokio::task::spawn_blocking(move || SudachiTokenizer::new(&dict_path, vocab));
     let d = derived::load_or_build(pool).await?;
@@ -192,14 +189,13 @@ pub async fn pipeline(
 /// A ledger row carries three flags and [`VocabRow::is_word`] accepts any of
 /// them, so a term listed only by Jitendex is a word once ingest has seen it.
 /// A term met live — which is most of what the reader is there to point at —
-/// has no row yet, and asking the master alone made the same word a `non-word`
-/// and cost it its span: the reader could not tap 景気づけ or ムワムワ, both of
-/// which the popup would have defined. This holds the lenient set so both paths
-/// ask one question.
+/// has no row yet, and asking the master alone calls the same word a `non-word`
+/// and costs it its span: 景気づけ and ムワムワ are untappable that way, and the
+/// popup would define both. This holds the lenient set so both paths ask one
+/// question.
 ///
 /// Being a word here still says nothing about the vocabulary scale: that
-/// denominator is `in_master` alone (`COUNTS_AS_VOCAB`), and the row this now
-/// admits stays off it.
+/// denominator is `in_master` alone (`COUNTS_AS_VOCAB`).
 #[derive(Debug, Default, Clone)]
 pub struct Wordhood {
     terms: HashSet<String>,
@@ -244,9 +240,6 @@ impl Wordhood {
     /// stay does not extend to **one mora**, which is the rule the identity
     /// ladder already carries: Japanese has a word for every single kana, so
     /// the match is found every time and is evidence none of them.
-    ///
-    /// Over the corpus: 126 terms and 338 encounters refused, and every term
-    /// the fold rescues is a real word.
     pub fn is_noise(&self, term: &Term) -> bool {
         // No dictionaries loaded means the question cannot be asked, and
         // everything short and kana would answer yes. The same convention as
@@ -342,19 +335,18 @@ impl Highlighter {
     ///
     /// **Keyed by spelling alone, best rank wins** — the same question
     /// `lookup_frequency` puts for the popup. Keying on `(spelling, reading)`
-    /// instead made the underline and the popup disagree about the same word: the
-    /// popup printed 4,259 for 近付ける while the span carried nothing.
+    /// makes the underline and the popup disagree about the same word.
     ///
     /// A rank is only reported for a spelling some dictionary lists, and
     /// **every listed word counts, not the master's headwords alone**: Sankoku
-    /// has 近付く and 近付き but not 近付ける, so restricting to its lexicon left
-    /// every word only the lenient wordhood gate admits unrankable — and
+    /// has 近付く and 近付き but not 近付ける, so restricting to its lexicon
+    /// leaves every word only the lenient wordhood gate admits unrankable — and
     /// therefore impossible to underline, whatever the thresholds say.
     ///
     /// The test is here rather than in the query, and rather than applied to the
     /// map when it is loaded: `EXISTS` against `dictionary_entries` makes SQLite
-    /// scan it while every writer waits, and filtering the map instead meant
-    /// copying a million ranks on the path that brings the reader up.
+    /// scan it while every writer waits, and filtering the map instead copies
+    /// every rank on the path that brings the reader up.
     ///
     /// **The number comes from the tokenizer's own list**, which already holds
     /// it for the short-kana guard. One list, so the rank behind an underline and
@@ -374,12 +366,11 @@ impl Highlighter {
     /// The ledger key a spelling from outside the tokenizer stands for — an
     /// Anki card's `VocabKanji`, the term Yomitan sends to the proxy.
     ///
-    /// Asked of *this* tokenizer rather than a fresh one, for the reason the
-    /// five inputs above are listed: a bare `SudachiTokenizer` is a second
+    /// Asked of *this* tokenizer rather than a fresh one, for the reason
+    /// [`Pipeline`]'s inputs are one list: a bare `SudachiTokenizer` is a second
     /// pipeline and answers differently. It normalizes しゃくりあげる to
     /// しゃくり上げる where this one, which knows Sankoku's spelling, gives
-    /// 噦り上げる — and a key resolved by the wrong one matches no ledger row,
-    /// which is the exact failure it was written to repair.
+    /// 噦り上げる, and a key resolved by the wrong one matches no ledger row.
     ///
     /// A spelling that does not resolve to exactly one token is returned
     /// unchanged: a card can hold a phrase (心おきなく, 見よう見まね), and the
@@ -434,8 +425,8 @@ impl Highlighter {
     /// The same tokenizer over the same text, run a second time with the
     /// recorder on. Two runs, not two pipelines: tokenizing is deterministic
     /// and pure, so the steps describe exactly the token stream
-    /// [`candidates`](Self::candidates) got. A line costs microseconds and this
-    /// is reached only by a hand-pasted request.
+    /// [`candidates`](Self::candidates) got. Only a hand-pasted request reaches
+    /// it.
     pub fn explain(&self, text: &str) -> Vec<Step> {
         match self.tokenizer.explain(text) {
             Ok((_, steps)) => steps,
@@ -735,8 +726,8 @@ mod tests {
         MasterWords::new(HashSet::new(), &[])
     }
 
-    /// The spans the feed would draw from a located line — what `locate`
-    /// returned before it started carrying the dropped tokens too.
+    /// The spans the feed would draw from a located line: `locate` carries the
+    /// dropped tokens too.
     fn marked_spans(candidates: Vec<Candidate>) -> Vec<Span> {
         candidates
             .into_iter()
@@ -887,8 +878,8 @@ mod tests {
     #[test]
     fn a_term_only_a_reference_dictionary_lists_is_a_word() {
         // The lenient gate, matching what a ledger row would say. Sankoku has
-        // only 景気付け, so the master alone answered `non-word` and the reader
-        // got no span to tap.
+        // only 景気付け, so the master alone answers `non-word` and the reader
+        // gets no span to tap.
         assert!(wordhood().contains(&Term::new("景気づけ", "けいきづけ")));
         assert!(!wordhood().contains(&Term::new("景気づける", "けいきづける")));
     }
@@ -905,7 +896,7 @@ mod tests {
     }
 
     /// The sex-scene sound effects and hook shrapnel that head every triage
-    /// queue: ぎい, ぐっ, ちゅぷ, ズチュ. 126 terms and 338 encounters of it.
+    /// queue: ぎい, ぐっ, ちゅぷ, ズチュ.
     #[test]
     fn a_short_kana_string_no_dictionary_has_is_not_a_word() {
         let w = wordhood();
@@ -917,9 +908,8 @@ mod tests {
         assert!(!w.is_noise(&Term::new("景気づけ", "けいきづけ")));
     }
 
-    /// Four morae is where the population turns: ダイイング, トレデキム,
-    /// ジンザイ, ハルウリ, ヒトカリ are what one VN is *about*, and no
-    /// dictionary will ever list them.
+    /// At four morae a kana coinage is the work's own vocabulary — ダイイング,
+    /// ヒトカリ — and no dictionary will ever list it.
     #[test]
     fn a_longer_coinage_is_left_alone() {
         assert!(!wordhood().is_noise(&Term::new("ダイイング", "ダイイング")));
@@ -959,7 +949,7 @@ mod tests {
 
     /// A rank is only reported for a spelling some dictionary lists, and every
     /// dictionary counts — not the master alone. Sankoku has 近付く but not
-    /// 近付ける, so a master-only test left every word the lenient gate admits
+    /// 近付ける, so a master-only test leaves every word the lenient gate admits
     /// unrankable and therefore impossible to underline.
     #[test]
     fn only_a_listed_spelling_gets_a_rank() {

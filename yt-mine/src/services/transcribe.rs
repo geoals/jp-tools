@@ -3,8 +3,7 @@ use std::pin::Pin;
 
 use crate::models::TranscriptSegment;
 
-/// Called for each segment as it arrives during transcription.
-/// Receives the segment and the cumulative count so far.
+/// Called for each segment as it arrives, with the count so far.
 pub type ProgressCallback = Box<dyn Fn(TranscriptSegment, usize) + Send + Sync>;
 
 #[cfg_attr(test, mockall::automock)]
@@ -88,8 +87,9 @@ impl Transcriber for RemoteTranscriber {
                 )));
             }
 
-            // Stream NDJSON response via chunk(): one TranscriptSegment per line.
-            // No extra deps needed — reqwest's chunk() returns Option<Bytes>.
+            // One segment per NDJSON line, and a chunk can split anywhere, so lines
+            // are reassembled here rather than decoded per chunk. The last one may
+            // arrive without a trailing newline.
             let mut segments = Vec::new();
             let mut buffer = String::new();
             let mut response = response;
@@ -99,7 +99,6 @@ impl Transcriber for RemoteTranscriber {
             })? {
                 buffer.push_str(&String::from_utf8_lossy(&chunk));
 
-                // Process complete lines
                 while let Some(newline_pos) = buffer.find('\n') {
                     let line = buffer[..newline_pos].trim().to_string();
                     buffer = buffer[newline_pos + 1..].to_string();
@@ -119,7 +118,6 @@ impl Transcriber for RemoteTranscriber {
                 }
             }
 
-            // Handle any remaining data in buffer (last line may lack trailing newline)
             let remaining = buffer.trim();
             if !remaining.is_empty() {
                 let segment: TranscriptSegment = serde_json::from_str(remaining).map_err(|e| {

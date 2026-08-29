@@ -9,7 +9,6 @@ function parseRoute() {
     return { page: 'queue' };
   }
 
-  // /p/{name} — photo mining page
   if (path.startsWith('/p/')) {
     const name = decodeURIComponent(path.slice(3));
     if (name && !name.includes('/')) {

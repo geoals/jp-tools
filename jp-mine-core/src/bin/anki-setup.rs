@@ -201,10 +201,9 @@ async fn install_lapis(client: &reqwest::Client) -> ExitCode {
 
     let arg = json!({ "path": path.to_string_lossy() });
 
-    // The silent import first. It is gone in current Anki — the importer
-    // AnkiConnect calls was replaced, and the refusal comes back as an
-    // exception with an empty message — but it still works on older ones, and
-    // when it works nothing appears on screen.
+    // The silent import first: when it works nothing appears on screen. Current
+    // Anki has no importer behind it and refuses with an exception carrying an
+    // empty message, so the result is checked rather than trusted.
     if anki(client, "importPackage", arg.clone()).await.is_ok() && has_lapis(client).await {
         let _ = std::fs::remove_file(&path);
         println!("✓ imported. Lapis brings its own deck; cards still go to your own.");

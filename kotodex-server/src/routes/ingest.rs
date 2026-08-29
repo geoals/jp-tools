@@ -1,9 +1,9 @@
 //! `POST /api/lines` — the ledger's front door for captured text.
 //!
 //! Every source goes through here: the Textractor logger beside a VN, a bridge
-//! from another mining tool, a phone reading an epub. Writing the table
-//! directly is what the `ruby` column drifting across three definitions came
-//! from, and a source on a phone could not do it anyway.
+//! from another mining tool, a phone reading an epub. A source writing the table
+//! itself would have to know the column list, which is how one column comes to be
+//! defined differently in two places — and a source on a phone cannot anyway.
 //!
 //! What the source owns is turning its own capture into a line — the hooker's
 //! junk, a continuation split across two text boxes, its own dedup. What the
@@ -148,9 +148,8 @@ pub async fn ingest_lines(
 ///
 /// A line is stamped with a title, and everything the shelf shows derives the
 /// work from the lines — but the per-work *settings* need a row with an id, and
-/// the VN window is one of them. Without this, a work whose title was typed
-/// rather than picked had a card on the shelf and an edit dialog that could not
-/// save anything, which reads as the app being broken.
+/// the VN window is one of them. Without it a work whose title was typed rather
+/// than picked has a card on the shelf and an edit dialog that cannot save.
 ///
 /// Idempotent (`upsert_work`) and only after a successful insert, so the cost is
 /// one indexed lookup per batch of lines and none at all for a paused capture.

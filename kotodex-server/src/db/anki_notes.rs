@@ -23,15 +23,15 @@ pub struct AnkiNote {
     /// The card's own spelling, as the text spelt it.
     pub vocab: String,
     /// The ledger key it stands for — [`crate::ingest::normalized_spellings`].
-    /// Empty for a snapshot taken before the column existed; every reader falls
-    /// back to `vocab` there, and the next refresh fills it.
+    /// Empty until it has been resolved; every reader falls back to `vocab`
+    /// there, and the next refresh fills it.
     pub headword: String,
 }
 
 impl AnkiNote {
     /// What to join this card against anything the tokenizer produced —
-    /// `word_days` lemmas, `vocabulary` rows. The fallback is what makes a
-    /// pre-column snapshot behave as it did before rather than match nothing.
+    /// `word_days` lemmas, `vocabulary` rows. The fallback keeps an unresolved
+    /// row joining on its own spelling rather than on nothing.
     pub fn key(&self) -> &str {
         if self.headword.is_empty() {
             &self.vocab
@@ -45,9 +45,9 @@ impl AnkiNote {
 ///
 /// The refresh is the only writer that *owns* this table, and it still replaces
 /// it wholesale — this only spares the mirror from being blind until the next
-/// one. It had to be: the refresh runs when the dashboard page opens, mining
-/// happens in the overlay for hours without that, and every cards-per-hour
-/// figure reads this table. Cards mined in a session simply were not there.
+/// one. It has to: the refresh runs when the dashboard page opens, mining happens
+/// in the overlay for hours without that, and every cards-per-hour figure reads
+/// this table.
 ///
 /// One row, not a refresh: a refresh refetches the whole deck and resolves
 /// every spelling through Sudachi, which must not sit on the path that adds a

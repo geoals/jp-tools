@@ -53,9 +53,8 @@ pub struct FreqEntry {
     pub rank: i64,
 }
 
-/// Storage backend for dictionary data.
-/// Production uses `Sqlite` for lazy per-term lookups (no upfront loading).
-/// Tests use `InMemory` so they don't need a database.
+/// Storage backend for dictionary data: `Sqlite` for lazy per-term lookups with
+/// nothing loaded upfront, `InMemory` so tests need no database.
 enum DictionaryStorage {
     InMemory {
         entries: HashMap<String, Vec<DictionaryEntry>>,
@@ -131,14 +130,12 @@ impl Dictionary {
         }
     }
 
-    /// Wrap definition HTML with dictionary title and body container divs.
-    /// Class names are suffixed with a slug derived from the dictionary title,
-    /// e.g. `dict-jitendex-title` / `dict-jitendex-body`.
+    /// Wrap definition HTML in this dictionary's title and body divs — see the
+    /// free [`wrap_definitions`], which owns the shape.
     pub fn wrap_definitions(&self, definitions_html: &str) -> String {
         wrap_definitions(&css_slug(&self.title), &self.title, definitions_html)
     }
 
-    /// Create a dictionary backed by SQLite for lazy per-term lookups.
     pub fn from_sqlite(pool: SqlitePool, dict_id: i64, title: String) -> Self {
         Self {
             title,
@@ -149,9 +146,9 @@ impl Dictionary {
 
 /// Sankoku splits a headword at the morpheme boundary of its reading — 味＝方
 /// is みかた as み + かた, 不知＝火 しらぬ + い — and the ＝ is not part of the
-/// word. Left in, it makes the key unmatchable: 味方 has never been credited to
-/// the master, so it counts for the wordhood gate on Jitendex alone and stays
-/// out of the vocabulary denominator. 136 headwords are keyed this way.
+/// word. Left in, it makes the key unmatchable: 味方 is then credited to no
+/// master entry, so it counts for the wordhood gate on Jitendex alone and stays
+/// out of the vocabulary denominator.
 ///
 /// **Katakana terms are left alone**, because there ＝ is a real character:
 /// Jitendex writes サピア＝ウォーフの仮説 and オーストリア＝ハンガリー帝国,
@@ -217,17 +214,14 @@ fn parse_definitions(value: &Value, images: &HashMap<String, String>) -> Vec<Str
 }
 
 /// Recursively extract plain text from Yomitan structured-content.
-/// Handles strings, arrays, and tag objects with nested `content`.
 pub fn extract_text_from_content(value: &Value) -> String {
     match value {
         Value::String(s) => s.clone(),
         Value::Array(arr) => arr.iter().map(extract_text_from_content).collect(),
         Value::Object(obj) => {
-            // Skip images
             if obj.get("tag").and_then(|t| t.as_str()) == Some("img") {
                 return String::new();
             }
-            // <br> -> newline
             if obj.get("tag").and_then(|t| t.as_str()) == Some("br") {
                 return "\n".to_string();
             }
@@ -241,9 +235,7 @@ pub fn extract_text_from_content(value: &Value) -> String {
     }
 }
 
-/// Format a term+reading pair as Anki bracket furigana notation.
-/// Returns `"term[reading]"` when reading differs from term,
-/// or just `"term"` when reading is empty or identical to term.
+/// Format a term+reading pair as Anki bracket furigana notation, `term[reading]`.
 pub fn format_furigana(term: &str, reading: &str) -> String {
     if reading.is_empty() || reading == term {
         term.to_string()
@@ -265,9 +257,8 @@ pub fn wrap_definitions(slug: &str, title: &str, definitions_html: &str) -> Stri
     )
 }
 
-/// Convert a dictionary title to a CSS-safe slug for use in class names.
-/// Keeps alphanumeric and non-ASCII (e.g. CJK) characters, replaces everything
-/// else with hyphens, collapses runs, strips leading/trailing hyphens, lowercases ASCII.
+/// Convert a dictionary title to a CSS-safe slug for use in class names. CJK is
+/// kept as it is, since a class name may hold it and a title is often all CJK.
 pub fn css_slug(title: &str) -> String {
     let mut slug = String::with_capacity(title.len());
     let mut prev_hyphen = true; // avoid leading hyphen
@@ -276,13 +267,11 @@ pub fn css_slug(title: &str) -> String {
             slug.push(ch.to_ascii_lowercase());
             prev_hyphen = false;
         } else if ch.is_whitespace() || ch.is_ascii_punctuation() {
-            // Whitespace (including fullwidth) and ASCII punctuation → hyphen
             if !prev_hyphen {
                 slug.push('-');
                 prev_hyphen = true;
             }
         } else {
-            // Non-ASCII content characters (CJK etc.) — keep as-is
             slug.push(ch);
             prev_hyphen = false;
         }
@@ -480,7 +469,6 @@ fn read_zip_entry<R: Read + std::io::Seek>(
     archive: &mut zip::ZipArchive<R>,
     name: &str,
 ) -> Result<String, DictionaryError> {
-    // Try normal read first (with CRC validation)
     {
         let mut file = archive
             .by_name(name)
@@ -497,7 +485,6 @@ fn read_zip_entry<R: Read + std::io::Seek>(
         }
     }
 
-    // Fallback: read raw compressed data and decompress manually
     let index = (0..archive.len())
         .find(|&i| archive.by_index(i).ok().is_some_and(|f| f.name() == name))
         .ok_or_else(|| DictionaryError::Load(format!("{name} not found in archive")))?;
@@ -574,8 +561,8 @@ impl Dictionary {
         Ok((all_pitch, all_freq))
     }
 
-    /// Load a Yomitan dictionary from any reader implementing `Read + Seek`.
-    /// This allows loading from files and in-memory buffers (for testing).
+    /// Load a Yomitan dictionary from any `Read + Seek`, so a test can hand it an
+    /// in-memory buffer.
     fn load_from_reader<R: Read + std::io::Seek>(reader: R) -> Result<Self, DictionaryError> {
         let mut archive = zip::ZipArchive::new(reader)
             .map_err(|e| DictionaryError::Load(format!("failed to read zip: {e}")))?;
@@ -630,8 +617,8 @@ impl Dictionary {
 }
 
 impl Dictionary {
-    /// Populate pitch accent data from a list of `(term, PitchEntry)` pairs.
-    /// Only valid for `InMemory`-backed dictionaries (used during zip parsing and tests).
+    /// Populate pitch accent data. Only valid for `InMemory`-backed
+    /// dictionaries: zip parsing and tests.
     pub fn set_pitch(&mut self, entries: Vec<(String, PitchEntry)>) {
         let DictionaryStorage::InMemory { ref mut pitch, .. } = self.storage else {
             panic!("set_pitch called on Sqlite-backed dictionary");
@@ -643,9 +630,10 @@ impl Dictionary {
         *pitch = map;
     }
 
-    /// Populate frequency data from a list of `(term, rank)` pairs, keeping
-    /// the lowest (most common) rank per term.
-    /// Only valid for `InMemory`-backed dictionaries (used during zip parsing and tests).
+    /// Populate frequency data. Every rank is kept as the source gave it,
+    /// reading included, and the lookup takes the minimum per term.
+    ///
+    /// Only valid for `InMemory`-backed dictionaries: zip parsing and tests.
     pub fn set_freq(&mut self, entries: Vec<FreqEntry>) {
         let DictionaryStorage::InMemory { ref mut freq, .. } = self.storage else {
             panic!("set_freq called on Sqlite-backed dictionary");
@@ -653,14 +641,14 @@ impl Dictionary {
         *freq = entries;
     }
 
-    /// Build a dictionary from a list of parsed entries.
-    /// Title defaults to "Unknown"; `load_from_reader` overrides with the zip's index.json title.
+    /// Build a dictionary from parsed entries, titled "Unknown" until a caller
+    /// with the zip's `index.json` says otherwise.
     pub fn from_entries(entries: Vec<DictionaryEntry>) -> Self {
         let mut map: HashMap<String, Vec<DictionaryEntry>> = HashMap::new();
         for entry in entries {
             map.entry(entry.term.clone()).or_default().push(entry);
         }
-        // Sort each entry list by score descending (higher = more common)
+        // Yomitan scores the commoner entry higher, so the best sense is first.
         for entries in map.values_mut() {
             entries.sort_by(|a, b| b.score.cmp(&a.score));
         }
@@ -733,9 +721,8 @@ impl Dictionary {
             .collect())
     }
 
-    /// Load a dictionary from the SQLite cache, or import from the zip file if not cached.
-    /// On first load the zip is parsed and entries are stored in the database.
-    /// Subsequent loads return a lazy SQLite-backed handle — no data is loaded into memory.
+    /// Load a dictionary from the SQLite cache, parsing the zip into it when it is
+    /// not cached. The handle is lazy either way — no entries are held in memory.
     pub async fn load_or_import(
         pool: &sqlx::SqlitePool,
         path: &Path,
@@ -745,10 +732,10 @@ impl Dictionary {
         let path_str = path.to_string_lossy();
 
         if let Some((id, title)) = db::find_dictionary(pool, &path_str).await? {
-            // Dictionaries cached before pitch or frequency support: re-parse
-            // the meta banks once. Marked checked whether or not the zip held
-            // any, so one publishing neither is not re-read every startup —
-            // except when the zip has moved, which is left unmarked to retry.
+            // A cached dictionary whose meta banks were never read: parse them
+            // once. Marked checked whether or not the zip held any, so one
+            // publishing neither is not re-read every startup — except when the
+            // zip has moved, which is left unmarked to retry.
             if db::needs_meta_backfill(pool, id).await?
                 && path.exists()
                 && let Ok((fresh_pitch, fresh_freq)) = Self::load_meta_from_zip(path)
@@ -772,7 +759,6 @@ impl Dictionary {
             return Ok(Self::from_sqlite(pool.clone(), id, title));
         }
 
-        // Not cached — load from zip and store in db atomically
         let dict = Self::load_from_zip(path)?;
         let DictionaryStorage::InMemory {
             ref entries,

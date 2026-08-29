@@ -5,11 +5,10 @@
 // up on a long interval was not — and this is that evidence, sorted into the
 // four readings a card can support.
 //
-// **It reports and writes nothing.** The point of the first version is to be
-// looked at for a while: the thresholds are a guess, one encounter day can be a
-// skimmed line, and acting on this in bulk before it has been checked against
-// words already judged known is the wrong-assertion-at-scale case the ledger's
-// two-signal rule exists to prevent.
+// **It reports and writes nothing.** The thresholds are a guess until the
+// buckets have been read against words already judged known, and one encounter
+// day can be a skimmed line — acting on that in bulk is the
+// wrong-assertion-at-scale case the ledger's two-signal rule exists to prevent.
 //
 // Fetched on demand rather than with the dashboard poll: it asks Anki for the
 // whole deck's scheduling state and its review log, which is seconds of work
@@ -224,7 +223,7 @@ function Bucket({ spec, rows, total, listed, open, onToggle }) {
 }
 
 /** Each column built whole in JS — htm collapses a line break between text and
- *  an interpolation, which is how `4 days` became `4days`. */
+ *  an interpolation, which renders `4 days` as `4days`. */
 const COLUMN = {
   interval: { label: "interval", value: (r) => `${r.interval} d` },
   lookups: { label: "looked up", value: (r) => `${r.lookups}×` },

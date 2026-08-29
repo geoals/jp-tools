@@ -68,8 +68,7 @@ pub async fn create_pool(db_path: &str) -> Result<SqlitePool, sqlx::Error> {
     adopt_former_name(db_path);
     // WAL + busy_timeout, on the connect options rather than as a `PRAGMA`
     // against the pool: `busy_timeout` is per connection, so running it once
-    // sets it on one of the five and leaves the rest at zero. See
-    // `jp_core::knowledge::Knowledge::open` for what that cost.
+    // sets it on one of the five and leaves the rest at zero.
     jp_core::knowledge::ensure_parent_dir(db_path)?;
     let opts = SqliteConnectOptions::new()
         .filename(db_path)
@@ -99,14 +98,11 @@ pub async fn open_knowledge(db_path: &str, recount: bool) -> Result<Knowledge, s
 }
 
 /// Bring `lines.chars` in line with `jp_core::text::chars::count_chars`, which
-/// excludes punctuation; rows written under the old rule counted every
-/// non-whitespace codepoint, inflating chars/h relative to texthooker-ui.
+/// excludes punctuation so the speeds are comparable with texthooker-ui's.
 ///
-/// Deliberately unconditional rather than watermarked: vn-ws-logger.py writes
-/// this column too, so a logger still running the old rule (it can't be
-/// restarted while Textractor is attached) keeps producing rows that need
-/// fixing. Only differing rows are written, so once both sides agree this is a
-/// read-only scan.
+/// Unconditional rather than watermarked, so changing the counting rule is
+/// enough to correct every row already stored. Only differing rows are written,
+/// so once the column agrees this is a read-only scan.
 async fn recount_line_chars(knowledge: &Knowledge) -> Result<(), sqlx::Error> {
     let pool = knowledge.pool();
     let rows = sqlx::query("SELECT id, chars, text FROM lines WHERE text IS NOT NULL")

@@ -36,8 +36,8 @@ BPS=192000 # 48000 Hz * 2 ch * 2 bytes/sample
 WAV_HDR=44 # bytes; kotodex-capture records with -fflags +bitexact
 PRE_PAD=0.30
 POST_PAD=0.25
-# 10s, not 20: a voiceline that long doesn't exist, so the extra ten seconds
-# only ever widen the window a false positive can be found in.
+# No voiceline is this long, and a wider window only widens where a false
+# positive can be found.
 MAX_LEN="${VN_MAX_LEN:-10}"
 # Shortest window worth running VAD over, once the next hooked line has bounded
 # it. Below this the reader advanced almost at once, so there was no voiceline
@@ -108,9 +108,9 @@ command -v import &>/dev/null || command -v grim &>/dev/null ||
 
 # Unset — fired by hotkey rather than by kotodex-server — so ask kotodex-server which
 # window is the VN, and aim at the same one the mine button does. Resolving it
-# here in SQL instead made this a second implementation of a rule that must have
-# exactly one: switching VNs would mean updating two places, and the one you
-# forget silently captures the last game.
+# here in SQL would be a second implementation of a rule that must have exactly
+# one: switching VNs would mean updating two places, and the one you forget
+# silently captures the last game.
 #
 # No answer means no window, and the screenshot falls back to whatever has
 # focus. That is what kotodex-server being down looks like, and it beats failing a
@@ -162,7 +162,7 @@ LINE_TEXT=${LAST_LINE#*$'\t'}
 # unvoiced line mined just before a voiced one is the sharp case: its own span
 # holds no speech, so the clip becomes the next line's voice entirely.
 # Empty when the anchor is still the newest line, which is the hotkey's normal
-# case and leaves the window unbounded as before.
+# case and leaves the window unbounded.
 NEXT_TS=$(LC_ALL=C awk -F'\t' -v t="$LINE_TS" '$1 > t { print $1; exit }' "$LINES_LOG")
 
 # === SCREENSHOT (capture the window state at the moment of the press) ===
@@ -173,8 +173,8 @@ NEXT_TS=$(LC_ALL=C awk -F'\t' -v t="$LINE_TS" '$1 > t { print $1; exit }' "$LINE
 # VN_WINDOW sidesteps focus entirely: find the VN's window by name and grab it
 # by id. Wine/Proton windows are XWayland, so xdotool can still address them
 # under a Wayland session even though `xdotool getactivewindow` can't. Any
-# failure falls through to the old active-window path rather than dying — a
-# wrong screenshot is recoverable, a lost voiceline is not.
+# failure falls through to the active-window path rather than dying — a wrong
+# screenshot is recoverable, a lost voiceline is not.
 SCREENSHOT_FILE="screenshot_${TIMESTAMP}.png"
 VN_WID=""
 # Which X display the game is on, rather than whichever one this process
@@ -274,7 +274,7 @@ esac
 # narration-only screen). Attaching the raw window there would put ${MAX_LEN}s
 # of room tone on the card, so the capture becomes screenshot-only. A VAD
 # *failure* is different — nothing is known about the audio, so the untrimmed
-# window is still the best guess and gets attached as before.
+# window is still the best guess and gets attached.
 TRIM_NOTE=""
 NO_AUDIO=""
 
@@ -342,10 +342,8 @@ $(tail -n 1 "$TMP/vad.err" 2>/dev/null)"
     # clip stands alone.
     #
     # Silence floor: a clip that never rises above MIN_PEAK_DB is room tone.
-    # This does not separate voice from sound effects — measured over a day of
-    # mining, real voicelines peak between -6 and -16 dBFS and the sound effect
-    # that prompted this peaked at -15 — it only catches a window that holds
-    # nothing at all.
+    # It does not separate voice from sound effects, which are as loud as a
+    # voiceline — it only catches a window that holds nothing at all.
     PEAK_DB=$(ffmpeg -nostdin -f s16le -ar 48000 -ac 2 -i "$TMP/clip.raw" \
       -af volumedetect -f null - 2>&1 | grep -oE 'max_volume: -?[0-9.]+' | grep -oE '\-?[0-9.]+$')
     if [ -n "$PEAK_DB" ] && LC_ALL=C awk -v p="$PEAK_DB" -v min="$MIN_PEAK_DB" \
@@ -355,10 +353,8 @@ $(tail -n 1 "$TMP/vad.err" 2>/dev/null)"
     else
       # Cold re-run. silero is stateful, so a loud transient partway through a
       # long window can cross the threshold on state warmed by the preceding
-      # audio; scored on its own from a zero state the same clip does not.
-      # That is the check that actually separates the two — over the same day's
-      # clips, every voiced one peaks at ~1.00 confidence standalone and the
-      # sound effect reached 0.35.
+      # audio; scored on its own from a zero state the same clip does not. This
+      # is the check that separates a voiceline from a sound effect.
       vad_wav "$TMP/vad2.wav"
       if [ "$("$VAD_PYTHON" "$VAD_SCRIPT" "$TMP/vad2.wav" 2>/dev/null)" == "none" ]; then
         drop_audio "no speech on its own" \

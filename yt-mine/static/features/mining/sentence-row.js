@@ -46,7 +46,6 @@ export function SentenceRow({ sentence, videoId, jobId }) {
   }
 
   function handlePlay() {
-    // Dispatch custom event for audio-player to handle
     window.dispatchEvent(new CustomEvent('play-sentence', {
       detail: { videoId, sentenceId: sentence.id },
     }));

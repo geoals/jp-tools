@@ -9,8 +9,6 @@ fn freq(term: &str, reading: &str, rank: i64) -> FreqEntry {
     }
 }
 
-// --- format_furigana ---
-
 #[test]
 fn format_furigana_kanji_with_reading() {
     assert_eq!(format_furigana("隔週", "かくしゅう"), "隔週[かくしゅう]");
@@ -18,7 +16,6 @@ fn format_furigana_kanji_with_reading() {
 
 #[test]
 fn format_furigana_kana_only_returns_term() {
-    // When reading equals term, no bracket annotation needed
     assert_eq!(format_furigana("たべる", "たべる"), "たべる");
 }
 
@@ -26,8 +23,6 @@ fn format_furigana_kana_only_returns_term() {
 fn format_furigana_empty_reading_returns_term() {
     assert_eq!(format_furigana("食べる", ""), "食べる");
 }
-
-// --- parse_pitch_bank ---
 
 #[test]
 fn parse_pitch_bank_single_entry() {
@@ -303,7 +298,6 @@ async fn dictionary_lookup_exact_match() {
     let dict = Dictionary::from_entries(entries);
     let results = dict.lookup("食べる").await;
     assert_eq!(results.len(), 2);
-    // Sorted by score descending
     assert_eq!(results[0].score, 100);
     assert_eq!(results[1].score, 50);
 }
@@ -372,8 +366,6 @@ async fn load_from_zip_multiple_term_banks() {
     assert_eq!(dict.lookup("食べる").await.len(), 1);
     assert_eq!(dict.lookup("飲む").await.len(), 1);
 }
-
-// --- lookup_pitch ---
 
 #[tokio::test]
 async fn lookup_pitch_returns_matching_entry() {
@@ -459,8 +451,6 @@ async fn load_from_zip_without_meta_bank_has_empty_pitch() {
     assert!(dict.lookup_pitch("食べる").await.is_empty());
 }
 
-// --- css_slug ---
-
 #[test]
 fn css_slug_simple_name() {
     assert_eq!(css_slug("Jitendex"), "jitendex");
@@ -483,8 +473,6 @@ fn css_slug_japanese_dictionary() {
 fn css_slug_collapses_consecutive_hyphens() {
     assert_eq!(css_slug("a -- b"), "a-b");
 }
-
-// --- wrap_definitions ---
 
 #[test]
 fn wrap_definitions_produces_title_and_body() {
@@ -512,8 +500,6 @@ fn css_slug_matches_the_overlay_stylesheet() {
         "小学館例解学習国語-第十二版"
     );
 }
-
-// --- title ---
 
 #[test]
 fn load_from_zip_parses_title_from_index_json() {
@@ -569,8 +555,6 @@ fn load_from_zip_missing_title_uses_unknown() {
     assert_eq!(dict.title(), "Unknown");
 }
 
-// --- html_escape ---
-
 #[test]
 fn html_escape_passes_through_plain_text() {
     assert_eq!(html_escape("hello world"), "hello world");
@@ -591,8 +575,6 @@ fn html_escape_escapes_quotes() {
     assert_eq!(html_escape(r#"it's "fine""#), "it&#x27;s &quot;fine&quot;");
 }
 
-// --- camel_to_kebab ---
-
 #[test]
 fn camel_to_kebab_single_word() {
     assert_eq!(camel_to_kebab("font"), "font");
@@ -608,8 +590,6 @@ fn camel_to_kebab_multiple_words() {
     assert_eq!(camel_to_kebab("borderTopWidth"), "border-top-width");
 }
 
-// --- render_style ---
-
 #[test]
 fn render_style_single_property() {
     let obj: serde_json::Map<String, Value> =
@@ -621,11 +601,8 @@ fn render_style_single_property() {
 fn render_style_multiple_properties_sorted() {
     let obj: serde_json::Map<String, Value> =
         serde_json::from_str(r#"{"fontSize": "1em", "color": "red"}"#).unwrap();
-    // color is stripped (conflicts with dark theme); only font-size remains
     assert_eq!(render_style(&obj), "font-size:1em");
 }
-
-// --- structured_content_to_html ---
 
 #[test]
 fn sc_html_plain_string() {
@@ -818,7 +795,6 @@ fn sc_html_tag_with_data_attributes() {
 
 #[test]
 fn sc_html_attribute_order() {
-    // lang, title, href, data-*, style
     let v = serde_json::json!({
         "tag": "a",
         "style": {"fontWeight": "bold"},
@@ -915,8 +891,6 @@ fn sc_html_list_structure() {
     );
 }
 
-// --- build_image_map ---
-
 #[test]
 fn build_image_map_extracts_svg_and_png() {
     use base64::Engine;
@@ -996,11 +970,9 @@ async fn load_from_zip_embeds_images_in_structured_content() {
         zip.start_file("index.json", options).unwrap();
         std::io::Write::write_all(&mut zip, br#"{"title": "Test"}"#).unwrap();
 
-        // Image file in the zip
         zip.start_file("accent.svg", options).unwrap();
         std::io::Write::write_all(&mut zip, svg_content).unwrap();
 
-        // Term bank with structured-content referencing the image
         let term_json = serde_json::json!([[
             "テスト", "てすと", "", "", 100,
             [{"type": "structured-content", "content": {

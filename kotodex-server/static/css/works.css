@@ -1,7 +1,6 @@
 /* Works: currently reading, the library table, the Anki re-encounter card
    and the now-reading switch. */
 
-/* Currently reading */
 .current-work {
   display: flex;
   gap: 16px;
@@ -217,7 +216,6 @@ a.ghost:hover {
   font-size: 11px;
 }
 
-/* One work's page */
 .work-detail-head {
   display: flex;
   gap: 16px;
@@ -331,7 +329,6 @@ a.ghost:hover {
   font-weight: 500;
 }
 
-/* Now reading */
 .now-reading + .now-reading,
 .meta-hint + .now-reading,
 .work-search + .now-reading {
@@ -486,9 +483,9 @@ table.vocab-split tbody tr:first-child td {
   padding: 1px 6px;
 }
 
-/* The window the game draws in, on the Today card. Shown rather than hidden in
-   the edit dialog because "where do I tell it which window the game is" was the
-   question the dialog was the answer to, and nothing on the card said so. */
+/* The window the game draws in, on the Today card rather than only inside the
+   edit dialog: a control buried in a dialog cannot answer "where do I tell it
+   which window the game is". */
 .work-window-name {
   flex: 1;
   min-width: 0;
@@ -519,10 +516,9 @@ table.vocab-split tbody tr:first-child td {
   max-width: 100%;
 }
 
-/* The cover, and the search that finds one. A box wanting "v3144" made the
-   reader go to vndb.org and come back with an id, which is the errand the title
-   search was built to end — so this is that search, seeded with the title the
-   work already has. */
+/* The cover, and the search that finds one. A box wanting "v3144" sends the
+   reader to vndb.org for an id, which is the errand the title search exists to
+   end — so this is that search, seeded with the title the work already has. */
 .work-cover-row {
   display: flex;
   gap: 10px;

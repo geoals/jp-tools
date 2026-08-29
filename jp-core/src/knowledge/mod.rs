@@ -83,14 +83,11 @@ impl Knowledge {
         // them, and yt-mine/manga-mine read the dictionaries from their own
         // processes.
         //
-        // Both go on the *connect options*, not through a `PRAGMA` run against
-        // the pool. `busy_timeout` is per connection: executing it once hands
-        // it to whichever single connection served that statement and leaves
-        // the other four at zero, so a write that lands on one of those fails
-        // with SQLITE_BUSY the instant the logger holds the write lock instead
-        // of waiting the five seconds it was supposed to. (`journal_mode` is
-        // persisted in the file, so that half survived either way — which is
-        // what made this look like it worked.)
+        // Both go on the *connect options*, never through a `PRAGMA` run
+        // against the pool. `busy_timeout` is per connection, so a pragma sets
+        // it on whichever connection served the statement and leaves the rest at
+        // zero — a write landing on one of those fails with SQLITE_BUSY the
+        // moment another process holds the write lock.
         ensure_parent_dir(db_path)?;
 
         let opts = SqliteConnectOptions::new()
@@ -131,10 +128,10 @@ impl Knowledge {
     /// EXISTS`), so there is no version table to keep in sync; what SQLite
     /// can't express idempotently is guarded by [`has_column`].
     ///
-    /// **Idempotent is not the same as free**, and the two migrations that
-    /// rewrite *data* are guarded by [`schema_repairs`](repair_done) instead:
-    /// they scanned `lines` and `dictionary_entries` whole on every open, by
-    /// every tool, to find nothing left to do.
+    /// **Idempotent is not the same as free**, so the migrations that rewrite
+    /// *data* are guarded by [`schema_repairs`](repair_done) instead: replaying
+    /// one scans `lines` and `dictionary_entries` whole, on every open, by every
+    /// tool, to find nothing left to do.
     async fn migrate(&self) -> Result<(), sqlx::Error> {
         for sql in [
             MIGRATION_DICT,
@@ -231,14 +228,13 @@ impl Knowledge {
             )
             .execute(&self.0)
             .await?;
-            // The entry-id backfill re-reads the term banks and now carries the
-            // word class with it, so clearing its flag is all it takes to fill
-            // the new column — one pass, on the next start.
+            // The entry-id backfill re-reads the term banks and carries the word
+            // class with it, so clearing its flag fills the new column in one
+            // pass on the next start.
             //
-            // **The master only.** It is the only dictionary anything asks about
-            // word classes, and re-reading the others buys nothing while costing
-            // a 425k-row pass over Jitendex that lost the write lock to a live
-            // reading session and rolled back — which it would then retry on
+            // **The master only.** Nothing asks another dictionary about word
+            // classes, and a pass over one the size of Jitendex can lose the
+            // write lock to a live reading session and roll back — then retry on
             // every start, forever.
             sqlx::raw_sql("UPDATE dictionaries SET seq_checked = 0 WHERE role = 'master'")
                 .execute(&self.0)
@@ -280,10 +276,9 @@ impl Knowledge {
         }
         // `anki_notes` predates keying a card on anything but its own spelling.
         // A card is spelt the way the text spelt it; everything derived from
-        // reading is keyed on Sudachi's normalized form, and matching the two
-        // as raw strings silently lost every card whose spelling normalizes —
-        // 検死 never marked 検屍 mined, and never matched its own `word_days`
-        // lemma, so a word read all evening counted as never re-encountered.
+        // reading is keyed on Sudachi's normalized form, and matching the two as
+        // raw strings is silently wrong — 検死 does not match its own ledger row
+        // 検屍, nothing errors, and the row reads as zero.
         //
         // `vocab` stays the literal spelling (the kanji grid and the per-work
         // mined list both want what is on the card); `headword` is what joins
@@ -301,11 +296,11 @@ impl Knowledge {
             .await?;
         }
         // `lookups` predates it too, and for the same reason: Yomitan sends the
-        // word as the text spelt it, so a lookup of 検死 credited a row keyed
-        // 検死 while every reading of it counted against 検屍. The row the
-        // reader actually meets read as never looked up — and `preselects_known`
-        // ticks a word `known` on encounters alone when `lookup_count` is 0,
-        // which is exactly the one-signal default the triage rule forbids.
+        // word as the text spelt it, so a lookup of 検死 credits a row keyed 検死
+        // while every reading of it counts against 検屍. The row the reader meets
+        // then reads as never looked up — and `preselects_known` ticks a word
+        // `known` on encounters alone when `lookup_count` is 0, which is the
+        // one-signal default the triage rule forbids.
         //
         // Filled by a backfill pass rather than at write time: `ankiproxy`
         // records on the mining hot path, where nothing may be awaited in front
@@ -332,11 +327,11 @@ impl Knowledge {
                 .await?;
             }
         }
-        // `manual_sessions.end_ts` was NOT NULL when every session carried a
-        // minute count. SQLite cannot drop a NOT NULL in place, so the table is
-        // rebuilt — the one case in this file that needs more than an ALTER.
-        // Existing rows keep their `end_ts`: they *were* timed, and a real
-        // duration must never be replaced by an estimate.
+        // A schema predating untimed sessions has `end_ts` NOT NULL. SQLite
+        // cannot drop a NOT NULL in place, so the table is rebuilt — the one case
+        // in this file that needs more than an ALTER. Existing rows keep their
+        // `end_ts`: they *were* timed, and a real duration must never be replaced
+        // by an estimate.
         if column_is_not_null(&self.0, "manual_sessions", "end_ts").await? {
             sqlx::raw_sql(
                 "BEGIN;\
@@ -391,8 +386,8 @@ impl Knowledge {
         //
         // Run once, not on every open. `strip_okurigana_marker` keeps the marker
         // out of new imports and nothing else can introduce one, so a replay is
-        // four unindexed `LIKE '%＝%'` scans — 675k dictionary entries among them
-        // — that can only ever find nothing.
+        // four unindexed `LIKE '%＝%'` scans, one of them over every dictionary
+        // entry, that can only ever find nothing.
         if !repair_done(&self.0, STRIP_OKURIGANA).await? {
             sqlx::raw_sql(MIGRATION_STRIP_OKURIGANA_MARKER)
                 .execute(&self.0)
@@ -492,11 +487,10 @@ mod tests {
         }
     }
 
-    /// The regression this exists for: `busy_timeout` is a per-connection
-    /// setting, so setting it with a `PRAGMA` against the pool reached one
-    /// connection and left the rest at zero — and a write that happened to
-    /// land on one of those failed with "database is locked" the moment
-    /// another process held the write lock, instead of waiting five seconds.
+    /// `busy_timeout` is per connection, so a `PRAGMA` against the pool reaches
+    /// one connection and leaves the rest at zero. A write landing on one of
+    /// those does not wait: it fails with "database is locked" the moment another
+    /// process holds the write lock.
     #[tokio::test]
     async fn every_pooled_connection_waits_for_a_busy_database() {
         let k = temp_knowledge().await;

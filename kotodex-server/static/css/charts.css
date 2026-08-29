@@ -1,7 +1,6 @@
 /* Charts: the SVG marks, the legend that doubles as a series toggle, the
    card header controls, and the day-detail panel. */
 
-/* Charts */
 .chart-wrap {
   position: relative;
 }
@@ -381,10 +380,9 @@
   font-weight: 500;
 }
 
-/* ── Section headings inside a merged card ───────────────────────────────
-   The tabs collapsed several cards into one, so what used to be a card title
-   is now a heading over a chart. Quieter than an <h2>, and it carries the
-   chart's own controls on the right. */
+/* ── Section headings inside a card ──────────────────────────────────────
+   A heading over one chart inside a card, so quieter than an <h2>. It carries
+   the chart's own controls on the right. */
 .day-chart-head {
   display: flex;
   align-items: center;

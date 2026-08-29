@@ -1,10 +1,8 @@
 //! The CompactDef gloss for a mined card, behind a trait so the fake and the
 //! route tests can stand in for it.
 //!
-//! The prompt is [`jp_mine_core::compactdef`], shared with kotodex-server. It used
-//! to be a second one written here, on a four-tier familiarity scale that
-//! predated the sharpened rubric and carried no FLAVOR axis at all — precisely
-//! the drift `jp_mine_core::tags` exists to prevent.
+//! The prompt is [`jp_mine_core::compactdef`], shared with kotodex-server, so a
+//! transcript card and a VN card are glossed by one rubric.
 
 use std::future::Future;
 use std::pin::Pin;

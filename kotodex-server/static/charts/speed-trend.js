@@ -57,9 +57,8 @@ export function SpeedTrendChart({ days }) {
   const rawMax = Math.max(...all.map((p) => p.speed));
   const rawMin = Math.min(...all.map((p) => p.speed));
   // Pad the data range, then take the finest step that still keeps the axis to
-  // about five gridlines. A fixed 5k step collapsed to two lines whenever the
-  // spread was narrow — which is most of the time, since speed varies by
-  // hundreds of chars/h day to day, not thousands.
+  // about five gridlines. Day-to-day speed varies by hundreds of chars/h rather
+  // than thousands, so a fixed coarse step leaves the axis with two lines on it.
   const pad = Math.max((rawMax - rawMin) * 0.25, 250);
   const lo = Math.max(0, rawMin - pad);
   const hi = rawMax + pad;
@@ -80,10 +79,10 @@ export function SpeedTrendChart({ days }) {
   const rawPath = rawPoints
     .map((p, k) => `${k === 0 ? "M" : "L"}${x(p.i)},${y(p.speed)}`)
     .join(" ");
-  // The lookup tax, as the area between the two lines. Built from the lines'
-  // own vertices rather than per day: a day nobody read drops out of both
-  // series, and the lines interpolate straight across it, so a band that
-  // required a point per day left a hole under two continuous lines.
+  // The lookup tax, as the area between the two lines. Built from the lines' own
+  // vertices rather than per day: a day nobody read drops out of both series and
+  // the lines interpolate straight across it, so a band needing a point per day
+  // leaves a hole under two continuous lines.
   const band = bandBetween(points, rawPoints, x, y);
   const last = points[points.length - 1];
   const labelEvery = Math.ceil(days.length / 6);

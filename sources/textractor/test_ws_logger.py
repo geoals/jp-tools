@@ -230,8 +230,8 @@ class FakeLedger:
     """kotodex-server as the sink sees it: the settings it reads, and a record
     of every request it made.
 
-    Stands in for the endpoint rather than for a database, which is the point of
-    the change it tests — the sink no longer knows what a column is.
+    Stands in for the endpoint rather than for a database: the sink does not know
+    what a column is.
     """
 
     def __init__(self, paused=False, unreachable=False):
@@ -353,7 +353,7 @@ class TheSchemaIsNotOurs(unittest.TestCase):
 
 class SplitCaptureRejoined(unittest.TestCase):
     """Textractor splitting one script line at its own \\n, as it really
-    arrived: two captures 30ms apart, the second opening on the break."""
+    arrived: two captures in quick succession, the second opening on the break."""
 
     HALVES = [
         "\\cd「今僕は、その理由を聞かせてもらおうとしている。",

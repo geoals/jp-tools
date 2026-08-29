@@ -11,10 +11,9 @@
 //! turn a judgement into a regression test, and the whole problem with this axis
 //! is that nobody here knows the right answers.
 //!
-//! Two probes are marked TOLD — a native speaker reported not recognising them,
-//! and that fact is in the repository now. They are a check that the tier is not
-//! COMMON, and nothing more; anyone tuning against them is tuning against a
-//! leak.
+//! Two probes are marked TOLD — a native speaker reported not recognising them.
+//! They are a check that the tier is not COMMON, and nothing more; anyone tuning
+//! against them is tuning against a leak.
 
 use jp_mine_core::compactdef;
 
@@ -103,7 +102,7 @@ async fn main() {
         }
     }
 
-    // The rate is the point. A rubric that says "omit unless very confident" and
-    // still tags everything has not changed anything.
+    // The rate is the point: a rubric that says "omit unless very confident" and
+    // still tags everything is not being followed.
     println!("{tiers}/{} probes carried a familiarity tier", PROBES.len());
 }

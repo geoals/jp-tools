@@ -26,18 +26,16 @@ use crate::db;
 use crate::error::AppError;
 use crate::stats;
 
-/// Rows per queue page — one sweep of attention.
 const QUEUE_LIMIT: i64 = 200;
 
-/// Rows per page of the non-vocabulary tail. The whole set is reachable by
-/// paging.
+/// The whole non-vocabulary tail is reachable by paging.
 const NON_WORD_PAGE: i64 = 100;
 
 /// What the ledger holds, by status.
 ///
 /// `in_master` is the vocabulary scale: a term counts toward "I know N words"
-/// only if the master dictionary lists it. Jitendex's 400k entries are a phrase
-/// index and would make the number meaningless.
+/// only if the master dictionary lists it. Jitendex is a phrase index and would
+/// make the number meaningless.
 pub async fn vocab_summary(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     let counts = vocabulary::status_counts(&state.knowledge).await?;
     let by_status: Vec<Value> = counts
@@ -179,8 +177,6 @@ pub async fn vocab_queue(
         _ => sweep_watermark(&state).await?,
     };
 
-    // The ordering picks which end of the same batch is on screen, so the
-    // pending counts below hold for both.
     // Asking for frequency order without a frequency dictionary falls back to
     // encounters rather than failing the request.
     let order = match reader_frequency(&state).await? {
@@ -318,9 +314,10 @@ pub async fn vocab_judge(
 
 /// Re-home every judgement the rebuild stranded.
 ///
-/// A stranded row is one the reader judged that the ingest no longer produces —
-/// いっぱい became 一杯 when headwords were normalized. The tokenizer says what
-/// each old key is called now, and the judgement moves onto that row.
+/// A stranded row is one the reader judged that the ingest does not produce: a
+/// normalization that folds いっぱい onto 一杯 leaves the old key behind. The
+/// tokenizer says what each old key is called now, and the judgement moves onto
+/// that row.
 ///
 /// A row the tokenizer cannot resolve to a single token is left alone: a
 /// stranded judgement is harmless, a misplaced one is not.
@@ -420,8 +417,8 @@ pub struct BrowseParams {
 /// by which pass wrote them, ordered by how common the corpus says they are.
 ///
 /// The triage passes answer "what should I look at next". This one answers
-/// "what is in here", which is the question a 5,000-word import raises and
-/// nothing else could show.
+/// "what is in here", which is the question a bulk import raises and nothing
+/// else could show.
 pub async fn vocab_browse(
     State(state): State<AppState>,
     Query(params): Query<BrowseParams>,
@@ -483,12 +480,11 @@ pub async fn vocab_blacklist_non_words(
 /// homograph is skipped and counted rather than guessed at.
 ///
 /// The card's spelling is normalized first, because a card is spelt the way the
-/// text spelt it and the ledger keys on Sudachi's normalized form. 検死 imported
-/// as its own row while every reading of it landed on 検屍, so the word was
-/// known and marked unjudged at the same time — 91 cards were split that way.
-/// Only the spelling is normalized: the reading still comes from the master
-/// dictionary, so a homograph is still skipped rather than resolved by whatever
-/// reading Sudachi picks for a word standing on its own.
+/// text spelt it and the ledger keys on Sudachi's normalized form. Without it 検死
+/// imports as its own row while every reading of it lands on 検屍, so the word is
+/// known and unjudged at once. Only the spelling is normalized: the reading still
+/// comes from the master dictionary, so a homograph is skipped rather than
+/// resolved by whatever reading Sudachi picks for a word standing on its own.
 pub async fn vocab_anki_import(
     State(state): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,

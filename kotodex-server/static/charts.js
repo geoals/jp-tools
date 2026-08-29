@@ -1,8 +1,6 @@
-// The chart set, re-exported from one place.
-//
-// Panels import from here rather than reaching into ./charts/*, so which file a
-// chart lives in stays an implementation detail and this list stays the index
-// of what can be drawn.
+// The chart set, re-exported from one place: panels import from here rather than
+// reaching into ./charts/*, so which file a chart lives in stays an
+// implementation detail.
 
 export { DailyBarChart } from "./charts/daily-bars.js";
 export { SpeedTrendChart } from "./charts/speed-trend.js";

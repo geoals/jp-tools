@@ -171,9 +171,8 @@ impl MediaExtractor for FakeMediaExtractor {
     }
 }
 
-/// Naive character-level tokenizer that needs no dictionary. Splits text
-/// into individual characters: CJK ideographs and katakana are marked as
-/// content words (clickable in the UI), everything else is not.
+/// A character-per-token stand-in that needs no dictionary. Ideographs and
+/// katakana are the content words, so the page has something clickable.
 pub struct FakeTokenizer;
 
 impl Tokenizer for FakeTokenizer {
@@ -206,7 +205,6 @@ impl Tokenizer for FakeTokenizer {
     }
 }
 
-/// Returns a placeholder LLM definition string.
 pub struct FakeLlmDefiner;
 
 impl LlmDefiner for FakeLlmDefiner {
@@ -220,7 +218,6 @@ impl LlmDefiner for FakeLlmDefiner {
     }
 }
 
-/// Logs what would be exported and returns success.
 pub struct FakeAnkiExporter;
 
 impl AnkiExporter for FakeAnkiExporter {
@@ -272,7 +269,6 @@ mod tests {
         let t = FakeTranscriber;
         let segments = t.transcribe("/tmp/audio.wav".into(), None).await.unwrap();
         assert!(!segments.is_empty());
-        // Timestamps should be increasing
         for window in segments.windows(2) {
             assert!(window[1].start >= window[0].end);
         }
@@ -299,12 +295,10 @@ mod tests {
         let t = FakeTokenizer;
         let tokens = t.tokenize("漢字とカタカナ。").unwrap();
 
-        // Kanji and katakana should be content words (clickable)
         let kanji: Vec<_> = tokens.iter().filter(|t| is_content_word(&t.pos)).collect();
         assert!(kanji.iter().any(|t| t.surface == "漢"));
         assert!(kanji.iter().any(|t| t.surface == "カ"));
 
-        // Hiragana and punctuation should not
         let non_content: Vec<_> = tokens.iter().filter(|t| !is_content_word(&t.pos)).collect();
         assert!(non_content.iter().any(|t| t.surface == "と"));
         assert!(non_content.iter().any(|t| t.surface == "。"));

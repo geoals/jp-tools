@@ -9,9 +9,8 @@
 //! or stale. Then the two whole numbers to check both against.
 //!
 //! Run the same queries through the `sqlite3` CLI to see how much of a step is
-//! the database and how much is decoding its rows into Rust collections. On this
-//! corpus the queries are about a second and the decoding is seven, which is the
-//! whole reason the cache exists.
+//! the database and how much is decoding its rows into Rust collections. The
+//! decoding dominates, which is the whole reason the cache exists.
 
 use std::collections::HashSet;
 use std::time::Instant;

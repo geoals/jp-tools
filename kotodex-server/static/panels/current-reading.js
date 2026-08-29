@@ -255,10 +255,10 @@ export function CurrentReading({ works, settings, days, onSaved }) {
         `
       }
       ${
-        // On the card rather than inside the edit dialog, because "where do I
-        // tell it which window the game is" was the question the dialog was
-        // the answer to and nothing said so. Not set is the state worth
-        // drawing: the overlay cannot follow the game until it is.
+        // On the card rather than only inside the edit dialog: a control buried
+        // in a dialog cannot answer "where do I tell it which window the game
+        // is". Not set is the state worth drawing, because the overlay cannot
+        // follow the game until it is.
         //
         // A book has no window: nothing hooks it, and the overlay is not over
         // anything.
@@ -337,7 +337,3 @@ export function CurrentReading({ works, settings, days, onSaved }) {
     </div>
   `;
 }
-
-/** The library is where works are managed: switch the current one, edit
- *  metadata, add one you haven't started. The Currently-reading card stays
- *  read-only status so the two don't compete. */

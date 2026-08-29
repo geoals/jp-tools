@@ -12,8 +12,7 @@ pub struct Config {
     /// Fallback AnkiConnect URL (the dashboard client's IP is probed first).
     ///
     /// Numeric, not `localhost`: AnkiConnect binds IPv4 loopback only, and
-    /// `localhost` resolves to `::1` first here, so every request failed to
-    /// connect while curl's own IPv4 fallback made Anki look reachable.
+    /// `localhost` resolves to `::1` first here.
     pub anki_url: String,
     /// The note type and its field names, from `AnkiConfig` so that every card
     /// path spells them the same way. The three below are the ones enough code
@@ -26,20 +25,18 @@ pub struct Config {
     pub anki_sentence_field: String,
     /// Field CompactDef is written to. Empty disables CompactDef enrichment.
     pub anki_compact_def_field: String,
-    /// Fire vn-capture.sh (audio + picture) after a card is added. This *is*
-    /// mining now — the reader's mine button is gone, because every card added
-    /// while reading comes from a line that is on screen, which is exactly when
-    /// a capture is wanted. Set to 0 on a machine
-    /// that serves the dashboard but doesn't run the VN; where the capture
-    /// script is simply absent it already no-ops with a warning.
+    /// Fire vn-capture.sh (audio + picture) after a card is added. Every card
+    /// added while reading comes from a line that is on screen, which is when a
+    /// capture is wanted, so this is what makes an add a mine. Set to 0 on a
+    /// machine that serves the dashboard but doesn't run the VN; an absent
+    /// capture script no-ops with a warning.
     pub auto_capture_on_add: bool,
     /// Sudachi system dictionary for tokenizing the line stream.
     pub sudachi_dict_path: PathBuf,
     /// `capture/vn-capture.sh`, fired by the reader's mine button.
     pub vn_capture_script: PathBuf,
     /// The fallback behind the key stored in `settings`, which is where the
-    /// reader sets one. Kept because `setup.sh` writes it, so an install made
-    /// before there was a settings row still has its key here.
+    /// reader sets one. `setup.sh` writes this one.
     pub anthropic_api_key: Option<String>,
     /// whisper-service, used by vn-capture.sh only for the sentence-level trim.
     /// Probed for the reader's status indicator; a capture still works without
@@ -72,9 +69,9 @@ impl Config {
         });
         let listen_addr = std::env::var("KOTODEX_SERVER_LISTEN_ADDR")
             .unwrap_or_else(|_| "0.0.0.0:3200".to_string());
-        // One field map for every card path. kotodex-server used to read the same
-        // env vars again with its own defaults, which meant a Lapis install had
-        // legacy names here and Lapis names in the exporter.
+        // One field map for every card path. Reading the same env vars again here
+        // with defaults of their own is how this crate and the exporter come to
+        // disagree about a field name.
         let anki = jp_mine_core::config::AnkiConfig::from_env();
         fn field(name: &Option<String>) -> String {
             name.clone().unwrap_or_default()

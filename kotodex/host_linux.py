@@ -18,7 +18,6 @@ ROOT = Path(__file__).resolve().parents[1]
 LOG_DIR = ROOT / "logs"
 ICON = ROOT / "kotodex" / "kotodex.svg"
 
-# The three components' entry points, named once.
 OVERLAY_SH = str(ROOT / "kotodex-server" / "overlay" / "vn-overlay.sh")
 SERVER_BIN = ROOT / "target" / "release" / "kotodex-server"
 DICT_BIN = ROOT / "target" / "release" / "jp-dict"
@@ -86,15 +85,13 @@ def components(Child):
         Child(
             "kotodex-server",
             config.kotodex_server_up,
-            # The binary directly. It is an ordinary foreground process, so the
-            # launcher owns it the way it owns the capture daemon: `stop` is a
-            # SIGTERM to its own child and nothing else has to be asked.
+            # The binary directly: an ordinary foreground process, so `stop` is a
+            # SIGTERM to the launcher's own child and nothing has to be asked.
             #
-            # `scripts/start-all.sh` can run it too, and this adopts one that
-            # already answers — but that script is the manual multi-service tool
-            # (yt-mine, manga-mine, whisper, the OCR service) and starting one
-            # service is not worth taking a dependency on all of them. It also
-            # never builds: clicking the desktop entry must not wait on cargo.
+            # `scripts/start-all.sh` can run it too and one that already answers
+            # is adopted, but that script is the manual multi-service tool
+            # (yt-mine, manga-mine, whisper, the OCR service), and it builds —
+            # clicking the desktop entry must not wait on cargo.
             [str(SERVER_BIN)],
             log_file=LOG_DIR / "kotodex-server.log",
             stop_adopted=lambda: stop_port(config.SERVER_PORT),
@@ -147,9 +144,8 @@ def stop_port(port: int) -> None:
 def run_doctor() -> bool:
     """Show the doctor in a terminal. False when there is none to show it in.
 
-    `--` for the terminals that want it and `-e` for the one that does not:
-    gnome-terminal dropped `-e` and konsole never took `--`, so each gets the
-    form it accepts rather than one form that half of them refuse.
+    Each terminal is paired with the flag it accepts: konsole takes `-e` and not
+    `--`, gnome-terminal the reverse. One form would be refused by half of them.
     """
     for term, flag in (
         ("konsole", "-e"),
@@ -184,7 +180,7 @@ def spawn_kwargs(child) -> dict:
 
 
 def stop_child(child) -> None:
-    """SIGTERM, then SIGKILL. `child.proc` is live and ours."""
+    """`child.proc` is live and ours."""
     child.proc.terminate()
     try:
         child.proc.wait(timeout=5)

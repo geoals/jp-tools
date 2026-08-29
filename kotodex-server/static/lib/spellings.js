@@ -1,10 +1,8 @@
 // How a ledger row was actually written, and a line to show for it.
 //
 // The ledger keys on Sudachi's normalized form, so a row saying 窺う may only
-// ever have appeared as うかがう, and 何 may have been ナニ. Two pages ask the
-// same question of it — triage, deciding whether it knows a word, and the
-// tokenize page, deciding whether the pipeline found one — so the fetch and the
-// table live here rather than twice.
+// ever have appeared as うかがう, and 何 may have been ナニ. Triage and the
+// tokenize page both ask it, so the fetch and the table live here.
 
 import { html } from "htm/preact";
 import { useState } from "preact/hooks";
@@ -18,8 +16,8 @@ export function termKey(t) {
 
 /** Open/close state for a set of rows, plus the fetch.
  *
- *  Only the rows actually opened are fetched — a queue is 200 rows and a pasted
- *  paragraph is dozens, and nobody expands them all. */
+ *  Only the rows actually opened are fetched: a queue runs to hundreds of rows
+ *  and nobody expands them all. */
 export function useSpellings() {
   const [open, setOpen] = useState({});
 
@@ -56,8 +54,8 @@ export function useSpellings() {
 /** One term's spellings, most common first, each with a line it appeared in.
  *
  *  Counts are per surface with inflection kept, so 出来る and 出来れ are separate
- *  rows. Folding them would need the same normalization that lost the
- *  orthography in the first place. */
+ *  rows. Folding them takes the same normalization that loses the orthography
+ *  this table exists to show. */
 export function Spellings({ data }) {
   if (data === undefined || data === null) {
     return html`<p class="meta-hint">Loading…</p>`;

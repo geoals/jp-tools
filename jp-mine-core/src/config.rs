@@ -1,6 +1,6 @@
 use std::env;
 
-/// Anki note type configuration: model name, deck name, and field mapping.
+/// Where a mined note goes, and what the note type calls each of its fields.
 ///
 /// Each field is `Option<String>` — `Some("FieldName")` means populate that
 /// field on the Anki note, `None` means skip it. Defaults are Lapis's field

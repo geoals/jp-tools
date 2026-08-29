@@ -311,8 +311,7 @@ impl Provider {
     }
 }
 
-/// Both shapes report an error the same way, which is the one thing about them
-/// that agrees.
+/// Both shapes report an error the same way.
 fn error_message(json: &Value) -> String {
     json["error"]["message"]
         .as_str()

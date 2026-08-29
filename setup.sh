@@ -548,8 +548,8 @@ else
 fi
 
 # Nothing here installs whisper, so this only ever reports. Probed rather than
-# asserted: it said "no whisper" to a reader with the service running, while
-# doctor two steps later said "reachable" off the same endpoint.
+# assumed absent, or this and the doctor two steps later disagree about the same
+# endpoint.
 WHISPER_URL="${KOTODEX_WHISPER_URL:-http://localhost:8100}"
 if ! reading_here; then
   :
@@ -582,11 +582,11 @@ fi
 
 step "Checking with the server"
 # The doctor asks the server what it can do, so almost every row below is
-# unanswerable while it is down — and a fresh install has never started it, so
-# a clean run reported itself as broken. This starts it only for that check and
-# stops it again below, leaving the machine as this run found it: an install
-# that had ended with half of Kotodex running would then have told the reader
-# to start Kotodex.
+# unanswerable while it is down — and a fresh install has never started it, which
+# would make a clean run report itself as broken. This starts it only for that
+# check and stops it again below, leaving the machine as this run found it: an
+# install that ended with half of Kotodex running would be telling the reader to
+# start Kotodex.
 SERVER_LOG="$DATA/kotodex-server.log"
 SERVER_STARTED_HERE=0
 server_answering() { curl -s --max-time 2 "http://localhost:3200/api/reader/state" >/dev/null 2>&1; }

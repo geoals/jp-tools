@@ -56,7 +56,7 @@ class Tray:
             if slot == self.toggle_capture:
                 self.pause_action = action
         # The overlay has the same toggle, so the label is refreshed on open
-        # rather than only after this menu was the one that flipped it.
+        # rather than only when this menu is the one that flipped it.
         menu.aboutToShow.connect(self.refresh_pause_label)
         self.icon.setContextMenu(menu)
         self.icon.activated.connect(

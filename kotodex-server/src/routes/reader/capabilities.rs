@@ -264,9 +264,6 @@ fn xdotool() -> Capability {
     if on_path("xdotool") {
         on("installed")
     } else {
-        // Continued with a backslash, not a bare line break: a Rust string
-        // literal keeps the newline *and* the indentation after it, and this
-        // sentence is printed as one line by the doctor and the overlay both.
         off(
             "not installed",
             "install xdotool — needed for screenshots and overlay positioning",
@@ -279,9 +276,7 @@ fn xdotool() -> Capability {
 ///
 /// It has to be the same interpreter the overlay will actually use: which Qt is
 /// installed decides whether layer-shell is loadable, so a probe that resolved
-/// its own answer would report on a machine nobody is running. That is not a
-/// hypothetical — this was a second copy of the rule, and it was the one without
-/// the venv check.
+/// its own answer would report on a machine nobody is running.
 #[cfg(unix)]
 fn overlay_python() -> std::path::PathBuf {
     let platform = jp_core::install::install_root().join("scripts/lib/platform.sh");

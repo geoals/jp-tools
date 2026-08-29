@@ -1,12 +1,10 @@
 // The overlay strip's whole client: draw the newest line, and define the word
 // that is clicked in it.
 //
-// `backlog` is what the stream's query parameter exists for — this caller wants
-// a short feed, not the whole sitting. Only the newest line is ever drawn; the
-// few before it are asked for so the explain button has context to send from
-// the moment the overlay opens. On a dropped connection EventSource reconnects
-// with `Last-Event-ID`, so it resumes after the line it drew rather than
-// replaying anything.
+// Only the newest line is ever drawn. The few before it are asked for through
+// the stream's `backlog` so the explain button has context from the moment the
+// overlay opens; on a dropped connection EventSource reconnects with
+// `Last-Event-ID`, so it resumes after the line it drew.
 //
 // Segmentation is not asked for separately: the line event already carries a
 // span per word, each with the `(headword, reading)` the ledger keys on. The
@@ -17,9 +15,9 @@
 // expansions().
 //
 // ♪ in the popup head plays the word, from the Local Audio Server add-on
-// running beside Anki — the same recording Yomitan would play onto a card.
-// kotodex-server proxies it, because that server binds loopback and sends no CORS
-// headers, so neither this page nor a phone reading the overlay can ask it.
+// running beside Anki. kotodex-server proxies it: that server binds loopback
+// and sends no CORS headers, so neither this page nor a phone reading the
+// overlay can ask it directly.
 //
 // Three actions on a word, and only one of them opens the popup: left-click
 // asks what it means, the back side button judges it known or unknown, the
@@ -205,9 +203,6 @@ fetch("/api/reader/state")
   .catch(() => {});
 
 function applyCapabilities() {
-  // The explain button is drawn whether or not a key is set: without one it opens
-  // the field to paste a key into. A button that is simply absent leaves the
-  // reader nothing to find, and this is the one missing part with somewhere to go.
   // Nowhere to add a card, no ＋ in the popup.
   popup.setMining(can("anki"));
   // An empty ledger has no verdict to paint, whatever the setting says.
@@ -235,21 +230,17 @@ stream.addEventListener("status", (e) => {
 // a log. `live` never reaches here.
 //
 // Read off the status event and nothing else: whether a source is attached is
-// a fact about this second, and `capabilities` is fetched once when the page
-// opens. The overlay comes up beside the daemon it is reporting on, so that
-// answer is taken before the source has connected and then never changes —
-// which is how the bar said there was no line source into a session that was
-// capturing fine. `capture === "live"` already means one is attached.
+// a fact about this second, while `capabilities` is fetched once as the page
+// opens — and the overlay comes up beside the daemon it reports on, so that
+// answer is taken before the source has connected and then never changes.
+// `capture === "live"` already means one is attached.
 /** How long after the pause flag moves to stop reporting a missing source.
  *
- *  Resuming is genuinely not instant, and nothing here can make it so: three
- *  independent two-second waits sit between the click and the answer. The
- *  logger is parked in its pause poll (`PAUSE_POLL_SECS`), the flag it then
- *  reads may be up to `SETTINGS_TTL` old, and this surface is told by a status
- *  event that is republished every two seconds. Six seconds is that worst case.
- *
- *  The fourth wait was the logger's own heartbeat, which is why it now
- *  publishes on connect rather than on its next tick.
+ *  Resuming is not instant, and nothing here can make it so: three independent
+ *  two-second waits sit between the click and the answer. The logger is parked
+ *  in its pause poll (`PAUSE_POLL_SECS`), the flag it reads there may be up to
+ *  `SETTINGS_TTL` old, and this surface is told by a status event republished
+ *  every two seconds. Six seconds is that worst case.
  *
  *  Reported as nothing at all rather than as a fault: for this window the
  *  answer is not "no source", it is "not known yet", and a fault raised for the
@@ -267,9 +258,7 @@ const CAPTURE_FAULT = {
 
   // Nothing while paused: the reader chose it, the pause button already says
   // so, and every fault here is about lines not arriving — which is the point
-  // of pausing, not a problem with it. Routing a chosen state through the fault
-  // line is what put the bare word "paused" on screen whenever capture stopped.
-  //
+  // of pausing, not a problem with it.
   if (wasPaused !== null && wasPaused !== paused) pauseMovedAt = Date.now();
   wasPaused = paused;
   const settling = Date.now() - pauseMovedAt < RESUME_SETTLE_MS;
@@ -288,8 +277,7 @@ const CAPTURE_FAULT = {
   // **Not suppressed while paused**, unlike the capture fault above. That rule
   // is about lines not arriving, which is what pausing is *for*; these two are
   // about the overlay being set up wrong, and a pause does not make an
-  // unconfigured overlay correct. Written with `paused` in front at first,
-  // which hid both of them for a reader who had paused to go and fix one.
+  // unconfigured overlay correct — a reader pauses in order to go and fix one.
   //
   // Two different absences, and the second is not a milder version of the
   // first. With no work at all nothing read is counted anywhere, and this
@@ -299,7 +287,7 @@ const CAPTURE_FAULT = {
     "work",
     work
       ? ""
-      : "nothing is being read — nothing is counted. Click here to pick a work",
+      : "nothing is being read. Click here to pick a work",
     openDashboard,
   );
   setFault(
@@ -395,7 +383,6 @@ function wideRuby(ruby, parts) {
   });
 }
 
-/** One line, one span per word the tokenizer found. */
 /** Is this word's status one of the ones being painted? `known` never is — on a
  *  line where most words are known, the absence is what makes the rest
  *  readable. */
@@ -411,8 +398,7 @@ function redraw() {
   if (line) draw(line, true);
 }
 
-/** One line, built the way the live line is built: the same word spans, the
- * same status marks, the same common-word underline, the same ruby.
+/** One line, drawn the way the live line is drawn.
  *
  * Shared with the scrollback, which is the reason it is a function rather than
  * the body of `draw`. A line the reader scrolled back to is the same line it
@@ -422,8 +408,6 @@ function renderLine(row) {
   const text = row.text;
   const ruby = row.ruby ?? [];
   const frag = document.createDocumentFragment();
-  // Offsets are UTF-16 code units, which is exactly what a JS string indexes
-  // in, so they slice directly.
   const parts = pieces(text, [...(row.tokens ?? [])].sort((a, b) => a.start - b.start));
   const wide = wideRuby(ruby, parts);
   let group = null;
@@ -438,7 +422,6 @@ function renderLine(row) {
     } else {
       const span = part.span;
       const word = document.createElement("span");
-      // `known` gets no class, so it draws as plain text.
       // No frequency dictionary means no answer to "is this word common", so
       // nothing is underlined rather than everything reading as rare.
       const common =
@@ -492,14 +475,13 @@ function draw(incoming, again = false, append = true) {
   // hanging the indent: a narration line starts at the margin and every row of
   // it does.
   lineEl.classList.toggle("quoted", QUOTE_OPEN.test(line.text));
-  // Whether the panel is *populated*, not whether it is open. Appending only
-  // while open meant a line read with it shut was never added, and reopening
-  // does not go looking: it seeds only when it has no rows at all. The history
-  // was then missing exactly the stretch read with it closed.
+  // Whether the panel is *populated*, not whether it is open: it seeds only
+  // when it has no rows at all, so a line read with the panel shut would
+  // otherwise be missing from the history for good.
   //
-  // Still nothing before the first open, so that the seed and its page back are
-  // what build the panel — appending into an empty one would leave it holding
-  // this session with no way to reach anything older.
+  // Nothing before the first open, so that the seed and its page back are what
+  // build the panel — appending into an empty one would leave it holding this
+  // session with no way to reach anything older.
   if (append && scrollbackLinesEl.children.length) appendScrollback(line);
   report();
 }
@@ -527,11 +509,11 @@ function onWordClick(e) {
 // Anywhere else on the surface dismisses. Not the popup itself, or scrolling a
 // long Jitendex entry would close what is being read.
 //
-// The popup stops its own clicks rather than the handler below testing where
-// they came from. It used to test, and `closest("#popup")` answers about where
-// the target is *now*: picking another match re-renders the popup from inside
-// the click, which detaches the chip mid-dispatch, and the detached chip then
-// read as a click outside — so every pick closed the popup it had just opened.
+// The popup stops its own clicks rather than this handler testing where they
+// came from. Testing does not work: `closest("#popup")` answers about where the
+// target is *now*, and picking another match re-renders the popup from inside
+// the click, which detaches the chip mid-dispatch — the detached chip then
+// reads as a click outside, closing the popup the pick just opened.
 document.addEventListener("click", () => closePopup());
 
 // A click on anything that is not this surface — the game, a browser, the
@@ -555,9 +537,8 @@ document.addEventListener("keydown", (e) => {
  *
  * Opening the popup is what a lookup *is* — it is the reader asking what a word
  * means, and it is recorded as one. Judging a word already understood, or
- * mining one, is not that, and going through the popup to reach a button
- * recorded a lookup that never happened. So those two moved off the popup
- * entirely and onto the buttons already under the thumb.
+ * mining one, is not that, so neither goes through the popup: reaching a button
+ * there would record a lookup that never happened.
  *
  * Back is `button` 3 and forward 4. Both navigate in Chromium, so the default
  * has to go — on `mousedown`, which is where that navigation is armed.
@@ -854,8 +835,9 @@ const explainBtnEl = document.getElementById("explain-btn");
 const handleEl = document.getElementById("bar-handle");
 const buttonsEl = document.getElementById("buttons");
 const explainPanelEl = document.getElementById("explain-panel");
-// Versioned: the widget used to hang off the bottom edge, and an offset stored
-// against that anchor puts it somewhere else entirely against this one.
+// The key names the anchor the offset was stored against: the widget hangs off
+// the top edge, and the same offset against any other anchor places it
+// somewhere else entirely.
 const EXPLAIN_PLACE = "vn-overlay-explain-offset-top";
 let barDrag = null;
 let barDragged = false;
@@ -875,7 +857,7 @@ applyExplainPlace();
 /** Held on the surface, like the strip's own offset and for the same reason:
  *  pushed off it the widget is not drawn at all, and what is not drawn cannot
  *  be dragged back. Clamped where it is *used*, because what it is measured
- *  against moves — the widget hangs off the game's corner now, and the game
+ *  against moves — the widget hangs off the game's corner, and the game
  *  is moved, resized and replaced. */
 function clampExplainPx(at) {
   const rect = explainBoxEl.getBoundingClientRect();
@@ -932,8 +914,8 @@ for (const type of ["pointerup", "pointercancel"]) {
 }
 
 // The toggle is the click, not the pointerup that ends the drag: a press with
-// the pointer captured does not always lift on the button it went down on, and
-// the bar then stopped answering. A drag that actually moved is not a click.
+// the pointer captured does not always lift on the button it went down on. A
+// drag that actually moved is not a click.
 handleEl.addEventListener("click", () => {
   if (barDragged) {
     barDragged = false;
@@ -971,10 +953,6 @@ buttonsEl.addEventListener("click", () => closePopup());
 // anywhere on it dismisses, rather than a ✕ to aim at over a game.
 explainPanelEl.addEventListener("click", hideExplain);
 
-// Take the line off the screen without stopping the overlay: it is over the
-// game's own text, and a scene worth looking at is worth looking at whole. The
-// stream keeps running, so the line back is whatever is current, not the one
-// that was showing when it went.
 // The button row's tooltip is drawn by the page — see `[data-tip]` in
 // overlay.html — so `title` must stay unset or the native one draws too.
 const tip = (el, text) => el.setAttribute("data-tip", text);
@@ -984,9 +962,8 @@ const tip = (el, text) => el.setAttribute("data-tip", text);
  * A page of history is fetched only when the top is reached, so opening it
  * costs one request and scrolling back a thousand lines costs one per page.
  * The rows are built by `renderLine`, so every word in them clicks, judges and
- * mines exactly as the live line's do — a lookup from here is a lookup, which
- * is the point: a word met three lines ago is the commonest thing to want to
- * look up, and reaching it used to mean not looking it up at all.
+ * mines exactly as the live line's do, and a lookup from here is a lookup: a
+ * word met three lines ago is the commonest thing to want to look up.
  */
 const scrollbackEl = document.getElementById("scrollback");
 const scrollbackLinesEl = document.getElementById("scrollback-lines");
@@ -1070,7 +1047,7 @@ function appendScrollback(row) {
 }
 
 /** The newest line, which is the bottom. Not `scrollIntoView`: that scrolls
- *  every scrollable ancestor, and the panel is inside the surface now. */
+ *  every scrollable ancestor, and the panel is inside the surface. */
 function toLatest() {
   scrollbackLinesEl.scrollTop = scrollbackLinesEl.scrollHeight;
 }
@@ -1128,9 +1105,8 @@ async function pageBack() {
 function sizeScrollback() {
   const style = getComputedStyle(lineEl);
   // #box, not #line. #line is `width: fit-content`, so measuring it gives the
-  // width of whatever text happens to be showing — one short line of dialogue
-  // and the history panel came out as narrow as that line. What the character
-  // count means is the column the line is set in, which is #box's.
+  // width of whatever text happens to be showing rather than the column the
+  // line is set in, which is what the character count means.
   const width =
     boxEl.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
   const advance = parseFloat(style.fontSize) + (parseFloat(style.letterSpacing) || 0);
@@ -1285,6 +1261,9 @@ async function clearLast() {
 }
 clearBtnEl.addEventListener("click", clearLast);
 
+// The line off the screen without stopping the overlay: a scene worth looking
+// at is worth looking at whole. The stream keeps running, so the line that
+// comes back is whatever is current rather than the one that was showing.
 const hideBtnEl = document.getElementById("hide-btn");
 hideBtnEl.addEventListener("click", () => {
   boxEl.hidden = !boxEl.hidden;
@@ -1326,9 +1305,9 @@ mobileBtnEl.addEventListener("click", () => {
 const pauseBtnEl = document.getElementById("pause-btn");
 
 function showPaused(paused) {
-  // An icon, not a phrase: it sits in the row of square buttons over the game
-  // now, and the tooltip is where the sentence goes. Which of the button's two
-  // icons shows is CSS off this class.
+  // An icon, not a phrase: it sits in the row of square buttons over the game,
+  // and the tooltip is where the sentence goes. Which of the button's two icons
+  // shows is CSS off this class.
   pauseBtnEl.classList.toggle("paused", paused);
   tip(pauseBtnEl, paused ? "Resume capture" : "Pause capture");
 }
@@ -1383,7 +1362,7 @@ const TYPE_DEFAULTS = {
   light: 100,
   chars: 40,
   // What the phone-size toggle scales by. No control: one factor reads well on
-  // a phone, and a slider for it was a setting nobody moved twice.
+  // a phone, and the size slider is already the way to change it.
   mobileScale: 1.75,
   tint: 0.85,
   markNew: true,
@@ -1427,11 +1406,10 @@ let type = { ...TYPE_DEFAULTS };
 try {
   const stored = JSON.parse(localStorage.getItem(TYPE) ?? "{}");
   // Key by key, and only where the stored value is still the same kind of
-  // thing. The shell keeps localStorage across releases, so a setting that
-  // changes shape — the shadow was a checkbox and is a strength — arrives as
-  // the old kind and would throw the moment its readout is formatted, taking
-  // the rest of this file's setup with it: no input region, and an overlay
-  // nothing can be clicked on.
+  // thing. The shell keeps localStorage across releases, so a setting whose
+  // shape has changed arrives as the old kind and would throw the moment its
+  // readout is formatted — taking the rest of this file's setup with it: no
+  // input region, and an overlay nothing can be clicked on.
   for (const [key, value] of Object.entries(stored)) {
     if (key in TYPE_DEFAULTS && typeof value === typeof TYPE_DEFAULTS[key]) type[key] = value;
   }
@@ -1481,8 +1459,8 @@ function addFonts(families) {
 function applyType() {
   for (const row of fontBtnEls) row.classList.toggle("on", row.dataset.family === type.font);
   // Nothing chosen and nothing launched with: the stylesheet's own stack, which
-  // is the only one that names a face on every platform. Naming a default here
-  // pinned it to one family and left Windows on generic `sans-serif`.
+  // is the only one that names a face on every platform. A default named here
+  // would pin one family and leave Windows on generic `sans-serif`.
   const chosen = type.font || font;
   if (chosen) root.setProperty("--line-font", `"${chosen}", sans-serif`);
   else root.removeProperty("--line-font");
@@ -1496,8 +1474,7 @@ function applyType() {
   // what it has over its whole radius — so opacity is the wrong knob and stacked
   // copies are what actually darkens it.
   const shade = `0 0 ${type.shadowBlur}px hsl(0 0% 0%)`;
-  // Rounded: a value stored when this was an opacity is a fraction, and
-  // `Array` throws on one.
+  // Rounded: a stored fraction would throw in `Array`.
   const layers = Math.max(0, Math.round(type.shadow));
   root.setProperty(
     "--line-shadow",
@@ -1584,10 +1561,9 @@ settingsBtnEl.addEventListener("click", () => {
 });
 
 applyType();
-// The placement was clamped, and the grips placed, against a line still drawn at
-// the default size — the stored type settings land here, several hundred lines
-// later. Both are measured off the line, so both have to be taken again once it
-// is the size it will actually be.
+// The placement clamp and the grips are both measured off the line, and the
+// stored type settings only reach it here — so both have to be taken again at
+// the size the line will actually be.
 apply();
 
 // The two settings kotodex-server owns, written back as they are changed: `#read`
@@ -1838,7 +1814,7 @@ function showWindowSetting(name = windowName) {
     for (const w of openWindows) {
       // The window in front is the answer on a good day — the overlay never
       // takes focus, so the game still has it. Marked in the list rather than
-      // offered as a button beside it, which was a second control for one
+      // offered as a button beside it, which would be a second control for one
       // choice. KDE under Wayland answers nothing here, so it is a hint and
       // never the mechanism.
       rows.push(windowRow(w, w === focusedWindow ? `${w} — in front` : w, w === name));
@@ -1872,8 +1848,7 @@ function showWindowNote(name) {
  *
  *  Attaching the overlay to the game is the thing worth pressing for: it is what
  *  lets the line be laid over the game's own text, follow it as it moves or goes
- *  fullscreen, and be screenshotted onto a card. Listing those consequences on
- *  every surface was three sentences saying the same "go and set it". */
+ *  fullscreen, and be screenshotted onto a card. Said once, here. */
 function windowNote(name) {
   if (!name) {
     return "Pick the game's window so the overlay can follow it.";
@@ -2069,7 +2044,7 @@ function place(word) {
   // Pinned by its bottom edge when it goes above, so that a definition which
   // changes height — paging to a longer dictionary — grows away from the line
   // rather than down over it. That is worth more than the clamping a `top`
-  // anchor would allow: `place` now runs again once the content is in, so the
+  // anchor would allow: `place` runs again once the content is in, so the
   // choice above is made against the real height rather than a placeholder's.
   if (anchor.top >= height + 16) {
     popupEl.style.top = "auto";
@@ -2151,8 +2126,6 @@ async function mine(word, target = null) {
       sentence: line ? sentenceAround(line.text, at) : "",
     }),
   });
-  // The add answers with the new note's id, so a popup open on this word gets
-  // its badge now rather than the next time it is opened.
   const { note_id, error } = await res.json().catch(() => ({}));
   // Anki refuses in its own words and with a 200, so this is the only place the
   // reason exists. Held on screen: a mine that quietly does nothing is
@@ -2167,8 +2140,8 @@ async function mine(word, target = null) {
 }
 
 // Whether Anki is answering where a card would be added. Polled, because
-// nothing else asks until a mine does — a shut Anki was invisible until the
-// mine that failed on it, which is the worst moment to find out.
+// nothing else asks until a mine does, and a failing mine is the worst moment
+// to find out that Anki is shut.
 const ANKI_POLL_MS = 20_000;
 
 async function checkAnki() {
@@ -2199,10 +2172,9 @@ setInterval(checkAnki, ANKI_POLL_MS);
  * clicking on to the next line never touches the overlay at all. CSS pixels and
  * window pixels are the same thing here: the view fills the surface.
  *
- * Pushed the moment the layout changes, not polled. Polling meant the region
- * lagged whatever was on screen by a tick or two, and that gap is exactly a
- * click landing on a popup the compositor did not know was there yet — it went
- * to the VN, advanced the line, and closed the popup being aimed at.
+ * Pushed the moment the layout changes, not polled: a region that lags what is
+ * on screen by a tick sends a click aimed at a popup the compositor does not
+ * know about yet to the VN, which advances the line and closes that popup.
  */
 function report() {
   if (!shell) return;

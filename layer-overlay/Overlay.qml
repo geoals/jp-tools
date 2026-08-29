@@ -37,11 +37,11 @@ Window {
         url: overlayUrl
         backgroundColor: "transparent"
         // Named, so localStorage survives a restart: the default profile is
-        // off-the-record, and everything the page persists went with it every
-        // time the shell exited.
+        // off-the-record, and everything the page persists goes with it when the
+        // shell exits.
         profile: WebEngineProfile {
-            // Both: a storage name alone leaves the profile off-the-record,
-            // which is the whole defect — it keeps nothing.
+            // Both: a storage name alone still leaves the profile
+            // off-the-record, and an off-the-record profile keeps nothing.
             offTheRecord: false
             storageName: overlayScope
             persistentStoragePath: overlayStorage

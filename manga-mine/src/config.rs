@@ -12,19 +12,15 @@ pub struct Config {
     pub anki_url: String,
     /// Directory for temporary media files (compressed card images).
     pub media_dir: String,
-    /// SQLite database holding the dictionary cache. Shared with yt-mine so
-    /// dictionaries imported there are reused (manga-mine stores nothing else).
     pub db_path: String,
     /// jp-core's shared knowledge database: the dictionary cache and the
     /// reading record. Separate from this app's own DB.
     pub knowledge_db_path: String,
     pub anki: AnkiConfig,
-    /// When true, use fake implementations of external tools (OCR service,
-    /// AnkiConnect, Sudachi) so the server runs without any dependencies.
+    /// Swap every external tool — the OCR service, Anki, Sudachi — for a fake, so
+    /// the server runs with none of them installed.
     pub fake_api: bool,
-    /// URL of the manga-ocr-service.
     pub ocr_service_url: String,
-    /// Path to the Sudachi system dictionary (.dic file).
     pub sudachi_dict_path: PathBuf,
     /// When true (default), probe the requesting client's IP for a running
     /// AnkiConnect (port 8765) on export and prefer it over `anki_url` —
@@ -37,7 +33,6 @@ pub struct Config {
 }
 
 impl Config {
-    /// Load config from environment variables, falling back to defaults.
     pub fn from_env() -> Self {
         Self {
             inbox_dir: env::var("KOTODEX_MANGA_INBOX").unwrap_or_else(|_| "manga-inbox".into()),

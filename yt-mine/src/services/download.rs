@@ -13,7 +13,6 @@ pub trait MediaDownloader: Send + Sync {
         output_dir: String,
     ) -> Pin<Box<dyn Future<Output = Result<AudioDownload, DownloadError>> + Send>>;
 
-    /// Returns the path of the downloaded video.
     fn download_video(
         &self,
         url: String,
@@ -40,7 +39,6 @@ pub enum DownloadError {
     InvalidUrl,
 }
 
-/// Validates that the URL is a recognized YouTube URL.
 pub fn is_valid_youtube_url(url: &str) -> bool {
     let url = url.trim();
     let patterns = [
@@ -56,14 +54,10 @@ pub fn is_valid_youtube_url(url: &str) -> bool {
     patterns.iter().any(|p| url.starts_with(p))
 }
 
-/// Extracts the YouTube video ID (11-char slug) from a URL.
-///
-/// Supports `youtube.com/watch?v=X`, `youtu.be/X`, and mobile/http variants.
-/// Returns `None` for non-YouTube URLs or URLs without a valid ID.
+/// The 11-character video id, out of any of YouTube's URL shapes.
 pub fn extract_video_id(url: &str) -> Option<String> {
     let url = url.trim();
 
-    // youtu.be/VIDEO_ID or youtu.be/VIDEO_ID?...
     if let Some(rest) = url
         .strip_prefix("https://youtu.be/")
         .or_else(|| url.strip_prefix("http://youtu.be/"))
@@ -72,7 +66,6 @@ pub fn extract_video_id(url: &str) -> Option<String> {
         return validate_video_id(id);
     }
 
-    // youtube.com/watch?v=VIDEO_ID (with optional www./m. prefix, http/https)
     if !is_valid_youtube_url(url) {
         return None;
     }
@@ -236,10 +229,10 @@ impl MediaDownloader for YtDlpDownloader {
             // yt-dlp's -S prefers the format closest to it.
             //
             // Video-only (`bv*`), since the audio is already down and only
-            // frames are wanted here. That also sidesteps the merge that forced
-            // an mp4 container before: ffmpeg's webm muxer rejects a
-            // stream-copied AV1 track partway through. With one format there is
-            // no merge, so the source container is kept as it is.
+            // frames are wanted here. It also avoids a merge: ffmpeg's webm muxer
+            // rejects a stream-copied AV1 track partway through, so merging audio
+            // back in would force an mp4 container. One format, no merge, and the
+            // source container is kept as it is.
             let lines = run_yt_dlp(&[
                 "-S",
                 "res:480",

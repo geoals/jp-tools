@@ -1,10 +1,9 @@
-//! The regression net: 254 real sentences, and the identities the ledger gets
-//! from them.
+//! The regression net: real sentences, and the identities the ledger gets from
+//! them.
 //!
 //! Every rule in the tokenizer trades one class of mistake for another, and the
 //! individual tests beside this one only check the cases someone thought of.
-//! This one shows the whole blast radius of a change — including the sentences
-//! nobody had in mind, which is where the last four regressions were found.
+//! This one shows what a change does to the sentences nobody had in mind.
 //!
 //! ```text
 //! KOTODEX_SUDACHI_DICT_PATH=$PWD/../system_full.dic \

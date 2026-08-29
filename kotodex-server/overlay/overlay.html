@@ -105,11 +105,6 @@
       sans-serif;
   }
 
-  /* Placed on top of where the VN draws its own text rather than near it,
-     measured off a screenshot of this one: first glyph at x=442, ink top at
-     y=874, ~32px tall on a 1920x1080 screen. The padding assumes the default
-     300px strip, which puts its top edge at y=780; changing VN_OVERLAY_HEIGHT
-     moves the line by the same amount. */
   /* Lighter than theme.css's, which is drawn for panels on a page. These are
      small chips floating on artwork, and a 34px spread at 80% reads as a smear
      of the game under them rather than as a raised edge. Light theme on a light
@@ -126,7 +121,9 @@
   /* Positioning only — the backdrop is on #line, so it wraps the text itself
      rather than painting a band across a box most of which is empty. The left
      inset and top padding are both pulled back by #line's own padding, which
-     keeps the first glyph exactly where it was measured to sit. */
+     keeps the first glyph exactly where it is measured to sit. That top padding
+     is against the default 300px strip, so VN_OVERLAY_HEIGHT moves the line by
+     the same amount. */
   #box {
     position: absolute;
     /* #line's padding, and the one number four other rules are written
@@ -201,7 +198,7 @@
      own, so they have to wash the word rather than fill it: at the weight they
      carry normally they bury the text they are marking. Lighter and much more
      transparent, near the hover tint's weight — which needs no change on a word
-     with no status, since it was always drawn over something readable.
+     with no status, since that one is drawn over readable text already.
      Hover moves the alpha rather than replacing the colour: the status rules
      outrank `.w:hover`, and a hover that won outright would drop the word's
      status for as long as it is the word being reached for. */
@@ -221,17 +218,17 @@
     background: hsl(28 70% 50% / var(--wash));
   }
 
-  /* Scaled up, the line is read off the screen rather than fitted over the
-     game's own text, so it goes to the bottom edge: nothing of the game is
-     worth covering less, and the popup gets the whole screen above it. Left
-     edge, not centred — centring moves the first glyph with every change in
-     line length, so the eye has to find where the line starts again. */
   /* Nothing of the game is being read through the line at phone size, so the
      backdrop stops being a compromise and just makes the text legible. */
   html[data-mobile] {
     --backdrop: hsl(0 0% 0% / 92%);
   }
 
+  /* Scaled up, the line is read off the screen rather than fitted over the
+     game's own text, so it goes to the bottom edge: nothing of the game is
+     worth covering less, and the popup gets the whole screen above it. Left
+     edge, not centred — centring moves the first glyph with every change in
+     line length, so the eye has to find where the line starts again. */
   html[data-mobile] #box {
     left: 0;
     right: 0;
@@ -371,11 +368,11 @@
     border-radius: 3px;
     cursor: pointer;
     /* The tint has to clear the glyphs, and how much room a font leaves around
-       its own ink varies — Noto's side bearings looked like padding, a tighter
-       face has none. Vertical only: this is an inline box, so vertical padding
-       paints without moving anything, while horizontal padding would either
-       widen the line off the game's own text or need a negative margin, which
-       overlaps the neighbouring span and mis-hits the word being mined. */
+       its own ink varies — a tight face leaves none of its own. Vertical only:
+       this is an inline box, so vertical padding paints without moving
+       anything, while horizontal padding would either widen the line off the
+       game's own text or need a negative margin, which overlaps the
+       neighbouring span and mis-hits the word being mined. */
     padding: 0.14em 0;
   }
   .w:hover {
@@ -415,34 +412,26 @@
     box-shadow: 0 0 0 2px hsl(0 0% 100%);
   }
 
-  /* `left` and `bottom` are set per word — see place() — and this is only
-     where it sits before the first one.
-
-     Drawn at 125%: the line is glanced at, a definition is read. Every length
-     in the popup and its parts carries that factor, so they stay in
-     proportion — the 明鏡 rules further down are in `em` and follow on their
-     own. */
-  /* The popup's own rules — the frame, the head, and several hundred lines
-     of per-dictionary structured-content styling — are in
-     `web-shared/popup.css`, loaded above and shared with yt-mine. Only its
-     placement over the strip is here, since that is the one part that is
-     about this surface. */
+  /* The popup's own rules — the frame, the head, and several hundred lines of
+     per-dictionary structured-content styling — are in `web-shared/popup.css`,
+     loaded above and shared with yt-mine. Only its placement over the strip is
+     here, since that is the one part that is about this surface: `left` and
+     `bottom` are set per word by place(), and this is where it sits before the
+     first one. */
   .jp-popup {
     bottom: var(--strip);
   }
 
-  /* Silent while the capture pipeline is healthy. It only speaks up to explain
-     why no line is arriving, which is the one failure invisible from here.
+  /* What is wrong, and nothing while everything works. One line per thing, with
+     air between them: two faults are two separate problems, and run together
+     they read as one paragraph.
 
-     Under the buttons, in #explain-box's column: it is a report on the
-     capture pipeline, and the controls for that pipeline are what it belongs
-     beside. In flow rather than placed, so it follows the widget wherever the
-     drag and `data-aligned` put it.
+     Under the buttons, in #explain-box's column, because the controls that fix
+     these are the ones it sits beside. In flow rather than placed, so it follows
+     the widget wherever the drag and `data-aligned` put it.
 
      Its own panel, because everything around the widget is transparent — bare
      words there are over whatever the game is drawing. */
-  /* One line per thing that is wrong, with air between them: two faults are two
-     separate problems and running them together reads as one paragraph. */
   #warn {
     display: grid;
     gap: 0.3rem;
@@ -505,9 +494,8 @@
      game's text and this has to be able to sit where the game has nothing.
 
      Anchored at the top with the button above the panel, so the answer grows
-     downwards into empty screen. Anchored at the bottom it grew upwards, and a
-     streamed answer then crept up the screen line by line as it was being
-     read. */
+     downwards into empty screen. Anchored at the bottom it would grow upwards,
+     creeping up the screen line by line as it streams. */
   #explain-box {
     position: absolute;
     left: 1rem;
@@ -545,8 +533,8 @@
   /* The row can be shut, because a row of buttons over a game is that many
      things in the way of the art — and the handle is the one that has to stay
      reachable, since it is also what the whole widget is dragged by. Only the
-     handle opens and shuts it: a bar that closed itself took the button out from
-     under the pointer reaching for it. */
+     handle opens and shuts it: a bar that closed itself would take the button
+     out from under the pointer reaching for it. */
   #buttons[hidden] {
     display: none;
   }
@@ -621,12 +609,12 @@
     display: none;
   }
 
-  /* Drawn rather than set as text. Every glyph these replaced was a codepoint
-     some emoji font also claims, so which font drew the bar was fontconfig's
-     choice per machine — different sizes, different weights, and each glyph
-     off-centre by its own side bearing. A path in a square viewBox has neither.
-     One stroke width and one size for the whole row; `currentColor` keeps the
-     `.off` and `:disabled` states working as they did. */
+  /* Drawn rather than set as text. A glyph for one of these is a codepoint some
+     emoji font also claims, so which font draws the bar is fontconfig's choice
+     per machine — different sizes, different weights, each glyph off-centre by
+     its own side bearing. A path in a square viewBox has none of that: one
+     stroke width and one size for the whole row, and `currentColor` still
+     carries the `.off` and `:disabled` states. */
   #bar svg {
     display: block;
     width: 1.25rem;
@@ -679,14 +667,6 @@
   #scrollback-btn.off {
     color: var(--ink-3);
   }
-  /* Paused carries on the button's own icon alone. No fill and no
-     colour: this sits over artwork, and a button that inverts is a bigger mark
-     on the screen than the state deserves.
-
-     Its own button in the bar rather than a row at the foot of the settings:
-     pausing is something reached for mid-scene, and a control two clicks deep
-     behind a cogwheel is a control that gets skipped. */
-
   /* The overlay's settings. Sits under the buttons like the explain panel, so
      it is inside #explain-box's rectangle and the shell already takes its
      clicks. Three tabs, because the questions are different: how the line is
@@ -787,9 +767,9 @@
   }
   /* A row whose control needs the whole width, and one that is only a note.
      Both name their columns, so **neither takes a filler cell after it** — an
-     empty <span> behind a .wide lands in the next row's first column and
-     shunts that row's label into the second, which is what had "WebSocket
-     address" and "Game window" sitting indented under everything else. */
+     empty <span> behind a .wide lands in the next row's first column and shunts
+     that row's label into the second, leaving it indented under everything
+     else. */
   .settings-body .wide {
     grid-column: 2 / -1;
   }
@@ -818,7 +798,7 @@
   }
 
   /* Chips, not a <select>: the dropdown is a native popup window, and a layer
-     surface has none to open it in — the list simply never appeared. The same
+     surface has none to open it in, so the list never appears at all. The same
      goes for the colour, which would otherwise want the native picker. */
 
   #mobile-btn {
@@ -887,10 +867,11 @@
   }
 
   /* Every Japanese font on the machine, so the list is as long as the machine
-     makes it — scrolled, not wrapped across the game. */
-  /* Block, not a flex column: as a column the rows shrink to fit the box —
-     thirty families came out as slivers a few pixels tall with the text gone,
-     and nothing overflowed, so it never scrolled either. */
+     makes it — scrolled, not wrapped across the game.
+
+     Block, not a flex column: as a column the rows shrink to fit the box, so a
+     long list draws as slivers a few pixels tall and nothing overflows for the
+     scrollbar to appear on. */
   #set-font {
     max-width: 21rem;
     max-height: 14rem;
@@ -898,7 +879,7 @@
     scrollbar-width: thin;
   }
   /* Rows are divs, not buttons: a button stays inline-level whatever `display`
-     says, and the list came out two names to a line. */
+     says, so the list would run two names to a line. */
   #set-line-source .row,
   #set-llm-provider .row,
   #set-vn-window .row,
@@ -936,17 +917,6 @@
     color: var(--ink);
   }
 
-  /* Earlier lines, under the button that opens them.
-     
-     Inside #explain-box, so it is placed against the bar, moves with the drag,
-     and is already inside the rectangle report() hands the shell — a panel the
-     compositor does not know about takes no clicks, and the game would advance
-     under the line being read.
-
-     Set like the line, because it *is* the line a minute ago: the same face,
-     the same size, the same spacing. Only the shadow is dropped — that exists
-     to lift a glyph off the game's artwork, and here there is a solid panel
-     behind it. */
   /* Over the history panel, which is inside #explain-box and comes after the
      popup in the document — without this the definition draws behind the lines
      it was opened from. */
@@ -954,6 +924,17 @@
     z-index: 50;
   }
 
+  /* Earlier lines, under the button that opens them.
+
+     Inside #explain-box, so it is placed against the bar, moves with the drag,
+     and is already inside the rectangle report() hands the shell — a panel the
+     compositor does not know about takes no clicks, and the game would advance
+     under the line being read.
+
+     Set like the line, because it *is* the line a minute ago: the same face, the
+     same size, the same spacing. Only the shadow is dropped — that exists to
+     lift a glyph off the game's artwork, and here there is a solid panel behind
+     it. */
   #scrollback {
     box-sizing: border-box;
     /* The line's column in characters, so a line that fitted on screen fits
@@ -961,11 +942,11 @@
        rather than at the line's. Counted off #line rather than derived: the
        box is sized two different ways — the character count when it is aligned
        to the game, viewport insets when it is not — and only one of those can
-       be written here. See sizeScrollback(). */
-    /* The character count is a floor, not the whole answer: it keeps a line
-       that fitted on screen from rewrapping here, and a panel wider than that
-       only wraps less. Below it the history was a narrow strip down one side
-       of the screen. */
+       be written here. See sizeScrollback().
+
+       The count is a floor, not the whole answer: a panel wider than it only
+       wraps less, while a narrower one is a strip down one side of the
+       screen. */
     width: max(
       calc(var(--sb-chars, var(--text-chars)) * (1em + var(--line-tracking)) + 1.4em),
       62vw

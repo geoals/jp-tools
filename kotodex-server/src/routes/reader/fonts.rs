@@ -1,8 +1,8 @@
 //! The Japanese-capable fonts installed on this machine.
 //!
-//! The overlay's font list used to be eight names hardcoded in the page, which
-//! on any machine but this one is a row of chips that do nothing. Only the
-//! server can answer it properly: the page is a browser tab.
+//! A list hardcoded in the page is a row of chips that do nothing on any machine
+//! but the one it was written on. Only the server can answer it: the page is a
+//! browser tab.
 
 use axum::Json;
 use serde_json::{Value, json};

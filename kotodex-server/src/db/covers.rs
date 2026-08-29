@@ -60,8 +60,7 @@ pub async fn fetch_work_covers(
         .iter()
         .filter_map(|r| {
             let work_id: i64 = r.get("work_id");
-            // A cover source whose work has been deleted is dropped, which is
-            // what the SQL join did too.
+            // A cover source whose work has been deleted is dropped.
             covers
                 .get(&work_id)
                 .map(|cover| (work_id, r.get("vndb_id"), cover.clone()))

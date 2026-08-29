@@ -55,7 +55,6 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> 
     Ok(pool)
 }
 
-/// Check whether a table already has a given column.
 async fn has_column(pool: &SqlitePool, table: &str, column: &str) -> Result<bool, sqlx::Error> {
     let rows = sqlx::query(&format!("PRAGMA table_info({table})"))
         .fetch_all(pool)
@@ -95,9 +94,8 @@ pub async fn get_job(pool: &SqlitePool, id: i64) -> Result<Option<Job>, sqlx::Er
     Ok(row.map(job_from_row))
 }
 
-/// Find the most recent job for a video ID, including error jobs.
-///
-/// Used for the video page display — shows the current state even if it errored.
+/// The most recent job for a video, error jobs included — the video page shows
+/// the state even when it failed.
 pub async fn get_latest_job_by_video_id(
     pool: &SqlitePool,
     video_id: &str,
@@ -116,10 +114,8 @@ pub async fn get_latest_job_by_video_id(
     Ok(row.map(job_from_row))
 }
 
-/// Find the most recent non-error job for a video ID.
-///
-/// Returns `None` if no usable job exists (allowing callers to create a new one).
-/// Error jobs are skipped so that re-submitting a failed video triggers a retry.
+/// The most recent job for a video that did not fail. Error jobs are skipped, so
+/// re-submitting a failed video starts a retry rather than reopening the failure.
 pub async fn get_job_by_video_id(
     pool: &SqlitePool,
     video_id: &str,
@@ -307,7 +303,6 @@ pub async fn get_sentences_by_ids(
         return Ok(vec![]);
     }
 
-    // Build a query with placeholders for each ID
     let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
     let query_str = format!(
         "SELECT id, job_id, text, start_time, end_time, created_at FROM mining_sentences WHERE id IN ({}) ORDER BY start_time",
@@ -334,9 +329,8 @@ pub async fn get_sentences_by_ids(
         .collect())
 }
 
-/// Delete jobs that were left in a non-terminal state (pending/downloading/transcribing)
-/// from a previous run, along with any partial sentences they accumulated.
-/// Returns the number of deleted jobs.
+/// A job still mid-pipeline when the process stopped can never finish, so it and
+/// the sentences it had accumulated go at startup.
 pub async fn delete_incomplete_jobs(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
     let statuses = [
         JobStatus::Pending.as_str(),
@@ -365,9 +359,6 @@ pub async fn delete_incomplete_jobs(pool: &SqlitePool) -> Result<u64, sqlx::Erro
 }
 
 fn chrono_now() -> String {
-    // ISO 8601 timestamp without external chrono dependency
-    // In production this would use a proper time library, but for MVP
-    // we use a simple approach that's testable
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| format!("{}", d.as_secs()))
@@ -401,7 +392,6 @@ mod tests {
 
     #[tokio::test]
     async fn migration_is_idempotent() {
-        // Running create_pool twice on the same database must not fail.
         let pool = create_pool("sqlite::memory:").await.unwrap();
         // Re-run all migrations (simulates second server start).
         sqlx::raw_sql(MIGRATION).execute(&pool).await.unwrap();
@@ -653,14 +643,11 @@ mod tests {
         assert!(result.is_empty());
     }
 
-    // --- delete incomplete jobs ---
-
     #[tokio::test]
     async fn delete_incomplete_jobs_removes_stale_jobs_and_sentences() {
         let pool = test_pool().await;
         let url = "https://youtube.com/watch?v=abc";
 
-        // Create jobs in each status
         let pending = create_job(&pool, url, "pending1").await.unwrap();
 
         let downloading = create_job(&pool, url, "downloading1").await.unwrap();
@@ -698,20 +685,16 @@ mod tests {
         let deleted = delete_incomplete_jobs(&pool).await.unwrap();
         assert_eq!(deleted, 3);
 
-        // Incomplete jobs are gone
         assert!(get_job(&pool, pending).await.unwrap().is_none());
         assert!(get_job(&pool, downloading).await.unwrap().is_none());
         assert!(get_job(&pool, transcribing).await.unwrap().is_none());
 
-        // Terminal jobs survive
         assert!(get_job(&pool, done).await.unwrap().is_some());
         assert!(get_job(&pool, error).await.unwrap().is_some());
 
-        // Partial sentences for transcribing job are deleted
         let sentences = get_sentences_for_job(&pool, transcribing).await.unwrap();
         assert!(sentences.is_empty());
 
-        // Sentences for done job survive
         let sentences = get_sentences_for_job(&pool, done).await.unwrap();
         assert_eq!(sentences.len(), 1);
     }

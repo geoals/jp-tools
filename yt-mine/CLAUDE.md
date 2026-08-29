@@ -10,9 +10,9 @@ Jobs run as background `tokio::spawn` tasks. Frontend polls via JSON API.
 
 **A whisper segment is cut into its sentences on the way in** (`into_sentences`).
 whisper-service primes the model with punctuated Japanese so a mined line keeps
-its 。 and 、, and priming also makes it run sentences together — the first
-minute of a video came back as half-minute segments holding eight sentences
-each, which is not a card. The punctuation is whisper's own, so
+its 。 and 、, and priming also makes it run sentences together — a segment can
+hold half a minute of speech and eight sentences, which is not a card. The
+punctuation is whisper's own, so
 `jp_core::text::sentences::split_sentences` cuts on it. Times are shared out by
 character count, which makes a line's audio accurate to a fraction of a second
 rather than exact.
@@ -24,33 +24,30 @@ model actually emitted.
 **A leading `名前 ` is dropped as a hallucinated subtitle speaker label**
 (`strip_speaker_label`). Whisper learnt Japanese partly from subtitles written
 `名前 セリフ` and writes the label itself on a low-context window; conditioning on
-the previous text then carries it forward, so one hallucination becomes a run of
-hundreds — one podcast gave 234 lines opening `ヤンヤン `, plus 48 `樋口 ` and 3
-`深井 `, none of them spoken. The ASCII space is what makes this safe to strip:
-whisper's Japanese output has none of its own.
+the previous text then carries it forward, so one hallucination becomes hundreds
+of lines opening on a name nobody spoke. The ASCII space is what makes this safe
+to strip: whisper's Japanese output has none of its own.
 
-Turning `condition_on_previous_text` off is not the fix — measured over the same
-150s, it *creates* the label (0 occurrences on, 10 off) and drops punctuation
-from 6.2% to 0.7%, because faster-whisper resets the initial prompt with it.
-Conditioning propagates the label; it does not start it.
+Turning `condition_on_previous_text` off is not the fix: it *creates* the label
+and strips most of the punctuation, because faster-whisper resets the initial
+prompt with it. Conditioning propagates the label; it does not start it.
 
 **The audio is downloaded first, on its own, and the video follows in
 parallel.** Transcription is the long step and only needs the audio, so fetching
-the merged video ahead of it left the GPU idle for the whole download. The video
-is video-only (`bv*`) at 480p and is only wanted once a card is mined.
+the merged video ahead of it leaves the GPU idle for the whole download. The
+video is video-only (`bv*`) at 480p and is only wanted once a card is mined.
 
-**Whisper transcribes the whole video from 0:00, and that is deliberate.** It
-was briefly replaced by YouTube's own auto-captions, which arrive for the whole
-video in about a second — but the ASR drops 。 for stretches at a time, so its
-line breaks weld five sentences into one, and a sentence card is only as good
-as its sentence. Nothing derived from an auto-caption track can be trusted to
-say where a line starts and stops. The transcript is whisper's alone.
+**Whisper transcribes the whole video from 0:00, and that is deliberate.**
+YouTube's own auto-captions arrive for the whole video in about a second, but
+that ASR drops 。 for stretches at a time, so its line breaks weld five
+sentences into one, and a sentence card is only as good as its sentence. Nothing
+derived from an auto-caption track can be trusted to say where a line starts and
+stops. The transcript is whisper's alone.
 
 **The home page lists what has already been processed** (`/api/videos`, one row
 per video rather than per job, since a retried video leaves several). A
 transcript is worth coming back to — the words skipped the first time through
-are still in it — and the only way back to one used to be the original YouTube
-URL.
+are still in it.
 
 A pasted link still carries its timestamp: YouTube's "Copy link at current
 time" writes `t=`, `start_seconds_in` reads it, and the page scrolls to that
@@ -104,16 +101,16 @@ Tokens carry their ledger status, and the three tints are kotodex-server's own �
 `known` is deliberately not one of them, because the absence of a mark is what
 makes the marks readable.
 
-**Rows are rebuilt every render.** `SentenceList` used to cache a VNode per
-sentence and hand back the same reference, which makes Preact skip the subtree
-— including when a signal the row reads has changed. A word judged in the popup
-kept its old tint and the open token stayed outlined after the popup closed.
+**Rows are rebuilt every render.** Caching a VNode per sentence and handing back
+the same reference makes Preact skip the subtree — including when a signal the
+row reads has changed — so a word judged in the popup keeps its old tint and the
+open token stays outlined after the popup closes.
 
 ## Filtering the list
 
 The toolbar above the list picks which lines are drawn: all of them, the ones
-holding a word not marked known, or i+1 — exactly one such word. A 414-line
-video came out 83 and 64. `ledger.js` is what both the filters and the row's
+holding a word not marked known, or i+1 — exactly one such word. `ledger.js` is
+what both the filters and the row's
 ✓ ask, so "not known" means the same thing in each: `new`, `seen` and
 `unknown` alike, since one was never judged and one was refused but both are
 words this page exists to do something about.
@@ -142,9 +139,9 @@ Provided by `jp-core` crate. See `jp-core/` for details.
   popup draws from, via `jp_mine_core::lookup::lookup_word` — which flattens it
   to the four things a card holds. So a card gets the dictionaries in reading
   order (明鏡, then the master) rather than install order, and its `Frequency`
-  is `READER_FREQUENCY` — how common the word is in fiction. It used to be
-  whichever frequency dictionary was installed first, which was BCCWJ:
-  newspaper prose, where 素振り ranks 14,117 against 6,157 in fiction.
+  is `READER_FREQUENCY` — how common the word is in fiction, not whichever
+  frequency dictionary happened to be installed first. BCCWJ is newspaper prose,
+  where 素振り ranks 14,117 against 6,157 in fiction.
 
 ## Build & run
 
@@ -161,15 +158,15 @@ Via env vars, loaded from `.env` (repo root) via `dotenvy`. See `config.rs` and
 `.env.example`.
 
 Anki export fields are all configurable via `KOTODEX_ANKI_*` vars (model, deck,
-field mapping). Defaults match the "Japanese sentences" Yomitan note type — and
-are now the same fields kotodex-server writes: the glossary goes to `VocabDefFull`
+field mapping). Defaults match the "Japanese sentences" Yomitan note type, and
+are the same fields kotodex-server writes: the glossary goes to `VocabDefFull`
 in Yomitan's per-dictionary markup (`VocabDef` is Yomitan's own short gloss and
 not ours to overwrite), the pitch to `VocabPitchNum` + `VocabPitchPattern` as
 markup rather than a bare number, and the LLM gloss to `CompactDef`.
 
 **The card is built by `jp_mine_core::card`, the gloss by
-`jp_mine_core::compactdef`.** yt-mine's own `LlmDefiner` prompt is gone: it was
-a third paraphrase of the tag rubric, still on a four-tier familiarity scale
-with no FLAVOR axis, which is exactly what `jp_mine_core::tags` exists to
-prevent. `services::llm` is now just the trait and a thin impl, kept so the
-fake and the route tests can stand in for the call.
+`jp_mine_core::compactdef`.** yt-mine has no prompt of its own: a second
+paraphrase of the tag rubric drifts from it — a familiarity scale of the wrong
+depth, a missing FLAVOR axis — which is what `jp_mine_core::tags` exists to
+prevent. `services::llm` is the trait and a thin impl, kept so the fake and the
+route tests can stand in for the call.

@@ -59,11 +59,11 @@ import websockets
 def _rundir():
     """Where lines.log and raw.log go: volatile, per boot, not backed up.
 
-    `os.getuid` does not exist on Windows, so this was an import-time crash there
-    rather than a wrong path. The temporary directory is that platform's answer to
-    XDG_RUNTIME_DIR — and `vn-capture.sh`, the one thing that reads lines.log, is
-    Linux-only anyway, so on Windows these two files are only ever a record to
-    read afterwards.
+    `os.getuid` does not exist on Windows, so asking for it there is an
+    import-time crash rather than a wrong path. The temporary directory is that
+    platform's answer to XDG_RUNTIME_DIR — and `vn-capture.sh`, the one thing that
+    reads lines.log, is Linux-only anyway, so on Windows these two files are only
+    ever a record to read afterwards.
     """
     if override := os.environ.get("VN_RUNDIR"):
         return override
@@ -144,9 +144,9 @@ NOT_COUNTED = re.compile(f"[^{_COUNTED}]")
 # dialogue, and Dohna Dohna's script-layer hook fuses many lines into one
 # capture while skip is held. Either way a capture far longer than a real line
 # is not reading: it is dropped, not logged and not counted. The raw WS stream
-# is gone once dropped, but lines.log/the DB were never meant to be a verbatim
-# mirror of it. Real lines observed top out around 90 chars; the guard sits well
-# above that. Deliberately NOT filtering on control characters — VNs use them as
+# is gone once dropped, and lines.log and the ledger are not a verbatim mirror of
+# it. The guard sits well above any real line's length.
+# Deliberately NOT filtering on control characters — VNs use them as
 # text markup (Subahibi puts \x05 at the head of narration lines and \x04
 # mid-clause), so presence of them says nothing about whether a line is real
 # reading.
@@ -160,17 +160,16 @@ CONTROL = re.compile(r"[\x01-\x08\x0b\x0c\x0e-\x1f]")
 # A soft line break the engine emits as literal markup rather than rendering.
 # Kept as a newline, not dropped: it is where the game breaks the line, so the
 # overlay draws the text the shape it has on screen. Costs nothing in the count
-# — count_chars is an allowlist and whitespace is outside it, while the literal
-# <br> reached Sudachi and put "b" in the vocabulary ledger.
+# — count_chars is an allowlist and whitespace is outside it, where a literal
+# <br> left in reaches Sudachi and puts "b" in the vocabulary ledger.
 BR = re.compile(r"<br\s*/?>", re.I)
 
 # The rest of TextMeshPro's rich text, which reaches the hook unrendered for the
 # same reason <br> does. Only the tags go; the text they wrap is dialogue and
 # stays. Named tags rather than any <...> run, because ASCII angle brackets do
-# occur in real lines (emoticons), and a blanket rule would eat them. Left in,
-# a tag costs the count as well as the ledger: its own letters are inside
-# count_chars' allowlist, so <color=#9c8eff>b</color> counted 17 of the 23
-# characters on that line.
+# occur in real lines (emoticons), and a blanket rule would eat them. Left in, a
+# tag costs the count as well as the ledger: the letters of <color=#9c8eff> are
+# inside count_chars' allowlist and are counted as text read.
 RICH_TAG = re.compile(
     r"</?(?:color|b|i|u|s|em|strong|size|font|material|quad|sprite|link|align"
     r"|cspace|mspace|indent|line-height|line-indent|margin|mark|nobr|noparse"
@@ -193,9 +192,10 @@ _DIALOG_MARK = r"\$\{[^\}]+\}"
 _UI_MARK = r"([^\[\]]+?)+|\[[^\]]+?\]"
 _SEGMENT = re.compile("(" + re.escape(_DIALOG_MARK) + "|" + re.escape(_UI_MARK) + ")")
 # Each fused line is headed by its 【speaker】 tag; holding skip fuses a crowd of
-# them into one capture. Normal reading tops out at ~4 tags per capture, a skip
-# burst runs 20+, so a tag count this high means skipping, not reading — drop it.
-# The tag is also stripped from what survives: the card wants the line, not who.
+# them into one capture. A handful of tags is a normal capture and a skip burst
+# carries several times that, so a count above the threshold means skipping, not
+# reading — drop it. The tag is stripped from what survives: the card wants the
+# line, not who said it.
 _SPEAKER = re.compile(r"【[^】]*】")
 MAX_SPEAKER_TAGS = 5
 
@@ -208,8 +208,8 @@ MAX_SPEAKER_TAGS = 5
 # character, in a different order, and a one-character fragment is indistinguishable
 # from a plain run of four. Furigana has no markup at all: the reading is inlined
 # after the character it annotates, inside that character's fragment, so 瞠目(どうもく)
-# hooks as 瞠瞠どどううももくく瞠瞠どどううももくく目目目目 and run-collapsing left half
-# of it inline in the text. Undoing it here instead: a run divisible by four is that
+# hooks as 瞠瞠どどううももくく瞠瞠どどううももくく目目目目, and run-collapsing leaves half
+# of it inline in the text. Undone here instead: a run divisible by four is that
 # many characters, a stretch of doubled runs is a fragment. Anything that does not
 # decode cleanly is left alone, which is what makes this safe for other hooks.
 QUAD = 4
@@ -347,8 +347,8 @@ def strip_speaker(text):
 SCRIPT_ESCAPE = re.compile(r"\\(n|cd|@)")
 
 # Text colour, which the same hook writes as \c0xRRGGBB; and \cd0xRRGGBB; — a
-# narration line arrives coloured grey and every one of them was dropped by the
-# backslash rule. Stripped before SCRIPT_ESCAPE, or \cd matches the head of
+# narration line arrives coloured grey, so without this the backslash rule drops
+# every one of them. Stripped before SCRIPT_ESCAPE, or \cd matches the head of
 # \cd0xff898989; and leaves a literal 0xff898989; in the line.
 COLOR_ESCAPE = re.compile(r"\\cd?0x[0-9a-fA-F]+;")
 
@@ -365,10 +365,10 @@ def _escape(m):
 # Textractor sometimes flushes one script line as two captures, split at the
 # script's own \n, so the second arrives opening on the break. \cd is what clears
 # the textbox, so a capture without one that opens on \n is continuing text still
-# on screen and belongs to the line before it — which the overlay draws alone, so
-# unmerged the first half shows for the 30ms until the rest lands. Content and
-# not timing: real consecutive lines arrive 49ms apart in the same session, so no
-# flush delay can separate the two cases.
+# on screen and belongs to the line before it — unmerged, the overlay draws the
+# first half alone until the rest lands. Content and not timing: two halves of one
+# line and two consecutive real lines arrive equally close together, so no flush
+# delay separates the two cases.
 CONTINUATION = re.compile(r"\A\s*\\n")
 
 
@@ -376,9 +376,10 @@ def continues_previous(raw):
     return bool(CONTINUATION.match(raw)) and "\\cd" not in raw
 
 
-# Dropping a capture for an unknown backslash command is fail-closed and was
-# silent: a colour code cost real narration lines twice before anyone noticed.
-# Once per command per run — a choice menu re-hooks on every cursor move.
+# Dropping a capture for an unknown backslash command is fail-closed and silent,
+# so each command is named once — an unhandled one costs real dialogue lines with
+# nothing to say so. Once per command per run: a choice menu re-hooks on every
+# cursor move.
 UNKNOWN_COMMAND = re.compile(r"\\[A-Za-z@]+")
 _SEEN_COMMANDS = set()
 
@@ -436,9 +437,9 @@ def clean_line(raw):
         if not bare or not PUNCT_ONLY.match(bare):
             return None
     # Strip the markup codes, having declined to drop the line for them. They
-    # are the VN's, not the reader's, and Sudachi analyses them as words —
-    # \x05 and \x04 reached kotodex-server's vocabulary ledger as "e" and "d". No
-    # effect on the count: NOT_COUNTED is an allowlist and never counted them.
+    # are the VN's, not the reader's, and Sudachi analyses them as words — left
+    # in, \x05 enters the vocabulary ledger as "e". No effect on the count:
+    # NOT_COUNTED is an allowlist and never counted them.
     return strip_speaker(RICH_TAG.sub("", BR.sub("\n", CONTROL.sub("", text))))
 
 
@@ -454,8 +455,8 @@ RT = re.compile(r"<rt\s*>(.*?)</rt\s*>", re.I | re.S)
 RP = re.compile(r"<rp\s*>.*?</rp\s*>", re.I | re.S)
 # A ruby tag that never closed, so the pair above could not match it. The
 # reading is dropped with the tag rather than left in the line — furigana is a
-# gloss on the spelling, not part of it (see clean_field in services/anki.rs,
-# which learnt this on 節穴 arriving as 節ふし穴).
+# gloss on the spelling, not part of it, so 節穴 must not become 節ふし穴. Same
+# rule as clean_field in services/anki.rs.
 RUBY_STRAY = re.compile(r"</?ruby(?:\s*=[^<>]*)?\s*>|<r[tp]\s*>.*?(?=<|$)", re.I | re.S)
 
 
@@ -514,7 +515,7 @@ SETTINGS_TTL = 2.0
 # No proxy, ever. The ledger is on this machine or on the reader's own network,
 # so nothing in between has any business carrying the request - and Windows takes
 # its proxy from the system settings, where one configured for the internet
-# swallowed the request to localhost and reported the server as down.
+# swallows a request to localhost and reports the server as down.
 _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
@@ -546,9 +547,8 @@ class StatsSink:
 
     A request that fails goes to `pending` and is retried on the next line
     rather than dropped. The failure this exists for is the server being
-    restarted mid-session: transient, but it once ran a whole sitting's lines
-    into the ground because the sink gave up permanently after a handful of
-    errors.
+    restarted mid-session: transient, and giving up on it permanently costs the
+    rest of the sitting's lines.
     """
 
     MAX_PENDING = 2000
@@ -685,7 +685,7 @@ class StatsSink:
         stuck = len(lines) > 1
         # The lines held from an earlier failure, which is one fewer than the
         # request carries: the newest is being written now, not stuck. Counting
-        # it painted the reader's badge as stalled for a beat after every line.
+        # it paints the reader's badge as stalled for a beat after every line.
         backlog = len(lines) - 1 if stuck else 0
         try:
             post_json(
@@ -710,16 +710,15 @@ _START = time.monotonic()
 
 
 def log(msg):
-    # Seconds since start, because the first thing a reader reports is that
-    # starting took ages and nothing here could say which part did.
+    # Seconds since start, so a slow start says which part of it was slow.
     print(f"vn-ws-logger: +{time.monotonic() - _START:6.2f}s {msg}", file=sys.stderr, flush=True)
 
 
 def normalize(msg):
     # A break the game put in the line is kept, whichever way the hook spells
     # it — some engines send a real newline where others send <br> or \n, and
-    # all three are the same fact: where the game breaks the line. Collapsing
-    # it to a space drew a two-line capture as one long line.
+    # all three are the same fact: where the game breaks the line. Collapsed to
+    # a space, a two-line capture draws as one long line.
     text = msg.replace("\r\n", "\n").replace("\r", "\n").strip()
     return text[:4000]
 
@@ -920,8 +919,8 @@ async def pump(out, stats, state):
     last = (None, [])
     # An explicit loop rather than `async for ws in websockets.connect(...)`:
     # that form reconnects on its own, which is exactly what a pause must not
-    # do. Reconnecting is now a decision made here, once per iteration, after
-    # the flag and the chosen source have been checked.
+    # do. Reconnecting is a decision made here, once per iteration, after the
+    # flag and the chosen source have been checked.
     while True:
         if stats.capture_paused():
             await asyncio.sleep(PAUSE_POLL_SECS)
@@ -938,9 +937,9 @@ async def pump(out, stats, state):
                 state["ws"] = ws
                 # At once, rather than on `beat`'s next tick. Resuming already
                 # costs the pause poll and the settings TTL before the socket is
-                # opened at all; waiting a further heartbeat to *say so* is what
-                # put "no line source" on the reader's screen for a second after
-                # every resume. The same reason the close below reports itself.
+                # opened at all, and waiting a further heartbeat to *say so*
+                # leaves "no line source" on the reader's screen after every
+                # resume. The same reason the close below reports itself.
                 stats.heartbeat(True)
                 watcher = asyncio.create_task(watch_pause(ws, stats))
                 try:

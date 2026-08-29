@@ -3,9 +3,8 @@ import { useState, useEffect } from 'preact/hooks';
 import { fetchVideos } from '../../api.js';
 import { navigate } from '../../router.js';
 
-// The videos already processed. A transcript is worth coming back to — the
-// words that were skipped the first time through are still there — and the
-// only way back to one was the original YouTube URL.
+// The videos already processed. A transcript is worth coming back to: the words
+// skipped the first time through are still in it.
 export function VideoHistory() {
   const [videos, setVideos] = useState(null);
 

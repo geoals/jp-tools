@@ -43,11 +43,10 @@ _START = time.monotonic()
 
 
 def since_start() -> str:
-    """Seconds since this module was imported, for the startup lines.
+    """Seconds since this module was imported.
 
-    A reader reporting a slow start can say nothing useful about which part was
-    slow, and the answer is never the same part twice. Every line printed before
-    the surface exists carries this, so one log says where the time went.
+    Every line printed before the surface exists carries it, so one log says
+    which part of a slow start was slow.
     """
     return f"+{time.monotonic() - _START:6.2f}s"
 
@@ -301,7 +300,7 @@ class Overlay(QObject):
         self._window = window
         # Unconditional, not behind LAYER_OVERLAY_DEBUG: "the overlay never
         # appeared" is answered by where the surface went and which output it
-        # landed on, and that is the first question every time. One line.
+        # landed on.
         screen = window.screen()
         print(
             f"{since_start()} surface {window.x()},{window.y()}"
@@ -384,9 +383,7 @@ class Overlay(QObject):
             for x, y, w, h in self._hits:
                 region = region.united(QRegion(x, y, max(w, 1), max(h, 1)))
         else:
-            # One pixel, not nothing: an *empty* mask means the whole surface
-            # takes input, which is the opposite of what a page reporting no
-            # clickable area should do. The X11 input region reads an empty list
+            # One pixel, not nothing. The X11 input region reads an empty list
             # the way it looks, so this costs it only one dead pixel.
             region = QRegion(0, 0, 1, 1)
         # X and the Windows cursor both speak device pixels, and everything above
@@ -446,7 +443,7 @@ class Surface:
         # Checked before the engine is touched, not only in `_schedule`. Qt still
         # emits `visibleChanged` while it tears the window down on the way out,
         # and by then the engine's C++ object can already be gone — reading
-        # `rootObjects()` off it raised a traceback on every quit.
+        # `rootObjects()` off it raises a traceback on the way to quitting.
         if self._quitting:
             return
         if window is self._engine.rootObjects()[0] and not window.isVisible():

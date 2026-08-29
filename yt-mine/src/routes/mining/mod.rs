@@ -5,8 +5,6 @@ use crate::app::AppState;
 use crate::db;
 use crate::error::AppError;
 
-// --- Shared view types ---
-
 pub(crate) struct SentenceView {
     pub(crate) id: i64,
     pub(crate) timestamp: String,
@@ -32,13 +30,11 @@ pub(crate) struct TokenView {
     pub(crate) status: String,
 }
 
-// --- Shared business logic ---
-
-/// Build sentence views for display. Always tokenizes sentences so they are
-/// interactive as soon as they appear (even during transcription).
+/// The sentences of one job, tokenized so they are clickable the moment they
+/// appear rather than once transcription finishes.
 ///
-/// Returns `(views, max_end_time)` where `max_end_time` is the highest
-/// `end_time` across all sentences (0.0 if none). Used to compute progress %.
+/// The second half of the pair is the furthest `end_time` reached, which is what
+/// the progress percentage is measured against.
 pub(crate) async fn build_sentence_views(
     state: &AppState,
     job_id: i64,

@@ -5,11 +5,6 @@
 // floor: the true number is higher by however much of the unjudged mass is
 // already understood. `left` is the size of that mass, and is why it is
 // reported beside the percentages rather than derived from them.
-//
-// It was briefly a floor–ceiling range, granting every unjudged word on the
-// ceiling. The ceiling was 100% on every video measured — ✗ is rare, so
-// "unjudged" and "not known" are nowhere near the same size — and a range with
-// a constant end is a wider way of printing one number.
 
 import { key, statusOf } from './ledger.js';
 
@@ -50,8 +45,9 @@ export function comprehension(sentences, marks) {
     words: share(wordsKnown, words),
     types: share(typesKnown, types.size),
     lines: share(linesKnown, lines),
-    // What is left to do, not what is done: the count the percentages hide.
-    // 6% unknown is forty words in one video and four hundred in another.
+    // What is left to do, not what is done: the count the percentages hide. The
+    // same percentage is a handful of words in a short video and hundreds in a
+    // long one.
     left: types.size - typesKnown,
   };
 }

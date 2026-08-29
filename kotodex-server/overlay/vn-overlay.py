@@ -65,7 +65,7 @@ STORAGE = _DATA_ROOT / "kotodex/overlay"
 
 # No proxy for either check below: both addresses are on this machine. Windows
 # takes its proxy from the system settings, and one configured for the internet
-# swallowed the localhost request and reported kotodex-server as down.
+# swallows a localhost request and reports kotodex-server as down.
 _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
@@ -86,7 +86,7 @@ def _timed_check(target) -> _Check:
 
 
 def _say(message: str) -> None:
-    """One write per line, because these now land while Qt is writing too."""
+    """One write per line: these land while Qt is writing to stderr too."""
     sys.stderr.write(f"{layer_overlay.since_start()} {message}\n")
     sys.stderr.flush()
 
@@ -101,10 +101,10 @@ def check_dependencies(page_url: str) -> None:
 
     **Reporting only, so it must not be in front of the surface.** Neither check
     gates anything, and a closed port does not refuse on Windows the way it does
-    on Linux — it times out, so a shut Anki cost two seconds of drawing nothing.
-    [`main`] runs this on a thread of its own for that reason; every line carries
-    `since_start()`, so one that lands after the surface still says when it was
-    taken.
+    on Linux — it times out, so a shut Anki would hold the surface back for the
+    whole timeout. [`main`] runs this on a thread of its own for that reason;
+    every line carries `since_start()`, so one that lands after the surface still
+    says when it was taken.
 
     Textractor is deliberately absent. The page already reports it live from
     `settings.vn_logger_heartbeat`, in `#warn`, which stays right when it stops

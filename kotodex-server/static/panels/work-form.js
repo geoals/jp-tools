@@ -6,16 +6,14 @@
 // something is get stamped with no title at all.
 //
 // Everything a work *is* is edited in one form — length, cover, status, and the
-// window the game draws in. The window used to be a second form glued under the
-// dialog with a save button of its own, which is how a reader could set the
-// three fields, close, and find the capture still pointing at the last VN.
+// window the game draws in. As a second form with its own save button, the window
+// lets a reader fill in three fields, close the dialog, and leave capture
+// pointing at the last VN.
 //
-// **Adding a work is a title search, not a form.** It used to be: type the
-// title, open vndb.org in another tab, find the entry, copy its id back, then
-// open jiten.moe and copy a character count. Two of those three the app can do
-// itself — `GET /api/works/search` asks VNDB by name and picks up the id and the
-// cover — and the third is optional, so it is asked for on the progress bar that
-// wants it rather than in the way of getting started.
+// **Adding a work is a title search, not a form.** `GET /api/works/search` asks
+// VNDB by name and picks up the id and the cover, so neither is typed in. The
+// character count is optional, and is asked for on the progress bar that wants it
+// rather than in the way of getting started.
 
 import { html } from "htm/preact";
 import { useEffect, useRef, useState } from "preact/hooks";
@@ -339,8 +337,8 @@ export function WorkMetaForm({ work, isCurrent, onSaved, onCancel, onDeleted }) 
         </div>
         ${
           // The same search adding a work uses, seeded with the title this one
-          // already has. A box wanting "v3144" made the reader go and find it,
-          // which is the errand the search was built to end.
+          // already has. A box wanting "v3144" sends the reader to vndb.org to
+          // fetch one, which is the errand this search exists to end.
           picking &&
           html`<div class="work-search">
             <${VndbSearch}
@@ -395,8 +393,8 @@ export function WorkMetaForm({ work, isCurrent, onSaved, onCancel, onDeleted }) 
           }
           ${windows.map(
             // The window in front is the answer on a good day: the reader was
-            // looking at the game a moment ago. Said in the list rather than as
-            // a button beside it, which was a second control for one choice.
+            // looking at the game a moment ago. Marked in the list rather than
+            // offered as a button, which is a second control for one choice.
             (w) => html`<option value=${w}>
               ${w === focused ? `${w} — in front` : w}
             </option>`,

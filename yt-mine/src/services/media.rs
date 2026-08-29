@@ -35,8 +35,8 @@ pub fn format_ffmpeg_timestamp(secs: f64) -> String {
     format!("{hours:02}:{minutes:02}:{seconds:02}.{millis:03}")
 }
 
-/// Generate deterministic media filenames for a given job + sentence.
-/// Returns `(screenshot_filename, audio_clip_filename)`.
+/// `(screenshot, audio clip)` filenames for one sentence. Derived from the ids
+/// rather than random, so a re-export overwrites its own files.
 pub fn media_filenames(job_id: i64, sentence_id: i64) -> (String, String) {
     (
         format!("yt-mine_{job_id}_{sentence_id}.jpg"),

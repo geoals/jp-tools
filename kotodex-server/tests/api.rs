@@ -72,8 +72,7 @@ async fn pausing_capture_is_a_flag_and_does_not_touch_the_history() {
     assert_eq!(status, 200);
     assert_eq!(body["paused"], true);
 
-    // Pausing stops the *logger*, so lines already recorded keep counting —
-    // the opposite of the old interval log, which voided them retroactively.
+    // Pausing stops the *logger*, so lines already recorded keep counting.
     let s = app.get("/api/summary").await;
     assert_eq!(s["paused"], true);
     assert_eq!(s["today"]["chars"], chars_before, "history is untouched");
@@ -472,9 +471,10 @@ async fn the_count_endpoint_agrees_with_what_a_session_stores() {
 
 #[tokio::test]
 async fn the_day_timeline_and_the_day_total_agree_on_active_time() {
-    // The invariant that pace and presence being per-request broke: the
-    // dashboard and the timeline priced the same day differently. One session,
-    // wholly inside the day, so no boundary effects can excuse a difference.
+    // Pace and presence belong to the reader, not to a request: derived per
+    // request, the dashboard and the timeline price the same day differently.
+    // One session, wholly inside the day, so no boundary effects can excuse a
+    // difference.
     let app = TestApp::new().await;
     let base = today_start() + 3600.0;
     for i in 0..40 {
@@ -802,8 +802,8 @@ async fn the_vocabulary_scale_counts_master_terms_not_ledger_rows() {
 #[tokio::test]
 async fn the_reader_backlog_comes_back_oldest_first() {
     // The feed itself is an SSE stream, but the backlog a client gets on open
-    // is this query, and its ordering is the part that has been wrong before:
-    // it selects the newest N and must hand them back in reading order.
+    // is this query, and its ordering is the part that matters: it selects the
+    // newest N and must hand them back in reading order.
     let app = TestApp::new().await;
     let base = today_start() + 3600.0;
     for (i, text) in ["いち", "に", "さん"].iter().enumerate() {
@@ -826,8 +826,7 @@ async fn the_reader_opens_on_the_whole_sitting_not_a_fixed_tail() {
     let app = TestApp::new().await;
     let base = today_start() + 3600.0;
     // An earlier sitting, then a gap well over the 600s default, then the
-    // current one — deliberately more lines than the old 40-line backlog was
-    // never the point; the point is that the split lands between the two.
+    // current one. What must hold is that the split lands between the two.
     app.add_line(base, "むかし", None).await;
     app.add_line(base + 10.0, "むかしむかし", None).await;
     app.add_line(base + 5000.0, "いち", None).await;
@@ -1311,11 +1310,11 @@ async fn bulk_blacklist_clears_noise_but_not_words() {
 #[tokio::test]
 async fn a_lookup_credits_the_ledger_key_not_the_spelling_it_was_made_under() {
     // Yomitan sends the word as the text spelt it, and the ledger keys on
-    // Sudachi's normalized form. Joining those as raw strings credited 検死 —
+    // Sudachi's normalized form. Joined as raw strings, the lookup credits 検死 —
     // a row nothing else writes to — while 検屍, the row the reader actually
-    // meets, read as never looked up. `preselects_known` ticks a word `known`
-    // on encounters alone when `lookup_count` is 0, so the cost of the miss was
-    // a wrong assertion written in bulk.
+    // meets, reads as never looked up. `preselects_known` ticks a word `known`
+    // on encounters alone when `lookup_count` is 0, so a miss here is a wrong
+    // assertion written in bulk.
     //
     // The normalization itself needs a Sudachi dictionary; what is pinned here
     // is that `sync_lookup_counts` follows `headword` once it is resolved.
@@ -1632,8 +1631,8 @@ async fn a_book_already_part_read_is_caught_up_without_logging_it() {
         .await;
     assert_eq!(status, 200, "{skipped}");
 
-    // The bookmark moved and no day was credited for pages read before this
-    // existed — the whole reason skip is not a session with zero minutes.
+    // The bookmark moved and no day was credited for pages read before the book
+    // was set up — the whole reason skip is not a session with zero minutes.
     assert_eq!(
         app.get("/api/books").await["books"][0]["position"],
         skipped["position"]

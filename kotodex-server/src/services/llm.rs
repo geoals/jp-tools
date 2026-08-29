@@ -56,8 +56,7 @@ const MAX_TOKENS: u32 = 400;
 ///
 /// Resolved per call rather than at boot, because the whole point of the key
 /// being a setting is that pasting one starts working without a restart.
-/// `KOTODEX_ANTHROPIC_API_KEY` stays as the fallback — `setup.sh` writes it, so
-/// every install that predates the settings row still has its key there.
+/// `KOTODEX_ANTHROPIC_API_KEY` is the fallback; `setup.sh` writes it.
 pub async fn provider(state: &AppState) -> Result<Option<Provider>, AppError> {
     let settings = db::load_settings(&state.local).await?;
     let stored = db::llm_api_key(&state.local).await?;

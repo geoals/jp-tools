@@ -7,10 +7,11 @@
 //! not. This joins the two and sorts each card into a bucket.
 //!
 //! **Nothing here writes.** The verdict is a reading of the evidence, and the
-//! evidence is thin per card — one encounter can be a skimmed line, and the
-//! last-review cutoff is Anki's `mod`, which an edit also moves. Bulk action on
-//! this without looking at it first is exactly the kind of wrong assertion
-//! written at scale that the ledger's two-signal rule exists to prevent.
+//! evidence is thin per card — one encounter can be a skimmed line, and a card
+//! with no review log falls back to Anki's `mod`, which an edit also moves. Bulk
+//! action on this without looking at it first is exactly the kind of wrong
+//! assertion written at scale that the ledger's two-signal rule exists to
+//! prevent.
 //!
 //! Encounter **days**, not encounters: a word met eight times in one scene is
 //! one exposure, and spacing is the whole claim being made.

@@ -11,9 +11,7 @@
 //! posts; `ankiproxy::record` drops those before they land, on the test that a
 //! line arrived within `session_gap_secs`. Nothing downstream re-checks it, and
 //! nothing downstream should have to — the guard is at the write, so a lookup
-//! that exists is a lookup that counts. 76 rows written before the guard
-//! existed (2026-07-26) were deleted rather than filtered, for the same reason:
-//! a row that means "somewhere else" has no reading to belong to.
+//! that exists is a lookup that counts.
 //!
 //! Two uses wanting different things from the same rows: as *presence marks*
 //! (proof the reader was at the keyboard) only the timestamps matter, and as the
@@ -69,8 +67,7 @@ pub async fn insert_lookup(
 /// its rows at query time — `sync_lookup_counts` recomputes `lookup_count`
 /// wholesale — so a row that is gone is gone everywhere, and no query has to
 /// remember to filter. A `retracted` column would silently keep counting in
-/// whichever of the dozen readers forgot it, which is exactly how `headword`
-/// cost four defects.
+/// whichever reader forgot it.
 ///
 /// The term is in the predicate so a stale id cannot delete an unrelated row.
 ///

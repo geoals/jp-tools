@@ -193,9 +193,9 @@ screen is unaffected — there is no next line yet to bound anything.
 The clip is then checked twice more, because silero is stateful and a loud
 transient can cross the threshold on state the preceding audio warmed up: it has
 to peak above `VN_MIN_PEAK_DB`, **and** still read as speech when scored on its
-own from a cold state. Either failing makes the capture screenshot-only. Voiced
-clips score ~1.00 standalone; the sound effect that prompted the check scored
-0.35.
+own from a cold state. Either failing makes the capture screenshot-only. A voiced
+clip still scores near 1.00 standalone, where a sound effect that slipped through
+the warmed-up state scores far below it.
 
 - The daemon binds the default sink at startup — `systemctl --user restart
   kotodex-capture` after switching audio outputs. Safe with Textractor open.

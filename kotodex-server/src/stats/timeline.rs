@@ -30,7 +30,7 @@ pub struct Bucket {
     /// **Both sides have to drop together.** Dividing all `chars` by non-lookup
     /// time credits characters read *during* a lookup to the time that remains,
     /// and in a dense burst the denominator collapses while the numerator does
-    /// not — it reported 30k chars/h for reading running at 12k.
+    /// not, so the rate comes out a wild multiple of the true pace.
     pub clean_chars: i64,
     /// Characters whose own gap *did* contain a lookup. With `clean_chars` these
     /// price the reading embedded in lookup gaps — a gap holds both the line's
@@ -104,8 +104,8 @@ fn spread_credit(
 /// `lookups` (sorted) labels each gap that contains one, so the caller can
 /// separate speed on the text from speed including the cost of looking words
 /// up. `presence` decides how much of each gap is credited at all — a lookup
-/// late in a long gap now proves you were still there, so a 45-second detour
-/// is no longer truncated to the flat 30 the old cap imposed.
+/// late in a long gap proves you were still there, so a 45-second detour is
+/// credited 45 rather than truncated to the cap.
 pub fn bucket_lines(
     lines: &[LineEvent],
     lookups: &[f64],
@@ -305,8 +305,7 @@ mod tests {
     #[test]
     fn lookup_gaps_label_the_time_they_consumed() {
         // Realistic shape: clean gaps are short (4s) and the gap holding a
-        // lookup is long (24s), which is where the penalty actually lives —
-        // in the measured stream, lookup gaps run a median 21s against 3s.
+        // lookup is long (24s), which is where the penalty actually lives.
         let lines = [ev(0.0, 100), ev(4.0, 100), ev(8.0, 100), ev(32.0, 100)];
         let b = bucket_lines(
             &lines,
@@ -439,7 +438,7 @@ mod tests {
     fn raw_speed_cannot_explode_in_a_lookup_burst() {
         // The bug this guards: dividing *all* chars by only the non-lookup
         // seconds. Here every gap but one contains a lookup, so that denominator
-        // is tiny while the numerator is not — the old formula reported a wild
+        // is tiny while the numerator is not, and the rate comes out a wild
         // multiple of the true pace. Clean-over-clean stays put.
         let lines: Vec<_> = (0..21).map(|i| ev(i as f64 * 20.0, 100)).collect();
         // A lookup in every gap except the first.
@@ -462,7 +461,7 @@ mod tests {
         let bugged = bucket.chars as f64 / (clean_secs / 3600.0);
 
         assert_eq!(raw, 18000.0);
-        assert_eq!(bugged, 378_000.0, "what the old formula produced");
+        assert_eq!(bugged, 378_000.0, "all chars over clean seconds");
         assert!(
             raw < effective * 2.0,
             "raw {raw} must stay in the neighbourhood of effective {effective}"
@@ -483,8 +482,7 @@ mod tests {
         );
         let total_active: f64 = b.iter().map(|x| x.active_secs).sum();
         let total_lookup: f64 = b.iter().map(|x| x.lookup_secs).sum();
-        // Present at 150s, so the credit runs to 180 — the flat cap paid 30 for
-        // the same evidence, throwing away two and a half minutes it could see.
+        // Present at 150s, so the credit runs to 180.
         assert_eq!(total_active, 180.0);
         assert_eq!(total_lookup, 180.0, "the whole credited gap was a lookup");
         assert!(

@@ -2,14 +2,14 @@
 //! the reader was present, and the settings that price it.
 //!
 //! The point is not only the one query. **Pace and presence are properties of
-//! the reader, not of a request** — while each endpoint derived its own, the
-//! dashboard measured pace over all history and the day timeline over one day,
-//! so the same day reported different active minutes depending on the page. One
-//! place decides now, and endpoints can only ask it questions.
+//! the reader, not of a request**: an endpoint that derives its own measures
+//! pace over whatever window it asked about, and the same day then reports
+//! different active minutes depending on the page. One place decides, and
+//! endpoints can only ask it questions.
 //!
-//! Windowed endpoints slice these vectors rather than re-querying, keeping the
-//! padded windows they always used so a session straddling the rollover still
-//! derives against its real neighbours.
+//! Windowed endpoints slice these vectors rather than re-querying, and pad the
+//! window so a session straddling the rollover derives against its real
+//! neighbours.
 
 use std::collections::BTreeMap;
 
@@ -76,7 +76,6 @@ impl History {
         let lookups = db::fetch_lookup_events(&state.knowledge, 0.0, f64::MAX).await?;
 
         let note_ids = db::fetch_anki_note_ids(&state.knowledge).await?;
-        // Note ids are epoch milliseconds, so they double as card creation times.
         let cards: Vec<f64> = note_ids.iter().map(|id| *id as f64 / 1000.0).collect();
         let reader = db::fetch_reader_marks(&state.local, 0.0, f64::MAX).await?;
         let marks = stats::presence_marks(&lookups, &cards, &reader);
@@ -317,7 +316,6 @@ impl History {
     pub fn work_at(&self, ts: f64) -> Option<&str> {
         let gap = self.settings.session_gap_secs;
         let i = self.lines.partition_point(|l| l.ts < ts);
-        // The line before and the line after; whichever is nearer wins.
         let nearest = [i.checked_sub(1), (i < self.lines.len()).then_some(i)]
             .into_iter()
             .flatten()
@@ -340,8 +338,7 @@ impl History {
     /// VN flipping the day.
     ///
     /// Hooked lines only. A logged book or article has no measured duration, so
-    /// it is not in the speed series the marker annotates — naming a day after
-    /// one drew a divider across a line it had not moved.
+    /// it is not in the speed series the marker annotates.
     pub fn dominant_work_days(&self) -> BTreeMap<NaiveDate, String> {
         // Per day, each work's total chars and the latest timestamp it was read at.
         let mut per_day: BTreeMap<NaiveDate, BTreeMap<String, (i64, f64)>> = BTreeMap::new();

@@ -16,9 +16,9 @@ use crate::db;
 
 /// How often the stream checks for new lines — the whole of the pipeline's
 /// controllable latency, since the logger commits the moment Textractor hooks a
-/// line. A poll of N ms costs a uniform 0..N delay, and at 250ms the feed read
-/// as perceptibly behind the voice. 30ms costs ~33 queries/sec per reader, each
-/// an index seek past the end of `lines`; WAL readers don't block the writer.
+/// line. A poll of N ms costs a uniform 0..N delay, and a quarter-second reads
+/// as perceptibly behind the voice. 30ms is ~33 queries/sec per reader, each an
+/// index seek past the end of `lines`; WAL readers don't block the writer.
 const POLL_INTERVAL: Duration = Duration::from_millis(30);
 
 /// How often the capture pipeline's health is republished to the client. The
@@ -297,7 +297,6 @@ struct LineEvent<'a> {
     tokens: Vec<highlight::Span>,
 }
 
-/// One line's spans, or none if there is no highlighter to ask.
 async fn tokens(
     state: &AppState,
     hl: Option<&highlight::Highlighter>,

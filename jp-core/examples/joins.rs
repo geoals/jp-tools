@@ -3,9 +3,8 @@
 //! The tokenizer joins adjacent tokens only when the **master** dictionary
 //! lists the result (`recompose`), so an expression only Jitendex holds —
 //! しびれを切らす, 経年劣化 — is left as its parts. Widening that to "any
-//! dictionary" is the obvious fix and was rejected once already, on measurement:
-//! longest-match against the line froze じゃない, しまった and 分からない into
-//! single ledger rows.
+//! dictionary" is the obvious fix and is wrong: longest-match against the line
+//! freezes じゃない, しまった and 分からない into single ledger rows.
 //!
 //! This runs the *narrow* version of the wider rule over every line read, so the
 //! list can be looked at before anything writes it:
@@ -120,7 +119,7 @@ async fn run() -> Result<(), String> {
             .map_err(|e| e.to_string())?;
     eprintln!("{} lines", lines.len());
 
-    // term -> (occurrences, needed deinflection, the run's parts, in master)
+    // term -> (occurrences, needed deinflection, the run's parts)
     let mut hits: HashMap<String, (usize, bool, String)> = HashMap::new();
     let mut lines_touched = 0usize;
     for text in &lines {

@@ -120,9 +120,9 @@ run)
   WS_PID=$!
   # The logger is waited for, not just signalled: it answers SIGTERM by sending
   # Textractor a proper close frame, and an abortive disconnect crashes
-  # Textractor's WebSocket plugin and takes Textractor with it. Under systemd
-  # the unit's stop timeout covered that; owned by the launcher, this script
-  # exiting is what tears the process group down, so it has to hold the door.
+  # Textractor's WebSocket plugin and takes Textractor with it. As the launcher's
+  # child, this script exiting is what tears the process group down, so the wait
+  # has to happen here rather than being left to a unit's stop timeout.
   trap 'kill $WS_PID $FF_PID 2>/dev/null; wait $WS_PID 2>/dev/null' EXIT TERM INT
 
   # -fflags +bitexact keeps the WAV header at exactly 44 bytes,
@@ -135,7 +135,7 @@ run)
     "$SEGDIR/seg%02d.wav" &
   FF_PID=$!
 
-  # if either child dies, exit so systemd restarts the pair
+  # If either child dies, exit, so whatever supervises this restarts the pair.
   wait -n
   exit 1
   ;;

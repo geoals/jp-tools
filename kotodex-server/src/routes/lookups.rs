@@ -38,7 +38,6 @@ pub async fn lookups_summary(State(state): State<AppState>) -> Result<Json<Value
 
     let (mut mined, mut known, mut unmined) = (0i64, 0i64, 0i64);
     let mut leeches: Vec<&LookupTerm> = Vec::new();
-    // Lookup → card latency, a first read on what mining actually costs.
     let mut mine_lags: Vec<f64> = Vec::new();
 
     for t in &terms {
@@ -63,7 +62,6 @@ pub async fn lookups_summary(State(state): State<AppState>) -> Result<Json<Value
     // known repeat is a card that isn't working.
     let mut repeats: Vec<&LookupTerm> = terms.iter().filter(|t| t.times > 1).collect();
 
-    // Worst first: most re-looked-up, then most recent.
     let by_weight = |a: &&LookupTerm, b: &&LookupTerm| {
         b.times.cmp(&a.times).then(b.last_ts.total_cmp(&a.last_ts))
     };

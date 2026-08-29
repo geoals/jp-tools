@@ -1,11 +1,11 @@
-//! `lines` — the raw hooked line stream, and the four shapes it is read in.
+//! `lines` — the raw hooked line stream, and the shapes it is read in.
 //!
 //! Sources append through `POST /api/lines`; nothing outside this module
 //! writes the table. Nothing is deleted either: a line that shouldn't count
 //! gets `discarded = 1` and every read filters it out.
 //!
-//! Four shapes, because the callers need different columns and fetching them
-//! all would drag every line's text through the per-day aggregates:
+//! One shape per set of columns a caller needs, because fetching them all would
+//! drag every line's text through the per-day aggregates:
 //!
 //! - [`ReaderLine`] — id + text, for the reading view's live feed.
 //! - [`WorkedLine`] / [`crate::stats::LineEvent`] — time + chars, for the
@@ -300,9 +300,8 @@ pub async fn fetch_lines_after(
 /// Every kept line's raw text, oldest first — the input to the kanji pass.
 ///
 /// This is the one read that pulls all the text of all history into memory at
-/// once. It is a few hundred kilobytes and the kanji tab is the only caller;
-/// the derivations that run on every request deliberately use the columns-only
-/// shapes above instead.
+/// once, and the kanji tab is its only caller. The derivations that run on every
+/// request deliberately use the columns-only shapes above instead.
 pub async fn fetch_kanji_lines(k: &Knowledge) -> Result<Vec<crate::stats::KanjiLine>, sqlx::Error> {
     let rows = sqlx::query(
         "SELECT ts, text, work FROM lines

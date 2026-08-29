@@ -19,7 +19,6 @@ pub fn split_sentences(text: &str) -> Vec<String> {
         }
         current.push(c);
         if DELIMITERS.contains(&c) {
-            // Consume runs of delimiters (？？, ！？, ……) and trailing quotes
             while let Some(&next) = chars.peek() {
                 if DELIMITERS.contains(&next) || TRAILERS.contains(&next) {
                     current.push(next);

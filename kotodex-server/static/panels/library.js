@@ -1,9 +1,5 @@
-// What is being read, and the one *action* on the dashboard — logging a
-// session by hand.
-//
-// That action used to be a permanent card in a column of statistics, which is
-// what it isn't: it is behind a button here, and the button lives next to the
-// works it adds a session to.
+// What is being read, and the one action on the dashboard — logging a session by
+// hand, behind a button beside the works it adds a session to.
 //
 // Two levels. The shelf lists the works; opening one replaces the whole tab
 // with that work's page rather than expanding a row in place — everything

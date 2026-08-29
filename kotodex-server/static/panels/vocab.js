@@ -24,11 +24,10 @@ import { TriageView } from "./triage.js";
 
 /** The states a row is displayed in, which are not quite the states it is
  *  stored in. `status` records what the reader asserted, and `new` means only
- *  "never judged" — orthogonal to whether the word was ever met. Almost every
- *  unjudged row *has* been met (2,143 of 2,155 on 2026-07-29), so showing them
- *  all as "new" mislabels the bucket. The stored `new` is therefore split here
- *  against the encounter count, which is a fact the ingest already maintains
- *  and nothing has to assert. */
+ *  "never judged" — orthogonal to whether the word was ever met. Nearly every
+ *  unjudged row *has* been met, so showing them all as "new" mislabels the
+ *  bucket. The stored `new` is therefore split here against the encounter count,
+ *  which is a fact the ingest already maintains and nothing has to assert. */
 const STATES = [
   ["known", "I know this word"],
   ["seen", "met while reading, never judged"],

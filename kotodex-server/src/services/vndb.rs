@@ -161,9 +161,8 @@ pub async fn find_vn_id(client: &reqwest::Client, title: &str) -> Result<Option<
 ///
 /// **Whole is the operative word, and only a Japanese form is split.** VNDB's
 /// aliases are prose as often as names — "Prison guard", "Old man", "Magical
-/// Girl Riruru" — and splitting those on their spaces taught the tokenizer that
-/// guard, man, Old and Girl are somebody. A romanized form is taken as it
-/// stands.
+/// Girl Riruru" — and splitting those on their spaces makes guard, man, Old and
+/// Girl into people. A romanized form is taken as it stands.
 pub async fn fetch_cast(client: &reqwest::Client, vndb_id: &str) -> Result<Vec<String>, AppError> {
     let body = serde_json::json!({
         "filters": ["vn", "=", ["id", "=", vndb_id]],
@@ -217,7 +216,7 @@ pub fn normalize_id(input: &str) -> Option<String> {
     (!digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())).then(|| format!("v{digits}"))
 }
 
-/// One-shot lookup of a VN's cover image URL — the only thing we use VNDB for.
+/// One-shot lookup of a VN's cover image URL.
 pub async fn fetch_cover_url(client: &reqwest::Client, vndb_id: &str) -> Result<String, AppError> {
     let body = serde_json::json!({
         "filters": ["id", "=", vndb_id],

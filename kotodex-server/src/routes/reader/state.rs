@@ -8,7 +8,6 @@ use crate::app::AppState;
 use crate::db;
 use crate::error::AppError;
 
-/// Everything the reader needs on open, in one round trip.
 pub async fn reader_state(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     let settings = db::load_settings(&state.local).await?;
     let caps = super::capabilities::probe(&state).await;

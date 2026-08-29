@@ -1,8 +1,7 @@
 // Vocabulary triage: turn untriaged terms into assertions.
 //
-// The first thing in the workspace that writes `status` at all — everything
-// downstream reduces to a status lookup, so until this has run they all read as
-// "nothing is known".
+// Everything downstream reduces to a status lookup, so until a sweep has run
+// they all read as "nothing is known".
 //
 // The batch defaults to words read *since the last sweep*, so a day or a
 // fortnight of reading produces a short list already ticked. The standing
@@ -55,8 +54,8 @@ const ORDERS = [
 export function TriageView({ minEncounters, onJudged }) {
   const [queue, setQueue] = useState(null);
   const [floor, setFloor] = useState(minEncounters);
-  // The sweep's scoping. On by default: the standing backlog is the exception
-  // now, not the daily loop.
+  // The sweep's scoping. On by default: the standing backlog is the exception,
+  // not the daily loop.
   const [scoped, setScoped] = useState(true);
   // Which end of the same batch gets the page: the words this reading repeats,
   // or the words Japanese repeats. A word met four times that BCCWJ ranks 800th

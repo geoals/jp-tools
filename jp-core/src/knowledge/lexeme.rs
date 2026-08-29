@@ -82,7 +82,7 @@ impl KnownForm {
 ///
 /// The join pins `dictionary_id` and matches on `term`, so it rides
 /// `idx_dictionary_entries_lookup` as a SEARCH. Check `EXPLAIN QUERY PLAN` before
-/// changing it — the shape that scanned held the write lock for six minutes.
+/// changing it — a shape that scans holds the write lock for minutes.
 async fn known_forms(k: &Knowledge) -> Result<Vec<KnownForm>, sqlx::Error> {
     let dict = dictionaries::lexeme_dictionary(k.pool()).await?;
 

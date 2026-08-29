@@ -25,10 +25,8 @@ SOCKET_NAME = APP_ID
 
 
 # No proxy: the server is on this machine. Windows takes its proxy from the system
-# settings, and resolving one cost the first request 1.6 seconds — longer than the
-# probe's own timeout, so every poll timed out and the launcher waited out its
-# whole deadline against a server that was answering. Through the opener it is
-# 0.01s. The same trap the overlay's own checks are built around.
+# settings, and resolving one makes the first request slower than the probe's own
+# timeout, so every poll times out against a server that is answering.
 _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 

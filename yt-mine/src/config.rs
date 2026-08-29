@@ -11,23 +11,18 @@ pub struct Config {
     pub audio_dir: String,
     pub listen_addr: String,
     pub anki_url: String,
-    /// Directory for temporary media files (screenshots, audio clips).
     pub media_dir: String,
     pub anki: AnkiConfig,
-    /// When true, use fake implementations of external tools (yt-dlp, whisper,
-    /// ffmpeg, AnkiConnect) so the server can run without any dependencies.
+    /// Swap every external tool — yt-dlp, whisper, ffmpeg, AnkiConnect — for a
+    /// fake, so the server runs with none of them installed.
     pub fake_api: bool,
-    /// Anthropic API key for LLM-generated definitions. When absent, LLM
-    /// definitions are skipped entirely.
+    /// Absent means cards are exported with no gloss rather than no card.
     pub anthropic_api_key: Option<String>,
-    /// URL of remote whisper-service for transcription.
     pub whisper_service_url: String,
-    /// Path to the Sudachi system dictionary (.dic file).
     pub sudachi_dict_path: PathBuf,
 }
 
 impl Config {
-    /// Load config from environment variables, falling back to defaults.
     pub fn from_env() -> Self {
         Self {
             knowledge_db_path: env::var("KOTODEX_KNOWLEDGE_DB_PATH").unwrap_or_else(|_| {

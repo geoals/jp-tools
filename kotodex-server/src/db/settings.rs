@@ -33,7 +33,7 @@ pub struct Settings {
     pub pace_start_date: String,
     /// Substring of the VN window's title, passed to vn-capture.sh as
     /// VN_WINDOW so it screenshots the VN by id rather than whatever has
-    /// focus. Empty = capture the focused window (the old behaviour).
+    /// focus. Empty = capture the focused window.
     pub vn_window: String,
     /// How many times a word must have been met before triage offers it, and
     /// defaults it to `known`. It can sit this low because the default is only
@@ -50,8 +50,8 @@ pub struct Settings {
     /// ranks it rare. Underlined if either rank passes.
     pub reader_common_max_bccwj_rank: i64,
     /// Capture is suspended: vn-ws-logger.py closes its Textractor WebSocket
-    /// while this is set, so nothing reaches the line stream at all. Stopping
-    /// the source beats the old interval log, which left the raw stream full of
+    /// while this is set, so nothing reaches the line stream at all. Stopping the
+    /// source beats filtering afterwards, which leaves the raw stream full of
     /// text the reader had said was not reading.
     pub capture_paused: bool,
     /// Paint each word with what the ledger says about it. Off means the spans
@@ -100,9 +100,8 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Settings {
-            // 30s ≈ p90 of measured lookup gaps (median 24s, tight cluster to
-            // ~32s): keeps a genuine lookup whole while truncating the tail
-            // where a lookup turned into a distraction.
+            // Long enough to keep a genuine lookup whole, short enough to
+            // truncate the tail where a lookup turned into a distraction.
             afk_secs: 30.0,
             session_gap_secs: 600.0,
             day_rollover_hour: 4,

@@ -49,10 +49,10 @@ function smoothBuckets(buckets, win) {
     }
     const hours = active / 3600;
     const ok = active >= DAY_MIN_ACTIVE_SECS;
-    // Speed on the text itself. Both sides drop together: characters read
-    // across a lookup gap leave the numerator along with their seconds. Keeping
-    // them while removing the seconds is what made a dense lookup burst report
-    // 30k chars/h for reading that was really running at 12k.
+    // Speed on the text itself. Both sides drop together: characters read across
+    // a lookup gap leave the numerator along with their seconds. Keeping the
+    // characters while dropping the seconds reports a dense lookup burst as far
+    // faster reading than it was.
     const textHours = (active - lookup) / 3600;
     // The two speeds have to be rates over the *same* characters, or the tax
     // between them is part accounting artefact. A session's trailing line has
@@ -127,9 +127,6 @@ function tickSpacing(spanSecs) {
 }
 
 /**
- * One day's reading, minute by minute: speed above, lookup and mining rate
- * below, on a shared clock axis.
- *
  * Two panels rather than one overlay: chars/hour runs in the thousands and
  * events/hour in the tens, and where two y-scales line up is a choice, not a
  * fact. Stacked on a shared x-axis, a speed dip and a lookup spike sit in the
@@ -146,7 +143,7 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
   const [overlay, setOverlay] = useState(false);
   // [from, to] in epoch seconds, or null for the whole day.
   const [zoom, setZoom] = useState(null);
-  // The in-progress drag, as {from, to} in seconds; null when not dragging.
+  // The in-progress drag, as {from, to} in epoch seconds.
   const [brush, setBrush] = useState(null);
 
   // Right margin holds the two direct labels on the speed panel.
@@ -542,10 +539,10 @@ export function DayTimelineChart({ buckets, bucketSecs, windowMins }) {
           class="plot-surface"
           onPointerDown=${(e) => {
                 // Capture, so a drag that runs off the plot keeps reporting and
-                // still ends on release. Without it the events stop at the edge,
-                // which made a selection reaching the first or last minute of
-                // the day almost impossible to land — `tsAt` clamps to the
-                // domain, so overshooting the edge now simply means "to the end".
+                // still ends on release. Without it the events stop at the edge
+                // and a selection reaching the first or last minute of the day is
+                // almost impossible to land; `tsAt` clamps to the domain, so
+                // overshooting the edge means "to the end".
                 e.currentTarget.setPointerCapture(e.pointerId);
                 const ts = tsAt(pxAt(e));
                 setBrush({ from: ts, to: ts });

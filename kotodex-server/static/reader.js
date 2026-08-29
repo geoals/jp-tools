@@ -33,11 +33,10 @@ const PAINTED = ["seen", "new", "unknown"];
  *  mark's rectangle, which sits behind the text, so it reads as an underline
  *  under the glyphs rather than a second bar. */
 const UNDERLINE_PX = 3;
-/** How far a mark is held back from its word on each side. Japanese sets
- *  without spaces, so two adjacent marked words have touching rects: a mark
- *  that reached *past* its word overlapped its neighbour and the two read as
- *  one bar, corner radius and all. The inset is what makes the boundary
- *  visible. */
+/** How far a mark is held back from its word on each side. Japanese sets without
+ *  spaces, so two adjacent marked words have touching rects: a mark reaching
+ *  *past* its word overlaps its neighbour, and the two read as one bar, corner
+ *  radius and all. The inset is what makes the boundary visible. */
 const MARK_INSET_PX = 1;
 /** Distance from the bottom that still counts as "following along", so
  *  scrolling up to re-read isn't yanked back by the next line. */
@@ -194,9 +193,9 @@ export function Reader() {
   // pages until there is something to scroll, or there is no more history.
   //
   // While filtering this runs on a budget rather than not at all. Off entirely,
-  // a filtered feed holding one line could not scroll, and the scroll trigger is
-  // the only other way to ask for history, so the view was stuck until the
-  // filter was turned off. `FILTERED_TOPUP_PAGES` bounds the other side.
+  // a filtered feed holding one line cannot scroll, and the scroll trigger is the
+  // only other way to ask for history, so the view would be stuck until the
+  // filter came off. `FILTERED_TOPUP_PAGES` bounds the other side.
   useEffect(() => {
     const el = listRef.current;
     if (!el || loadingHistory || historyExhausted.current) return;
@@ -215,7 +214,7 @@ export function Reader() {
   //
   // Keyed on the id of the newest line on screen, **not** on `lines`: judging a
   // word rebuilds that array without adding to it, so keyed on `lines` every tap
-  // re-pinned and took the word out from under the finger. Prepended history is
+  // re-pins and takes the word out from under the finger. Prepended history is
   // excluded by the same key; `loadMoreHistory` restores the position itself.
   const newestVisibleId = visible.length ? visible[visible.length - 1].id : 0;
   useEffect(() => {
@@ -261,10 +260,10 @@ export function Reader() {
   // Put the reader's place back after a page of history lands on top, by holding
   // one *line* still rather than summing heights.
   //
-  // A height sum ran one frame after the prepend, a render too early under the
-  // filter: `keptIds` had not admitted the new lines, the delta was zero, and
-  // `scrollTop` stayed at 0. Pinned at the very top a browser fires no scroll
-  // event, so the trigger for the next page could never run again.
+  // A height sum runs one frame after the prepend, which is a render too early
+  // under the filter: `keptIds` has not admitted the new lines yet, so the delta
+  // is zero and `scrollTop` stays at 0. Pinned at the very top a browser fires no
+  // scroll event, so the trigger for the next page can never run again.
   //
   // An anchor line has no deadline. It keys on `keptIds` as well as `lines` and
   // re-baselines, so it corrects on whichever render actually moves the line.
@@ -289,15 +288,14 @@ export function Reader() {
 
   /** Ask for a repaint, at most one per frame.
    *
-   *  The opening batch arrives as one SSE event per line, so 200 lines are 200
-   *  renders, and painting measures every marked word on screen with its own
-   *  `Range` + `getClientRects` — a forced layout each. Painting per render is
-   *  quadratic in the batch, and now that almost every word is unjudged almost
-   *  every token is measured rather than skipped as known.
+   *  The opening batch arrives as one SSE event per line, so a page of history is
+   *  a render per line, and painting measures every marked word on screen with its
+   *  own `Range` + `getClientRects` — a forced layout each. Painting per render is
+   *  quadratic in the batch, and with most words unjudged most tokens are measured
+   *  rather than skipped as known.
    *
-   *  Still flash-free: a rAF callback runs before the frame it was scheduled
-   *  for is painted, so the marks land with the text, which is what the layout
-   *  effect below was for. */
+   *  Still flash-free: a rAF callback runs before the frame it was scheduled for
+   *  is painted, so the marks land with the text. */
   const paintPending = useRef(false);
   const requestPaint = useCallback(() => {
     if (paintPending.current) return;
@@ -321,11 +319,11 @@ export function Reader() {
   // and a frame with text drawn but unmarked flashes on every line.
   //
   // **Depends on `keptIds`, not only `lines`.** `visible` derives from it and it
-  // settles a render later: on a filtered backscroll the prepended page grew
-  // `lines` and repainted against the old `keptIds`, then admitting those lines
-  // pushed everything on screen down with nothing in the dependency list
-  // changed. Marks sat a page-height off their words until an unrelated repaint
-  // corrected them.
+  // settles a render later: on a filtered backscroll a prepended page grows
+  // `lines` and repaints against the old `keptIds`, and admitting those lines then
+  // pushes everything on screen down with nothing in the dependency list changed.
+  // Without it the marks sit a page-height off their words until some unrelated
+  // repaint corrects them.
   useLayoutEffect(requestPaint, [
     lines,
     keptIds,

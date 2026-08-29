@@ -178,9 +178,7 @@ pub async fn update_note_fields(
 /// `updateNoteFields` answering `{"result": null, "error": null}` means Anki
 /// accepted the request, *not* that the note still holds the value afterwards.
 /// If the note is open in Anki's editor, the editor's own save writes its
-/// in-memory copy over anything AnkiConnect changed in the meantime — observed
-/// on a card whose CompactDef arrived four seconds after the mine, while the
-/// note was open.
+/// in-memory copy over anything AnkiConnect changed in the meantime.
 ///
 /// Writing a second time is deliberately not attempted: the editor would still
 /// be open a second later and would clobber that too, so the retry would buy
@@ -395,11 +393,10 @@ pub struct CardStat {
     /// anything about — a new card has never been asked.
     pub card_type: i64,
     /// Last modification, epoch seconds — the fallback cutoff for a card with
-    /// no review log. **Not a stand-in for the last review**: it was tried, and
-    /// on this collection something bulk-touched every card at once, which put
-    /// 2,196 of 2,256 cards at the same "reviewed 9 days ago". `mod` moves on
-    /// anything Anki does to a card, so [`fetch_deck_reviews`] is the real
-    /// answer and this is only what is left when the log has nothing.
+    /// no review log. **Not a stand-in for the last review**: `mod` moves on
+    /// anything Anki does to a card, so one bulk edit makes a whole collection
+    /// look reviewed on the same day. [`fetch_deck_reviews`] is the real answer
+    /// and this is only what is left when the log has nothing.
     pub modified: f64,
 }
 
@@ -460,9 +457,9 @@ pub async fn fetch_deck_cards(
 /// The last time each card in the deck was actually reviewed, epoch seconds.
 ///
 /// One call for the whole deck: `cardReviews` answers with every review row
-/// since `startID`, and the rows are `[review time ms, card id, ...]`. The
-/// whole log is ~20k rows and comes back in well under a second, so it is not
-/// worth paging by date — and a per-card window would need the log anyway.
+/// since `startID`, and the rows are `[review time ms, card id, ...]`. A deck's
+/// whole log comes back in well under a second, so it is not worth paging by
+/// date — and a per-card window would need the log anyway.
 pub async fn fetch_deck_reviews(
     client: &reqwest::Client,
     url: &str,
@@ -518,10 +515,8 @@ mod tests {
             urls,
             vec!["http://192.168.1.7:8765", "http://localhost:8765"]
         );
-        // loopback client collapses into the fallback alone
         let urls = candidate_urls(Some("127.0.0.1".parse().unwrap()), "http://localhost:8765");
         assert_eq!(urls, vec!["http://localhost:8765"]);
-        // client that IS the fallback isn't probed twice
         let urls = candidate_urls(
             Some("192.168.1.7".parse().unwrap()),
             "http://192.168.1.7:8765",

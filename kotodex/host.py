@@ -12,7 +12,8 @@ nothing else; reading what a platform does means reading one file.
 - `start_dictionary_sync` `jp-dict sync`, started beside the components and
   waited for by nothing
 - `stop_port`    stop whatever is listening on a port, whoever started it
-- `run_doctor`   show the doctor, or `False` when this platform has none
+- `run_doctor` / `doctor_command`  show the doctor, or `False`/`None` when this
+  platform has none
 - `attach_console` make a CLI verb's output visible to whoever ran it
 - `apply_identity` what makes the taskbar and tray show Kotodex rather than the
   interpreter

@@ -66,11 +66,11 @@ pub async fn of_work(k: &Knowledge, work: &str) -> Result<Vec<String>, sqlx::Err
 
 /// The source a dropped name is filed under.
 ///
-/// VNDB credits a character as 看守 and the script says 看守 to mean a prison
-/// guard, 230 times. The frequency veto cannot reach it — the word is 24,066th
-/// in fiction, which is rare enough that a rarer name would be believable — so
-/// the judgement has to be recorded. A row rather than a delete, because a
-/// refetch rewrites the whole `vndb` source and would put it straight back.
+/// VNDB credits a character as 看守 while the script says 看守 to mean a prison
+/// guard. The frequency veto cannot reach it — the word is 24,066th in fiction,
+/// rare enough that a name would be believable — so the judgement has to be
+/// recorded. A row rather than a delete, because a refetch rewrites the whole
+/// `vndb` source and would put it straight back.
 pub const EXCLUDED: &str = "excluded";
 
 /// Every work's names at once, for the tokenizer.
@@ -79,8 +79,8 @@ pub const EXCLUDED: &str = "excluded";
 /// hold a per-work set. The union is what it gets. That is safe in a way the
 /// same union would not be if these were guessed: each row is a name someone
 /// published for a real character, and the cost of treating one as a name in a
-/// work whose text meant the ordinary word is one term, against 2,385
-/// fabricated sightings from splitting it.
+/// work whose text meant the ordinary word is a single term, against a name split
+/// into halves that are both counted on every line it appears in.
 pub async fn all(k: &Knowledge) -> Result<Vec<String>, sqlx::Error> {
     let rows = sqlx::query(
         "SELECT DISTINCT name FROM work_names WHERE name NOT IN \
