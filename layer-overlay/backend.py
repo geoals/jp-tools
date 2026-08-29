@@ -114,6 +114,11 @@ def choose() -> tuple[str, str]:
 def apply_environment(backend: str) -> None:
     """Set what Qt reads at construction time. Must run before QGuiApplication.
 
+    Where stderr is not a console Qt logs through the debugger instead, which on
+    Windows is every run the launcher has redirected — so the page's console
+    output and every uncaught error in it go nowhere. Forcing stderr is what puts
+    them in the log the caller is already collecting.
+
     On a native Wayland surface Qt accepts `WindowStaysOnTopHint` and silently
     does nothing with it, so the X11 backend has to ask for the xcb plugin
     rather than inherit the session's default.
@@ -124,6 +129,7 @@ def apply_environment(backend: str) -> None:
     page's own translucent backdrop arrives as solid black, and an overlay that
     is supposed to show the window underneath instead hides it completely.
     """
+    os.environ.setdefault("QT_FORCE_STDERR_LOGGING", "1")
     if backend == WINDOWS:
         # Nothing: there is one platform plugin, it is the default, and a
         # layered window keeps the page's alpha without asking Chromium for a
