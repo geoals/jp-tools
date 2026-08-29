@@ -161,6 +161,14 @@ export function createPopup(opts) {
     onLayout();
   }
 
+  /** Take the speaker button away again: there is a source but no sound. */
+  function hideAudio() {
+    clip = null;
+    if (!audioButton) return;
+    audioButton.hidden = true;
+    onLayout();
+  }
+
   /** Find this word's audio and arm the speaker button with the first clip.
    *
    * The audio server ranks its own sources — NHK before 新明解 before Forvo —
@@ -182,8 +190,16 @@ export function createPopup(opts) {
     }
     if (target !== on || !audioButton || !sources?.length) return;
     const [first] = sources;
-    clip = new Audio(api.audioClip(first.clip));
+    const playing = new Audio(api.audioClip(first.clip));
+    clip = playing;
     clip.preload = "auto";
+    // A source list is not a playable clip: the server can name a file it can
+    // no longer serve, and a button that answers a press with nothing is worse
+    // than no button. Only while this is still the clip the button plays — a
+    // later word's failure is not this one's.
+    playing.addEventListener("error", () => {
+      if (clip === playing) hideAudio();
+    });
     audioButton.title = `Play — ${first.name}`;
     audioButton.hidden = false;
     onLayout();
@@ -419,7 +435,7 @@ export function createPopup(opts) {
       // From the top every time: the second press means "again", and a clip
       // played to its end would otherwise sit at the end and play nothing.
       clip.currentTime = 0;
-      clip.play().catch(() => {});
+      clip.play().catch(hideAudio);
     });
     out.append(audioButton);
 

@@ -62,6 +62,7 @@ Roles, not titles: any dictionary answers the wordhood gate, `standard` and
 | part | gives | without it | turn it on |
 |---|---|---|---|
 | Anki + AnkiConnect on `127.0.0.1:8765` | mining at all | the mine control is not drawn; reading and lookups are unaffected | install Anki, add the AnkiConnect add-on, leave Anki running |
+| Local Audio Server add-on | the speaker button in the popup, and the word recording on the card | no speaker button; the card has no word audio | install the Local Audio Server add-on in Anki |
 | the note type and its fields | a card that renders | mining errors out per card | `kotodex anki check` reports what is missing and can create Lapis |
 | screenshot tool (`spectacle`, `grim`, `gnome-screenshot`) | the still on the card | card without a picture | `pkg install spectacle` (KDE) / `grim` (wlroots) |
 | `xdotool` + `import` | screenshots the *game* window rather than the focused one | falls back to the focused window, which may be the browser | `pkg install xdotool imagemagick` |

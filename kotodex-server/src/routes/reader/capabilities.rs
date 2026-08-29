@@ -344,6 +344,26 @@ async fn whisper(state: &AppState) -> Capability {
     }
 }
 
+/// The Local Audio Server add-on, which is what puts the speaker button in the
+/// popup and the word recording on a mined card.
+///
+/// Asked for a word it certainly has, because the server answers an unknown one
+/// with an empty list and a 200 — so a reachable server and a word with no
+/// recording look the same from here, and only a word it must know separates
+/// them.
+async fn local_audio(state: &AppState) -> Capability {
+    let sources = crate::services::audio::sources(state, "日本", "にほん").await;
+    if sources.is_empty() {
+        off(
+            "not answering",
+            "no word audio. Install the Local Audio Server add-on in Anki and \
+             leave Anki running.",
+        )
+    } else {
+        on("reachable")
+    }
+}
+
 async fn anki(state: &AppState) -> (Capability, Capability) {
     let body = json!({ "action": "modelNames", "version": 6 });
     let resp = state
@@ -522,6 +542,7 @@ async fn probe_now(state: &AppState) -> Value {
         "whisper": whisper(state).await,
         "anki": anki_up,
         "anki_note_type": note_type,
+        "local_audio": local_audio(state).await,
         "explain": explain(state).await,
         "vocabulary_ledger": vocabulary_ledger(state, read).await,
     });

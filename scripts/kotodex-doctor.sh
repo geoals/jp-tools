@@ -199,6 +199,7 @@ cap dict_pitch "pitch"
 section "Anki"
 cap anki "AnkiConnect"
 cap anki_note_type "note type"
+cap local_audio "word audio"
 reading_here && cap screenshot_tool "screenshot tool"
 
 if reading_here; then

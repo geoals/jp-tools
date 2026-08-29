@@ -16,9 +16,9 @@ Anki card with the character's voice on it.
 - **Marks what you know** on the text as you read it.
 - **Draws the line over the game.** A layer surface above a fullscreen window,
   click-through everywhere it has not drawn, following the game as it moves.
-- **Mines a card with the voiceline.** A ring buffer is always recording, so the
-  clip comes from audio that already happened; silero-VAD trims it to the spoken
-  line and a screenshot goes on the card.
+- **Mines a card with the voiceline** (Linux only). A ring buffer is always
+  recording, so the clip comes from audio that already happened; silero-VAD trims
+  it to the spoken line and a screenshot goes on the card.
 
 The log is the product and reading a VN here is one way to feed it. Text arrives
 through one endpoint, `POST /api/lines`, so whatever captures it can be another

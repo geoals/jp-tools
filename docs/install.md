@@ -70,8 +70,10 @@ It is re-runnable, and takes `--dry-run`, `--yes` and `--uninstall`.
   pitch accent, two frequency ranks, one dictionary at a time.
 - **Scrollback**, paged back through the session with the same lookups and the
   same session dividers the dashboard draws.
-- **Cards with the voiceline.** A ring buffer is always recording, silero-VAD
-  trims the clip, and a screenshot of the game goes on the card.
+- **Cards with the voiceline** (Linux only). A ring buffer is always recording,
+  silero-VAD trims the clip, and a screenshot of the game goes on the card. On
+  Windows a card gets the sentence, the definition and the frequency without
+  them.
 - **The reading tracker** behind it: characters, hours, lookups and the size of
   your vocabulary over time, on a dashboard at `http://127.0.0.1:3200`.
 - **Two line sources**, a Textractor WebSocket at a configurable address or the
