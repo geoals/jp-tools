@@ -34,8 +34,7 @@ when a new panel reads data it has none of.
 
 ## Where it runs
 
-TrueNAS, as a Dockge stack in
-`/mnt/ssd-pool/apps/dockge/stacks/kotodex/`:
+A Docker stack on the NAS, in `<stacks>/kotodex/`:
 
 ```
 build/kotodex-<version>-linux-x86_64.tar.gz   the release, unpacked into the image
@@ -51,7 +50,7 @@ come from the DNS challenge — an HTTP one is answered by the edge:
 
 ```
 kotodex.com       root * /srv/kotodex, file_server   (site/index.html)
-demo.kotodex.com  reverse_proxy 192.168.0.8:3299
+demo.kotodex.com  reverse_proxy <nas>:3299
 ```
 
 ## Deploying a new release
