@@ -52,6 +52,24 @@ fi
 # running demo alone.
 mv "$TMP/kotodex.tar.gz" "$TARBALL"
 
+# This directory is a copy of demo/ in the repository, and for a long time only
+# the tarball was refreshed in it. A release that changed the entrypoint or the
+# compose file left the demo running against the old ones until it broke.
+#
+# Taken at the deployed tag, so they match the binary rather than whatever
+# master happens to say. Anything edited here by hand is overwritten - the
+# repository is where a change to them belongs.
+for f in Dockerfile compose.yaml entrypoint.sh; do
+  curl -fsSL -o "$TMP/$f" \
+    "https://raw.githubusercontent.com/$REPO/$tag/demo/$f" \
+    || die "could not fetch demo/$f at $tag"
+done
+# Moved only once all three are down, so a failure part way through does not
+# leave the stack half updated.
+for f in Dockerfile compose.yaml entrypoint.sh; do
+  mv "$TMP/$f" "$STACK/$f"
+done
+
 cd "$STACK"
 docker compose build || die "compose build failed"
 docker compose up -d || die "compose up failed"
