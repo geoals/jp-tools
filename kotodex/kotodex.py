@@ -25,6 +25,7 @@ import signal
 import subprocess
 import sys
 import time
+import webbrowser
 from pathlib import Path
 
 import config
@@ -43,6 +44,11 @@ if (host.ROOT / "kotodex-server" / "static").is_dir():
 # own boot is already spent. Every launcher log line is stamped against it, which
 # is what makes a slow start readable next to the overlay's own timings.
 STARTED = time.monotonic()
+
+# How long the setup probe waits for the server to answer before giving up. A
+# cold start with a dictionary import in front of it takes a while, and opening
+# nothing is better than opening a page that cannot load.
+SETUP_PROBE_SECS = 60
 
 # Restart a child this many times before giving up and saying which one.
 MAX_RESTARTS = 3
@@ -352,6 +358,33 @@ def main() -> int:
 
     instance.on_message(on_message)
     tray.restart_here = restart_here
+
+    # A fresh install has nothing to read yet, and the only place that says what
+    # is missing is the dashboard — which nothing on this path opens. Polled
+    # rather than asked once: the server is still booting when the launcher gets
+    # here, and the answer before it answers is "not known".
+    #
+    # `#setup` and not the root, because the root's gate is the same page one
+    # click further away for a reader who has never seen either.
+    setup_poll = {"until": time.monotonic() + SETUP_PROBE_SECS}
+
+    def probe_setup():
+        # The port first: this runs on the Qt thread, and the probe's own request
+        # would sit out its timeout on every tick while the server is still
+        # booting.
+        blocked = config.setup_blocked() if config.kotodex_server_up() else None
+        if blocked is None:
+            if time.monotonic() < setup_poll["until"]:
+                return
+            log("setup probe: no answer, not opening the dashboard")
+        elif blocked:
+            log("setup is blocking — opening the dashboard")
+            webbrowser.open(f"{config.SERVER_URL}/#setup")
+        setup_probe.stop()
+
+    setup_probe = QTimer()
+    setup_probe.timeout.connect(probe_setup)
+    setup_probe.start(1500)
 
     def tick():
         if time.time() < restarting["until"]:

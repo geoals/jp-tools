@@ -5,6 +5,7 @@ Its own module because the entry script cannot be imported: under PyInstaller
 there — and on Linux it silently runs a second copy of it.
 """
 
+import json
 import os
 import socket
 import urllib.error
@@ -57,3 +58,25 @@ def kotodex_server_up() -> bool:
             return r.status == 200
     except (urllib.error.URLError, OSError):
         return False
+
+
+def setup_blocked() -> bool | None:
+    """Whether the server says a part reading needs is missing.
+
+    `None` when it cannot be asked — not yet up, or the probe failed. The caller
+    is polling, so "not known yet" and "nothing missing" have to be different
+    answers.
+
+    The probe is the server's, never the launcher's: `/api/setup` is the one
+    place that decides what blocks, and a second opinion here would be a rule to
+    keep in step with it.
+    """
+    try:
+        with _OPENER.open(f"{SERVER_URL}/api/setup", timeout=5) as r:
+            caps = json.load(r)
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+    return any(
+        isinstance(c, dict) and c.get("blocking") and not c.get("ok")
+        for c in caps.values()
+    )
