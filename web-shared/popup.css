@@ -308,6 +308,7 @@
 .jp-popup a {
   color: var(--link);
   text-decoration: none;
+  cursor: pointer;
 }
 
 /* The dictionaries bring their own numbering; the list markers would be a

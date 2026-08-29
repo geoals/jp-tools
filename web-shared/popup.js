@@ -92,7 +92,10 @@ export function createPopup(opts) {
     // when there is another match to offer, and that answer has to be in
     // before the popup can know whether to draw it. An empty list is the
     // common case and draws nothing.
-    const matches = fetch(api.expand(scanText(target)))
+    // A cross-reference carries its own scan text: the word it names is not
+    // in the line, so slicing the line from `start` would offer the chips of
+    // whatever was clicked first.
+    const matches = fetch(api.expand(target.scan ?? scanText(target)))
       .then((r) => r.json())
       .catch(() => []);
 
@@ -246,6 +249,9 @@ export function createPopup(opts) {
         // attribute, so the stylesheet keys its rules on this.
         body.dataset.dict = source.slug;
         body.replaceChildren(list);
+        // On the body rather than each link: paging replaces the list, and the
+        // links are inside markup the dictionary wrote.
+        body.onclick = followLink;
         // Paging swaps in a definition of a different height, and the host
         // placed this one against the last one's. `isConnected` skips the
         // build: the first call runs before the popup is in the document.
@@ -276,6 +282,60 @@ export function createPopup(opts) {
     }
 
     return out;
+  }
+
+  /** Follow a dictionary's own link.
+   *
+   * Yomitan writes cross-references as ordinary links — `?query=<term>`, with
+   * `primary_reading` where the spelling has several — and Sankoku and
+   * Jitendex are both full of them. Neither surface may navigate: one is a
+   * layer over a game and the other a page with a video on it. So a
+   * cross-reference re-opens the popup on that word, and a link out goes to a
+   * tab of its own.
+   */
+  async function followLink(e) {
+    const link = e.target.closest("a[href]");
+    if (!link) return;
+    const href = link.getAttribute("href");
+    e.preventDefault();
+    if (!href.startsWith("?")) {
+      window.open(href, "_blank", "noopener");
+      return;
+    }
+    const params = new URLSearchParams(href.slice(1));
+    const term = params.get("query");
+    if (!term) return;
+    show(anchor, await linkTarget(term, params.get("primary_reading") ?? ""));
+  }
+
+  /** What the ledger calls the word a link names.
+   *
+   * A dictionary headword is text from outside the tokenizer, so judging or
+   * mining it on the raw string would write a row that reads as never
+   * encountered. The expansion scan already answers this — key and status for
+   * a spelling — so the link asks it about its own term. With no answer the
+   * word keys on itself, which is what a lookup with no ledger row is anyway.
+   */
+  async function linkTarget(term, reading) {
+    const from = { surface: term, scan: term, start: target?.start };
+    try {
+      const res = await fetch(api.expand(term));
+      const found = await res.json();
+      const hit =
+        found.find((e) => e.term === term && e.reading === reading) ??
+        found.find((e) => e.term === term);
+      if (hit)
+        return {
+          ...from,
+          term: hit.term,
+          key: hit.key,
+          reading: hit.reading,
+          status: hit.status,
+        };
+    } catch {
+      // The scan is an extra here, never the answer.
+    }
+    return { ...from, term, key: term, reading, status: "new" };
   }
 
   /** "That is not the word here" — the escape hatch Yomitan gave for free.
