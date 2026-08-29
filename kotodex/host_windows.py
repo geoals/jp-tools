@@ -30,7 +30,6 @@ ICON = ROOT / "kotodex" / "icons" / "kotodex.ico"
 
 SERVER_EXE = ROOT / "target" / "release" / "kotodex-server.exe"
 DICT_EXE = ROOT / "target" / "release" / "jp-dict.exe"
-# Beside the launcher: the three share one directory, and so one copy of Qt.
 SOURCE_EXE = ROOT / "app" / "kotodex-source.exe"
 OVERLAY_EXE = ROOT / "app" / "kotodex-overlay.exe"
 

@@ -1,19 +1,4 @@
 # -*- mode: python ; coding: utf-8 -*-
-# The three Python components, packaged into .exes that share one copy of Qt.
-#
-# Run by build-installer.ps1; not meant to be run by hand.
-#
-# One spec rather than three PyInstaller runs because all three are PySide6
-# applications and Qt is most of what they weigh. Three runs give three trees,
-# and an .exe finds its `_internal` beside itself, so the launcher's copy of
-# Qt6Core/Gui/Widgets cannot simply be deleted afterwards - three `Analysis`
-# objects feeding one `COLLECT` is what makes the three .exes share a directory.
-#
-# `base_library.zip` is the one file the three do not each get their own of.
-# COLLECT takes whichever it sees first, which is safe only because its contents
-# are Python's own bootstrap module set, fixed by the interpreter version rather
-# than by the application. If a future PyInstaller makes it per-application, all
-# three .exes would need testing again.
 
 import os
 
@@ -32,9 +17,6 @@ overlay = Analysis(
         (at('layer-overlay', 'Overlay.qml'), '.'),
         (at('layer-overlay', 'OverlayWindow.qml'), '.'),
     ],
-    # Imported behind `if BACKEND == backend.WINDOWS`, which PyInstaller's static
-    # analysis does see - named anyway, because losing either is a crash on the
-    # first line rather than a build error.
     hiddenimports=['winfocus', 'wininput', 'winwatch'],
 )
 
@@ -48,17 +30,6 @@ launcher = Analysis(
 
 # --------------------------------------------------------------------- prune --
 
-# Qt modules nothing here imports. Dropped from the table before COLLECT rather
-# than deleted after it, so they are never copied at all.
-#
-# Safe because none of them is a load-time dependency of the sixteen Qt DLLs the
-# three applications do pull in: Qt loads each of these through a QML or plugin
-# import, so what is gone is only unreachable, never a missing symbol at startup.
-# Check that again before adding a name - `objdump -p` over the wheel is how the
-# list was drawn.
-#
-# The QtQuick.Controls family stays, unused as it looks: QtWebEngine's own QML
-# delegates import it to draw a context menu and a file picker.
 DROP_DLL = (
     'Qt63D', 'Qt6Bluetooth', 'Qt6CanvasPainter', 'Qt6Charts', 'Qt6DataVisualization',
     'Qt6Designer', 'Qt6Graphs', 'Qt6Help', 'Qt6HttpServer', 'Qt6Location', 'Qt6Lottie',
@@ -79,18 +50,9 @@ DROP_PLUGIN = (
     'multimedia', 'texttospeech', 'position', 'sensors', 'sqldrivers',
     'virtualkeyboard', 'designer', 'webview', 'qmltooling', 'printsupport',
 )
-
-# Qt ships Chromium's resource archives twice, once built for debug. Only remote
-# debugging reads the debug set, and the overlay exposes no port for it.
 DROP_SUFFIX = ('.debug.pak', '.debug.bin')
 
-# Qt's own dialog strings, in every language Qt ships. The page is Japanese and
-# English and supplies its own text; what is left here is the language of a file
-# picker nothing opens.
 KEEP_QM = ('en', 'ja')
-# Chromium names its own by full locale, so this needs its own list. en-US rather
-# than en-GB or any other: it is Chromium's fallback, and without it an English
-# machine has no locale it can load.
 KEEP_LOCALE = ('en-US', 'ja')
 
 
@@ -99,12 +61,8 @@ def wanted(entry):
     name = dest.rsplit('/', 1)[-1]
     if name.endswith(DROP_SUFFIX):
         return False
-    # Matched with the `lib` prefix off, so the one list covers `Qt6Charts.dll` and
-    # `libQt6Charts.so.6` alike. Only Windows ships this, but a spec that filters
-    # nothing on Linux cannot be checked anywhere but in CI.
     if name.removeprefix('lib').startswith(DROP_DLL):
         return False
-    # Only remote debugging reads these, and the overlay opens no port for it.
     if name.startswith('qtwebengine_devtools_resources'):
         return False
     parts = dest.split('/')
@@ -131,14 +89,6 @@ def keep(*tables):
 
 # ------------------------------------------------------------------ package --
 
-# --windowed for the overlay and the launcher: one draws its own window, the other
-# is a tray and nothing else.
-#
-# The source gets a console. A process without one receives no CTRL_C_EVENT or
-# CTRL_BREAK_EVENT at all, and that event is its only warning that it is being
-# shut down - it needs one to send Textractor's WebSocket plugin a proper close
-# frame, which is what keeps an abortive disconnect from crashing Textractor
-# itself. The launcher hides the window.
 exes = [
     EXE(PYZ(overlay.pure, overlay.zipped_data), overlay.scripts, [],
         exclude_binaries=True, name='kotodex-overlay', console=False, icon=ICON),

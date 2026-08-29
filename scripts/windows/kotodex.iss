@@ -47,9 +47,6 @@ UninstallDisplayIcon={app}\kotodex\icons\kotodex.ico
 ; importable. Nothing else under {app} is touched, so the dictionaries and
 ; system_full.dic survive and setup.ps1 skips its download.
 Type: filesandordirs; Name: "{app}\app"
-; The three separate trees an older version installed, each with its own copy of
-; Qt. Nothing writes these now, and left behind they are a few hundred stale MB
-; that the uninstaller no longer knows about.
 Type: filesandordirs; Name: "{app}\overlay"
 Type: filesandordirs; Name: "{app}\source"
 Type: filesandordirs; Name: "{app}\launcher"
@@ -76,8 +73,8 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 ; uninstaller has to know about them.
 Filename: "powershell.exe"; \
     Parameters: "-ExecutionPolicy Bypass -File ""{app}\setup.ps1"" -NoShortcut"; \
-    WorkingDir: "{app}"; StatusMsg: "Downloading dictionaries (about 175 MB, once)..."; \
-    Flags: waituntilterminated runhidden
+    WorkingDir: "{app}"; StatusMsg: "Downloading dictionaries (about 175 MB, once) - see the window behind this one..."; \
+    Flags: waituntilterminated
 Filename: "{app}\app\kotodex.exe"; \
     WorkingDir: "{app}"; Description: "Start Kotodex"; Flags: postinstall nowait skipifsilent
 

@@ -1,15 +1,5 @@
 name: cache-warm
 
-# Fill the Rust build cache on master, so a release can read it.
-#
-# GitHub scopes a cache by the ref that wrote it: a run may read its own scope and
-# the default branch, and nothing else. Releases are tag pushes, so a cache a
-# release writes is one only that tag could read. Only a run on master leaves one
-# the next tag will find, which is why this workflow exists at all.
-#
-# `shared-key` rather than rust-cache's default, which appends the job id: the key
-# has to match release.yml's, and the two jobs cannot share a name.
-
 on:
   push:
     branches: [master]
@@ -19,12 +9,13 @@ on:
       - "Cargo.lock"
   workflow_dispatch:
 
+concurrency:
+  group: cache-warm
+  cancel-in-progress: true
+
 jobs:
   linux:
     runs-on: ubuntu-latest
-    # The same container release.yml builds in. The cache key covers the rustc
-    # version, so a cache warmed against the runner's own toolchain would not
-    # match the one the release uses.
     container: rust:1-bookworm
     steps:
       - uses: actions/checkout@v4
