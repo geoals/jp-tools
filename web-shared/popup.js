@@ -151,7 +151,12 @@ export function createPopup(opts) {
     minedBadge.hidden = false;
     minedBadge.classList.add("to-card");
     minedBadge.title = "Open this card in Anki";
-    minedBadge.onclick = () => api.browse(noteId);
+    // Closes with it: the card is the answer, and it opens in Anki — leaving
+    // the popup standing over a word the reader has finished with.
+    minedBadge.onclick = () => {
+      api.browse(noteId);
+      close();
+    };
     if (addButton) addButton.hidden = true;
     onLayout();
   }

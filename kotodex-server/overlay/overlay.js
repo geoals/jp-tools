@@ -887,6 +887,12 @@ explainBtnEl.addEventListener("click", explainLine);
 // handler that closes the popup, and must not reach the VN either.
 explainBoxEl.addEventListener("click", (e) => e.stopPropagation());
 
+// The bar is not the popup's surface, so pressing a button on it is done with
+// the open word. The line above is what stops the document handler doing this,
+// and the buttons' own handlers have already run by the time this does — which
+// is what leaves `explainLine` the anchor it takes its focus from.
+buttonsEl.addEventListener("click", () => closePopup());
+
 // Reading it is what it is for, so it stays until dismissed — and a click
 // anywhere on it dismisses, rather than a ✕ to aim at over a game.
 explainPanelEl.addEventListener("click", hideExplain);
