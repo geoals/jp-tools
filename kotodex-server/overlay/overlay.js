@@ -425,6 +425,7 @@ function renderLine(row) {
       // No frequency dictionary means no answer to "is this word common", so
       // nothing is underlined rather than everything reading as rare.
       const common =
+        type.markCommon &&
         can("dict_frequency") &&
         (underRank(span.freq_rank, commonRanks.freq) ||
           underRank(span.bccwj_rank, commonRanks.bccwj)) &&
@@ -1368,6 +1369,9 @@ const TYPE_DEFAULTS = {
   markNew: true,
   markSeen: true,
   markUnknown: true,
+  // An underline sits on the line itself rather than behind it, so it is the one
+  // mark that competes with the game's own typesetting. Off until asked for.
+  markCommon: false,
 };
 
 const TYPE_VARS = {
@@ -1400,6 +1404,7 @@ const CONTROLS = {
   markNew: { id: "set-mark-new", check: true, repaints: true },
   markSeen: { id: "set-mark-seen", check: true, repaints: true },
   markUnknown: { id: "set-mark-unknown", check: true, repaints: true },
+  markCommon: { id: "set-mark-common", check: true, repaints: true },
 };
 
 let type = { ...TYPE_DEFAULTS };
