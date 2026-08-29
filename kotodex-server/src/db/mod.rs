@@ -50,7 +50,8 @@ pub mod word_days;
 pub mod works;
 
 pub use anki_notes::{
-    AnkiNote, fetch_anki_note_ids, fetch_anki_notes, insert_anki_note, replace_anki_notes,
+    AnkiNote, any_anki_note, fetch_anki_note_ids, fetch_anki_notes, insert_anki_note,
+    replace_anki_notes,
 };
 pub use books::{Book, fetch_book, fetch_books, fetch_text as fetch_book_text, insert_book};
 pub use covers::{clear_work_cover_vndb, fetch_work_covers, set_work_cover_vndb};

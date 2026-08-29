@@ -101,3 +101,14 @@ pub async fn fetch_anki_note_ids(k: &Knowledge) -> Result<Vec<i64>, sqlx::Error>
         .await?;
     Ok(rows.iter().map(|r| r.get("note_id")).collect())
 }
+
+/// Whether any card has ever been mined into the mirror.
+///
+/// What tells a surface that mining is part of this install: Anki is optional,
+/// and a reader who does not mine must not be told their Anki is down.
+pub async fn any_anki_note(k: &Knowledge) -> Result<bool, sqlx::Error> {
+    let row = sqlx::query("SELECT EXISTS(SELECT 1 FROM anki_notes) AS present")
+        .fetch_one(k.pool())
+        .await?;
+    Ok(row.get::<i64, _>("present") != 0)
+}

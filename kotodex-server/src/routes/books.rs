@@ -88,9 +88,7 @@ pub async fn upload_book(
         return Err(AppError::BadRequest("a title is required".into()));
     }
     if db::fetch_book(&state.knowledge, title).await?.is_some() {
-        return Err(AppError::BadRequest(format!(
-            "{title} already has an epub"
-        )));
+        return Err(AppError::BadRequest(format!("{title} already has an epub")));
     }
     let text = jp_core::epub::flatten(&body)
         .map_err(|e| AppError::BadRequest(format!("could not read the epub: {e}")))?;

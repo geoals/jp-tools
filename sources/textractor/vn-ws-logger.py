@@ -805,24 +805,63 @@ async def watch_pause(ws, stats):
         return
 
 
-def clipboard_reader():
-    """A command that prints the clipboard, or None when nothing can.
+def _win_clipboard_text():
+    """The Windows clipboard's Unicode text, or None.
 
-    wl-paste first: it is the one that works on a Wayland session, which
-    includes reading an XWayland game. `-n` because a trailing newline is not
-    part of what was copied and would make every line look changed.
+    ctypes rather than a command: there is no clipboard tool on the machine to
+    call, and spawning PowerShell four times a second to read one string is not
+    a poll, it is a load. `CF_UNICODETEXT` (13) is what a VN's clipboard hooker
+    writes.
     """
+    import ctypes
+    from ctypes import wintypes
+
+    user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+    CF_UNICODETEXT = 13
+    if not user32.IsClipboardFormatAvailable(CF_UNICODETEXT):
+        return None
+    # The clipboard is one shared resource: the game's hooker is opening it too,
+    # so a failed open is ordinary contention and the next poll gets the line.
+    if not user32.OpenClipboard(None):
+        return None
+    try:
+        handle = user32.GetClipboardData(CF_UNICODETEXT)
+        if not handle:
+            return None
+        kernel32.GlobalLock.restype = ctypes.c_void_p
+        ptr = kernel32.GlobalLock(ctypes.c_void_p(handle))
+        if not ptr:
+            return None
+        try:
+            return ctypes.c_wchar_p(ptr).value or None
+        finally:
+            kernel32.GlobalUnlock(ctypes.c_void_p(handle))
+    finally:
+        user32.CloseClipboard()
+
+
+def clipboard_reader():
+    """How the clipboard is read here, or None when nothing can read it.
+
+    A `(name, callable)` pair. Windows reads it in-process; elsewhere it is a
+    command, wl-paste first because it is the one that works on a Wayland
+    session, which includes reading an XWayland game. `-n` because a trailing
+    newline is not part of what was copied and would make every line look
+    changed.
+    """
+    if sys.platform == "win32":
+        return ("the Windows clipboard", _win_clipboard_text)
     for cmd in (
         ["wl-paste", "-n", "--no-newline"],
         ["xclip", "-o", "-selection", "clipboard"],
         ["xsel", "-b", "-o"],
     ):
         if shutil.which(cmd[0]):
-            return cmd
+            return (cmd[0], lambda cmd=cmd: _command_clipboard_text(cmd))
     return None
 
 
-def read_clipboard(cmd):
+def _command_clipboard_text(cmd):
     """The clipboard's text, or None when it holds nothing readable.
 
     An empty clipboard, an image, or a selection owner that has gone away all
@@ -839,6 +878,13 @@ def read_clipboard(cmd):
     return text or None
 
 
+def read_clipboard(reader):
+    try:
+        return reader()
+    except Exception:
+        return None
+
+
 async def pump_clipboard(out, stats, state, last):
     """Poll the clipboard for as long as it is the chosen source.
 
@@ -846,12 +892,13 @@ async def pump_clipboard(out, stats, state, last):
     value, never a line: a switch to this source would otherwise log the last
     thing the reader copied hours ago, and so would every restart.
     """
-    cmd = clipboard_reader()
-    if cmd is None:
+    chosen = clipboard_reader()
+    if chosen is None:
         log("no clipboard tool — install wl-clipboard (Wayland) or xclip (X11)")
         await asyncio.sleep(RECONNECT_SECS)
         return last
-    log(f"watching the clipboard with {cmd[0]}")
+    name, cmd = chosen
+    log(f"watching the clipboard with {name}")
     seen = read_clipboard(cmd)
     state["ws"] = True
     try:

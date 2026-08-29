@@ -85,9 +85,14 @@ pub async fn anki_refresh(
 /// Its own endpoint rather than a field on the reader's status event, because
 /// the probe waits out its timeout whenever nothing answers and that event
 /// shares a loop with the line feed.
+///
+/// `mining_used` says whether this install mines at all. Anki is optional, so a
+/// surface that would warn about it asks this first: a reader who has never
+/// mined a card is not missing anything.
 pub async fn anki_up(State(state): State<AppState>) -> Json<Value> {
     let up = crate::services::anki::reachable(&state.http, &state.anki_url).await;
-    Json(json!({ "up": up }))
+    let mining_used = db::any_anki_note(&state.knowledge).await.unwrap_or(false);
+    Json(json!({ "up": up, "mining_used": mining_used }))
 }
 
 /// `GET /api/anki/cards` — every mined card against what the reading knows.

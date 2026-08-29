@@ -2173,10 +2173,15 @@ const ANKI_POLL_MS = 20_000;
 
 async function checkAnki() {
   try {
-    const { up } = await (await fetch("/api/anki/up")).json();
+    const { up, mining_used } = await (await fetch("/api/anki/up")).json();
+    // Silent on an install that has never mined a card: Anki is optional, and a
+    // standing fault for a part the reader has not asked for is what teaches
+    // them to ignore the box. A mine that fails still says so, once.
     setFault(
       "anki",
-      up ? "" : "no Anki — start it with the AnkiConnect add-on; required for mining",
+      up || !mining_used
+        ? ""
+        : "no Anki — start it with the AnkiConnect add-on; required for mining",
     );
   } catch {
     // kotodex-server itself did not answer, which says nothing about Anki. The

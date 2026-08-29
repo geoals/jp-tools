@@ -106,7 +106,11 @@ pub async fn put_llm_key(
     if key.is_empty() {
         // Clearing the row does not clear the environment, and the fallback in
         // `services::llm` means a key still answers after it.
-        let detail = if state.env_api_key.as_deref().is_some_and(|k| !k.trim().is_empty()) {
+        let detail = if state
+            .env_api_key
+            .as_deref()
+            .is_some_and(|k| !k.trim().is_empty())
+        {
             "stored key removed — KOTODEX_ANTHROPIC_API_KEY answers again"
         } else {
             "key cleared"

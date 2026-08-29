@@ -206,12 +206,21 @@ async fn lines_source(state: &AppState, fresh_install: bool) -> Capability {
     // Linux would be advice nobody can take. What is true everywhere is that some
     // source has to post to the endpoint.
     #[cfg(not(unix))]
-    return off(
-        format!("{}, no producer", settings.line_source),
-        "nothing is hooking the game's text. Set up Textractor with its \
-         WebSocket extension.",
-    )
-    .blocking(fresh_install);
+    return match settings.line_source.as_str() {
+        "clipboard" => off(
+            "clipboard, no producer",
+            "nothing is copying text. Start Kotodex, and set the game's \
+             clipboard hooker copying.",
+        )
+        .blocking(fresh_install),
+        _ => off(
+            "ws, no producer",
+            "nothing is hooking the game's text. Set up Textractor with its \
+             WebSocket extension, or switch the line source to the clipboard \
+             in Settings.",
+        )
+        .blocking(fresh_install),
+    };
     #[cfg(unix)]
     match settings.line_source.as_str() {
         "clipboard" => off(
@@ -235,10 +244,7 @@ fn vad_model() -> Capability {
     if path.is_file() {
         on(path.display().to_string())
     } else {
-        off(
-            "not downloaded",
-            "run the installer again to download it.",
-        )
+        off("not downloaded", "run the installer again to download it.")
     }
 }
 
