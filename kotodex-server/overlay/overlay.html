@@ -129,16 +129,23 @@
      keeps the first glyph exactly where it was measured to sit. */
   #box {
     position: absolute;
+    /* #line's padding, and the one number four other rules are written
+       against: the insets above pull it back, the aligned width adds it to
+       both sides, and a quoted line restates it to hang the bracket. One
+       source, so a line opening on 「 keeps the left edge of one that does
+       not. */
+    --pad-x: 0.98rem;
+    --pad-y: 0.63rem;
     /* The insets shrink as the type grows: a line drawn much larger than the
        game's own would wrap inside a column sized for the game's. */
-    left: calc(22.7vw / var(--scale) - 0.98rem);
+    left: calc(22.7vw / var(--scale) - var(--pad-x));
     right: calc(23vw / var(--scale));
     bottom: 0;
     height: var(--strip);
     display: flex;
     align-items: flex-start;
     box-sizing: border-box;
-    padding: 4.05rem 0 0;
+    padding: calc(4.68rem - var(--pad-y)) 0 0;
     font-family: var(--line-font);
     font-size: calc(clamp(1.35rem, calc(1.82vw * var(--scale)), 2.25rem) * var(--line-scale));
     /* Tuned against the game's own line spacing, which the strip sits over. */
@@ -165,19 +172,17 @@
      scales with the type — which leaves the first glyph exactly where
      `--text-x` puts it. */
   html[data-aligned] #box {
-    left: calc(var(--game-x) + var(--text-x) * var(--game-w) - 0.44em);
-    top: calc(var(--game-y) + var(--text-y) * var(--game-h) - 0.28em);
+    --pad-x: 0.44em;
+    --pad-y: 0.28em;
+    left: calc(var(--game-x) + var(--text-x) * var(--game-w) - var(--pad-x));
+    top: calc(var(--game-y) + var(--text-y) * var(--game-h) - var(--pad-y));
     right: auto;
     bottom: auto;
     /* 1em per CJK glyph plus #line's `letter-spacing`, then #line's padding. */
-    width: calc(var(--text-chars) * (1em + var(--line-tracking)) + 0.88em);
+    width: calc(var(--text-chars) * (1em + var(--line-tracking)) + var(--pad-x) * 2);
     height: auto;
     padding: 0;
     font-size: calc(var(--text-size) * var(--game-h) * var(--line-scale));
-  }
-
-  html[data-aligned] #line {
-    padding: 0.28em 0.44em;
   }
 
   /* Ghost: the game's own text is what is read, and the overlay adds only the
@@ -244,7 +249,7 @@
     max-height: 100%;
     overflow-y: auto;
     scrollbar-width: none;
-    padding: 0.63rem 0.98rem;
+    padding: var(--pad-y) var(--pad-x);
     border-radius: 10px;
     background: var(--backdrop);
     /* The game's font is a touch wider per character at the same size, so the
@@ -344,11 +349,8 @@
      after a break — the game's own, or a wrap — are indented. One character is
      1em *plus* the letter spacing, which is the bracket's whole advance. */
   #line.quoted {
-    padding-left: calc(0.7rem + 1em + var(--line-tracking));
+    padding-left: calc(var(--pad-x) + 1em + var(--line-tracking));
     text-indent: calc(-1em - var(--line-tracking));
-  }
-  html[data-aligned] #line.quoted {
-    padding-left: calc(0.311em + 1em + var(--line-tracking));
   }
 
   /* Furigana the game drew with the line. `line-height: 1` on the reading keeps
