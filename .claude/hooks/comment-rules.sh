@@ -1,21 +1,58 @@
 #!/usr/bin/env bash
-# PostToolUse on Edit/Write: when the written text contains comment lines, hand
-# the comment rules back to the model so it re-reads what it just wrote.
+# PostToolUse on Edit/Write: reject the edit when it adds a comment line to a
+# source file. Blocked by default; `touch .claude/allow-comments` unlocks the
+# next edit only, so writing a comment is a visible, deliberate act.
 set -uo pipefail
 
-text="$(jq -r '[.tool_input.new_string, .tool_input.content] | map(select(type == "string")) | join("\n")' 2>/dev/null)"
-[ -n "$text" ] || exit 0
+input="$(cat)"
+q() { jq -r "$1 // \"\"" <<<"$input"; }
 
-printf '%s\n' "$text" | grep -Eq '^[[:space:]]*(#|//|///|/\*|\*|--|<!--)' || exit 0
+path="$(q '.tool_input.file_path')"
+[ -n "$path" ] || exit 0
 
-history_words=""
-if printf '%s\n' "$text" | grep -Ein '^[[:space:]]*(#|//|///|/\*|\*|--).*(used to|previously|no longer|instead of|now [a-z]+s|which is why we changed|rather than before)' >/dev/null; then
-  history_words="One of them reads as history or as an argument for the change. "
+case "$path" in
+*/.claude/*) exit 0 ;;
+*.rs | *.js | *.jsx | *.mjs | *.ts | *.py | *.css | *.sh | *.html | *.toml | *.yml | *.yaml | *.sql) ;;
+*) exit 0 ;;
+esac
+
+allow="${CLAUDE_PROJECT_DIR:-.}/.claude/allow-comments"
+if [ -e "$allow" ]; then
+  rm -f "$allow"
+  exit 0
 fi
 
-jq -n --arg extra "$history_words" '{
-  hookSpecificOutput: {
-    hookEventName: "PostToolUse",
-    additionalContext: ($extra + "You just wrote comment lines. Re-read each one against CLAUDE.md: never restate what the code says; comment only a non-obvious why (a workaround, an ordering that matters, a constraint from elsewhere, an obvious-looking alternative that is wrong); state what is true, never how the code got here — no history, no measurements. Delete any line that fails. Do not reply about this check.")
-  }
-}'
+comments() {
+  printf '%s\n' "$1" |
+    grep -E '^[[:space:]]*(//|#|/\*|\*|--|<!--)' |
+    grep -Ev '^[[:space:]]*#!' |
+    sed 's/^[[:space:]]*//' |
+    sort -u
+}
+
+new="$(q '.tool_input.new_string')"
+[ -n "$new" ] || new="$(q '.tool_input.content')"
+[ -n "$new" ] || exit 0
+
+old="$(q '.tool_input.old_string')"
+if [ -z "$old" ] && [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
+  rel="${path#"$CLAUDE_PROJECT_DIR"/}"
+  old="$(git -C "$CLAUDE_PROJECT_DIR" show "HEAD:$rel" 2>/dev/null)"
+fi
+
+added="$(comm -23 <(comments "$new") <(comments "$old"))"
+[ -n "$added" ] || exit 0
+
+{
+  echo "Blocked: this edit adds comment lines to $path."
+  echo
+  printf '%s\n' "$added" | sed 's/^/    /'
+  echo
+  echo "CLAUDE.md: write no comments. Not a why comment, not a one-liner above a"
+  echo "default, not a doc comment on a new field. Redo the edit without them —"
+  echo "the explanation belongs in the commit message or in your answer."
+  echo
+  echo "If the user explicitly asked for a comment, run"
+  echo "\`touch .claude/allow-comments\` first; it unlocks one edit and is deleted."
+} >&2
+exit 2

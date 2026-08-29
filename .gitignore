@@ -24,3 +24,6 @@ setup-server.log*
 
 # A stray sidecar from a tool given ":memory:" as a database path
 :memory:*
+
+# The one-shot unlock for the comment hook, if a session died holding it
+.claude/allow-comments
