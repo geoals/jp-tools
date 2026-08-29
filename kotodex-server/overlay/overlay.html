@@ -131,14 +131,14 @@
     position: absolute;
     /* The insets shrink as the type grows: a line drawn much larger than the
        game's own would wrap inside a column sized for the game's. */
-    left: calc(22.7vw / var(--scale) - 0.7rem);
+    left: calc(22.7vw / var(--scale) - 0.98rem);
     right: calc(23vw / var(--scale));
     bottom: 0;
     height: var(--strip);
     display: flex;
     align-items: flex-start;
     box-sizing: border-box;
-    padding: 4.23rem 0 0;
+    padding: 4.05rem 0 0;
     font-family: var(--line-font);
     font-size: calc(clamp(1.35rem, calc(1.82vw * var(--scale)), 2.25rem) * var(--line-scale));
     /* Tuned against the game's own line spacing, which the strip sits over. */
@@ -165,19 +165,19 @@
      scales with the type — which leaves the first glyph exactly where
      `--text-x` puts it. */
   html[data-aligned] #box {
-    left: calc(var(--game-x) + var(--text-x) * var(--game-w) - 0.311em);
-    top: calc(var(--game-y) + var(--text-y) * var(--game-h) - 0.2em);
+    left: calc(var(--game-x) + var(--text-x) * var(--game-w) - 0.44em);
+    top: calc(var(--game-y) + var(--text-y) * var(--game-h) - 0.28em);
     right: auto;
     bottom: auto;
     /* 1em per CJK glyph plus #line's `letter-spacing`, then #line's padding. */
-    width: calc(var(--text-chars) * (1em + var(--line-tracking)) + 0.622em);
+    width: calc(var(--text-chars) * (1em + var(--line-tracking)) + 0.88em);
     height: auto;
     padding: 0;
     font-size: calc(var(--text-size) * var(--game-h) * var(--line-scale));
   }
 
   html[data-aligned] #line {
-    padding: 0.2em 0.311em;
+    padding: 0.28em 0.44em;
   }
 
   /* Ghost: the game's own text is what is read, and the overlay adds only the
@@ -244,17 +244,96 @@
     max-height: 100%;
     overflow-y: auto;
     scrollbar-width: none;
-    padding: 0.45rem 0.7rem;
+    padding: 0.63rem 0.98rem;
     border-radius: 10px;
     background: var(--backdrop);
     /* The game's font is a touch wider per character at the same size, so the
        overlaid line drifts left of it across a long line. The default makes up
        the difference; the cogwheel moves it from there. */
     letter-spacing: var(--line-tracking);
+    /* The backdrop is what the line is dragged by — the words on it are click
+       targets of their own — so the padding around them has to say so. */
+    cursor: grab;
+  }
+  #line.moving,
+  #line.moving .w {
+    cursor: grabbing;
   }
   /* The backdrop is on #line, so an empty one is a padding-sized dark square
      sitting over the game. */
   #line:empty {
+    display: none;
+  }
+
+  /* Drag to set the type size. One per corner, placed by placeGrip() onto the
+     line's own corners rather than the strip's, and *inside* them: the hit
+     region is measured off the line, so a grip hanging past it would take no
+     clicks. Hidden until the pointer is over the line — this sits on artwork. */
+  .size-grip {
+    position: absolute;
+    width: 13px;
+    height: 13px;
+    color: hsl(0 0% 100% / 45%);
+    opacity: 0;
+    transition: opacity 120ms;
+  }
+  /* An arrow along the diagonal, pointing out of the corner it sits in — the
+     direction that grows the type. Drawn as a head and a stem rather than a
+     glyph: this has to line up with a corner at any size, and a font's own
+     arrow sits wherever its metrics put it.
+
+     One arrow is drawn, pointing up and left, and each corner turns it. */
+  .size-grip::before,
+  .size-grip::after {
+    content: "";
+    position: absolute;
+    background: currentColor;
+  }
+  .size-grip::before {
+    top: 1px;
+    left: 1px;
+    width: 6px;
+    height: 6px;
+    background: none;
+    border-top: 2px solid currentColor;
+    border-left: 2px solid currentColor;
+  }
+  .size-grip::after {
+    top: 2px;
+    left: 2px;
+    width: 2px;
+    height: 11px;
+    border-radius: 1px;
+    transform-origin: top left;
+    transform: rotate(-45deg);
+  }
+  .size-grip[data-corner="tl"] {
+    cursor: nwse-resize;
+  }
+  .size-grip[data-corner="tr"] {
+    cursor: nesw-resize;
+    transform: rotate(90deg);
+  }
+  .size-grip[data-corner="bl"] {
+    cursor: nesw-resize;
+    transform: rotate(-90deg);
+  }
+  .size-grip[data-corner="br"] {
+    cursor: nwse-resize;
+    transform: rotate(180deg);
+  }
+  /* All four while one is dragged: the line grows under the pointer and the
+     grip being held moves with it. */
+  #box:hover .size-grip,
+  .size-grip.on {
+    opacity: 1;
+  }
+  .size-grip:hover,
+  .size-grip.on {
+    color: hsl(0 0% 100%);
+  }
+  #line:empty ~ .size-grip,
+  html[data-ghost] .size-grip {
     display: none;
   }
 
@@ -986,7 +1065,7 @@
   }
 </style>
 
-<div id="box"><div id="line"></div></div>
+<div id="box"><div id="line"></div><div class="size-grip" data-corner="tl"></div><div class="size-grip" data-corner="tr"></div><div class="size-grip" data-corner="bl"></div><div class="size-grip" data-corner="br"></div></div>
 <div id="popup" class="jp-popup" hidden></div>
 <div id="explain-box">
   <div id="bar">

@@ -522,6 +522,16 @@ function onWordWheel(e) {
 // layer-shell, anchored to all four screen edges, and has no position to set.
 // The input region follows because it is measured off the box.
 const boxEl = document.getElementById("box");
+const gripEls = [...document.getElementsByClassName("size-grip")];
+// Which way each corner sits, as `[down, right]`. Dragging a corner away from
+// the line is what grows the type, so a top grip counts a drag upwards as bigger
+// — the same gesture as a window's own corners.
+const CORNERS = {
+  tl: [false, false],
+  tr: [false, true],
+  bl: [true, false],
+  br: [true, true],
+};
 // Per layout: the two start from different places in the strip, so one stored
 // drag would carry the mobile line off the bottom edge it is pinned to.
 const PLACE = `vn-overlay-offset${mobile ? "-mobile" : ""}`;
@@ -594,7 +604,26 @@ function apply() {
   applied = clampPx(offsetPx());
   boxEl.style.setProperty("--dx", `${applied.x}px`);
   boxEl.style.setProperty("--dy", `${applied.y}px`);
+  placeGrip();
   report();
+}
+
+/** The resize grip, in the line's own bottom-right corner.
+ *
+ * Positioned here rather than in CSS because #line is `width: fit-content`
+ * inside a strip that is not: the corner it has to sit on is wherever the text
+ * happened to end. Held a little inside that corner so it stays within the hit
+ * region, which is measured off the line. */
+function placeGrip() {
+  const line = lineEl.getBoundingClientRect();
+  const box = boxEl.getBoundingClientRect();
+  for (const grip of gripEls) {
+    const [down, right] = CORNERS[grip.dataset.corner];
+    const x = right ? line.right - box.left - 15 : line.left - box.left + 2;
+    const y = down ? line.bottom - box.top - 15 : line.top - box.top + 2;
+    grip.style.left = `${x}px`;
+    grip.style.top = `${y}px`;
+  }
 }
 
 // The surface is resized under the page: it is the game's window, and the game
@@ -609,16 +638,116 @@ window.addEventListener("resize", () => {
   if (popup.anchor()) place(popup.anchor());
 });
 
+// Resizing the type by dragging it, which writes `scale` — the same setting the
+// panel's slider does, so the two agree and the readout follows the drag.
+//
+// Two ways in: the grip, and shift held anywhere on the line. The slider's own
+// bounds, because a drag past them is a value the panel could not show.
+const SCALE_MIN = 0.6;
+const SCALE_MAX = 2;
+let sizing = null;
+
+/** One corner of a rectangle, named the way `CORNERS` names it. */
+function cornerAt(rect, [down, right]) {
+  return { x: right ? rect.right : rect.left, y: down ? rect.bottom : rect.top };
+}
+
+function beginSize(e, el, corner) {
+  const rect = lineEl.getBoundingClientRect();
+  const [down, right] = corner;
+  const opposite = cornerAt(rect, [!down, !right]);
+  // The gesture runs along the box's own diagonal, so a drag has to be measured
+  // along it rather than down the screen: how far the pointer has gone *out
+  // from the opposite corner*, as a fraction of the diagonal, is how much
+  // bigger the box should be. The direction and the length are both taken once,
+  // from the box as it was grabbed — measuring them again each move would feed
+  // the box's new size back into the gesture driving it.
+  const diagonal = Math.hypot(rect.width, rect.height) || 1;
+  sizing = {
+    id: e.pointerId,
+    x: e.clientX,
+    y: e.clientY,
+    from: type.scale,
+    opposite,
+    hold: [!down, !right],
+    ux: ((right ? 1 : -1) * rect.width) / diagonal,
+    uy: ((down ? 1 : -1) * rect.height) / diagonal,
+    diagonal,
+  };
+  el.setPointerCapture(e.pointerId);
+  for (const grip of gripEls) grip.classList.add("on");
+}
+
+function sizeTo(e) {
+  const along =
+    (e.clientX - sizing.x) * sizing.ux + (e.clientY - sizing.y) * sizing.uy;
+  // Multiplicative: a drag that adds a fixed step per pixel races at small
+  // sizes and barely moves at large ones.
+  const next = sizing.from * (1 + along / sizing.diagonal);
+  const held = Math.min(SCALE_MAX, Math.max(SCALE_MIN, next));
+  type = { ...type, scale: Math.round(held * 100) / 100 };
+  applyType();
+  // The corner opposite the one being dragged is the fixed point, the way any
+  // resize handle works. Nothing in the CSS holds it: the line is placed by its
+  // first glyph, so growing the type walks every other corner away. Putting it
+  // back is a correction to the same drag offset the move gesture writes.
+  const now = cornerAt(lineEl.getBoundingClientRect(), sizing.hold);
+  const at = offsetPx();
+  moveTo(at.x + sizing.opposite.x - now.x, at.y + sizing.opposite.y - now.y);
+  // Placed off the line box, which is growing out from under it.
+  if (popup.anchor()) place(popup.anchor());
+}
+
+function endSize(e, el) {
+  el.releasePointerCapture(e.pointerId);
+  for (const grip of gripEls) grip.classList.remove("on");
+  sizing = null;
+  // The re-anchoring above moved the box, which is the same stored placement
+  // the move drag writes.
+  if (game) localStorage.setItem(ALIGNED_PLACE, JSON.stringify(alignedOffset));
+  else localStorage.setItem(PLACE, JSON.stringify(offset));
+  // The click that ends a drag is not a click on the overlay.
+  document.addEventListener("click", (c) => c.stopPropagation(), { capture: true, once: true });
+}
+
+for (const grip of gripEls) {
+  grip.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    // The grip sits inside the line, so the move drag would start under it.
+    e.stopPropagation();
+    beginSize(e, grip, CORNERS[grip.dataset.corner]);
+  });
+
+  grip.addEventListener("pointermove", (e) => {
+    if (sizing && e.pointerId === sizing.id) sizeTo(e);
+  });
+
+  for (const event of ["pointerup", "pointercancel"]) {
+    grip.addEventListener(event, (e) => {
+      if (sizing && e.pointerId === sizing.id) endSize(e, grip);
+    });
+  }
+}
+
 lineEl.addEventListener("pointerdown", (e) => {
-  if (e.button !== 0 || e.target.closest(".w")) return;
+  if (e.button !== 0) return;
+  // Shift takes the words as well as the gaps between them: a line is mostly
+  // words, and the move drag's own grab area is too little to resize from.
+  if (e.shiftKey) {
+    beginSize(e, lineEl, CORNERS.br);
+    return;
+  }
+  if (e.target.closest(".w")) return;
   // Grab from wherever the box currently sits, which aligned to the game is
   // the fraction scaled up — not the free-floating offset, which is then zero.
   const at = offsetPx();
   drag = { id: e.pointerId, x: e.clientX - at.x, y: e.clientY - at.y, moved: false };
   lineEl.setPointerCapture(e.pointerId);
+  lineEl.classList.add("moving");
 });
 
 lineEl.addEventListener("pointermove", (e) => {
+  if (sizing && e.pointerId === sizing.id) return sizeTo(e);
   if (!drag || e.pointerId !== drag.id) return;
   drag.moved = true;
   moveTo(e.clientX - drag.x, e.clientY - drag.y);
@@ -629,8 +758,10 @@ lineEl.addEventListener("pointermove", (e) => {
 
 for (const type of ["pointerup", "pointercancel"]) {
   lineEl.addEventListener(type, (e) => {
+    if (sizing && e.pointerId === sizing.id) return endSize(e, lineEl);
     if (!drag || e.pointerId !== drag.id) return;
     lineEl.releasePointerCapture(e.pointerId);
+    lineEl.classList.remove("moving");
     // The click that ends a drag is not a click on the overlay — without this
     // it reaches the document handler and closes the open popup.
     if (drag.moved) document.addEventListener("click", (c) => c.stopPropagation(), { capture: true, once: true });
@@ -1361,6 +1492,11 @@ settingsBtnEl.addEventListener("click", () => {
 });
 
 applyType();
+// The placement was clamped, and the grips placed, against a line still drawn at
+// the default size — the stored type settings land here, several hundred lines
+// later. Both are measured off the line, so both have to be taken again once it
+// is the size it will actually be.
+apply();
 
 // The two settings kotodex-server owns, written back as they are changed: `#read`
 // underlines by the same rank and paints by the same flag, and a switch that
@@ -1845,7 +1981,10 @@ function report() {
 // Anything that moves either box without going through `report` itself: the web
 // font landing, a long line wrapping, a definition arriving and growing the
 // popup upwards.
-const watch = new ResizeObserver(report);
+const watch = new ResizeObserver(() => {
+  placeGrip();
+  report();
+});
 watch.observe(lineEl);
 watch.observe(popupEl);
 watch.observe(explainBoxEl);
