@@ -29,6 +29,7 @@ top of everything regardless.
 
 import ctypes
 import os
+import sys
 from ctypes import wintypes
 
 SW_HIDE = 0
@@ -110,7 +111,8 @@ class FocusGate:
     def _title(self, window: int) -> str:
         text = ctypes.create_unicode_buffer(256)
         self._user32.GetWindowTextW(window, text, len(text))
-        return text.value
+        encoding = getattr(sys.stdout, "encoding", None) or "ascii"
+        return text.value.encode(encoding, "replace").decode(encoding, "replace")
 
     def _show(self, visible: bool, why: str) -> None:
         if visible == self._visible:
