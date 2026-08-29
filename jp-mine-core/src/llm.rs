@@ -361,13 +361,12 @@ fn frame(kind: Kind, line: &[u8]) -> Option<Frame> {
     let json: Value = serde_json::from_str(payload).ok()?;
     let (text, cut_off) = match kind {
         Kind::Anthropic => {
-            let text = if json["type"] == "content_block_delta"
-                && json["delta"]["type"] == "text_delta"
-            {
-                json["delta"]["text"].as_str().unwrap_or_default()
-            } else {
-                ""
-            };
+            let text =
+                if json["type"] == "content_block_delta" && json["delta"]["type"] == "text_delta" {
+                    json["delta"]["text"].as_str().unwrap_or_default()
+                } else {
+                    ""
+                };
             (text, json["delta"]["stop_reason"] == "max_tokens")
         }
         Kind::OpenAi => (

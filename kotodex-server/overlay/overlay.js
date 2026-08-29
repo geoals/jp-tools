@@ -1611,7 +1611,7 @@ function showServerSettings() {
   wsUrlEl.disabled = lineSource !== "ws";
   sourceNoteEl.textContent =
     lineSource === "clipboard"
-      ? "Anything copied is treated as a line, including text copied for a lookup. Needs wl-clipboard or xclip."
+      ? "Anything copied is treated as a line, including text copied for a lookup."
       : "Textractor's WebSocket plugin. The port is the one set in Textractor.";
   showLlmSettings();
 }

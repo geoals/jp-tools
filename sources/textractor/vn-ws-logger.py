@@ -817,6 +817,8 @@ def _win_clipboard_text():
 
     user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
     CF_UNICODETEXT = 13
+    user32.GetClipboardData.argtypes = [wintypes.UINT]
+    user32.GetClipboardData.restype = wintypes.HANDLE
     if not user32.IsClipboardFormatAvailable(CF_UNICODETEXT):
         return None
     # The clipboard is one shared resource: the game's hooker is opening it too,
