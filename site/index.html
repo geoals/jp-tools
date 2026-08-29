@@ -55,20 +55,23 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.mark {
-  font-family: "Noto Sans JP", Inter, sans-serif;
-  font-weight: 700;
-  font-size: 14px;
-  letter-spacing: 0.18em;
-  color: var(--muted);
-  margin: 0;
-}
+.title { display: flex; flex-direction: column; }
 
 h1 {
-  margin: 8px 0 0;
+  margin: 2px 0 0;
+  font-family: "Noto Sans JP", Inter, sans-serif;
   font-size: clamp(36px, 8vw, 56px);
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: 0.04em;
+}
+
+.mark {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .tagline {
@@ -93,10 +96,7 @@ h1 {
   font-size: 15px;
   text-decoration: none;
   border: 1px solid transparent;
-  transition: transform 0.12s ease;
 }
-
-.btn:hover { transform: translateY(-1px); }
 
 .btn-primary {
   background: var(--accent);
@@ -110,9 +110,63 @@ h1 {
   border-color: var(--border-strong);
 }
 
+.downloads {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  max-width: 29rem;
+}
+
+.download {
+  display: inline-flex;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.download:hover { border-color: var(--accent); }
+
+.command {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.command:hover { border-color: var(--accent); }
+.command code { flex: 1; overflow-x: auto; white-space: nowrap; }
+.command .meta {
+  flex: none;
+  color: var(--muted);
+  font-family: Inter, sans-serif;
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .note {
   margin: 0;
-  max-width: 30rem;
   font-size: 13.5px;
   color: var(--muted);
 }
@@ -120,22 +174,49 @@ h1 {
 </head>
 <body>
 
-<p class="mark">コトデックス</p>
-<h1>Kotodex</h1>
+<div class="title">
+  <p class="mark">Kotodex</p>
+  <h1>コトデックス</h1>
+</div>
 
-<p class="tagline">
-  Read a Japanese visual novel with the line, its dictionary and your own
-  vocabulary history drawn over the game — fullscreen included — and mine a card
-  with the character&rsquo;s voice on it in one click.
-</p>
+<!-- The description goes here. -->
+<p class="tagline">A reading log for Japanese.</p>
+
+<div class="downloads">
+  <a class="download" id="win" href="https://github.com/geoals/kotodex/releases/latest">
+    Download for Windows 64-bit
+  </a>
+  <button class="command" id="copy" type="button" title="Copy the install command">
+    <code>curl -fsSL https://kotodex.com/install.sh | sh</code>
+    <span class="meta" id="copy-state">Linux</span>
+  </button>
+</div>
 
 <div class="actions">
   <a class="btn btn-primary" href="https://demo.kotodex.com">Try the demo</a>
   <a class="btn btn-secondary" href="https://github.com/geoals/kotodex">GitHub</a>
 </div>
 
-<p class="note">Linux only. The demo is the dashboard on someone else&rsquo;s
-reading history, read-only.</p>
+<script>
+const copy = document.getElementById('copy');
+const state = document.getElementById('copy-state');
+copy.addEventListener('click', async () => {
+  await navigator.clipboard.writeText(copy.querySelector('code').textContent);
+  state.textContent = 'copied';
+  setTimeout(() => { state.textContent = 'Linux'; }, 1600);
+});
+
+// The Windows asset carries the version in its name, so there is no stable
+// /releases/latest/download/ URL. Unresolved, the tag stays on the releases
+// page, which is one extra click rather than a dead link.
+fetch('https://api.github.com/repos/geoals/kotodex/releases/latest')
+  .then(r => r.ok ? r.json() : Promise.reject(r.status))
+  .then(release => {
+    const exe = release.assets.find(a => a.name.endsWith('-setup.exe'));
+    if (exe) document.getElementById('win').href = exe.browser_download_url;
+  })
+  .catch(() => {});
+</script>
 
 </body>
 </html>
