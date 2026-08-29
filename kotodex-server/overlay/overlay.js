@@ -1369,8 +1369,6 @@ const TYPE_DEFAULTS = {
   markNew: true,
   markSeen: true,
   markUnknown: true,
-  // An underline sits on the line itself rather than behind it, so it is the one
-  // mark that competes with the game's own typesetting. Off until asked for.
   markCommon: false,
 };
 
