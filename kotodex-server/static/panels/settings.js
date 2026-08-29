@@ -46,7 +46,7 @@ const FIELDS = [
     unit: "minutes",
     step: 5,
     min: 5,
-    hint: “”,
+    hint: "Minutes a day that count as meeting the goal.",
   },
   {
     group: "Goal",
