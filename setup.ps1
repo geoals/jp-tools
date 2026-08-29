@@ -223,14 +223,14 @@ if ($zips.Count -eq 0 -and -not $imported) {
 # ------------------------------------------------------------- application --
 
 Step 'Start Menu entry'
-# The same Qt launcher Linux runs, frozen: it owns the server, the source and the
-# overlay, and leaves a tray icon behind. `kotodex\host_windows.py` is the whole
-# of what it does differently here.
-$Launcher = Join-Path $Here 'launcher\kotodex.exe'
+# The same Qt launcher Linux runs, packaged into an .exe: it owns the server, the
+# source and the overlay, and leaves a tray icon behind. `kotodex\host_windows.py`
+# is the whole of what it does differently here.
+$Launcher = Join-Path $Here 'app\kotodex.exe'
 if ($NoShortcut) {
     Skip 'the installer owns the Start Menu entry'
 } elseif (-not (Test-Path $Launcher)) {
-    # The zip carries no frozen trees - they are the installer's. What is here
+    # The zip carries no packaged .exes - they are the installer's. What is here
     # still serves the reader in a browser.
     Skip 'no launcher in this tree - start target\release\kotodex-server.exe'
 } else {

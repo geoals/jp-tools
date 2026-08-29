@@ -1,16 +1,18 @@
 #!/usr/bin/env pwsh
 # Build the Windows installer: the zip's tree, plus the three Python components
-# frozen, wrapped by Inno Setup.
+# packaged into .exes, wrapped by Inno Setup.
 #
 #   pwsh -File scripts\windows\build-installer.ps1 [version]
 #
 # Needs Rust, Python with PySide6 + websockets + pyinstaller, and Inno Setup
 # (`choco install innosetup`).
 #
-# Why frozen rather than shipping Python: the overlay and the Textractor source
+# Why packaged rather than shipping Python: the overlay and the Textractor source
 # are Python, and a friend downloading one installer has neither an interpreter
 # nor PySide6. PyInstaller is what makes them ordinary executables, so the
 # launcher starts all three components the same way.
+#
+# What goes into them, and what is left out, is kotodex.spec.
 #
 # This file stays pure ASCII - see build-release.ps1.
 
@@ -55,110 +57,58 @@ function Find-ISCC {
 $Python = Find-Python
 $ISCC = Find-ISCC
 
-# ------------------------------------------------------------------- stage --
+# ------------------------------------------------------ build the two halves --
 
-Say 'staging the release tree'
+# Cargo and PyInstaller share no input and no output directory, so they run at the
+# same time. Cargo's output is held in a log and printed once it is done, rather
+# than interleaved with PyInstaller's.
+#
 # build-release.ps1 already knows what a release is made of, and leaves the tree
 # beside the zip. Reused rather than restated: two lists of what ships would
-# disagree, and the zip is the one that gets tested.
-& (Join-Path $Repo 'scripts\build-release.ps1') $Version
+# disagree, and the zip is the one that gets tested. It owns $Stage, so nothing
+# here may touch $Stage until it has finished.
+Say 'building the release tree and packaging the Python components'
+New-Item -ItemType Directory -Force -Path $Work | Out-Null
+$rustLog = Join-Path $Work 'cargo.log'
+
+# A process of its own rather than `Start-Job`: cargo writes its progress to
+# stderr, and inside a job that arrives as an error record, which build-release's
+# own `$ErrorActionPreference = 'Stop'` turns into a failure on the first
+# `Compiling` line. A separate process keeps its exit code as the only verdict.
+# `$PID`'s own path, so this runs under whichever PowerShell started it.
+$rust = Start-Process -FilePath (Get-Process -Id $PID).Path -PassThru -NoNewWindow `
+    -RedirectStandardOutput $rustLog -RedirectStandardError "$rustLog.err" `
+    -ArgumentList @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass',
+        '-File', (Join-Path $Repo 'scripts\build-release.ps1'), $Version
+    )
+# Reading `.Handle` while it is alive is what keeps `.ExitCode` readable once it is
+# not. Without it Windows PowerShell leaves ExitCode empty and every build looks
+# like a failure.
+$null = $rust.Handle
+
+try {
+    & $Python -m PyInstaller --noconfirm `
+        --distpath (Join-Path $Work 'dist') --workpath (Join-Path $Work 'work') `
+        (Join-Path $PSScriptRoot 'kotodex.spec')
+    if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed' }
+} finally {
+    # Waited for even when packaging threw, so a cargo error is not lost behind it.
+    $rust.WaitForExit()
+    Get-Content $rustLog, "$rustLog.err" -ErrorAction SilentlyContinue
+}
+if ($rust.ExitCode -ne 0) { throw 'build-release.ps1 failed' }
+
 $Stage = Join-Path $Out "kotodex-$Version-windows-x86_64"
 if (-not (Test-Path $Stage)) { throw "build-release.ps1 left no tree at $Stage" }
 
-# --------------------------------------------------------------- freeze it --
-
-# For a module that is imported, PyInstaller's PySide6 hook takes all of it, and
-# excluding the Python bindings does not drop the payload - the DLLs and the
-# Chromium resources are collected as data. So the pruning below happens after the
-# build, by deleting what is provably unused, rather than by asking PyInstaller not
-# to take it.
-$Icon = Join-Path $Repo 'kotodex\icons\kotodex.ico'
-
-function Freeze($name, $entry, $mode, $extra) {
-    Say "freezing $name"
-    $args = @(
-        '-m', 'PyInstaller', '--noconfirm', '--onedir', $mode,
-        '--name', $name, '--icon', $Icon,
-        '--distpath', (Join-Path $Work 'dist'),
-        '--workpath', (Join-Path $Work 'work'),
-        '--specpath', $Work
-    ) + $extra + @($entry)
-    & $Python @args
-    if ($LASTEXITCODE -ne 0) { throw "$name did not freeze" }
-}
-
-# --windowed: it draws its own window and Qt handles its own shutdown.
-Freeze 'kotodex-overlay' (Join-Path $Repo 'kotodex-server\overlay\vn-overlay.py') '--windowed' @(
-    '--paths', (Join-Path $Repo 'layer-overlay'),
-    '--add-data', ((Join-Path $Repo 'layer-overlay\Overlay.qml') + ';.'),
-    '--add-data', ((Join-Path $Repo 'layer-overlay\OverlayWindow.qml') + ';.'),
-    # Imported behind `if BACKEND == backend.WINDOWS`, which PyInstaller's static
-    # analysis does see - named anyway, because losing either is a crash on the
-    # first line rather than a build error.
-    '--hidden-import', 'winfocus',
-    '--hidden-import', 'wininput',
-    '--hidden-import', 'winwatch'
-)
-
-# --console, not --windowed, and the launcher hides the window: a process with no
-# console receives no CTRL_C_EVENT or CTRL_BREAK_EVENT at all, and those are the
-# only warning this gets that it is being shut down. It needs one to send
-# Textractor's WebSocket plugin a proper close frame, which is what keeps an
-# abortive disconnect from crashing Textractor itself.
-Freeze 'kotodex-source' (Join-Path $Repo 'sources\textractor\vn-ws-logger.py') '--console' @()
-
-# The launcher: the same one Linux runs, with `kotodex\host_windows.py` answering
-# for this platform. --windowed because it is a tray and nothing else; the two
-# modules it imports inside main() are named because a missing one is a crash on
-# the tray's first line rather than a build error.
-Freeze 'kotodex' (Join-Path $Repo 'kotodex\kotodex.py') '--windowed' @(
-    '--paths', (Join-Path $Repo 'kotodex'),
-    '--hidden-import', 'single_instance',
-    '--hidden-import', 'tray'
-)
-
-Say 'pruning the frozen overlay'
-$internal = Join-Path $Work 'dist\kotodex-overlay\_internal\PySide6'
-# Chromium's DevTools resources, which are only reachable through remote
-# debugging.
-Get-ChildItem (Join-Path $internal 'resources') -Filter 'qtwebengine_devtools_resources*.pak' `
-    -ErrorAction SilentlyContinue | Remove-Item -Force
-# Qt's own dialog strings, in every language Qt ships. The page is Japanese and
-# English and supplies its own text; what is left here is the language of a file
-# picker nothing opens.
-$keep = @('en', 'ja')
-Get-ChildItem (Join-Path $internal 'translations') -File -ErrorAction SilentlyContinue |
-    Where-Object { $keep -notcontains ($_.BaseName -replace '^.*_', '') } |
-    Remove-Item -Force
-# Its own list, because Chromium names these by full locale - en-US.pak, not
-# en.pak. Filtered against the list above, every English one is deleted and
-# ja.pak alone survives, leaving an English machine no locale it can load.
-# en-US rather than en-GB or any other: it is Chromium's own fallback.
-$keepLocale = @('en-US', 'ja')
-Get-ChildItem (Join-Path $internal 'translations\qtwebengine_locales') -File -ErrorAction SilentlyContinue |
-    Where-Object { $keepLocale -notcontains $_.BaseName } | Remove-Item -Force
-
-Say 'pruning the frozen launcher'
-# Only the dialog strings. Nothing Chromium is in this tree to begin with: the
-# launcher imports QtWidgets, QtGui, QtCore and QtNetwork, and the hook's Qt
-# collection follows what is imported - the note at the top of this file is about
-# the overlay, which imports QtWebEngine and so gets all of it.
-Get-ChildItem (Join-Path $Work 'dist\kotodex\_internal\PySide6\translations') -File `
-    -ErrorAction SilentlyContinue |
-    Where-Object { $keep -notcontains ($_.BaseName -replace '^.*_', '') } |
-    Remove-Item -Force
-
 Say 'collecting into the tree'
-# `launcher`, not `kotodex`: that directory already holds the icons every shortcut
-# points at. Either way the exe sits two levels under the install root, which is
-# what `host_windows.ROOT` resolves.
-foreach ($pair in @(@('kotodex-overlay', 'overlay'), @('kotodex-source', 'source'),
-                    @('kotodex', 'launcher'))) {
-    $from = Join-Path $Work "dist\$($pair[0])"
-    $to = Join-Path $Stage $pair[1]
-    if (Test-Path $to) { Remove-Item -Recurse -Force $to }
-    Copy-Item -Recurse $from $to
-}
+# One directory holding all three .exes and the single copy of Qt they share. It
+# sits one level under the install root, which is what `host_windows.ROOT`
+# resolves by taking the launcher's parent's parent.
+$app = Join-Path $Stage 'app'
+if (Test-Path $app) { Remove-Item -Recurse -Force $app }
+Copy-Item -Recurse (Join-Path $Work 'dist\app') $app
 
 $size = [math]::Round(((Get-ChildItem -Recurse $Stage | Measure-Object Length -Sum).Sum / 1MB), 1)
 Say "tree is $size MB"

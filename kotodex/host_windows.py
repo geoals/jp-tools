@@ -14,9 +14,9 @@ from pathlib import Path
 
 import config
 
-# Frozen, the launcher is `<root>\launcher\kotodex.exe`; from a checkout this file
-# is `<root>\kotodex\host_windows.py`. Both are two levels down, and the root is
-# what every child is told about.
+# Installed, the launcher is `<root>\app\kotodex.exe`; from a checkout this file is
+# `<root>\kotodex\host_windows.py`. Both are two levels down, and the root is what
+# every child is told about.
 if getattr(sys, "frozen", False):
     ROOT = Path(sys.executable).resolve().parents[1]
 else:
@@ -30,8 +30,9 @@ ICON = ROOT / "kotodex" / "icons" / "kotodex.ico"
 
 SERVER_EXE = ROOT / "target" / "release" / "kotodex-server.exe"
 DICT_EXE = ROOT / "target" / "release" / "jp-dict.exe"
-SOURCE_EXE = ROOT / "source" / "kotodex-source.exe"
-OVERLAY_EXE = ROOT / "overlay" / "kotodex-overlay.exe"
+# Beside the launcher: the three share one directory, and so one copy of Qt.
+SOURCE_EXE = ROOT / "app" / "kotodex-source.exe"
+OVERLAY_EXE = ROOT / "app" / "kotodex-overlay.exe"
 
 # The one component that is stopped by being told rather than killed.
 SOURCE = "source"

@@ -41,11 +41,15 @@ SetupIconFile={#Stage}\kotodex\icons\kotodex.ico
 UninstallDisplayIcon={app}\kotodex\icons\kotodex.ico
 
 [InstallDelete]
-; An upgrade replaces the frozen trees wholesale rather than writing over them.
-; PyInstaller onedir is about a thousand files, and a freeze against a new
-; PySide6 or Python leaves the old DLLs and .pyd files sitting beside the new
-; ones, still importable. Nothing else under {app} is touched, so the
-; dictionaries and system_full.dic survive and setup.ps1 skips its download.
+; An upgrade replaces the packaged tree wholesale rather than writing over it.
+; PyInstaller leaves about a thousand files, and packaging against a new PySide6
+; or Python leaves the old DLLs and .pyd files sitting beside the new ones, still
+; importable. Nothing else under {app} is touched, so the dictionaries and
+; system_full.dic survive and setup.ps1 skips its download.
+Type: filesandordirs; Name: "{app}\app"
+; The three separate trees an older version installed, each with its own copy of
+; Qt. Nothing writes these now, and left behind they are a few hundred stale MB
+; that the uninstaller no longer knows about.
 Type: filesandordirs; Name: "{app}\overlay"
 Type: filesandordirs; Name: "{app}\source"
 Type: filesandordirs; Name: "{app}\launcher"
@@ -54,12 +58,12 @@ Type: filesandordirs; Name: "{app}\launcher"
 Source: "{#Stage}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-; The launcher itself: a frozen Qt application, so it shows no console and needs
+; The launcher itself: a packaged Qt application, so it shows no console and needs
 ; no script in front of it. Its icon is stamped into the exe by PyInstaller.
-Name: "{autoprograms}\Kotodex"; Filename: "{app}\launcher\kotodex.exe"; \
+Name: "{autoprograms}\Kotodex"; Filename: "{app}\app\kotodex.exe"; \
     WorkingDir: "{app}"; \
     Comment: "Kotodex - the ledger, the reader and the overlay"
-Name: "{autodesktop}\Kotodex"; Filename: "{app}\launcher\kotodex.exe"; \
+Name: "{autodesktop}\Kotodex"; Filename: "{app}\app\kotodex.exe"; \
     WorkingDir: "{app}"; Tasks: desktopicon
 
 [Tasks]
@@ -74,7 +78,7 @@ Filename: "powershell.exe"; \
     Parameters: "-ExecutionPolicy Bypass -File ""{app}\setup.ps1"" -NoShortcut"; \
     WorkingDir: "{app}"; StatusMsg: "Downloading dictionaries (about 175 MB, once)..."; \
     Flags: waituntilterminated runhidden
-Filename: "{app}\launcher\kotodex.exe"; \
+Filename: "{app}\app\kotodex.exe"; \
     WorkingDir: "{app}"; Description: "Start Kotodex"; Flags: postinstall nowait skipifsilent
 
 [Code]
