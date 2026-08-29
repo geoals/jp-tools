@@ -509,13 +509,16 @@ function onWordClick(e) {
 
 // Anywhere else on the surface dismisses. Not the popup itself, or scrolling a
 // long Jitendex entry would close what is being read.
-//
-// The popup stops its own clicks rather than this handler testing where they
-// came from. Testing does not work: `closest("#popup")` answers about where the
-// target is *now*, and picking another match re-renders the popup from inside
-// the click, which detaches the chip mid-dispatch — the detached chip then
-// reads as a click outside, closing the popup the pick just opened.
-document.addEventListener("click", () => closePopup());
+document.addEventListener(
+  "pointerdown",
+  (e) => {
+    if (popupEl.hidden) return;
+    if (popupEl.contains(e.target)) return;
+    if (e.target.closest?.(".w")) return;
+    closePopup();
+  },
+  true,
+);
 
 // A click on anything that is not this surface — the game, a browser, the
 // desktop — never reaches the handler above: the input region ends at what is
@@ -2179,8 +2182,27 @@ setInterval(checkAnki, ANKI_POLL_MS);
  * on screen by a tick sends a click aimed at a popup the compositor does not
  * know about yet to the VN, which advances the line and closes that popup.
  */
+let reportQueued = false;
+let reportedHits = null;
+let keyboardWanted = null;
+
+function setKeyboard(want) {
+  if (want === keyboardWanted) return;
+  keyboardWanted = want;
+  if (shell.setKeyboard) shell.setKeyboard(want);
+  else console.error("shell.setKeyboard is missing");
+}
+
 function report() {
+  if (!shell || reportQueued) return;
+  reportQueued = true;
+  setTimeout(sendHits, 0);
+}
+
+function sendHits() {
+  reportQueued = false;
   if (!shell) return;
+  setKeyboard(!settingsPanelEl.hidden);
   // The whole visible box, not a rectangle per word: anything drawn over the
   // game should swallow the click that lands on it, or a miss between two
   // words advances the VN from under an open popup. It is also far steadier —
@@ -2201,7 +2223,11 @@ function report() {
   //
   // A few pixels of slack, so a click on the very edge of the backdrop is
   // still caught and the region survives a subpixel reflow.
-  shell.setHits(rects.flatMap((r) => [r.left - 4, r.top - 4, r.width + 8, r.height + 8]));
+  const hits = rects.flatMap((r) => [r.left - 4, r.top - 4, r.width + 8, r.height + 8]);
+  const key = hits.join();
+  if (key === reportedHits) return;
+  reportedHits = key;
+  shell.setHits(hits);
 }
 
 // Anything that moves either box without going through `report` itself: the web
@@ -2283,6 +2309,8 @@ if (window.qt?.webChannelTransport) {
   new QWebChannel(window.qt.webChannelTransport, (channel) => {
     shell = channel.objects.shell;
     shell.geometry.connect(onGeometry);
+    if (shell.dismissed) shell.dismissed.connect(() => closePopup());
+    else console.error("shell.dismissed is missing");
     // Only under the shell: opened in a browser the page has no process to end.
     // This quits Kotodex, not just this window — the shell turns it into that,
     // and on a desktop with no system tray it is the only way out.

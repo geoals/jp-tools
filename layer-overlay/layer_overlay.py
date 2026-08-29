@@ -18,8 +18,10 @@ The page is expected to run `qwebchannel.js` — [`webchannel_script`] injects
 Qt's own copy — and to connect to the object registered as `shell`:
 
     shell.setHits([x, y, w, h, ...])   what takes clicks, flat
+    shell.setKeyboard(bool)            there is a text field open, or there is not
     shell.setWindowName(name)          track this window's rectangle
     shell.geometry(x, y, w, h)         where it is now, or zeros
+    shell.dismissed()                  a press landed off the clickable part
     shell.openUrl(url)                 open an http(s) link in the browser
     shell.quit()                       close; `run` returns QUIT_REQUESTED
 
@@ -96,6 +98,8 @@ GEOMETRY_POLL_MS = 300
 #: no event here subscribes to.
 DISCOVERY_POLL_MS = 1000
 
+GEOMETRY_EMIT_MS = 16
+
 
 def _rects(region, scale=1.0):
     return [
@@ -117,6 +121,8 @@ class Overlay(QObject):
     #: reads this, so a move or a resize carries it along instead of leaving it
     #: measured against a screen that window no longer fills.
     geometry = Signal(int, int, int, int)
+
+    dismissed = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -160,6 +166,7 @@ class Overlay(QObject):
         self._focus = None
         if BACKEND == backend.WINDOWS:
             self._focus = winfocus.gate()
+            self._input.on_click_outside = self.dismissed.emit
             self._cursor = QTimer()
             self._cursor.setInterval(inputregion.POLL_MS)
             self._cursor.timeout.connect(self._windows_tick)
@@ -169,6 +176,12 @@ class Overlay(QObject):
             DISCOVERY_POLL_MS if self._watch.available else GEOMETRY_POLL_MS
         )
         self._probe.timeout.connect(self._poll_geometry)
+        self._queued = None
+        self._emitted = None
+        self._throttle = QTimer()
+        self._throttle.setSingleShot(True)
+        self._throttle.setInterval(GEOMETRY_EMIT_MS)
+        self._throttle.timeout.connect(self._flush)
 
     def _windows_tick(self) -> None:
         """The Windows backend's per-frame work, in the order it has to happen.
@@ -199,6 +212,7 @@ class Overlay(QObject):
         # repeat would leave it placed against the screen until the tracked
         # window next moved.
         self._rect = None
+        self._emitted = None
         if name and (self._watch.available or self._xdotool):
             self._poll_geometry(force=True)
             self._probe.start()
@@ -230,11 +244,21 @@ class Overlay(QObject):
             if rect == self._rect and not force:
                 return
         self._rect = rect
-        surface = self._to_surface(rect) if rect else (0, 0, 0, 0)
+        self._queued = self._to_surface(rect) if rect else (0, 0, 0, 0)
+        if not self._throttle.isActive():
+            self._flush()
+
+    def _flush(self) -> None:
+        if self._queued is None or self._queued == self._emitted:
+            return
+        surface = self._queued
+        self._queued = None
+        self._emitted = surface
         if os.environ.get("LAYER_OVERLAY_DEBUG"):
             x, y, w, h = surface
             print(f"window {self._name!r} {x},{y} {w}x{h}", flush=True)
         self.geometry.emit(*surface)
+        self._throttle.start()
 
     def _scale(self) -> float:
         """Device pixels per logical pixel, on the output the surface is on."""
@@ -314,6 +338,11 @@ class Overlay(QObject):
         # the height here is not the final one. Recompute when it settles.
         window.heightChanged.connect(self.apply)
         self.apply()
+
+    @Slot(bool)
+    def setKeyboard(self, want: bool) -> None:
+        if BACKEND == backend.WINDOWS:
+            self._input.set_keyboard(want, self._watch.window)
 
     @Slot(list)
     def setHits(self, flat) -> None:

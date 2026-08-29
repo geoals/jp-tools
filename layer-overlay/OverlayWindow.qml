@@ -39,7 +39,6 @@ Window {
          | Qt.FramelessWindowHint
          | Qt.WindowStaysOnTopHint
          | Qt.Tool
-         | Qt.WindowDoesNotAcceptFocus
 
     WebEngineView {
         id: view
@@ -61,6 +60,10 @@ Window {
         // the view retries until the server answers.
         settings.errorPageEnabled: false
 
+        onJavaScriptConsoleMessage: function (level, message, lineNumber, sourceID) {
+            console.error("page: " + message + " (" + sourceID + ":" + lineNumber + ")")
+        }
+
         onLoadingChanged: function (load) {
             if (load.status === WebEngineView.LoadFailedStatus)
                 retry.restart()
@@ -79,10 +82,5 @@ Window {
                 view.reload()
             }
         }
-    }
-
-    Shortcut {
-        sequence: "Escape"
-        onActivated: Qt.quit()
     }
 }

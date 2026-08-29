@@ -41,6 +41,10 @@ SWP_NOSIZE = 0x0001
 SWP_NOMOVE = 0x0002
 SWP_NOACTIVATE = 0x0010
 
+VK_LBUTTON = 0x01
+VK_RBUTTON = 0x02
+KEY_DOWN = 0x8000
+
 #: How often the caller should [`poll`]. A click is preceded by the move that
 #: got the cursor there, so the boundary only has to be noticed within the gap
 #: between a mouse arriving somewhere and the button going down.
@@ -55,10 +59,14 @@ class InputRegion:
     those before it is tested, so nothing here needs to know the scale.
     """
 
+    on_click_outside = None
+
     def __init__(self) -> None:
         self._hwnd = 0
         self._rects = []
         self._click_through = None
+        self._buttons_down = False
+        self._keyboard = False
         user32 = ctypes.WinDLL("user32", use_last_error=True)
         user32.GetWindowLongPtrW.restype = ctypes.c_longlong
         user32.GetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int]
@@ -69,6 +77,10 @@ class InputRegion:
         user32.GetCursorPos.argtypes = [ctypes.POINTER(wintypes.POINT)]
         user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
         user32.GetForegroundWindow.restype = wintypes.HWND
+        user32.GetAsyncKeyState.restype = ctypes.c_short
+        user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
+        user32.SetForegroundWindow.restype = wintypes.BOOL
+        user32.SetForegroundWindow.argtypes = [wintypes.HWND]
         user32.SetWindowPos.argtypes = [
             wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
             ctypes.c_int, ctypes.c_int, ctypes.c_uint,
@@ -91,6 +103,7 @@ class InputRegion:
             # A rebuilt window is a new hwnd with a fresh style, so the state
             # this class thinks it set is not on it.
             self._click_through = None
+            self._keyboard = False
             self._set_base_style()
         self._rects = [
             (int(x), int(y), max(int(w), 1), max(int(h), 1)) for x, y, w, h in rects
@@ -131,6 +144,16 @@ class InputRegion:
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
         )
 
+    def set_keyboard(self, want: bool, restore_to: int = 0) -> None:
+        if not self._hwnd or want == self._keyboard:
+            return
+        self._keyboard = want
+        ex = self._user32.GetWindowLongPtrW(self._hwnd, GWL_EXSTYLE)
+        ex = ex & ~WS_EX_NOACTIVATE if want else ex | WS_EX_NOACTIVATE
+        self._user32.SetWindowLongPtrW(self._hwnd, GWL_EXSTYLE, ex)
+        if not want and restore_to:
+            self._user32.SetForegroundWindow(restore_to)
+
     def _set_click_through(self, on: bool) -> None:
         if on == self._click_through:
             return
@@ -167,3 +190,13 @@ class InputRegion:
             rx <= x < rx + rw and ry <= y < ry + rh for rx, ry, rw, rh in self._rects
         )
         self._set_click_through(not inside)
+        self._note_click(inside)
+
+    def _note_click(self, inside: bool) -> None:
+        down = any(
+            self._user32.GetAsyncKeyState(vk) & KEY_DOWN
+            for vk in (VK_LBUTTON, VK_RBUTTON)
+        )
+        pressed, self._buttons_down = down and not self._buttons_down, down
+        if pressed and not inside and self.on_click_outside is not None:
+            self.on_click_outside()
