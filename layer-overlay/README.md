@@ -121,14 +121,14 @@ were the whole test. Windows gets that for free from
 Every other desktop has no gate, `inFront` is never emitted, and the page draws
 as though it were true.
 
-There is no X11 or Wayland equivalent. Under a Wayland session a game runs in
-XWayland while the surface is native, and neither side can be asked a question
-that answers for both, which is where the loop above came from.
-
 The other way to write this — putting the surface one place above the tracked
-window in the z-order rather than at the top of everything — is what Windows
-offers and what a game undoes: raising itself puts it back above the surface,
-and a game that asserts topmost on focus does it every time it is clicked.
+window in the z-order rather than at the top of everything, so any window brought
+to the front covers it — is not available on Windows. `SetWindowPos` refuses a
+z-order neighbour belonging to a process at a higher integrity level, with
+`ERROR_ACCESS_DENIED`, and a VN run as administrator with an upscaler beside it
+is exactly that. What is left is whole-band moves, and the one that leaves the
+topmost band places the surface *above* the window that was just focused rather
+than under it.
 
 ## What the page has to do
 
