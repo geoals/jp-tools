@@ -16,10 +16,11 @@ any Kotodex in it; everything that is the product carries it.
 - `jp-mine-core/` — shared mining back half: `card` (the note's fields, in
   Yomitan's markup), `compactdef` + `tags` (the gloss and its two-axis rubric),
   `llm` (which model answers, and how it is asked — two request shapes,
-  `anthropic` and the OpenAI chat shape everything else speaks), `lookup`, and
-  `export` (AnkiConnect). yt-mine and manga-mine use all of it; kotodex-server
-  uses `card`, `compactdef`, `tags` and `llm`, and **must not** use `export`
-  — see the card-authoring rule below
+  `anthropic` and the OpenAI chat shape everything else speaks), `lookup`,
+  `note_type` (getting Lapis into Anki, downloaded from its own release rather
+  than vendored) and `export` (AnkiConnect). yt-mine and manga-mine use all of
+  it; kotodex-server uses `card`, `compactdef`, `tags`, `llm` and `note_type`,
+  and **must not** use `export` — see the card-authoring rule below
 - `yt-mine/` — YouTube sentence mining (Axum JSON API + Preact SPA, SQLite, Anki
   export). Whisper over the whole video, never YouTube's auto-captions — see
   `yt-mine/CLAUDE.md` for why

@@ -8,4 +8,5 @@ pub mod export;
 pub mod llm;
 pub mod localaudio;
 pub mod lookup;
+pub mod note_type;
 pub mod tags;

@@ -14,10 +14,12 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use jp_mine_core::note_type::Imported;
 use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::app::AppState;
+use crate::error::AppError;
 
 /// Probes run on the reader's first paint, so a slow one would stall the page.
 const PROBE_TIMEOUT: Duration = Duration::from_millis(800);
@@ -25,6 +27,8 @@ const PROBE_TIMEOUT: Duration = Duration::from_millis(800);
 /// Long enough that opening both surfaces at once probes once, short enough
 /// that starting Anki shows up without a restart.
 const CACHE_TTL: Duration = Duration::from_secs(10);
+
+const LAPIS: &str = "Lapis";
 
 #[derive(Serialize, Clone)]
 pub struct Capability {
@@ -62,7 +66,10 @@ pub struct Action {
     /// What the button says.
     pub label: String,
     /// Where it goes — a dashboard route, or the overlay's own name for a panel.
-    pub goto: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub goto: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post: Option<String>,
 }
 
 fn on(detail: impl Into<String>) -> Capability {
@@ -97,7 +104,17 @@ impl Capability {
     fn fixed_at(mut self, label: &str, goto: &str) -> Self {
         self.action = Some(Action {
             label: label.into(),
-            goto: goto.into(),
+            goto: Some(goto.into()),
+            post: None,
+        });
+        self
+    }
+
+    fn fixed_by(mut self, label: &str, post: &str) -> Self {
+        self.action = Some(Action {
+            label: label.into(),
+            goto: None,
+            post: Some(post.into()),
         });
         self
     }
@@ -395,10 +412,17 @@ async fn anki(state: &AppState) -> (Capability, Capability) {
     let want = jp_mine_core::config::AnkiConfig::from_env().model_name;
     let note_type = if models.contains(&want) {
         on(want)
+    } else if want == LAPIS {
+        off(
+            format!("{want} is not in this collection"),
+            "required for making cards. Kotodex can download it and import it into Anki.",
+        )
+        .fixed_by("Import Lapis", "/api/setup/note-type")
     } else {
         off(
             format!("{want} is not in this collection"),
-            "run the note type check, or set KOTODEX_ANKI_MODEL to one you have",
+            "required for making cards. Create it in Anki, or set KOTODEX_ANKI_MODEL to a \
+             note type you have.",
         )
     };
     (on(format!("{} note types", models.len())), note_type)
@@ -530,6 +554,31 @@ pub async fn setup(
     axum::extract::State(state): axum::extract::State<AppState>,
 ) -> axum::Json<Value> {
     axum::Json(probe_now(&state).await)
+}
+
+pub async fn install_note_type(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> Result<axum::Json<Value>, AppError> {
+    let want = jp_mine_core::config::AnkiConfig::from_env().model_name;
+    if want != LAPIS {
+        return Err(AppError::BadRequest(format!(
+            "there is no release to download for {want} — create it in Anki instead"
+        )));
+    }
+    let message = match jp_mine_core::note_type::install_lapis(&state.http, &state.anki_url)
+        .await
+        .map_err(AppError::Upstream)?
+    {
+        Imported::Silently => {
+            "Lapis is in your collection. It brings its own deck; cards still go to yours.".into()
+        }
+        Imported::AfterOneClick(path) => format!(
+            "Anki's import dialog is open on Lapis — click Import there. \
+             The file can be deleted afterwards: {}",
+            path.display()
+        ),
+    };
+    Ok(axum::Json(json!({ "message": message })))
 }
 
 async fn probe_now(state: &AppState) -> Value {

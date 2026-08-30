@@ -73,10 +73,26 @@ const LABELS = {
   overlay_backend: "the overlay above the game",
 };
 
+function control(key, action, className, run, running) {
+  if (!action.post) {
+    return html`<a class=${className} href=${action.goto}>${action.label}</a>`;
+  }
+  const label = running === key ? "working…" : action.label;
+  return html`<button
+    class=${className}
+    onClick=${() => run(key, action)}
+    disabled=${running === key}
+  >
+    ${label}
+  </button>`;
+}
+
 export function SetupView({ onReady }) {
   const [caps, setCaps] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const [said, setSaid] = useState({});
+  const [running, setRunning] = useState(null);
 
   async function probe() {
     setBusy(true);
@@ -91,6 +107,19 @@ export function SetupView({ onReady }) {
       setErr(e.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function run(key, action) {
+    setRunning(key);
+    try {
+      const { message } = await api(action.post, { method: "POST" });
+      setSaid({ ...said, [key]: message });
+      await probe();
+    } catch (e) {
+      setSaid({ ...said, [key]: e.message });
+    } finally {
+      setRunning(null);
     }
   }
 
@@ -134,10 +163,9 @@ export function SetupView({ onReady }) {
           ${busy ? "checking…" : "check again"}
         </button>
         ${caps[now]?.action &&
-        html`<a class="pause-btn" href=${caps[now].action.goto}>
-          ${caps[now].action.label}
-        </a>`}
+        control(now, caps[now].action, "pause-btn", run, running)}
       </div>
+      ${said[now] && html`<p class="settings-hint">${said[now]}</p>`}
 
       ${later.length > 0 &&
       html`
@@ -148,10 +176,10 @@ export function SetupView({ onReady }) {
               <div class="setup-row" key=${key}>
                 <div class="setup-row-head">
                   <span class="setup-row-label">${LABELS[key] ?? key}</span>
-                  ${c.action &&
-                  html`<a class="ghost" href=${c.action.goto}>${c.action.label}</a>`}
+                  ${c.action && control(key, c.action, "ghost", run, running)}
                 </div>
                 <p class="settings-hint">${c.fix}</p>
+                ${said[key] && html`<p class="settings-hint">${said[key]}</p>`}
               </div>
             `,
           )}

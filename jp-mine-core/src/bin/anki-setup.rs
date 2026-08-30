@@ -6,38 +6,19 @@
 //! It lives here because the field map does: `AnkiConfig` is what the exporter
 //! writes through, so a check against any other list would drift from the cards
 //! actually being made.
-//!
-//! Lapis is downloaded from its own release rather than vendored. It is
-//! GPL-3.0 and it moves, and AnkiConnect can import an `.apkg` directly, so a
-//! copy here would be a second version to keep current for no gain.
 
 use std::process::ExitCode;
 
 use jp_mine_core::config::AnkiConfig;
+use jp_mine_core::note_type::{self, Imported};
 use serde_json::{Value, json};
-
-const LAPIS_RELEASE: &str = "https://api.github.com/repos/donkuri/lapis/releases/latest";
-const LAPIS_ASSET: &str = "Lapis.apkg";
 
 fn anki_url() -> String {
     std::env::var("KOTODEX_ANKI_URL").unwrap_or_else(|_| "http://127.0.0.1:8765".into())
 }
 
 async fn anki(client: &reqwest::Client, action: &str, params: Value) -> Result<Value, String> {
-    let body = json!({ "action": action, "version": 6, "params": params });
-    let resp = client
-        .post(anki_url())
-        .json(&body)
-        .send()
-        .await
-        .map_err(|_| format!("AnkiConnect is not answering on {}", anki_url()))?;
-    let v: Value = resp.json().await.map_err(|e| e.to_string())?;
-    // AnkiConnect answers 200 with the error in the body, so the status says
-    // nothing — `error` is the only place a refusal appears.
-    match v.get("error") {
-        Some(Value::String(e)) => Err(e.clone()),
-        _ => Ok(v["result"].clone()),
-    }
+    note_type::anki(client, &anki_url(), action, params).await
 }
 
 async fn check(client: &reqwest::Client) -> ExitCode {
@@ -134,120 +115,22 @@ fn env_var_for(what: &str) -> &'static str {
 }
 
 async fn install_lapis(client: &reqwest::Client) -> ExitCode {
-    // GitHub's API refuses a request with no User-Agent.
-    let release: Value = match client
-        .get(LAPIS_RELEASE)
-        .header("User-Agent", "kotodex")
-        .send()
-        .await
-        .and_then(|r| r.error_for_status())
-    {
-        Ok(r) => match r.json().await {
-            Ok(v) => v,
-            Err(e) => {
-                println!("✗ could not read the Lapis release: {e}");
-                return ExitCode::FAILURE;
-            }
-        },
-        Err(e) => {
-            println!("✗ could not reach the Lapis release: {e}");
-            return ExitCode::FAILURE;
+    println!("downloading Lapis");
+    match note_type::install_lapis(client, &anki_url()).await {
+        Ok(Imported::Silently) => {
+            println!("✓ imported. Lapis brings its own deck; cards still go to your own.");
+            check(client).await
         }
-    };
-
-    let url = release["assets"]
-        .as_array()
-        .and_then(|assets| {
-            assets
-                .iter()
-                .find(|a| a["name"] == LAPIS_ASSET)
-                .and_then(|a| a["browser_download_url"].as_str())
-        })
-        .map(str::to_string);
-    let Some(url) = url else {
-        println!("✗ the latest Lapis release has no {LAPIS_ASSET}");
-        println!("  get it by hand: https://github.com/donkuri/lapis/releases");
-        return ExitCode::FAILURE;
-    };
-
-    println!(
-        "downloading Lapis {}",
-        release["tag_name"].as_str().unwrap_or("?")
-    );
-    let bytes = match client.get(&url).send().await {
-        Ok(r) => match r.bytes().await {
-            Ok(b) => b,
-            Err(e) => {
-                println!("✗ download failed: {e}");
-                return ExitCode::FAILURE;
-            }
-        },
-        Err(e) => {
-            println!("✗ download failed: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
-
-    // importPackage takes a path, not the bytes, and Anki opens it itself — so
-    // it has to land somewhere Anki can read. /tmp is not that place: a Flatpak
-    // Anki has its own, and the import fails with a file-not-found naming a
-    // path that plainly exists. Anki's own profile directory always works, and
-    // asking for the media directory is how to find it.
-    let path = import_dir(client).await.join("kotodex-lapis.apkg");
-    if let Err(e) = std::fs::write(&path, &bytes) {
-        println!("✗ could not write {}: {e}", path.display());
-        return ExitCode::FAILURE;
-    }
-
-    let arg = json!({ "path": path.to_string_lossy() });
-
-    // The silent import first: when it works nothing appears on screen. Current
-    // Anki has no importer behind it and refuses with an exception carrying an
-    // empty message, so the result is checked rather than trusted.
-    if anki(client, "importPackage", arg.clone()).await.is_ok() && has_lapis(client).await {
-        let _ = std::fs::remove_file(&path);
-        println!("✓ imported. Lapis brings its own deck; cards still go to your own.");
-        return check(client).await;
-    }
-
-    // Anki's own import dialog, opened on the file. One click, and it is the
-    // only path that works on every version.
-    match anki(client, "guiImportFile", arg).await {
-        Ok(_) => {
+        Ok(Imported::AfterOneClick(path)) => {
             println!("→ Anki's import dialog is open on Lapis. Click Import, then:");
             println!("    anki-setup check");
             println!("  the file can be deleted afterwards: {}", path.display());
             ExitCode::SUCCESS
         }
         Err(e) => {
-            println!("✗ Anki would not import it: {e}");
-            println!("  do it by hand — Anki, File, Import: {}", path.display());
+            println!("✗ {e}");
             ExitCode::FAILURE
         }
-    }
-}
-
-async fn has_lapis(client: &reqwest::Client) -> bool {
-    let models = anki(client, "modelNames", json!({}))
-        .await
-        .unwrap_or_default();
-    let models: Vec<String> = serde_json::from_value(models).unwrap_or_default();
-    models.iter().any(|m| m == "Lapis")
-}
-
-/// A directory Anki can read. Its profile folder, which is the media
-/// directory's parent — that is the one path that is inside the sandbox when
-/// there is one, and outside it when there is not.
-async fn import_dir(client: &reqwest::Client) -> std::path::PathBuf {
-    let media = anki(client, "getMediaDirPath", json!({}))
-        .await
-        .ok()
-        .and_then(|v| v.as_str().map(std::path::PathBuf::from));
-    match media.as_ref().and_then(|m| m.parent()) {
-        Some(profile) if profile.is_dir() => profile.to_path_buf(),
-        // An AnkiConnect too old to answer, or a path this process cannot see.
-        // Temp is the best guess left, and the error names it if Anki disagrees.
-        _ => std::env::temp_dir(),
     }
 }
 

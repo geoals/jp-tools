@@ -190,6 +190,10 @@ pub fn build_router(state: AppState) -> Router {
         // The capability matrix, past its cache — what "check again" asks after
         // the reader has done something outside the app.
         .route("/api/setup", get(reader::capabilities::setup))
+        .route(
+            "/api/setup/note-type",
+            axum::routing::post(reader::capabilities::install_note_type),
+        )
         // Where every source hands its text over, from any machine.
         .route("/api/lines", axum::routing::post(ingest::ingest_lines))
         .route(
