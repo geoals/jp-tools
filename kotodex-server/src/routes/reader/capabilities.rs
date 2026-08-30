@@ -370,7 +370,14 @@ async fn whisper(state: &AppState) -> Capability {
 /// recording look the same from here, and only a word it must know separates
 /// them.
 async fn local_audio(state: &AppState) -> Capability {
-    let sources = crate::services::audio::sources(state, "日本", "にほん").await;
+    // Its own timeout rather than the one `sources` carries: a reader who pressed
+    // ♪ can wait for a recording, a probe on the way to the first paint cannot.
+    let sources = tokio::time::timeout(
+        PROBE_TIMEOUT,
+        crate::services::audio::sources(state, "日本", "にほん"),
+    )
+    .await
+    .unwrap_or_default();
     if sources.is_empty() {
         off(
             "not answering",
@@ -586,13 +593,14 @@ async fn probe_now(state: &AppState) -> Value {
     // two probes asking it separately could answer differently mid-session.
     let read = read_anything(state).await;
     let fresh_install = !read;
-    let (anki_up, note_type) = anki(state).await;
+    let ((anki_up, note_type), whisper_up, audio_up) =
+        tokio::join!(anki(state), whisper(state), local_audio(state));
     let mut out = json!({
         "lines_source": lines_source(state, fresh_install).await,
-        "whisper": whisper(state).await,
+        "whisper": whisper_up,
         "anki": anki_up,
         "anki_note_type": note_type,
-        "local_audio": local_audio(state).await,
+        "local_audio": audio_up,
         "explain": explain(state).await,
         "vocabulary_ledger": vocabulary_ledger(state, read).await,
     });

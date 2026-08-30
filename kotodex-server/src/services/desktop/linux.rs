@@ -33,11 +33,7 @@ const XDOTOOL_TIMEOUT: Duration = Duration::from_secs(3);
 pub async fn titles() -> Result<Vec<String>, AppError> {
     let mut names = Vec::new();
     for display in displays() {
-        let out = xdotool(
-            &display,
-            &["search", "--name", ".", "getwindowname", "%@"],
-        )
-        .await?;
+        let out = xdotool(&display, &["search", "--name", ".", "getwindowname", "%@"]).await?;
         names.extend(out.lines().map(str::to_string));
     }
     Ok(names)
