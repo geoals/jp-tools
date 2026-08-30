@@ -74,7 +74,11 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Filename: "powershell.exe"; \
     Parameters: "-ExecutionPolicy Bypass -File ""{app}\setup.ps1"" -NoShortcut"; \
     WorkingDir: "{app}"; StatusMsg: "Downloading dictionaries (about 175 MB, once) - see the window behind this one..."; \
-    Flags: waituntilterminated
+    Flags: waituntilterminated; Check: NeedsDownloads
+Filename: "powershell.exe"; \
+    Parameters: "-ExecutionPolicy Bypass -File ""{app}\setup.ps1"" -NoShortcut"; \
+    WorkingDir: "{app}"; StatusMsg: "Checking the install - see the window behind this one..."; \
+    Flags: waituntilterminated; Check: not NeedsDownloads
 Filename: "{app}\app\kotodex.exe"; \
     WorkingDir: "{app}"; Description: "Start Kotodex"; Flags: postinstall nowait skipifsilent
 
@@ -106,6 +110,12 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   StopKotodex;
   Result := '';
+end;
+
+function NeedsDownloads: Boolean;
+begin
+  Result := not (FileExists(ExpandConstant('{app}\system_full.dic'))
+    and DirExists(ExpandConstant('{app}\dictionaries')));
 end;
 
 [UninstallDelete]

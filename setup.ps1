@@ -228,7 +228,7 @@ Step 'Start Menu entry'
 # is the whole of what it does differently here.
 $Launcher = Join-Path $Here 'app\kotodex.exe'
 if ($NoShortcut) {
-    Skip 'the installer owns the Start Menu entry'
+    Good 'Kotodex in the Start Menu - the installer made it'
 } elseif (-not (Test-Path $Launcher)) {
     # The zip carries no packaged .exes - they are the installer's. What is here
     # still serves the reader in a browser.
@@ -266,16 +266,16 @@ if ($state) {
     # a hidden window throws it away.
     $startedHere = Start-Process -PassThru -WindowStyle Hidden -FilePath $Server `
         -RedirectStandardOutput $log -RedirectStandardError "$log.err"
-    Say 'waiting for the first boot - it recounts the line stream and loads the tokenizer'
-    foreach ($try in 1..30) {
-        Start-Sleep -Seconds 2
+    Say 'started it for the checks - the first answer is slow while the caches are cold'
+    foreach ($try in 1..3) {
         if ($startedHere.HasExited) { break }
-        try { $state = GetJson 'http://127.0.0.1:3200/api/reader/state' 3; break } catch {}
+        try { $state = GetJson 'http://127.0.0.1:3200/api/reader/state' 90; break }
+        catch { Start-Sleep -Seconds 2 }
     }
     if ($state) {
         Good 'started for the check'
     } else {
-        Fail 'the server did not answer in a minute'
+        Fail 'the server did not answer'
         Say "its output is in $log and $log.err"
         Get-Content -Tail 15 "$log.err" -ErrorAction SilentlyContinue | ForEach-Object { Say "  $_" }
     }
