@@ -56,6 +56,9 @@ pub async fn focused_window() -> Result<Option<String>, AppError> {
 /// name to.
 fn is_helper_window(name: &str) -> bool {
     const NOISE: &[&str] = &[
+        // gamescope's own compositor, which shares the nested display with the
+        // game it is scaling.
+        "steamcompmgr",
         // Wine, Qt and the input methods.
         "Default IME",
         "Input",
@@ -84,6 +87,7 @@ mod tests {
         assert!(is_helper_window("Default IME"));
         assert!(is_helper_window("Qt Selection Owner for wine"));
         assert!(is_helper_window("Program Manager"));
+        assert!(is_helper_window("steamcompmgr"));
         assert!(!is_helper_window(
             "ドーナドーナ いっしょにわるいことをしよう"
         ));
