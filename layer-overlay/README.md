@@ -43,8 +43,8 @@ decides the Qt platform plugin.
   interface, because neither platform's is `QWindow.setMask`.
 - `xwatch.py` / `winwatch.py` — where the tracked window is, told by the
   display server rather than polled.
-- `winfocus.py` — Windows only: whether the tracked window is the one in use,
-  reported to the page as `inFront`.
+- `winfocus.py` / `kdefocus.py` — whether the tracked window is the one in use,
+  reported to the page as `inFront`. Windows asks, KDE is told.
 - `runner.sh` — sourced by a caller's launcher for
   `start`/`stop`/`restart`/`ensure`/`status`, detached from the shell that
   started it. Linux only.
@@ -77,7 +77,7 @@ arrives — it has to close on its own terms.
 
 ## Which window is in use, and staying above it
 
-Windows only. The surface is topmost, so a browser or an editor brought to the
+The surface is topmost, so a browser or an editor brought to the
 front is drawn *under* it — right while the tracked window is being read and
 wrong the moment anything else is. `winfocus.py` answers which of the two it is:
 the foreground window belonging to the tracked window's process, or to this one,
@@ -99,6 +99,28 @@ of its own — so every change is also a raise. One raise is a race against
 whoever else is raising on the same event, so `wininput.raise_topmost` keeps
 re-asserting for `SETTLE_MS`, after which it holds.
 
+`kdefocus.py` answers the same question on KDE, and only there. No Wayland
+protocol carries it: `wlr-foreign-toplevel-management`,
+`ext-foreign-toplevel-list` and `plasma-window-management` each would, and KWin
+advertises none of them to an unprivileged client. So it asks KWin, through a
+script loaded over D-Bus that reports `windowActivated` — which is also the only
+way the question is answerable at all here. Under a Wayland session the game is
+in XWayland and the surface is native, and neither display server can be asked
+something that answers for both; KWin is the compositor for both, so it can.
+
+Nothing is raised beside it — a layer surface is above by protocol — so that
+half of `_windows_tick` has no counterpart. Two things do differ from Windows.
+Hiding waits out `SETTLE_MS`, because a KDE session activates windows nobody
+chose and the panel taking focus and handing it straight back would otherwise
+blink the line. And the tracked window is *found* by caption and then followed
+by pid: its own menus carry captions of their own — a Kirikiri right-click menu
+arrives as `kcMenuWindow` — and each would read as leaving it if the caption
+were the whole test. Windows gets that for free from
+`GetWindowThreadProcessId`; here the pid arrives beside the caption that matched.
+
+Every other desktop has no gate, `inFront` is never emitted, and the page draws
+as though it were true.
+
 There is no X11 or Wayland equivalent. Under a Wayland session a game runs in
 XWayland while the surface is native, and neither side can be asked a question
 that answers for both, which is where the loop above came from.
@@ -118,7 +140,7 @@ of it. Connect to the object registered as `shell`:
 | `shell.setHits([x, y, w, h, ...])` | what takes clicks, flat |
 | `shell.setWindowName(name)` | track this window's rectangle, by title substring |
 | `shell.geometry(x, y, w, h)` | where it is now, zeros when it cannot be found |
-| `shell.inFront(bool)` | that window is the one in use, or something else is; Windows only |
+| `shell.inFront(bool)` | that window is the one in use, or something else is; Windows and KDE only |
 | `shell.openUrl(url)` | open an `http`/`https` link in the desktop's browser |
 | `shell.quit()` | close; `run()` returns `QUIT_REQUESTED` rather than 0 |
 

@@ -64,6 +64,7 @@ backend.apply_environment(BACKEND)
 # same two questions - where the tracked window is, and what takes clicks - so
 # everything below is written against the interface rather than against either.
 if BACKEND == backend.WINDOWS:
+    kdefocus = None
     import winfocus
     import wininput as inputregion
     import winwatch as windowwatch
@@ -71,6 +72,13 @@ else:
     winfocus = None
     import xshape as inputregion
     import xwatch as windowwatch
+    try:
+        # KDE only, and QtDBus is a package of its own on some distributions.
+        # Absent either way there is no answer to give, and a page that never
+        # hears `inFront` draws as though it were true.
+        import kdefocus
+    except ImportError:
+        kdefocus = None
 
 from PySide6.QtCore import (
     QFile, QIODevice, QObject, QSocketNotifier, QTimer, QUrl, Signal, Slot,
@@ -125,8 +133,9 @@ class Overlay(QObject):
 
     #: Whether the tracked window is the one in use. A page laid over that
     #: window's content is laid over whatever is in front of it instead — see
-    #: [`winfocus`]. Windows answers it and no other backend does, so a page
-    #: that never hears it draws as though it were true.
+    #: [`winfocus`] and [`kdefocus`], which answer it for their own platforms —
+    #: one polled, one driven by the compositor. Every other backend says
+    #: nothing, and a page that never hears it draws as though it were true.
     inFront = Signal(bool)
 
     dismissed = Signal()
@@ -178,6 +187,12 @@ class Overlay(QObject):
             self._cursor.setInterval(inputregion.POLL_MS)
             self._cursor.timeout.connect(self._windows_tick)
             self._cursor.start()
+        # The same answer from the other side: KWin says which window is in use
+        # rather than being asked, so this one needs no timer and there is no
+        # topmost band to defend beside it.
+        self._kde_focus = None
+        if kdefocus is not None:
+            self._kde_focus = kdefocus.gate(self.inFront.emit)
         self._probe = QTimer()
         self._probe.setInterval(
             DISCOVERY_POLL_MS if self._watch.available else GEOMETRY_POLL_MS
@@ -224,6 +239,8 @@ class Overlay(QObject):
         self._emitted = None
         if self._focus is not None:
             self._focus.repeat()
+        if self._kde_focus is not None:
+            self._kde_focus.set_name(name)
         if name and (self._watch.available or self._xdotool):
             self._poll_geometry(force=True)
             self._probe.start()
@@ -373,6 +390,12 @@ class Overlay(QObject):
             return
         self._hits = hits
         self.apply()
+
+    def close(self) -> None:
+        """Give back what outlives this process. Only KWin holds anything: a
+        script left loaded goes on calling a bus name that has gone."""
+        if self._kde_focus is not None:
+            self._kde_focus.close()
 
     @Slot()
     def minimise(self) -> None:
@@ -571,6 +594,7 @@ def run(url: str, *, scope: str, storage, qt_args=()) -> int:
         print(f"{since_start()} no screens - nothing can be drawn on", flush=True)
 
     overlay = Overlay()
+    app.aboutToQuit.connect(overlay.close)
     surface = Surface(
         app,
         overlay,
