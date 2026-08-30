@@ -110,6 +110,21 @@ DISCOVERY_POLL_MS = 1000
 GEOMETRY_EMIT_MS = 16
 
 
+def _bigger(best, fields):
+    """Whichever of the two rectangles has more area, as `x, y, w, h`.
+
+    `fields` is one `getwindowgeometry --shell` block, and an incomplete one is
+    not a rectangle at all — xdotool prints nothing for a window that went away
+    between being listed and being measured.
+    """
+    if not {"X", "Y", "WIDTH", "HEIGHT"} <= fields.keys():
+        return best
+    rect = (fields["X"], fields["Y"], fields["WIDTH"], fields["HEIGHT"])
+    if best is not None and best[2] * best[3] >= rect[2] * rect[3]:
+        return best
+    return rect
+
+
 def _rects(region, scale=1.0):
     return [
         (
@@ -330,7 +345,7 @@ class Overlay(QObject):
         try:
             out = subprocess.run(
                 [self._xdotool, "search", "--name", self._name,
-                 "getwindowgeometry", "--shell", "%1"],
+                 "getwindowgeometry", "--shell", "%@"],
                 capture_output=True,
                 text=True,
                 timeout=2,
@@ -339,14 +354,21 @@ class Overlay(QObject):
             return None
         if out.returncode != 0:
             return None
+        # Every match, then the biggest — the same rule and the same reason as
+        # [`xwatch.WindowWatch._find`]: Wine's message window carries the game's
+        # title at 1x1, and asking for one match is asking for whichever of the
+        # two xdotool happens to list first.
+        best = None
         fields = {}
         for line in out.stdout.splitlines():
             key, _, value = line.partition("=")
+            # WINDOW opens each block, so a repeat means the last one is done.
+            if key == "WINDOW" and fields:
+                best = _bigger(best, fields)
+                fields = {}
             if value.lstrip("-").isdigit():
                 fields[key] = int(value)
-        if not {"X", "Y", "WIDTH", "HEIGHT"} <= fields.keys():
-            return None
-        return (fields["X"], fields["Y"], fields["WIDTH"], fields["HEIGHT"])
+        return _bigger(best, fields)
 
     def attach(self, window) -> None:
         if self.hidden:

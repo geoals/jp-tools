@@ -183,17 +183,43 @@ class WindowWatch:
                 return raw.decode("utf-8", "replace")
         return ""
 
-    def _find(self, window: int, depth: int = 0) -> int:
-        """The first window at or under `window` whose title matches.
+    def _find(self, window: int) -> int:
+        """The biggest window at or under `window` whose title matches.
+
+        Biggest rather than first, because a title does not name one window.
+        Wine gives its message window the game's title and leaves it 1x1 in a
+        corner, and X reports children in stacking order, so the first match is
+        as often that one as the game — a tracked rectangle of 1x1 at the screen
+        edge, which the page then lays the line against.
+
+        Area is what separates them and nothing else does: both carry the same
+        title, both belong to the same process, and which is stacked lower is
+        the window manager's business. Among windows that claim to be the game,
+        the one with the game in it is the one with room for it.
+        """
+        best = 0
+        best_area = 0
+        for match in self._matches(window):
+            rect = self._geometry(match)
+            if rect is None:
+                continue
+            area = rect[2] * rect[3]
+            if area > best_area:
+                best = match
+                best_area = area
+        return best
+
+    def _matches(self, window: int, depth: int = 0):
+        """Every window at or under `window` whose title matches.
 
         Depth-limited: a match lives on a toplevel or on the client window
         inside the window manager's frame, and walking deeper than that is
         walking into a program's own widgets.
         """
         if depth and self._name in self._title(window):
-            return window
+            yield window
         if depth > 3:
-            return 0
+            return
         root = ctypes.c_ulong()
         parent = ctypes.c_ulong()
         children = ctypes.POINTER(ctypes.c_ulong)()
@@ -204,14 +230,12 @@ class WindowWatch:
             ctypes.byref(children), ctypes.byref(count),
         )
         if not ok or not children:
-            return 0
-        found = 0
-        for i in range(count.value):
-            found = self._find(children[i], depth + 1)
-            if found:
-                break
-        self._x11.XFree(children)
-        return found
+            return
+        try:
+            for i in range(count.value):
+                yield from self._matches(children[i], depth + 1)
+        finally:
+            self._x11.XFree(children)
 
     def _geometry(self, window: int):
         """`x, y, width, height` in root coordinates, or None if it is gone.
