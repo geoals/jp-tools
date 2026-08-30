@@ -130,6 +130,30 @@ is exactly that. What is left is whole-band moves, and the one that leaves the
 topmost band places the surface *above* the window that was just focused rather
 than under it.
 
+## The cursor an upscaler fences in
+
+Windows only, and only while one is scaling. Magpie keeps the cursor inside the
+window it is scaling — that is how the game goes on receiving mouse input from
+under a picture drawn somewhere else — and draws its own cursor at the matching
+place in the picture. So the reader points at the picture while the cursor
+Windows reports, and the press it will deliver, are back in the small original.
+The two agree at one point and diverge by the scale everywhere else.
+
+The consequence is that the part of the picture outside the game's own window
+cannot be clicked at all, and that is most of where a line belongs: at 4/3 the
+fence is the middle three quarters of the picture, and it is only there by
+coincidence — the two rectangles are related by nothing.
+
+So `winwatch.aim` answers where the reader is pointing, and `wininput` takes the
+cursor there when that is something the page has drawn. The fence is released
+and the cursor moved, which sticks: an upscaler that has lost the cursor does not
+take it back. The move is repeated for `ESCORT_POLLS`, because the position it is
+handed is translated once more on the way out and the first move overshoots, and
+then not attempted again for `ESCORT_REST_POLLS` — nothing observed re-fences a
+cursor that has been taken out, and a cursor shaking in place would be worse than
+one that cannot reach the line. Never while a button is down: that is a drag, or
+a click meant for the game.
+
 ## What the page has to do
 
 `qwebchannel.js` is injected before the page runs, so the page carries no copy

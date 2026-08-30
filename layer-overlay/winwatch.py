@@ -74,6 +74,7 @@ class WindowWatch:
     def __init__(self) -> None:
         self._name = ""
         self._window = 0
+        self._scaling = 0
         self._rect = None
         self._hook = 0
         #: Called when an event says the window moved. Set by the caller; the
@@ -235,10 +236,13 @@ class WindowWatch:
                         None, self._proc, 0, thread, WINEVENT_OUTOFCONTEXT,
                     )
         rect = None
+        self._scaling = 0
         if self._window:
             scaling = self._upscaler()
             if scaling:
                 rect = self._client_geometry(scaling)
+                if rect is not None:
+                    self._scaling = scaling
             if rect is None:
                 rect = self._geometry(self._window)
         if rect is None:
@@ -248,6 +252,34 @@ class WindowWatch:
             return False
         self._rect = rect
         return True
+
+    def aim(self, x: int, y: int):
+        """Where the reader is pointing, or None when that is where the cursor is.
+
+        An upscaler fences the cursor inside the window it is scaling — that is
+        how the game goes on receiving mouse input from under a picture drawn
+        somewhere else — and draws its own cursor at the matching place in the
+        picture. So the reader points at the picture while the cursor Windows
+        reports, and the click it will deliver, are back in the small original.
+        The two agree at one point and diverge by the scale everywhere else.
+
+        Same scale as the picture, because it is the same mapping: source client
+        to upscaler client, both in screen coordinates.
+        """
+        if not self._scaling or not self._window:
+            return None
+        source = self._client_geometry(self._window)
+        picture = self._client_geometry(self._scaling)
+        if source is None or picture is None:
+            return None
+        sx, sy, sw, sh = source
+        px, py, pw, ph = picture
+        if not (sx <= x < sx + sw and sy <= y < sy + sh) or sw <= 0 or sh <= 0:
+            return None
+        return (
+            round(px + (x - sx) * pw / sw),
+            round(py + (y - sy) * ph / sh),
+        )
 
     @property
     def rect(self):

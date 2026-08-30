@@ -55,6 +55,17 @@ POLL_MS = 16
 #: race against it and a raise per tick over this long is not.
 SETTLE_MS = 500
 
+#: How many polls an escort has to land the cursor. An upscaler translates the
+#: position it is handed once more on the way to letting go, so the first move
+#: overshoots and it is the correction after it that arrives.
+ESCORT_POLLS = 5
+
+#: How long after a move before another may start. Nothing observed re-fences a
+#: cursor that has been taken out, but an upscaler that did would otherwise be
+#: argued with at the poll rate, and a cursor shaking in place is worse than one
+#: that cannot reach the line.
+ESCORT_REST_POLLS = 30
+
 
 class InputRegion:
     """The boxes that take clicks, kept as a `WS_EX_TRANSPARENT` state.
@@ -73,6 +84,9 @@ class InputRegion:
         self._buttons_down = False
         self._keyboard = False
         self._settle = 0
+        self._escort_to = None
+        self._escort_left = 0
+        self._escort_rest = 0
         user32 = ctypes.WinDLL("user32", use_last_error=True)
         user32.GetWindowLongPtrW.restype = ctypes.c_longlong
         user32.GetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int]
@@ -81,6 +95,8 @@ class InputRegion:
             wintypes.HWND, ctypes.c_int, ctypes.c_longlong,
         ]
         user32.GetCursorPos.argtypes = [ctypes.POINTER(wintypes.POINT)]
+        user32.SetCursorPos.argtypes = [ctypes.c_int, ctypes.c_int]
+        user32.ClipCursor.argtypes = [ctypes.POINTER(wintypes.RECT)]
         user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
         user32.GetAsyncKeyState.restype = ctypes.c_short
         user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
@@ -180,9 +196,14 @@ class InputRegion:
         ex = ex | WS_EX_TRANSPARENT if on else ex & ~WS_EX_TRANSPARENT
         self._user32.SetWindowLongPtrW(self._hwnd, GWL_EXSTYLE, ex)
 
-    def poll(self) -> None:
+    def poll(self, aim=None) -> None:
         """Put the window in the state the cursor's position calls for, and carry
-        on with whatever [`raise_topmost`] has left to do."""
+        on with whatever [`raise_topmost`] has left to do.
+
+        `aim` answers where the reader is pointing when that is not where the
+        cursor is — [`winwatch.WindowWatch.aim`], or None where nothing can move
+        the two apart.
+        """
         if not self._hwnd:
             return
         if self._settle:
@@ -194,13 +215,63 @@ class InputRegion:
             return
         if not self._user32.GetWindowRect(self._hwnd, ctypes.byref(frame)):
             return
-        x = cursor.x - frame.left
-        y = cursor.y - frame.top
-        inside = any(
-            rx <= x < rx + rw and ry <= y < ry + rh for rx, ry, rw, rh in self._rects
-        )
+        inside = self._covered(cursor.x - frame.left, cursor.y - frame.top)
+        if inside:
+            self._escort_to = None
+        else:
+            inside = self._escort(cursor, frame, aim)
         self._set_click_through(not inside)
         self._note_click(inside)
+
+    def _covered(self, x: int, y: int) -> bool:
+        """Whether a point in the surface's own coordinates takes clicks."""
+        return any(
+            rx <= x < rx + rw and ry <= y < ry + rh for rx, ry, rw, rh in self._rects
+        )
+
+    def _escort(self, cursor, frame, aim) -> bool:
+        """Bring the cursor to what the reader is pointing at.
+
+        An upscaler keeps the cursor inside the window it is scaling, so a reader
+        aiming at the picture cannot put it on anything the page has drawn out
+        there: the press would land where the cursor really is, back in the small
+        original, and reach the game instead. Once the cursor is out of that
+        fence the upscaler stops asserting one, so this is a move rather than a
+        fight — but the move needs repeating, because the position it is handed
+        is translated once more on the way out.
+
+        Never while a button is down: that is a drag or a click on the game, and
+        taking the cursor out from under one is not what was asked for.
+        """
+        if self._escort_to is not None:
+            # Mid-move, where the cursor is says nothing about where the reader
+            # is pointing: it is wherever the last correction was translated to.
+            if (cursor.x, cursor.y) == self._escort_to or not self._escort_left:
+                self._escort_to = None
+                self._escort_rest = ESCORT_REST_POLLS
+                return True
+            self._escort_left -= 1
+            self._move_to(self._escort_to)
+            return True
+        if self._escort_rest:
+            self._escort_rest -= 1
+            return False
+        if aim is None or self._buttons_down:
+            return False
+        target = aim(cursor.x, cursor.y)
+        if target is None or not self._covered(
+            target[0] - frame.left, target[1] - frame.top
+        ):
+            return False
+        self._escort_to = target
+        self._escort_left = ESCORT_POLLS
+        self._move_to(target)
+        return True
+
+    def _move_to(self, target) -> None:
+        """Put the cursor somewhere, past whatever is fencing it in."""
+        self._user32.ClipCursor(None)
+        self._user32.SetCursorPos(*target)
 
     def _note_click(self, inside: bool) -> None:
         down = any(

@@ -231,7 +231,7 @@ class Overlay(QObject):
         if in_front is not None:
             self._input.raise_topmost()
             self.inFront.emit(in_front)
-        self._input.poll()
+        self._input.poll(self._watch.aim)
 
     @Slot(str)
     def setWindowName(self, name: str) -> None:
