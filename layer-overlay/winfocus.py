@@ -1,30 +1,22 @@
-"""Whether the surface belongs on screen at all: is the game the window in use.
+"""Whether the window being read is the one in use.
 
 Windows-only: `ctypes.wintypes` does not import anywhere else. There is no
 counterpart under X11 or Wayland — see the README.
 
-A surface above every window is right while the game is being read and wrong the
-moment anything else is. It is topmost, so a browser or an editor brought to the
-front is drawn *under* it and the strip sits over unrelated text.
+The surface is above every window, which is right while the game is being read
+and wrong the moment anything else is: a browser or an editor brought to the
+front is drawn *under* it and the line sits over unrelated text. So the answer is
+reported to the page, which draws the line or leaves it out. Reported rather than
+enforced here, because what the surface is *for* is the page's to decide — it
+keeps its controls reachable and drops only the line.
 
-The rule: show the surface while the foreground window belongs to the game's
-process or to this one, hide it otherwise, and never hide while no window is
-being tracked — a game that has not started yet must still leave the ✕
-reachable.
+The rule: the game's process in front counts, this process counts too, and no
+window tracked counts — a game that has not started yet must still leave the
+surface usable.
 
-Counting this process as the game's is what keeps the rule from oscillating. The
-surface taking focus reads as "the game is no longer in front", so it hides,
-which hands focus back to the game, which shows it again. `WS_EX_NOACTIVATE`
-already means it should never become the foreground window here, and this makes
-the loop impossible even where it does.
-
-Shown and hidden with `ShowWindow` rather than through Qt. `QWindow.setVisible`
-is what a compositor closing the surface looks like to [`layer_overlay.Surface`],
-which answers it by building a new window; a native hide leaves Qt's idea of the
-window alone.
-
-`LAYER_OVERLAY_FOCUS_GATE=0` turns it off, for a reader who wants the surface on
-top of everything regardless.
+Counting this process is what keeps the answer from oscillating. The surface
+taking focus reads as "the game is no longer in front", which would drop the line
+under the reader's hands as they open a panel.
 """
 
 import ctypes
@@ -32,20 +24,9 @@ import os
 import sys
 from ctypes import wintypes
 
-SW_HIDE = 0
-SW_SHOWNOACTIVATE = 4
 
-
-def gate():
-    """The gate, or None where the reader has turned it off."""
-    if os.environ.get("LAYER_OVERLAY_FOCUS_GATE", "1").strip() == "0":
-        print("focus gate: off, the surface stays over every window", flush=True)
-        return None
-    return FocusGate()
-
-
-class FocusGate:
-    """Hides the surface while something other than the game is being used.
+class Focus:
+    """Reports which side of that rule the foreground window is on.
 
     No timer and no hook of its own: [`poll`] is driven from the caller's event
     loop beside [`wininput.InputRegion.poll`], which already runs at the rate a
@@ -55,11 +36,8 @@ class FocusGate:
     """
 
     def __init__(self) -> None:
-        self._surface = 0
-        self._visible = True
-        #: The last `(foreground, tracked)` judged, so the process lookups run
-        #: on a change rather than on every tick.
         self._seen = None
+        self._in_front = True
         self._pid = os.getpid()
         user32 = ctypes.WinDLL("user32", use_last_error=True)
         user32.GetForegroundWindow.restype = wintypes.HWND
@@ -67,38 +45,47 @@ class FocusGate:
         user32.GetWindowThreadProcessId.argtypes = [
             wintypes.HWND, ctypes.POINTER(wintypes.DWORD)
         ]
-        user32.ShowWindow.restype = wintypes.BOOL
-        user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
         user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
         self._user32 = user32
 
-    def poll(self, surface: int, tracked: int) -> None:
-        """Put the surface in the state the foreground window calls for.
+    @property
+    def in_front(self) -> bool:
+        """The last answer, for a caller that needs it without a change."""
+        return self._in_front
 
-        `surface` is this program's window, `tracked` the game's, 0 for none.
+    def repeat(self) -> None:
+        """Answer the next [`poll`] even if nothing has changed.
+
+        The page pushes on each channel connect, and a reloaded page holds no
+        answer at all.
         """
-        if not surface:
-            return
-        if surface != self._surface:
-            # A rebuilt window is a new handle, shown by Qt and knowing nothing
-            # of what the old one had been put into.
-            self._surface = surface
-            self._visible = True
-            self._seen = None
+        self._seen = None
+
+    def poll(self, tracked: int) -> bool | None:
+        """The answer, or None while it is the same as last time.
+
+        `tracked` is the game's window, 0 for none.
+        """
         foreground = self._user32.GetForegroundWindow()
-        # Null while activation moves between windows, and for as long as a UAC
-        # prompt owns the secure desktop. Neither is a window to judge against,
-        # and treating it as one flickers the surface through every switch.
+        # Null between windows, and while a UAC prompt owns the secure desktop.
         if not foreground:
-            return
+            return None
         if (foreground, tracked) == self._seen:
-            return
+            return None
         self._seen = (foreground, tracked)
         if not tracked:
-            self._show(True, "no window tracked")
+            self._in_front = True
+            why = "no window tracked"
         else:
-            here = self._pid_of(foreground) in (self._pid, self._pid_of(tracked))
-            self._show(here, f"{self._title(foreground)!r} in front")
+            self._in_front = self._pid_of(foreground) in (
+                self._pid, self._pid_of(tracked)
+            )
+            why = f"{self._title(foreground)!r} in front"
+        print(
+            f"focus: {'reading' if self._in_front else 'elsewhere'}, {why}",
+            flush=True,
+        )
+        return self._in_front
 
     def _pid_of(self, window: int) -> int:
         """Which process the window belongs to, so the game's own dialogs — a
@@ -113,15 +100,3 @@ class FocusGate:
         self._user32.GetWindowTextW(window, text, len(text))
         encoding = getattr(sys.stdout, "encoding", None) or "ascii"
         return text.value.encode(encoding, "replace").decode(encoding, "replace")
-
-    def _show(self, visible: bool, why: str) -> None:
-        if visible == self._visible:
-            return
-        self._visible = visible
-        self._user32.ShowWindow(
-            self._surface, SW_SHOWNOACTIVATE if visible else SW_HIDE
-        )
-        # Unconditional rather than behind LAYER_OVERLAY_DEBUG: "the overlay
-        # disappeared" is answered by what was in front when it did, and a line
-        # per window switch is nothing.
-        print(f"focus: {'shown' if visible else 'hidden'}, {why}", flush=True)

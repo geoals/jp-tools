@@ -50,6 +50,11 @@ KEY_DOWN = 0x8000
 #: between a mouse arriving somewhere and the button going down.
 POLL_MS = 16
 
+#: How long a raise keeps re-asserting itself. An upscaler asserts its own
+#: topmost as the game is focused and the last raise wins, so one raise is a
+#: race against it and a raise per tick over this long is not.
+SETTLE_MS = 500
+
 
 class InputRegion:
     """The boxes that take clicks, kept as a `WS_EX_TRANSPARENT` state.
@@ -67,6 +72,7 @@ class InputRegion:
         self._click_through = None
         self._buttons_down = False
         self._keyboard = False
+        self._settle = 0
         user32 = ctypes.WinDLL("user32", use_last_error=True)
         user32.GetWindowLongPtrW.restype = ctypes.c_longlong
         user32.GetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int]
@@ -76,7 +82,6 @@ class InputRegion:
         ]
         user32.GetCursorPos.argtypes = [ctypes.POINTER(wintypes.POINT)]
         user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
-        user32.GetForegroundWindow.restype = wintypes.HWND
         user32.GetAsyncKeyState.restype = ctypes.c_short
         user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
         user32.SetForegroundWindow.restype = wintypes.BOOL
@@ -86,7 +91,6 @@ class InputRegion:
             ctypes.c_int, ctypes.c_int, ctypes.c_uint,
         ]
         self._user32 = user32
-        self._foreground = None
 
     @property
     def available(self) -> bool:
@@ -145,18 +149,17 @@ class InputRegion:
         )
 
     def raise_topmost(self) -> None:
-        """Put the surface back at the top of the topmost band.
+        """Put the surface back at the top of the topmost band, and keep it there.
 
-        For the one case [`poll`]'s own defence cannot see. An upscaler between
-        the game and the screen draws into a topmost window of its own and leaves
-        the game focused, so no foreground change happens, and the overlay stays
-        under a window that appeared after it. The caller drives this from the
-        tracked rectangle changing, which is what starting to upscale looks like.
-
-        A raise sticks — Magpie does not re-assert topmost once it has been put
-        under — so this settles rather than becoming a raise war.
+        Both of the things that push it under happen on an event the caller
+        already has: a game that asserts topmost as it takes focus, and an
+        upscaler that draws into a topmost window of its own as it starts
+        scaling. What neither gives is a moment when the raise can be made
+        *last*, so it is made repeatedly for [`SETTLE_MS`] — after which it
+        holds, since nothing here re-asserts a band it has been taken out of.
         """
         if self._hwnd:
+            self._settle = SETTLE_MS // POLL_MS
             self._raise()
 
     def set_keyboard(self, want: bool, restore_to: int = 0) -> None:
@@ -178,21 +181,13 @@ class InputRegion:
         self._user32.SetWindowLongPtrW(self._hwnd, GWL_EXSTYLE, ex)
 
     def poll(self) -> None:
-        """Put the window in the state the cursor's position calls for.
-
-        Also the place the topmost band is defended from. A game that asserts
-        topmost on focus pushes the overlay under itself, and the only signal
-        that has happened is the focus change — so the foreground window is
-        watched and the surface re-raised whenever it moves to anything else.
-        Cheaper than a hook, and this already runs at the rate a cursor needs.
-        """
+        """Put the window in the state the cursor's position calls for, and carry
+        on with whatever [`raise_topmost`] has left to do."""
         if not self._hwnd:
             return
-        foreground = self._user32.GetForegroundWindow()
-        if foreground != self._foreground:
-            self._foreground = foreground
-            if foreground != self._hwnd:
-                self._raise()
+        if self._settle:
+            self._settle -= 1
+            self._raise()
         cursor = wintypes.POINT()
         frame = wintypes.RECT()
         if not self._user32.GetCursorPos(ctypes.byref(cursor)):

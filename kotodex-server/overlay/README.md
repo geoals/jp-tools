@@ -147,6 +147,14 @@ line onto the game's own text to find the offset, which is stored as fractions
 of the window, then set `--text-x`, `--text-y`, `--text-w` and `--text-size`
 from where it landed. They are per install, not yet per work.
 
+**Which is also why the line takes itself off screen while another window is in
+front** (`shell.inFront`, Windows only). It is placed against the game's text, so
+over a browser or an editor it is over that window's text instead. The controls
+stay: they are how the overlay is reached, and the whole surface going away is
+what leaves a reader who started it from behind another window with nothing to
+click. The button in the bar is the same thing said by hand, and either reason
+keeps the line off.
+
 **Ghost mode** (⚙ → Marks) draws the line invisibly over the
 game's own text: the game does the typesetting and the overlay contributes only
 the status tint per word, the underline on a common word, and somewhere to

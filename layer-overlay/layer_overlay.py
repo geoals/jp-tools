@@ -21,6 +21,7 @@ Qt's own copy — and to connect to the object registered as `shell`:
     shell.setKeyboard(bool)            there is a text field open, or there is not
     shell.setWindowName(name)          track this window's rectangle
     shell.geometry(x, y, w, h)         where it is now, or zeros
+    shell.inFront(bool)                that window is the one in use, or is not
     shell.dismissed()                  a press landed off the clickable part
     shell.openUrl(url)                 open an http(s) link in the browser
     shell.quit()                       close; `run` returns QUIT_REQUESTED
@@ -122,6 +123,12 @@ class Overlay(QObject):
     #: measured against a screen that window no longer fills.
     geometry = Signal(int, int, int, int)
 
+    #: Whether the tracked window is the one in use. A page laid over that
+    #: window's content is laid over whatever is in front of it instead — see
+    #: [`winfocus`]. Windows answers it and no other backend does, so a page
+    #: that never hears it draws as though it were true.
+    inFront = Signal(bool)
+
     dismissed = Signal()
 
     def __init__(self) -> None:
@@ -159,13 +166,13 @@ class Overlay(QObject):
             inputregion.InputRegion() if BACKEND != backend.LAYER_SHELL else None
         )
         # Windows has no input region, so the one it emulates has to be
-        # re-evaluated as the cursor moves rather than set and forgotten. The
-        # focus gate rides the same timer rather than taking a hook of its own —
-        # see [`winfocus.FocusGate`].
+        # re-evaluated as the cursor moves rather than set and forgotten. Which
+        # window is in front rides the same timer rather than taking a hook of
+        # its own — see [`winfocus.Focus`].
         self._cursor = None
         self._focus = None
         if BACKEND == backend.WINDOWS:
-            self._focus = winfocus.gate()
+            self._focus = winfocus.Focus()
             self._input.on_click_outside = self.dismissed.emit
             self._cursor = QTimer()
             self._cursor.setInterval(inputregion.POLL_MS)
@@ -184,14 +191,16 @@ class Overlay(QObject):
         self._throttle.timeout.connect(self._flush)
 
     def _windows_tick(self) -> None:
-        """The Windows backend's per-frame work, in the order it has to happen.
+        """The Windows backend's per-frame work.
 
-        The gate first: showing the surface and then raising it is one tick,
-        because the raise is what [`wininput.InputRegion.poll`] does when it
-        notices the same foreground change.
+        A window coming to the front is also the moment it may have taken the
+        topmost band with it, whichever window it was, so every change is a
+        raise as well as an answer for the page.
         """
-        if self._focus is not None and self._window is not None and not self.hidden:
-            self._focus.poll(int(self._window.winId()), self._watch.window)
+        in_front = self._focus.poll(self._watch.window)
+        if in_front is not None:
+            self._input.raise_topmost()
+            self.inFront.emit(in_front)
         self._input.poll()
 
     @Slot(str)
@@ -213,6 +222,8 @@ class Overlay(QObject):
         # window next moved.
         self._rect = None
         self._emitted = None
+        if self._focus is not None:
+            self._focus.repeat()
         if name and (self._watch.available or self._xdotool):
             self._poll_geometry(force=True)
             self._probe.start()

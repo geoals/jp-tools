@@ -43,8 +43,8 @@ decides the Qt platform plugin.
   interface, because neither platform's is `QWindow.setMask`.
 - `xwatch.py` / `winwatch.py` — where the tracked window is, told by the
   display server rather than polled.
-- `winfocus.py` — Windows only: the surface off screen while something other
-  than the tracked window is being used.
+- `winfocus.py` — Windows only: whether the tracked window is the one in use,
+  reported to the page as `inFront`.
 - `runner.sh` — sourced by a caller's launcher for
   `start`/`stop`/`restart`/`ensure`/`status`, detached from the shell that
   started it. Linux only.
@@ -75,20 +75,29 @@ there.
 That leaves the page nothing to dismiss things with, since a click outside never
 arrives — it has to close on its own terms.
 
-## Hidden while something else is in use
+## Which window is in use, and staying above it
 
 Windows only. The surface is topmost, so a browser or an editor brought to the
 front is drawn *under* it — right while the tracked window is being read and
-wrong the moment anything else is. `winfocus.py` hides it whenever the
-foreground window belongs to neither the tracked window's process nor this one,
-and shows it again when it comes back. It never hides while no window is being
-tracked, so a game that has quit or has not started still leaves the page
-reachable. `LAYER_OVERLAY_FOCUS_GATE=0` turns it off.
+wrong the moment anything else is. `winfocus.py` answers which of the two it is:
+the foreground window belonging to the tracked window's process, or to this one,
+or no window being tracked at all. The answer reaches the page as `inFront`, and
+what to do with it is the page's — it can drop what it lays over the tracked
+window and keep its own controls, which is what nothing being hidden here buys.
 
-This process counting as the tracked one is the whole of why it is stable. The
-same rule written against focus alone oscillates: the surface takes focus, which
-reads as the game no longer being in front, so it hides, which hands focus back
-to the game, which shows it again.
+Hiding the whole surface is the obvious alternative and it costs the page: with
+nothing on screen there is no way to reach the overlay, so a reader who started
+it with another window in front sees nothing until they focus the game.
+
+This process counting as the tracked one is the whole of why the answer is
+stable. The same rule written against focus alone oscillates: the surface takes
+focus, which reads as the game no longer being in front.
+
+A window coming to the front may bring the topmost band with it — a game that
+asserts topmost on focus, an upscaler that starts scaling into a topmost window
+of its own — so every change is also a raise. One raise is a race against
+whoever else is raising on the same event, so `wininput.raise_topmost` keeps
+re-asserting for `SETTLE_MS`, after which it holds.
 
 There is no X11 or Wayland equivalent. Under a Wayland session a game runs in
 XWayland while the surface is native, and neither side can be asked a question
@@ -109,6 +118,7 @@ of it. Connect to the object registered as `shell`:
 | `shell.setHits([x, y, w, h, ...])` | what takes clicks, flat |
 | `shell.setWindowName(name)` | track this window's rectangle, by title substring |
 | `shell.geometry(x, y, w, h)` | where it is now, zeros when it cannot be found |
+| `shell.inFront(bool)` | that window is the one in use, or something else is; Windows only |
 | `shell.openUrl(url)` | open an `http`/`https` link in the desktop's browser |
 | `shell.quit()` | close; `run()` returns `QUIT_REQUESTED` rather than 0 |
 

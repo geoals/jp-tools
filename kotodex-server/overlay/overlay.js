@@ -1,11 +1,9 @@
 // The overlay strip's whole client: draw the newest line, and define the word
 // that is clicked in it.
-//
 // Only the newest line is ever drawn. The few before it are asked for through
 // the stream's `backlog` so the explain button has context from the moment the
 // overlay opens; on a dropped connection EventSource reconnects with
 // `Last-Event-ID`, so it resumes after the line it drew.
-//
 // Segmentation is not asked for separately: the line event already carries a
 // span per word, each with the `(headword, reading)` the ledger keys on. The
 // popup asks about that pair, so 振っ is defined as 振る. Where the tokenizer
@@ -13,12 +11,10 @@
 // すぶり where the line means そぶり — the popup carries a chip per other match
 // the dictionaries offer, and picking one re-opens it on that term; see
 // expansions().
-//
 // ♪ in the popup head plays the word, from the Local Audio Server add-on
 // running beside Anki. kotodex-server proxies it: that server binds loopback
 // and sends no CORS headers, so neither this page nor a phone reading the
 // overlay can ask it directly.
-//
 // Three actions on a word, and only one of them opens the popup: left-click
 // asks what it means, the back side button judges it known or unknown, the
 // forward one mines it. Splitting them that way is what keeps the lookup count
@@ -54,7 +50,6 @@ const infoEl = document.getElementById("info");
 // rather than one of them winning: a shut Anki and a dead capture are unrelated
 // problems, and ranking them means the loser is invisible until the winner is
 // fixed.
-//
 // Standing faults are keyed and rewritten in place — the poll that reports one
 // repeats every couple of seconds — while a one-off (a mine Anki refused) is a
 // line with a timer on it, since nothing is going to come back and clear it.
@@ -228,7 +223,6 @@ stream.addEventListener("status", (e) => {
   const { capture, paused, vn_window, work } = JSON.parse(e.data);
 // What each capture state says to a reader who is looking at the game, not at
 // a log. `live` never reaches here.
-//
 // Read off the status event and nothing else: whether a source is attached is
 // a fact about this second, while `capabilities` is fetched once as the page
 // opens — and the overlay comes up beside the daemon it reports on, so that
@@ -278,7 +272,6 @@ const CAPTURE_FAULT = {
   // is about lines not arriving, which is what pausing is *for*; these two are
   // about the overlay being set up wrong, and a pause does not make an
   // unconfigured overlay correct — a reader pauses in order to go and fix one.
-  //
   // Two different absences, and the second is not a milder version of the
   // first. With no work at all nothing read is counted anywhere, and this
   // surface cannot fix it — picking a work is a VNDB search — so that line
@@ -479,7 +472,6 @@ function draw(incoming, again = false, append = true) {
   // Whether the panel is *populated*, not whether it is open: it seeds only
   // when it has no rows at all, so a line read with the panel shut would
   // otherwise be missing from the history for good.
-  //
   // Nothing before the first open, so that the seed and its page back are what
   // build the panel — appending into an empty one would leave it holding this
   // session with no way to reach anything older.
@@ -576,7 +568,6 @@ function onWordWheel(e) {
 
 // Dragging the strip. Anywhere on the backdrop that is not a word: the words
 // are the only thing on it with an action of their own.
-//
 // It moves the box inside the surface rather than the window — the surface is
 // layer-shell, anchored to all four screen edges, and has no position to set.
 // The input region follows because it is measured off the box.
@@ -699,7 +690,6 @@ window.addEventListener("resize", () => {
 
 // Resizing the type by dragging it, which writes `scale` — the same setting the
 // panel's slider does, so the two agree and the readout follows the drag.
-//
 // Two ways in: the grip, and shift held anywhere on the line. The slider's own
 // bounds, because a drag past them is a value the panel could not show.
 const SCALE_MIN = 0.6;
@@ -1269,12 +1259,20 @@ clearBtnEl.addEventListener("click", clearLast);
 // at is worth looking at whole. The stream keeps running, so the line that
 // comes back is whatever is current rather than the one that was showing.
 const hideBtnEl = document.getElementById("hide-btn");
-hideBtnEl.addEventListener("click", () => {
-  boxEl.hidden = !boxEl.hidden;
-  hideBtnEl.classList.toggle("off", boxEl.hidden);
-  tip(hideBtnEl, boxEl.hidden ? "Show the line" : "Hide the line");
+let lineHidden = false;
+let inFront = true;
+
+function applyLine() {
+  boxEl.hidden = lineHidden || !inFront;
+  hideBtnEl.classList.toggle("off", lineHidden);
+  tip(hideBtnEl, lineHidden ? "Show the line" : "Hide the line");
   if (boxEl.hidden) closePopup();
   report();
+}
+
+hideBtnEl.addEventListener("click", () => {
+  lineHidden = !lineHidden;
+  applyLine();
 });
 
 // Phone size and back, without restarting the shell: `--mobile` is three query
@@ -1303,7 +1301,6 @@ mobileBtnEl.addEventListener("click", () => {
 // polls and answers by closing its Textractor socket. Here because the reason
 // to reach for it — a scene not being read, someone else at the keyboard — is
 // something that happens while looking at the game, not at the dashboard.
-//
 // The button reflects the flag rather than a local toggle, so the two pages
 // agree: the POST's answer sets it, and every status event corrects it.
 const pauseBtnEl = document.getElementById("pause-btn");
@@ -1339,7 +1336,6 @@ document.getElementById("stats-btn").addEventListener("click", () => {
 
 // The overlay's settings, in three tabs: how the line is set and sized, what
 // is marked on it, and where its lines come from.
-//
 // Most of them are stored in the browser, because they are about this screen —
 // a phone reading the same overlay wants its own — and applied as CSS
 // variables, so the aligned placement over the game's own text keeps working
@@ -1474,7 +1470,6 @@ function applyType() {
   // Centred on the glyphs rather than dropped below them: this sits over
   // artwork, and what the shadow is for is lifting the character off whatever
   // is behind it, not casting it in a direction.
-  //
   // Strength is how many times the same shadow is drawn, not how opaque it is.
   // A single blurred shadow at full opacity is still faint — the blur spreads
   // what it has over its whole radius — so opacity is the wrong knob and stacked
@@ -1761,12 +1756,10 @@ wsUrlEl.addEventListener("change", () => {
 // and `vn-capture.sh` reads — put here because the overlay is where its absence
 // is noticed: nothing else on this surface reports that a card's screenshot is
 // about to grab the whole screen with the overlay on it.
-//
 // A list of what is open rather than a box to type a title into. The reader is
 // picking one of a handful of running programs, and typing is the answer to a
 // question nobody has: the game's own title is what the tracker wants and the
 // game is the thing that knows it.
-//
 // Written through `PUT /api/vn/window` rather than by work id. This page has no
 // library and no id; what it has is the work being read, which is the one the
 // window belongs to.
@@ -2046,7 +2039,6 @@ function place(word) {
   // Above where there is room, below where there is not. The history panel
   // hangs from the top of the screen, so its first rows have nothing above
   // them — and a popup pinned above them would be drawn off-screen.
-  //
   // Pinned by its bottom edge when it goes above, so that a definition which
   // changes height — paging to a longer dictionary — grows away from the line
   // rather than down over it. That is worth more than the clamping a `top`
@@ -2220,7 +2212,6 @@ function sendHits() {
   if (!popupEl.hidden) rects.push(popupEl.getBoundingClientRect());
   // Flat `x, y, w, h, ...` rather than nested: an array of arrays reaches Qt
   // as opaque QJSValues, while an array of plain numbers converts cleanly.
-  //
   // A few pixels of slack, so a click on the very edge of the backdrop is
   // still caught and the region survives a subpixel reflow.
   const hits = rects.flatMap((r) => [r.left - 4, r.top - 4, r.width + 8, r.height + 8]);
@@ -2311,6 +2302,12 @@ if (window.qt?.webChannelTransport) {
     shell.geometry.connect(onGeometry);
     if (shell.dismissed) shell.dismissed.connect(() => closePopup());
     else console.error("shell.dismissed is missing");
+    if (shell.inFront) {
+      shell.inFront.connect((yes) => {
+        inFront = yes;
+        applyLine();
+      });
+    }
     // Only under the shell: opened in a browser the page has no process to end.
     // This quits Kotodex, not just this window — the shell turns it into that,
     // and on a desktop with no system tray it is the only way out.
