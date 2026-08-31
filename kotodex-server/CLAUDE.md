@@ -470,6 +470,14 @@ Mining:
   for this work" is a button in `#warn` that opens ⚙ → Source, the same shape
   the missing AI key already had. Naming where a setting lives and leaving the
   reader to walk there is the same sentence with a walk in the middle.
+- **The line is shown only while the game window is on screen**, and there is no
+  hide button — it is placed against the game's rectangle, so with no rectangle
+  there is nothing for it to be a line of. Whichever of the three reasons
+  applies is named in `#warn`: no work, no window set for the work, or a window
+  set that is not open. The gate gives the shell's zero rectangle three
+  meanings, so it applies only under the shell and only off a phone —
+  `--mobile` forces `game` to null by design and a browser has no shell to ask,
+  and either would hide the line for good.
 - **A chosen state is not a fault and does not go in the fault box.** `#info`
   is its own box in the panel's own ink; `#warn` is the alert-coloured list of
   what is wrong. Capture being paused is something the reader did on purpose, so

@@ -47,9 +47,9 @@ const warnEl = document.getElementById("warn");
 const infoEl = document.getElementById("info");
 
 // What is wrong, one line per thing. Two faults are two lines in the one box
-// rather than one of them winning: a shut Anki and a dead capture are unrelated
-// problems, and ranking them means the loser is invisible until the winner is
-// fixed.
+// rather than one of them winning: a missing game window and a dead capture are
+// unrelated problems, and ranking them means the loser is invisible until the
+// winner is fixed.
 // Standing faults are keyed and rewritten in place — the poll that reports one
 // repeats every couple of seconds — while a one-off (a mine Anki refused) is a
 // line with a timer on it, since nothing is going to come back and clear it.
@@ -306,6 +306,7 @@ const CAPTURE_FAULT = {
     shell?.setWindowName(windowName);
     showWindowSetting();
   }
+  applyWindowFault();
 });
 
 /* Append `text[from..to)` to `parent`, drawing the game's own furigana where it
@@ -1255,25 +1256,27 @@ async function clearLast() {
 }
 clearBtnEl.addEventListener("click", clearLast);
 
-// The line off the screen without stopping the overlay: a scene worth looking
-// at is worth looking at whole. The stream keeps running, so the line that
-// comes back is whatever is current rather than the one that was showing.
-const hideBtnEl = document.getElementById("hide-btn");
-let lineHidden = false;
 let inFront = true;
 
+function windowGated() {
+  return !!shell && !mobile;
+}
+
 function applyLine() {
-  boxEl.hidden = lineHidden || !inFront;
-  hideBtnEl.classList.toggle("off", lineHidden);
-  tip(hideBtnEl, lineHidden ? "Show the line" : "Hide the line");
+  boxEl.hidden = (windowGated() && !game) || !inFront;
   if (boxEl.hidden) closePopup();
   report();
 }
 
-hideBtnEl.addEventListener("click", () => {
-  lineHidden = !lineHidden;
-  applyLine();
-});
+function applyWindowFault() {
+  setFault(
+    "gone",
+    windowGated() && currentWork && windowName && !game
+      ? `「${windowName}」 is not open — the line stays hidden until it is. Click here to pick another window`
+      : "",
+    openWindowSettings,
+  );
+}
 
 // Phone size and back, without restarting the shell: `--mobile` is three query
 // parameters, so the toggle flips them and reloads. A reload rather than
@@ -2131,37 +2134,9 @@ async function mine(word, target = null) {
   // something only the reader can fix — the wrong profile is open, the note
   // type was renamed.
   if (!note_id) warn(error ? `Anki: ${error}` : "Anki added no card", 12000);
-  // Ask again straight away: a mine is the one moment a shut Anki costs
-  // something, and the poll may be most of its interval away.
-  if (!note_id) checkAnki();
   return note_id;
 }
 
-// Whether Anki is answering where a card would be added. Polled, because
-// nothing else asks until a mine does, and a failing mine is the worst moment
-// to find out that Anki is shut.
-const ANKI_POLL_MS = 20_000;
-
-async function checkAnki() {
-  try {
-    const { up, mining_used } = await (await fetch("/api/anki/up")).json();
-    // Silent on an install that has never mined a card: Anki is optional, and a
-    // standing fault for a part the reader has not asked for is what teaches
-    // them to ignore the box. A mine that fails still says so, once.
-    setFault(
-      "anki",
-      up || !mining_used
-        ? ""
-        : "no Anki — start it with the AnkiConnect add-on; required for mining",
-    );
-  } catch {
-    // kotodex-server itself did not answer, which says nothing about Anki. The
-    // capture fault is the line that reports that.
-  }
-}
-
-checkAnki();
-setInterval(checkAnki, ANKI_POLL_MS);
 
 /** Tell the shell every rectangle on this page that should take a click.
  *
@@ -2253,6 +2228,8 @@ function onGeometry(x, y, w, h) {
   }
   document.documentElement.toggleAttribute("data-aligned", !!game);
   applyGhost();
+  applyLine();
+  applyWindowFault();
   apply();
   // The widget's corner is the game's corner now, so it has moved too — and
   // its offset is clamped against where it has moved to.
@@ -2315,6 +2292,7 @@ if (window.qt?.webChannelTransport) {
     quitBtnEl.addEventListener("click", () => shell.quit());
     // The status event that carried it has usually already been and gone.
     if (windowName) shell.setWindowName(windowName);
-    report();
+    applyLine();
+    applyWindowFault();
   });
 }

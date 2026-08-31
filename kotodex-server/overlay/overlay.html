@@ -573,7 +573,6 @@
 
   #bar-handle,
   #explain-btn,
-  #hide-btn,
   #pause-btn,
   #quit-btn,
   #scrollback-btn,
@@ -662,7 +661,6 @@
   #pause-btn:not(.paused) .when-paused {
     display: none;
   }
-  #hide-btn.off,
   #settings-btn.off,
   #scrollback-btn.off {
     color: var(--ink-3);
@@ -1124,9 +1122,6 @@
     <div id="buttons">
       <button id="explain-btn" data-tip="Explain the last line (select a word first to focus on it)">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11.5v5"/><circle cx="12" cy="7.9" r="1.15" class="ink"/></svg>
-      </button>
-      <button id="hide-btn" data-tip="Hide the line">
-        <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2.5"/><path d="M7 11h10M7 15h6"/></svg>
       </button>
       <button id="scrollback-btn" class="off" data-tip="Earlier lines">
         <svg viewBox="0 0 24 24"><path d="M10 7h10M10 12h10M10 17h10"/><circle cx="5" cy="7" r="1.15" class="ink"/><circle cx="5" cy="12" r="1.15" class="ink"/><circle cx="5" cy="17" r="1.15" class="ink"/></svg>
