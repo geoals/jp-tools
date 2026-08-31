@@ -145,9 +145,9 @@ fi
 step "This machine"
 say "$(_os_release_field PRETTY_NAME 2>/dev/null || echo "unknown system")"
 if reading_here; then
-  say "installing everything: the ledger, the reader, and reading a VN here"
+  say "full install: server, reader, plus the overlay and audio capture for playing a VN on this machine"
 else
-  say "installing the ledger and the reader only (--core)"
+  say "core install (--core): server and reader only — text arrives from another machine"
 fi
 MGR="$(pkg_manager || echo unknown)"
 if [ "$MGR" = unknown ]; then
@@ -657,14 +657,14 @@ fi
 # middle of a step that was doing something else at the time.
 printf '\n'
 if reading_here; then
-  printf '  %-20s %s\n' "start it" "kotodex — or from the application menu"
+  printf '  %-22s %s\n' "start it" "kotodex — or from the application menu"
 else
-  printf '  %-20s %s\n' "start it" "target/release/kotodex-server, then open :3200"
-  printf '  %-20s %s\n' "send it text" "sources/README.md — POST /api/lines"
+  printf '  %-22s %s\n' "start it" "target/release/kotodex-server, then open :3200"
+  printf '  %-22s %s\n' "send it text" "sources/README.md — POST /api/lines"
 fi
-printf '  %-20s %s\n' "check what works" "scripts/kotodex-doctor.sh"
-printf '  %-20s %s\n' "add a dictionary" "drop a Yomitan zip in dictionaries/, then ./setup.sh again"
-printf '  %-20s %s\n' "uninstall" "./setup.sh --uninstall"
-printf '  %-20s %s\n' "what it does" "README.md, and docs/degradation.md for the optional parts"
+printf '  %-22s %s\n' "check what works" "scripts/kotodex-doctor.sh"
+printf '  %-22s %s\n' "add more dictionaries" "drop Yomitan zips in dictionaries/, then ./setup.sh again"
+printf '  %-22s %s\n' "uninstall" "./setup.sh --uninstall"
+printf '  %-22s %s\n' "what it does" "README.md, and docs/degradation.md for the optional parts"
 printf '\n'
 exit "$doctor"
