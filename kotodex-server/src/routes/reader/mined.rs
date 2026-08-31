@@ -5,7 +5,9 @@
 //! is the same duplicate check Yomitan runs before offering to add, so the
 //! popup's badge means what Yomitan's does.
 //!
-//! Anki being closed is not an error — the badge simply does not appear.
+//! Anki being closed is not an error: the badge does not appear, and `up` is
+//! what tells the popup to hide ＋ — a mine is the one action that needs Anki
+//! running, and a button that can only fail is worse than no button.
 
 use axum::Json;
 use axum::extract::{Query, State};
@@ -27,11 +29,12 @@ pub struct MinedQuery {
 pub struct Mined {
     /// Also the card's creation time, in epoch milliseconds.
     pub note_id: Option<i64>,
+    pub up: bool,
 }
 
 /// `GET /api/reader/mined?term=<term>`
 pub async fn mined(State(state): State<AppState>, Query(q): Query<MinedQuery>) -> Json<Mined> {
-    let note_id = match anki::find_note_for_vocab(
+    let (note_id, up) = match anki::find_note_for_vocab(
         &state.http,
         &state.anki_url,
         &state.anki_vocab_field,
@@ -39,13 +42,13 @@ pub async fn mined(State(state): State<AppState>, Query(q): Query<MinedQuery>) -
     )
     .await
     {
-        Ok(id) => id,
+        Ok(id) => (id, true),
         Err(e) => {
             debug!(error = %e, term = %q.term, "no answer from Anki for the mined badge");
-            None
+            (None, false)
         }
     };
-    Json(Mined { note_id })
+    Json(Mined { note_id, up })
 }
 
 #[derive(Deserialize)]

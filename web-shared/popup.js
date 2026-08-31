@@ -133,8 +133,13 @@ export function createPopup(opts) {
       // The key, not the dictionary's spelling: that is what a mine writes
       // into the card's vocab field, so it is what the duplicate check asks.
       const res = await fetch(api.mined(target.key));
-      const { note_id } = await res.json();
-      if (target === mine_) markMined(note_id);
+      const { note_id, up } = await res.json();
+      if (target !== mine_) return;
+      if (up === false && addButton) {
+        addButton.hidden = true;
+        onLayout();
+      }
+      markMined(note_id);
     } catch {
       // Anki closed, or busy. The badge is an extra, never a report.
     }
