@@ -48,6 +48,11 @@ SWP_NOSIZE = 0x0001
 SWP_NOMOVE = 0x0002
 SWP_NOACTIVATE = 0x0010
 
+TOKEN_QUERY = 0x0008
+TOKEN_INTEGRITY_LEVEL = 25
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+ERROR_INSUFFICIENT_BUFFER = 122
+
 WH_MOUSE_LL = 14
 HC_ACTION = 0
 WM_MOUSEWHEEL = 0x020A
@@ -77,6 +82,14 @@ ESCORT_POLLS = 5
 #: argued with at the poll rate, and a cursor shaking in place is worse than one
 #: that cannot reach the line.
 ESCORT_REST_POLLS = 30
+
+
+class SID_AND_ATTRIBUTES(ctypes.Structure):
+    _fields_ = [("Sid", ctypes.c_void_p), ("Attributes", wintypes.DWORD)]
+
+
+class TOKEN_MANDATORY_LABEL(ctypes.Structure):
+    _fields_ = [("Label", SID_AND_ATTRIBUTES)]
 
 
 class MSLLHOOKSTRUCT(ctypes.Structure):
@@ -374,6 +387,12 @@ class WheelGuard:
             wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM,
         ]
         self._user32 = user32
+        user32.GetWindowThreadProcessId.argtypes = [
+            wintypes.HWND, ctypes.POINTER(wintypes.DWORD),
+        ]
+        self._advapi32 = _integrity_api()
+        self._blocked = None
+        self._asked_for = 0
         # Held on the instance because ctypes keeps no reference of its own: a
         # callback collected while the hook is installed is a crash in user32.
         self._proc = _HOOKPROC(self._on_mouse)
@@ -394,6 +413,51 @@ class WheelGuard:
     def set_tracked_rect(self, rect) -> None:
         """Where the tracked window is, as `(x, y, w, h)` in screen pixels."""
         self._tracked = rect
+
+    def blocked_by(self, hwnd: int):
+        """Whether the hook is silently skipped over this window; None if unknown.
+
+        Windows does not call a low-level hook installed by a process at a lower
+        integrity level than the foreground window's. There is no error and no
+        callback — the notch simply goes on to the game — so nothing inside the
+        hook can tell. A VN started as administrator, or an upscaler that starts
+        one, is exactly that case.
+
+        Comparing the two levels is the only way to know, and the reader is who
+        has to act on it: the same surface started as administrator installs a
+        hook that works. `uiAccess` is the documented alternative and needs a
+        signed binary under Program Files.
+
+        Cached per window, because the answer cannot change while a process
+        lives and the caller asks on a timer.
+        """
+        if not hwnd or self._advapi32 is None:
+            return None
+        if hwnd == self._asked_for:
+            return self._blocked
+        self._asked_for = hwnd
+        self._blocked = self._compare(hwnd)
+        return self._blocked
+
+    def _compare(self, hwnd: int):
+        kernel32, _ = self._advapi32
+        pid = wintypes.DWORD()
+        self._user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if not pid.value:
+            return None
+        theirs_handle = kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value
+        )
+        if not theirs_handle:
+            return None
+        try:
+            theirs = _integrity_level(self._advapi32, theirs_handle)
+        finally:
+            kernel32.CloseHandle(theirs_handle)
+        ours = _integrity_level(self._advapi32, kernel32.GetCurrentProcess())
+        if theirs < 0 or ours < 0:
+            return None
+        return theirs > ours
 
     def _on_mouse(self, code, wparam, lparam):
         try:
@@ -433,3 +497,66 @@ class WheelGuard:
         wparam = data.mouseData & 0xFFFFFFFF
         lparam = ((data.pt.y & 0xFFFF) << 16) | (data.pt.x & 0xFFFF)
         self._user32.PostMessageW(hwnd, message, wparam, lparam)
+
+
+def _integrity_api():
+    """The calls that answer what integrity level a process runs at.
+
+    Separate from the ones the hook itself needs because a machine where these
+    cannot be bound is one where the hook still works — the question simply goes
+    unanswered, and the page hears nothing rather than a wrong claim.
+    """
+    try:
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    except OSError:
+        return None
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    advapi32.OpenProcessToken.argtypes = [
+        wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE),
+    ]
+    advapi32.GetTokenInformation.argtypes = [
+        wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    advapi32.GetSidSubAuthorityCount.restype = ctypes.POINTER(ctypes.c_ubyte)
+    advapi32.GetSidSubAuthorityCount.argtypes = [ctypes.c_void_p]
+    advapi32.GetSidSubAuthority.restype = ctypes.POINTER(wintypes.DWORD)
+    advapi32.GetSidSubAuthority.argtypes = [ctypes.c_void_p, wintypes.DWORD]
+    return kernel32, advapi32
+
+
+def _integrity_level(api, process) -> int:
+    """The mandatory integrity level of an open process handle, or -1.
+
+    The level is the last sub-authority of the token's integrity SID: 0x2000 is
+    what an ordinary process gets, 0x3000 what one started as administrator
+    does. Only the comparison between two of them is used, so the constants stay
+    out of this module.
+    """
+    kernel32, advapi32 = api
+    token = wintypes.HANDLE()
+    if not advapi32.OpenProcessToken(process, TOKEN_QUERY, ctypes.byref(token)):
+        return -1
+    try:
+        size = wintypes.DWORD()
+        advapi32.GetTokenInformation(
+            token, TOKEN_INTEGRITY_LEVEL, None, 0, ctypes.byref(size)
+        )
+        if ctypes.get_last_error() != ERROR_INSUFFICIENT_BUFFER or not size.value:
+            return -1
+        buf = ctypes.create_string_buffer(size.value)
+        if not advapi32.GetTokenInformation(
+            token, TOKEN_INTEGRITY_LEVEL, buf, size.value, ctypes.byref(size)
+        ):
+            return -1
+        sid = ctypes.cast(buf, ctypes.POINTER(TOKEN_MANDATORY_LABEL)).contents.Label.Sid
+        count = advapi32.GetSidSubAuthorityCount(sid)
+        if not count:
+            return -1
+        return int(advapi32.GetSidSubAuthority(sid, count[0] - 1)[0])
+    finally:
+        kernel32.CloseHandle(token)

@@ -22,6 +22,8 @@ Qt's own copy — and to connect to the object registered as `shell`:
     shell.setWindowName(name)          track this window's rectangle
     shell.geometry(x, y, w, h)         where it is now, or zeros
     shell.inFront(bool)                that window is the one in use, or is not
+    shell.wheelBlocked(bool)           a notch aimed at the page reaches that
+                                       window anyway; Windows only
     shell.dismissed()                  a press landed off the clickable part
     shell.openUrl(url)                 open an http(s) link in the browser
     shell.quit()                       close; `run` returns QUIT_REQUESTED
@@ -153,6 +155,14 @@ class Overlay(QObject):
     #: nothing, and a page that never hears it draws as though it were true.
     inFront = Signal(bool)
 
+    #: The wheel cannot be held back from the tracked window: it runs at a
+    #: higher integrity level than this process, so Windows skips the hook that
+    #: would swallow a notch aimed at the page — see [`wininput.WheelGuard`].
+    #: Windows only, and only ever emitted true; the page is expected to say so,
+    #: since the reader is who can fix it by starting the overlay as
+    #: administrator.
+    wheelBlocked = Signal(bool)
+
     dismissed = Signal()
 
     def __init__(self) -> None:
@@ -196,6 +206,7 @@ class Overlay(QObject):
         self._cursor = None
         self._focus = None
         self._wheel = None
+        self._wheel_blocked = None
         if BACKEND == backend.WINDOWS:
             self._focus = winfocus.Focus()
             self._input.on_click_outside = self.dismissed.emit
@@ -239,6 +250,10 @@ class Overlay(QObject):
             self._input.raise_topmost()
             self.inFront.emit(in_front)
         self._wheel.set_tracked_rect(self._watch.rect)
+        blocked = self._wheel.blocked_by(self._watch.window)
+        if blocked is not None and blocked != self._wheel_blocked:
+            self._wheel_blocked = blocked
+            self.wheelBlocked.emit(blocked)
         self._input.poll(self._watch.aim)
 
     @Slot(str)

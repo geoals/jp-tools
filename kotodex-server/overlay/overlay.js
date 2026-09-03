@@ -2285,6 +2285,19 @@ if (window.qt?.webChannelTransport) {
         applyLine();
       });
     }
+    // Nothing here can fix it: Windows skips a low-level hook installed below
+    // the foreground window's integrity level, so the reader is the only one
+    // who can, by starting Kotodex the same way the game was started.
+    if (shell.wheelBlocked) {
+      shell.wheelBlocked.connect((blocked) => {
+        setFault(
+          "wheel",
+          blocked
+            ? "scrolling the popup also scrolls the game — it runs as administrator, so start Kotodex as administrator too"
+            : "",
+        );
+      });
+    }
     // Only under the shell: opened in a browser the page has no process to end.
     // This quits Kotodex, not just this window — the shell turns it into that,
     // and on a desktop with no system tray it is the only way out.
