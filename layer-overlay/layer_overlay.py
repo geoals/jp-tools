@@ -218,7 +218,7 @@ class Overlay(QObject):
             # hovered one, and this surface never takes focus — see
             # [`wininput.WheelGuard`], which is the only place that can be
             # answered.
-            self._wheel = inputregion.WheelGuard(self._input)
+            self._wheel = inputregion.WheelGuard(self._input, self._focus)
             self._wheel.install()
         # The same answer from the other side: KWin says which window is in use
         # rather than being asked, so this one needs no timer and there is no

@@ -351,14 +351,15 @@ class WheelGuard:
 
     - on something the page has drawn — swallow it and post it to the surface,
       so the popup scrolls and the game sees nothing
-    - outside the tracked window — swallow it. It cannot reach the window it was
-      aimed at anyway, since that window is not the focused one; passing it on
-      only lets it advance the game
-    - on the tracked window — pass it through, which is the only case where the
-      game is what was aimed at
+    - the game is not the window in use — pass it through. The notch belongs to
+      whatever *is* in front, and that window is reached by the ordinary route
+    - the game is in front and the cursor is off it — swallow it. This is the
+      whole point: the notch would go to the game by focus alone, though it was
+      aimed at a texthooker or a browser sitting beside it
+    - the game is in front and the cursor is on it — pass it through
 
-    Nothing tracked means no rectangle to be outside of, so everything the page
-    has not drawn on passes through.
+    Nothing tracked means no game to be in front, so everything the page has not
+    drawn on passes through.
 
     The hook runs on the thread that installed it, during that thread's message
     loop — the caller's Qt loop — so there is no thread of its own and nothing
@@ -369,8 +370,9 @@ class WheelGuard:
     the hook, so the forward cannot loop.
     """
 
-    def __init__(self, region: "InputRegion") -> None:
+    def __init__(self, region: "InputRegion", focus=None) -> None:
         self._region = region
+        self._focus = focus
         self._tracked = None
         self._hook = 0
         user32 = region._user32
@@ -479,6 +481,11 @@ class WheelGuard:
             self._forward(message, data)
             return True
         if self._tracked is None:
+            return False
+        # Swallowing while the game is not in front takes the wheel away from
+        # the whole desktop: the window the reader has just clicked into is the
+        # focused one, and the notch is on its way there by the ordinary route.
+        if self._focus is not None and not self._focus.in_front:
             return False
         x, y, w, h = self._tracked
         return not (x <= data.pt.x < x + w and y <= data.pt.y < y + h)
