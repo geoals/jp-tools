@@ -195,6 +195,7 @@ class Overlay(QObject):
         # its own — see [`winfocus.Focus`].
         self._cursor = None
         self._focus = None
+        self._wheel = None
         if BACKEND == backend.WINDOWS:
             self._focus = winfocus.Focus()
             self._input.on_click_outside = self.dismissed.emit
@@ -202,6 +203,12 @@ class Overlay(QObject):
             self._cursor.setInterval(inputregion.POLL_MS)
             self._cursor.timeout.connect(self._windows_tick)
             self._cursor.start()
+            # Windows sends a wheel notch to the focused window rather than the
+            # hovered one, and this surface never takes focus — see
+            # [`wininput.WheelGuard`], which is the only place that can be
+            # answered.
+            self._wheel = inputregion.WheelGuard(self._input)
+            self._wheel.install()
         # The same answer from the other side: KWin says which window is in use
         # rather than being asked, so this one needs no timer and there is no
         # topmost band to defend beside it.
@@ -231,6 +238,7 @@ class Overlay(QObject):
         if in_front is not None:
             self._input.raise_topmost()
             self.inFront.emit(in_front)
+        self._wheel.set_tracked_rect(self._watch.rect)
         self._input.poll(self._watch.aim)
 
     @Slot(str)
@@ -415,9 +423,13 @@ class Overlay(QObject):
 
     def close(self) -> None:
         """Give back what outlives this process. Only KWin holds anything: a
-        script left loaded goes on calling a bus name that has gone."""
+        script left loaded goes on calling a bus name that has gone, and a
+        low-level mouse hook left installed is every wheel notch on the desktop
+        going through a callback that no longer exists."""
         if self._kde_focus is not None:
             self._kde_focus.close()
+        if self._wheel is not None:
+            self._wheel.close()
 
     @Slot()
     def minimise(self) -> None:

@@ -22,6 +22,13 @@ somewhere the cursor has not been — a synthetic one, or a tablet tapping a fre
 position — arrives before the boundary is noticed. Nothing a mouse does can
 produce that, since a click is always preceded by the move that got there.
 
+The wheel is the one input that no region can route, and [`WheelGuard`] is
+here for it. Windows delivers `WM_MOUSEWHEEL` to the *focused* window rather
+than the hovered one, and this surface never takes focus, so every notch reaches
+the game underneath — including the ones aimed at a popup the page has drawn,
+and the ones aimed at another window entirely while the game holds focus. A
+low-level hook is the only place that can be answered.
+
 Interface is [`xshape.InputRegion`]'s on purpose, so the caller sets a region
 the same way on both. No timer of its own: [`poll`] is driven from the caller's
 event loop, beside the other timers.
@@ -40,6 +47,11 @@ HWND_TOPMOST = -1
 SWP_NOSIZE = 0x0001
 SWP_NOMOVE = 0x0002
 SWP_NOACTIVATE = 0x0010
+
+WH_MOUSE_LL = 14
+HC_ACTION = 0
+WM_MOUSEWHEEL = 0x020A
+WM_MOUSEHWHEEL = 0x020E
 
 VK_LBUTTON = 0x01
 VK_RBUTTON = 0x02
@@ -65,6 +77,21 @@ ESCORT_POLLS = 5
 #: argued with at the poll rate, and a cursor shaking in place is worse than one
 #: that cannot reach the line.
 ESCORT_REST_POLLS = 30
+
+
+class MSLLHOOKSTRUCT(ctypes.Structure):
+    _fields_ = [
+        ("pt", wintypes.POINT),
+        ("mouseData", wintypes.DWORD),
+        ("flags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", ctypes.c_void_p),
+    ]
+
+
+_HOOKPROC = ctypes.WINFUNCTYPE(
+    ctypes.c_ssize_t, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM
+)
 
 
 class InputRegion:
@@ -113,6 +140,19 @@ class InputRegion:
         """True: user32 is part of the platform. The X11 region can genuinely
         fail to open a display, and the caller asks both the same question."""
         return True
+
+    @property
+    def hwnd(self) -> int:
+        return self._hwnd
+
+    def covers_point(self, screen_x: int, screen_y: int) -> bool:
+        """Whether a screen point is on something the page has drawn."""
+        if not self._hwnd:
+            return False
+        frame = wintypes.RECT()
+        if not self._user32.GetWindowRect(self._hwnd, ctypes.byref(frame)):
+            return False
+        return self._covered(screen_x - frame.left, screen_y - frame.top)
 
     def apply(self, window_id: int, rects) -> bool:
         """`rects` is a sequence of `(x, y, w, h)`. Empty means nothing clickable."""
@@ -281,3 +321,115 @@ class InputRegion:
         pressed, self._buttons_down = down and not self._buttons_down, down
         if pressed and not inside and self.on_click_outside is not None:
             self.on_click_outside()
+
+
+class WheelGuard:
+    """Where a wheel notch goes, since Windows sends it to the focused window.
+
+    `WM_MOUSEWHEEL` is delivered to whatever holds focus, not to what the cursor
+    is over. This surface is `WS_EX_NOACTIVATE` and must stay that way — taking
+    the game's focus to raise a page over it would pause the game — so with the
+    game focused every notch is the game's: one aimed at a popup the page has
+    drawn scrolls the game as well, and one aimed at another window while the
+    game is still focused scrolls the game instead of that window.
+
+    A `WH_MOUSE_LL` hook is the only place that sees a notch before the focused
+    window does. Three answers, by where the cursor is:
+
+    - on something the page has drawn — swallow it and post it to the surface,
+      so the popup scrolls and the game sees nothing
+    - outside the tracked window — swallow it. It cannot reach the window it was
+      aimed at anyway, since that window is not the focused one; passing it on
+      only lets it advance the game
+    - on the tracked window — pass it through, which is the only case where the
+      game is what was aimed at
+
+    Nothing tracked means no rectangle to be outside of, so everything the page
+    has not drawn on passes through.
+
+    The hook runs on the thread that installed it, during that thread's message
+    loop — the caller's Qt loop — so there is no thread of its own and nothing
+    to lock. It sees every mouse *move* as well, which is why the path to
+    `CallNextHookEx` for anything that is not a wheel is the first branch.
+
+    A posted message is not hardware input and does not come back round through
+    the hook, so the forward cannot loop.
+    """
+
+    def __init__(self, region: "InputRegion") -> None:
+        self._region = region
+        self._tracked = None
+        self._hook = 0
+        user32 = region._user32
+        user32.SetWindowsHookExW.restype = wintypes.HHOOK
+        user32.SetWindowsHookExW.argtypes = [
+            ctypes.c_int, ctypes.c_void_p, wintypes.HINSTANCE, wintypes.DWORD,
+        ]
+        user32.UnhookWindowsHookEx.argtypes = [wintypes.HHOOK]
+        user32.CallNextHookEx.restype = ctypes.c_ssize_t
+        user32.CallNextHookEx.argtypes = [
+            wintypes.HHOOK, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM,
+        ]
+        user32.PostMessageW.argtypes = [
+            wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM,
+        ]
+        self._user32 = user32
+        # Held on the instance because ctypes keeps no reference of its own: a
+        # callback collected while the hook is installed is a crash in user32.
+        self._proc = _HOOKPROC(self._on_mouse)
+
+    def install(self) -> bool:
+        if self._hook:
+            return True
+        self._hook = self._user32.SetWindowsHookExW(
+            WH_MOUSE_LL, ctypes.cast(self._proc, ctypes.c_void_p), None, 0
+        )
+        return bool(self._hook)
+
+    def close(self) -> None:
+        if self._hook:
+            self._user32.UnhookWindowsHookEx(self._hook)
+            self._hook = 0
+
+    def set_tracked_rect(self, rect) -> None:
+        """Where the tracked window is, as `(x, y, w, h)` in screen pixels."""
+        self._tracked = rect
+
+    def _on_mouse(self, code, wparam, lparam):
+        try:
+            if code == HC_ACTION and wparam in (WM_MOUSEWHEEL, WM_MOUSEHWHEEL):
+                data = ctypes.cast(lparam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+                if self._handle(int(wparam), data):
+                    return 1
+        except Exception:
+            # A hook that raises is a hook Windows may drop, taking the mouse
+            # with it. Any failure here means the notch goes where it would
+            # have gone without this class.
+            pass
+        return self._user32.CallNextHookEx(None, code, wparam, lparam)
+
+    def _handle(self, message: int, data) -> bool:
+        """True when the notch has been dealt with and must not go on."""
+        region = self._region
+        if region.covers_point(data.pt.x, data.pt.y):
+            self._forward(message, data)
+            return True
+        if self._tracked is None:
+            return False
+        x, y, w, h = self._tracked
+        return not (x <= data.pt.x < x + w and y <= data.pt.y < y + h)
+
+    def _forward(self, message: int, data) -> None:
+        """Hand the notch to the surface, in the shape its window proc expects.
+
+        The delta is the high word of `mouseData` and the modifier keys are the
+        low word, packed back the way `WM_MOUSEWHEEL` carries them; the position
+        is in screen coordinates, which is what the message wants and what the
+        hook already has.
+        """
+        hwnd = self._region.hwnd
+        if not hwnd:
+            return
+        wparam = data.mouseData & 0xFFFFFFFF
+        lparam = ((data.pt.y & 0xFFFF) << 16) | (data.pt.x & 0xFFFF)
+        self._user32.PostMessageW(hwnd, message, wparam, lparam)
